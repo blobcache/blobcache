@@ -1,0 +1,14 @@
+
+data_dir: "."
+capacity: 1 GB
+peers: []
+
+read_path:
+- mem_lru:
+    size: 1024
+- fs_bridge:
+    path: "/path/to/files"
+    transforms:
+    - "webfs"
+- local: {}
+- network: {}
