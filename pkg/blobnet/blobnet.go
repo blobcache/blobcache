@@ -1,0 +1,144 @@
+package blobnet
+
+import (
+	"context"
+	"errors"
+	fmt "fmt"
+	"log"
+
+	"github.com/boltdb/bolt"
+	"github.com/brendoncarroll/go-p2p"
+	"github.com/brendoncarroll/go-p2p/simplemux"
+	proto "github.com/golang/protobuf/proto"
+
+	"github.com/brendoncarroll/blobcache/pkg/blobs"
+)
+
+type Blobnet struct {
+	mux        simplemux.Muxer
+	fetchSwarm p2p.AskSwarm
+
+	router  *Router
+	indexer *Indexer
+
+	cache blobs.Getter
+}
+
+func NewBlobNet(mdb *bolt.DB, cache blobs.Getter, swarm p2p.Swarm) *Blobnet {
+	mux := simplemux.MultiplexSwarm(swarm)
+	bn := &Blobnet{
+		cache: cache,
+		mux:   mux,
+	}
+
+	rSwarm, err := bn.mux.OpenChannel("blobcache/routing-v0")
+	if err != nil {
+		panic(err)
+	}
+	bn.router = NewRouter(rSwarm)
+
+	iSwarm, err := bn.mux.OpenChannel("blobcache/indexing-v0")
+	if err != nil {
+		panic(err)
+	}
+	bn.indexer, err = NewIndexer(mdb, iSwarm, bn.Router)
+	if err != nil {
+		panic(err)
+	}
+
+	fSwarm, err := bn.mux.OpenChannel("blobcache/fetching-v0")
+	if err != nil {
+		panic(err)
+	}
+	fSwarm.(p2p.Asker).OnAsk(bn.handleAsk)
+
+	return bn
+}
+
+func (bn *Blobnet) Get(ctx context.Context, id blobs.ID) ([]byte, error) {
+	peerID, path := bn.nextPeer(id)
+	req := &GetReq{
+		BlobId:  id[:],
+		DstPeer: peerID,
+		Path:    path,
+	}
+	reqData, err := proto.Marshal(req)
+	if err != nil {
+		panic(err)
+	}
+	data, err := bn.Ask(ctx, peerID, reqData)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) < 1 {
+		return nil, nil
+	}
+
+	res := &GetRes{}
+	if err := proto.Unmarshal(data, res); err != nil {
+		return nil, err
+	}
+	switch x := res.Res.(type) {
+	case *GetRes_Data:
+		id2 := blobs.Hash(x.Data)
+		if !id2.Equals(id) {
+			return nil, fmt.Errorf("bad blob from peer %v", peerId)
+		}
+		return x.Data, nil
+	case *GetRes_Redirect:
+		return nil, errors.New("redirect not supported")
+	default:
+		return nil, nil
+	}
+}
+
+func (bn *Blobnet) Post(ctx context.Context, data []byte) (blobs.ID, error) {
+	return blob.ID{}, nil
+}
+
+func (bn *Blobnet) handleAsk(ctx context.Context, msg p2p.Message) []byte {
+	req := &GetReq{}
+	if err := proto.Unmarshal(msg.Payload, req); err != nil {
+		log.Println(err)
+		return nil
+	}
+	id := blobs.ID{}
+	copy(id[:], req.BlobId)
+
+	// try local
+	data, err := bn.getLocal(ctx, id)
+	if err != nil {
+		log.Println(err)
+	}
+	if data != nil {
+		res := &GetRes{
+			BlobId: req.Id,
+			Res:    &GetRes_Data{data},
+		}
+		data, err := proto.Marshal(res)
+		if err != nil {
+			panic(err)
+		}
+		return data
+	}
+
+	// forward
+
+	// empty
+	res := &GetRes{
+		BlobId: reqId,
+	}
+	resBytes, err = proto.Marshal(res)
+	if err != nil {
+		panic(err)
+	}
+	return resBytes
+}
+
+func (bn *Blobnet) getLocal(ctx context.Context, id blobs.ID) ([]byte, error) {
+	return bn.cache.Get(ctx, id)
+}
+
+func (bn *Blobnet) nextPeer(ctx context.Context, id blobs.ID) (p2p.PeerID, []int) {
+	bn.indexer.WhereIs()
+}

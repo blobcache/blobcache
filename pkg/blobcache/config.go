@@ -83,14 +83,17 @@ func (c *Config) Params() (*Params, error) {
 	mux := simplemux.MultiplexSwarm(swarm)
 
 	return &Params{
-		Mux:        mux,
-		Cache:      cache,
+		Mux: mux
+
+		Cache: Cache,
 		MetadataDB: metadataDB,
+
+		Capacity: capacity,
 	}, nil
 }
 
 func setupSwarm(privKey p2p.PrivateKey) (p2p.Swarm, error) {
-	sshs, err := sshswarm.New("[]:", privKey, nil)
+	sshs, err := sshswarm.New("[]:", privKey)
 	if err != nil {
 		return nil, err
 	}
@@ -105,4 +108,16 @@ type PeerSpec struct {
 	Edge     aggswarm.Edge
 	Trust    int64
 	Nickname string
+}
+
+func setupSwarm(privKey p2p.PrivateKey) (p2p.Swarm, error) {
+	sshs, err := sshswarm.New("[]:", privKey, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	transports := map[string]aggswarm.Transport{
+		"ssh": sshs,
+	}
+	return aggswarm.New(privKey, transports), nil
 }

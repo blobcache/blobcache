@@ -1,5 +1,7 @@
 module github.com/brendoncarroll/blobcache
 
+replace github.com/brendoncarroll/go-p2p => ../go-p2p
+
 require (
 	github.com/brendoncarroll/go-p2p v0.0.0-20200206020700-0b364b0b1b58
 	github.com/dustin/go-humanize v1.0.0
