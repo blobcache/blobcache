@@ -25,7 +25,7 @@ func mergeChildren(ctx context.Context, ts ...*Trie) (*Trie, error) {
 	m := New(ts[0].store)
 	for _, t := range ts {
 		for _, e := range t.Entries {
-			if err := m.Put(ctx, e); err != nil {
+			if err := m.Put(ctx, e.Key, e.Value); err != nil {
 				return nil, err
 			}
 		}

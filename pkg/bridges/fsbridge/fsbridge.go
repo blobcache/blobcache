@@ -72,6 +72,38 @@ func (b *Bridge) Index(ctx context.Context, p string) (err error) {
 	return nil
 }
 
+func (b *Bridge) Get(ctx context.Context, id blobs.ID) ([]byte, error) {
+	value, err := b.store.Get(ctx, id[:])
+	ent := Entry{}
+	if err := cbor.Loads(value, &ent); err != nil {
+		return nil, err
+	}
+	f, err := os.Open(ent.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	if _, err := f.Seek(ent.Offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	r := io.LimitReader(f, int64(ent.Length))
+	return ioutil.ReadAll(r)
+}
+
+func (b *Bridge) Exists(ctx context.Context, id blobs.ID) (bool, error) {
+	x, err := b.store.Get(ctx, id[:])
+	if err != nil {
+		return false, err
+	}
+	return len(x) > 0, nil
+}
+
+func (b *Bridge) List(ctx context.Context, prefix []byte, ids []blobs.ID) (n int, err error) {
+	return 0, nil
+}
+
 func (b *Bridge) indexPath(ctx context.Context, p string) error {
 	finfo, err := os.Stat(p)
 	if err != nil {
@@ -187,32 +219,4 @@ func (b *Bridge) putEntry(ctx context.Context, key []byte, e Entry) error {
 		return err
 	}
 	return b.store.Put(ctx, key, value)
-}
-
-func (b *Bridge) Get(ctx context.Context, id blobs.ID) ([]byte, error) {
-	value, err := b.store.Get(ctx, id[:])
-	ent := Entry{}
-	if err := cbor.Loads(value, &ent); err != nil {
-		return nil, err
-	}
-	f, err := os.Open(ent.Path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	if _, err := f.Seek(ent.Offset, io.SeekStart); err != nil {
-		return nil, err
-	}
-
-	r := io.LimitReader(f, int64(ent.Length))
-	return ioutil.ReadAll(r)
-}
-
-func (b *Bridge) Exists(ctx context.Context, id blobs.ID) (bool, error) {
-	x, err := b.store.Get(ctx, id[:])
-	if err != nil {
-		return false, err
-	}
-	return len(x) > 0, nil
 }

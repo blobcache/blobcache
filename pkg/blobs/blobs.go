@@ -25,32 +25,10 @@ func (a ID) Cmp(b ID) int {
 	return bytes.Compare(a[:], b[:])
 }
 
-var NullID = ID{}
+func ZeroID() ID { return ID{} }
 
 type Blob = []byte
 
 func Hash(data []byte) ID {
 	return ID(sha3.Sum256(data))
 }
-
-// func MakeStore(kv KV) Store {
-// 	return &kvWrapper{kv}
-// }
-
-// type kvWrapper struct {
-// 	KV
-// }
-
-// func (w *kvWrapper) Post(ctx context.Context, b Blob) (ID, error) {
-// 	id := Hash(b)
-// 	err := w.KV.Put(ctx, id[:], b)
-// 	return id, err
-// }
-
-// func (w *kvWrapper) Get(ctx context.Context, id ID) (Blob, error) {
-// 	return w.KV.Get(ctx, id[:])
-// }
-
-// func (w *kvWrapper) Delete(ctx context.Context, id ID) error {
-// 	return w.KV.Delete(ctx, id[:])
-// }

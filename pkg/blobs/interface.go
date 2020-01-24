@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-type Store interface {
+type GetPostDelete interface {
 	Getter
 	Poster
 	Deleter
@@ -24,9 +24,12 @@ type Deleter interface {
 	Delete(context.Context, ID) error
 }
 
-var ErrTooMany = errors.New("prefix would take up more space than buffer")
-
-type WithPrefix interface {
+type Lister interface {
 	// List fills ids with all the IDs under that prefix
-	List(prefix []byte, ids []ID) error
+	List(ctx context.Context, prefix []byte, ids []ID) (n int, err error)
 }
+
+var (
+	ErrTooMany  = errors.New("prefix would take up more space than buffer")
+	ErrNotFound = errors.New("blob no found")
+)

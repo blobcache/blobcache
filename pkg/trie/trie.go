@@ -3,7 +3,7 @@ package trie
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -11,13 +11,9 @@ import (
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 )
 
-const maxEntries = 512
+var enc = base64.URLEncoding
 
-type GetPostDelete interface {
-	Post(ctx context.Context, key []byte) (blobs.ID, error)
-	Get(ctx context.Context, key []byte) ([]byte, error)
-	Delete(ctx context.Context, key []byte) error
-}
+const maxEntries = 512
 
 type Pair struct {
 	Key   []byte `json:"key"`
@@ -25,24 +21,24 @@ type Pair struct {
 }
 
 type Trie struct {
-	store blobs.Store
+	store blobs.GetPostDelete
 
 	Prefix   []byte         `json:"prefix"`
-	Children *[256]blobs.ID `json:"children"`
-	Entries  []Pair         `json:"entries"`
+	Children *[256]blobs.ID `json:"children,omitempty"`
+	Entries  []Pair         `json:"entries,omitempty"`
 }
 
-func New(store blobs.Store) *Trie {
+func New(store blobs.GetPostDelete) *Trie {
 	return &Trie{
 		store: store,
 	}
 }
 
-func (t *Trie) Put(ctx context.Context, pair Pair) error {
+func (t *Trie) Put(ctx context.Context, key, value []byte) error {
 	if err := t.Validate(); err != nil {
 		return err
 	}
-	return t.put(ctx, pair)
+	return t.put(ctx, Pair{Key: key, Value: value})
 }
 
 func (t *Trie) put(ctx context.Context, pair Pair) error {
@@ -84,7 +80,7 @@ func (t *Trie) putInThis(ctx context.Context, pair Pair) error {
 
 	// add to child
 	return t.replaceChild(ctx, pair.Key, func(x Trie) (*Trie, error) {
-		err := x.Put(ctx, pair)
+		err := x.put(ctx, pair)
 		return &x, err
 	})
 }
@@ -186,44 +182,74 @@ func (t *Trie) childFor(ctx context.Context, key []byte) (int, *Trie, error) {
 }
 
 const (
-	typeLeaf = "leaf"
-	typeTree = "tree"
+	TypeLeaf = "leaf"
+	TypeTree = "tree"
 )
 
-func (t *Trie) Marshal() []byte {
+func (t *Trie) MarshalText() ([]byte, error) {
 	buf := bytes.Buffer{}
 
 	var ty string
 	if t.Children == nil {
-		ty = typeLeaf
+		ty = TypeLeaf
 	} else {
-		ty = typeTree
+		ty = TypeTree
 	}
 
 	if _, err := buf.WriteString(ty); err != nil {
-		panic(err)
+		return nil, err
 	}
 	if _, err := buf.WriteString("\n"); err != nil {
-		panic(err)
+		return nil, err
 	}
-	if _, err := buf.WriteString(hex.EncodeToString(t.Prefix)); err != nil {
-		panic(err)
+	if _, err := buf.WriteString(enc.EncodeToString(t.Prefix)); err != nil {
+		return nil, err
 	}
 	if _, err := buf.WriteString("\n"); err != nil {
-		panic(err)
+		return nil, err
 	}
-	for _, ref := range t.Children {
-		if _, err := buf.WriteString(hex.EncodeToString(ref[:])); err != nil {
-			panic(err)
+	switch ty {
+	case TypeTree:
+		for _, ref := range t.Children {
+			b64Str := enc.EncodeToString(ref[:])
+			if _, err := buf.WriteString(b64Str); err != nil {
+				return nil, err
+			}
+			if _, err := buf.WriteString("\n"); err != nil {
+				return nil, err
+			}
 		}
-		if _, err := buf.WriteString("\n"); err != nil {
-			panic(err)
+	case TypeLeaf:
+		for _, pair := range t.Entries {
+			keyb64 := enc.EncodeToString(pair.Key)
+			if _, err := buf.WriteString(keyb64); err != nil {
+				return nil, err
+			}
+			if _, err := buf.WriteString("\t"); err != nil {
+				return nil, err
+			}
+			valueb64 := enc.EncodeToString(pair.Value)
+			if _, err := buf.WriteString(valueb64); err != nil {
+				return nil, err
+			}
+			if _, err := buf.WriteString("\n"); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return buf.Bytes()
+
+	return buf.Bytes(), nil
 }
 
-func (t *Trie) Unmarshal(data []byte) error {
+func (t *Trie) Marshal() []byte {
+	data, err := t.MarshalText()
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+func (t *Trie) UnmarshalText(data []byte) error {
 	lines := bytes.Split(data, []byte{'\n'})
 	if len(lines) < 2 {
 		return errors.New("Trie.Unmarshal: too few lines")
@@ -236,16 +262,28 @@ func (t *Trie) Unmarshal(data []byte) error {
 
 	things := lines[2:]
 	switch string(lines[0]) {
-	case typeLeaf:
+	case TypeLeaf:
+		t.Entries = make([]Pair, len(things))
 		for i := range things {
+			if len(things[i]) < 1 {
+				continue
+			}
 			parts := bytes.SplitN(things[i], []byte("\t"), 2)
 			if len(parts) < 2 {
 				return errors.New("Trie.Unmarshal: invalid pair")
 			}
-			key, value := parts[0], parts[1]
+			keyb64, valueb64 := string(parts[0]), string(parts[1])
+			key, err := enc.DecodeString(keyb64)
+			if err != nil {
+				return err
+			}
+			value, err := enc.DecodeString(valueb64)
+			if err != nil {
+				return err
+			}
 			t.Entries[i] = Pair{Key: key, Value: value}
 		}
-	case typeTree:
+	case TypeTree:
 		t.Children = new([256]blobs.ID)
 		for i := range things {
 			copy(t.Children[i][:], things[i])
@@ -257,7 +295,15 @@ func (t *Trie) Unmarshal(data []byte) error {
 	return nil
 }
 
-func FromBytes(store blobs.Store, data []byte) (*Trie, error) {
+func (t *Trie) Unmarshal(data []byte) error {
+	return t.UnmarshalText(data)
+}
+
+func FromBytes(store blobs.GetPostDelete, data []byte) (*Trie, error) {
 	t := &Trie{store: store}
 	return t, t.Unmarshal(data)
+}
+
+func (t *Trie) ID() blobs.ID {
+	return blobs.Hash(t.Marshal())
 }

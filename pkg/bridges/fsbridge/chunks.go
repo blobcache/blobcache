@@ -21,6 +21,10 @@ type FixedSizeChunker struct {
 }
 
 func (c *FixedSizeChunker) Next() (chunk Chunk, err error) {
+	if c.size == 0 {
+		panic("cannot make 0 sized chunks")
+	}
+
 	buf := make([]byte, c.size)
 	total := 0
 	offset := c.offset
