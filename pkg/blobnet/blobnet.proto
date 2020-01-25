@@ -27,11 +27,8 @@ message ListBlobsReq {
 }
 
 message ListBlobsRes {
-    bytes peer_id = 1;
-    bytes prefix = 2;
-
-    bool too_many = 3;
-    repeated BlobLoc blob_locs = 4;
+    bool too_many = 1;
+    repeated BlobLoc blob_locs = 2;
 }
 
 message BlobLoc {
@@ -42,7 +39,7 @@ message BlobLoc {
 // Blobs
 message GetReq {
     RoutingTag routing_tag = 1;
-    repeated uint64 path = 2;
+    bytes blob_id = 2;
     bool found = 3;
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/boltdb/bolt"
 	"github.com/brendoncarroll/go-p2p"
+	"github.com/brendoncarroll/go-p2p/aggswarm"
 	"github.com/brendoncarroll/go-p2p/kademlia"
 	proto "github.com/golang/protobuf/proto"
 
@@ -21,14 +22,14 @@ type Indexer struct {
 	router *Router
 }
 
-func NewIndexer(db *bolt.DB, swarm p2p.AskSwarm, router *Router) (*Index, error) {
+func NewIndexer(db *bolt.DB, swarm p2p.AskSwarm, router *Router) (*Indexer, error) {
 	err := db.Update(func(tx *bolt.Tx) error {
-		tx.CreateBucketIfNotExists(indexBucketName)
+		tx.CreateBucketIfNotExists([]byte(indexBucketName))
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &Index{
+	return &Indexer{
 		swarm:  swarm,
 		router: router,
 		db:     db,
@@ -44,48 +45,51 @@ func (in *Indexer) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			ctx, cf := context.WithTimeout(ctx, period)
-			in.search
 			cf()
 		}
 	}
 }
 
 func (in *Indexer) queryPeer(ctx context.Context, peerID p2p.PeerID) error {
-	localID := in.swarm.LocalID()
-	for i := 0; i < len(localID); i++ {
-		prefix = localID[:i]
-		path := in.router.PathTo(peerId)
-		req := &ListBlobReq{
-			DstId:  peerID,
-			Path:   path,
-			Prefix: prefix,
-		}
-		res, err := ListBlobs(req)
-		if err != nil {
-			return err
-		}
-		if !res.TooMany {
-			break
-		}
-	}
+	// localID := in.swarm.LocalID()
+	// for i := 0; i < len(localID); i++ {
+	// 	prefix = localID[:i]
+	// 	path := in.router.PathTo(peerId)
+	// 	req := &ListBlobsReq{
+	// 		RoutingTag: &RoutingTag{
+	// 			DstId: peerID,
+	// 			Path:  ([]uint64)(path),
+	// 		},
+	// 		Prefix: prefix,
+	// 	}
+	// 	res, err := ListBlobs(req)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if !res.TooMany {
+	// 		break
+	// 	}
+	// }
 	return nil
 }
 
-func (in *Indexer) ListBlobs(ctx context.Context, req *ListBlobReq) (res *ListBlobRes, err error) {
+func (in *Indexer) ListBlobs(ctx context.Context, req *ListBlobsReq) (res *ListBlobsRes, err error) {
+	rt := req.RoutingTag
 	var peerID p2p.PeerID
-	if len(path) > 1 {
-		peerID = in.router.AtIndex(req.Path[0])
-		req.Path = req.Path[1:]
+	if len(rt.Path) > 1 {
+		peerID = in.router.AtIndex(rt.Path[0])
+		rt.Path = rt.Path[1:]
 	} else {
-		peerID = in.router.AtIndex(req.Path[0])
-		req.Path = nil
+		peerID = in.router.AtIndex(rt.Path[0])
+		rt.Path = nil
 	}
 	reqData, err := proto.Marshal(req)
 	if err != nil {
 		panic(err)
 	}
 
-	resData, err := in.swarm.Ask(ctx, peerID, reqData)
+	addr := &aggswarm.Edge{PeerID: peerID}
+	resData, err := in.swarm.Ask(ctx, addr, reqData)
 	if err != nil {
 		return nil, err
 	}
@@ -94,12 +98,12 @@ func (in *Indexer) ListBlobs(ctx context.Context, req *ListBlobReq) (res *ListBl
 
 func (in *Indexer) Add(bid blobs.ID, pid p2p.PeerID) error {
 	err := in.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(indexBucketName)
+		b := tx.Bucket([]byte(indexBucketName))
 		currentPid := b.Get(bid[:])
-		distCur := kademlia.XORBytes(currentPid, bid)
-		distNew := kademlia.XORBytes(pid, bid)
+		distCur := kademlia.XORBytes(currentPid, bid[:])
+		distNew := kademlia.XORBytes(pid[:], bid[:])
 		if bytes.Compare(distNew, distCur) < 0 {
-			tx.Put(bid[:], pid[:])
+			b.Put(bid[:], pid[:])
 		}
 	})
 	return err
@@ -107,9 +111,9 @@ func (in *Indexer) Add(bid blobs.ID, pid p2p.PeerID) error {
 
 func (in *Indexer) Remove(bid blobs.ID, pid p2p.PeerID) error {
 	err := in.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(indexBucketName)
+		b := tx.Bucket([]byte(indexBucketName))
 		currentPid := b.Get(bid[:])
-		if currentPid.Equals(pid) {
+		if bytes.Compare(currentPid, pid[:]) == 0 {
 			b.Delete(bid[:])
 		}
 	})
@@ -119,7 +123,7 @@ func (in *Indexer) Remove(bid blobs.ID, pid p2p.PeerID) error {
 func (in *Indexer) WhoHas(bid blobs.ID) (p2p.PeerID, error) {
 	var pid p2p.PeerID
 	err := in.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(indexBucketName)
+		b := tx.Bucket([]byte(indexBucketName))
 		v := b.Get(bid[:])
 		copy(pid[:], v)
 	})

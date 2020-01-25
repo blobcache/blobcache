@@ -2,26 +2,31 @@ package blobnet
 
 import (
 	"context"
-	"time"
+	"errors"
+	"log"
 	"sync"
+	"time"
 
 	"github.com/brendoncarroll/go-p2p"
+	"github.com/brendoncarroll/go-p2p/aggswarm"
 	"github.com/brendoncarroll/go-p2p/kademlia"
+	proto "github.com/golang/protobuf/proto"
 )
 
-type Path []uint
+type Path []uint64
 
 type Router struct {
 	swarm p2p.AskSwarm
-	
-	mu sync.RWMutex	
-	cache kademlia.Cache
+
+	mu    sync.RWMutex
+	cache *kademlia.Cache
 }
 
-func NewRouter(swarm p2p.Swarm) *Router {
+func NewRouter(swarm p2p.AskSwarm) *Router {
+	locus := swarm.LocalAddr().(*aggswarm.Edge).PeerID[:]
 	return &Router{
 		swarm: swarm,
-		cache: kademlia.NewCache(128),
+		cache: kademlia.NewCache(locus, 128, 1),
 	}
 }
 
@@ -31,8 +36,8 @@ func (r *Router) Run(ctx context.Context) error {
 
 	for {
 		select {
-		case <-ticker:
-			r.queryPeers(ctx)	
+		case <-ticker.C:
+			r.queryPeers(ctx)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -48,7 +53,7 @@ func (r *Router) queryPeers(ctx context.Context) {
 		peers = append(peers, peerID)
 		return true
 	})
-	
+
 	wg := sync.WaitGroup{}
 	wg.Add(len(peers))
 	toDelete := make(chan p2p.PeerID)
@@ -56,7 +61,7 @@ func (r *Router) queryPeers(ctx context.Context) {
 		i := i
 		peerID := peerID
 		go func() {
-			if err := r.queryPeer(ctx, peerID); err != nil {
+			if _, err := r.queryPeer(ctx, peerID); err != nil {
 				log.Println("ERROR:", err)
 				log.Println("removing peer", peerID)
 				toDelete<-peerID
@@ -79,7 +84,7 @@ func (r *Router) queryPeer(ctx context.Context, peerID p2p.PeerID) ([]p2p.PeerID
 	basePath := r.Lookup(peerID)
 	req := &ListPeersReq{
 		DstId: peerID,
-		Path: basePath,
+		Path:  basePath,
 	}
 	res, err := r.ListPeers(ctx, &req)
 	if err != nil {
@@ -97,7 +102,7 @@ func (r *Router) queryPeer(ctx context.Context, peerID p2p.PeerID) ([]p2p.PeerID
 	return nil
 }
 
-func (r *Router) ListPeers(ctx context.Context, peerID p2p.PeerID, req *ListPeersReq) (res *ListPeerRes, err error) {
+func (r *Router) ListPeers(ctx context.Context, peerID p2p.PeerID, req *ListPeersReq) (res *ListPeersRes, err error) {
 	reqData, err := proto.Marshal(req)
 	if err != nil {
 		panic(err)
@@ -107,7 +112,7 @@ func (r *Router) ListPeers(ctx context.Context, peerID p2p.PeerID, req *ListPeer
 	if err != nil {
 		return nil, err
 	}
-	res = &ListPeerRes{}
+	res = &ListPeersRes{}
 	if err := proto.Unmarshal(resData, res); err != nil {
 		return nil, err
 	}
@@ -134,14 +139,14 @@ func (r *Router) handleAsk(ctx context.Context, reqMsg *p2p.Message) []byte {
 			path = append(path, uint64(index))
 		}
 		pinfo := &PeerInfo{
-			Id: key,
+			Id:   key,
 			Path: v.(Path),
 		}
 		peerInfos = append(peerInfos, pinfo)
 	})
 
 	res := &ListPeerRes{
-		PeerID: r.swarm.LocalID(),
+		PeerID:    r.swarm.LocalID(),
 		PeerInfos: peerInfos,
 	}
 	resData, err := proto.Marshal(res)
@@ -172,7 +177,7 @@ func (r *Router) deletePeer(id p2p.PeerID) {
 	}
 }
 
-func (r *Router) AtIndex(i uint) p2p.PeerID {
+func (r *Router) AtIndex(i uint64) p2p.PeerID {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.index2Peer[i]
