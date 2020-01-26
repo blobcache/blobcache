@@ -1,7 +1,5 @@
 module github.com/brendoncarroll/blobcache
 
-replace github.com/brendoncarroll/go-p2p => ../go-p2p
-
 require (
 	github.com/Yawning/chacha20 v0.0.0-20170904085104-e3b1f968fc63
 	github.com/boltdb/bolt v1.3.1
