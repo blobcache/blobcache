@@ -4,18 +4,18 @@ import (
 	"context"
 
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
-	"github.com/brendoncarroll/go-p2p"
+	"github.com/brendoncarroll/go-p2p/simplemux"
 
 	bolt "go.etcd.io/bbolt"
 )
 
 type Node struct {
-	swarm p2p.Swarm
+	mux simplemux.Muxer
 
 	metadataDB *bolt.DB
 	dataDB     *bolt.DB
 
-	localStore *LocalStore
+	localCache Cache
 	pinSets    *PinSetStore
 }
 
@@ -26,16 +26,11 @@ func NewNode(params Params) (*Node, error) {
 	}
 
 	n := &Node{
-		swarm: params.Swarm,
-
+		mux:        params.Mux,
 		metadataDB: params.MetadataDB,
-		dataDB:     params.DataDB,
 
-		localStore: &LocalStore{
-			capacity: params.Capacity,
-			db:       params.DataDB,
-		},
-		pinSets: pinSetStore,
+		localCache: params.Cache,
+		pinSets:    pinSetStore,
 	}
 
 	return n, nil
@@ -58,7 +53,7 @@ func (n *Node) Unpin(ctx context.Context, name string, id blobs.ID) error {
 }
 
 func (n *Node) Get(ctx context.Context, id blobs.ID) (blobs.Blob, error) {
-	return n.localStore.Get(ctx, id)
+	return n.localCache.Get(ctx, id[:])
 }
 
 func (n *Node) Post(ctx context.Context, name string, data []byte) (blobs.ID, error) {
@@ -66,7 +61,7 @@ func (n *Node) Post(ctx context.Context, name string, data []byte) (blobs.ID, er
 	if err := n.pinSets.Pin(ctx, name, id); err != nil {
 		return blobs.ZeroID(), err
 	}
-	_, err := n.localStore.Post(ctx, data)
+	err := n.localCache.Put(ctx, id[:], data)
 	if err != nil {
 		return blobs.ZeroID(), err
 	}
@@ -75,11 +70,10 @@ func (n *Node) Post(ctx context.Context, name string, data []byte) (blobs.ID, er
 	return id, nil
 }
 
-func (n *Node) MaxBlobSize() int {
-	return 1 << 16
+func (n *Node) GetPinSet(ctx context.Context, name string) (*PinSet, error) {
+	return n.pinSets.Get(ctx, name)
 }
 
-func (n *Node) LocalAddr() string {
-	data, _ := n.swarm.LocalAddr().MarshalText()
-	return string(data)
+func (n *Node) MaxBlobSize() int {
+	return 1 << 16
 }

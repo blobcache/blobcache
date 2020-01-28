@@ -26,7 +26,7 @@ var runCmd = &cobra.Command{
 	Short: "runs the blobcache server",
 	Use:   "run",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		const laddr = "127.0.0.1:"
+		const laddr = "127.0.0.1:8026"
 		dataDB, err := bolt.Open("./data.db", 0666, nil)
 		if err != nil {
 			return err
@@ -35,9 +35,15 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		cache, err := blobcache.NewBoltKV(dataDB, []byte("data"), 1e5)
+		if err != nil {
+			return err
+		}
+
 		params := blobcache.Params{
-			DataDB:     dataDB,
 			MetadataDB: metadataDB,
+			Cache:      cache,
 		}
 		node, err = blobcache.NewNode(params)
 		if err != nil {

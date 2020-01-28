@@ -5,7 +5,8 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	"github.com/brendoncarroll/blobcache/pkg/bridges/fsbridge"
+	"github.com/brendoncarroll/go-p2p/simplemux"
+
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/aggswarm"
 	"github.com/brendoncarroll/go-p2p/sshswarm"
@@ -42,8 +43,6 @@ type Config struct {
 	DataDir    string     `yaml:"data_dir"`
 	Capacity   string     `yaml:"capacity"`
 	Peers      []PeerSpec `yaml:"peers"`
-
-	Stack []StoreSpec `yaml:"stack"`
 }
 
 func (c *Config) Params() (*Params, error) {
@@ -62,6 +61,10 @@ func (c *Config) Params() (*Params, error) {
 	if err != nil {
 		return nil, err
 	}
+	cache, err := NewBoltKV(dataDB, []byte("data"), capacity)
+	if err != nil {
+		return nil, err
+	}
 
 	privKey, err := x509.ParsePKCS8PrivateKey(c.PrivateKey)
 	if err != nil {
@@ -77,14 +80,12 @@ func (c *Config) Params() (*Params, error) {
 	if err != nil {
 		return nil, err
 	}
+	mux := simplemux.MultiplexSwarm(swarm)
 
 	return &Params{
-		Swarm: swarm,
-
-		DataDB:     dataDB,
+		Mux:        mux,
+		Cache:      cache,
 		MetadataDB: metadataDB,
-
-		Capacity: capacity,
 	}, nil
 }
 
@@ -105,25 +106,3 @@ type PeerSpec struct {
 	Trust    int64
 	Nickname string
 }
-
-type StoreSpec struct {
-	FSBridge *fsbridge.Spec `yaml:"fs_bridge,omitempty"`
-
-	MemLRU *MemLRUSpec `yaml:"mem_lru,omitempty"`
-	MemARC *MemARCSpec `yaml:"mem_arc,omitempty"`
-
-	Local   *LocalStoreSpec `yaml:"local,omitempty"`
-	Network *NetStoreSpec   `yaml:"network,omitempty"`
-}
-
-type LocalStoreSpec struct{}
-
-type MemLRUSpec struct {
-	Count int `yaml:"count"`
-}
-
-type MemARCSpec struct {
-	Count int `yaml:"count"`
-}
-
-type NetStoreSpec struct{}
