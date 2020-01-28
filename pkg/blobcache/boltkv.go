@@ -28,13 +28,14 @@ func NewBoltKV(db *bolt.DB, bucket []byte, capacity uint64) (*boltKV, error) {
 }
 
 func (kv *boltKV) Get(ctx context.Context, key []byte) ([]byte, error) {
-	tx, err := kv.db.Begin(false)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	buc := tx.Bucket(kv.bucket)
-	return buc.Get(key), nil
+	var data []byte
+	err := kv.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(kv.bucket)
+		value := b.Get(key)
+		data = append([]byte{}, value...)
+		return nil
+	})
+	return data, err
 }
 
 func (kv *boltKV) Put(ctx context.Context, key, value []byte) error {
