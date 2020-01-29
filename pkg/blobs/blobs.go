@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"encoding/base64"
+	"encoding/json"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -26,6 +27,14 @@ func (a ID) Cmp(b ID) int {
 }
 
 func ZeroID() ID { return ID{} }
+
+func (id *ID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(id[:])
+}
+
+func (id *ID) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, id[:])
+}
 
 type Blob = []byte
 
