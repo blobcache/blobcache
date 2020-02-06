@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
-	"github.com/brendoncarroll/go-p2p/simplemux"
+	"github.com/brendoncarroll/go-p2p/p/simplemux"
 
 	bolt "go.etcd.io/bbolt"
 )

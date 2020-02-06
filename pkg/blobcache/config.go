@@ -5,11 +5,11 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	"github.com/brendoncarroll/go-p2p/simplemux"
+	"github.com/brendoncarroll/go-p2p/p/simplemux"
 
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/aggswarm"
-	"github.com/brendoncarroll/go-p2p/sshswarm"
+	"github.com/brendoncarroll/go-p2p/s/aggswarm"
+	"github.com/brendoncarroll/go-p2p/s/sshswarm"
 	"github.com/dustin/go-humanize"
 	bolt "go.etcd.io/bbolt"
 	"gopkg.in/yaml.v3"
@@ -90,7 +90,7 @@ func (c *Config) Params() (*Params, error) {
 }
 
 func setupSwarm(privKey p2p.PrivateKey) (p2p.Swarm, error) {
-	sshs, err := sshswarm.New("[]:", privKey)
+	sshs, err := sshswarm.New("[]:", privKey, nil)
 	if err != nil {
 		return nil, err
 	}
