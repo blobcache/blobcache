@@ -1,204 +1,371 @@
 package blobnet
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"log"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/aggswarm"
-	"github.com/brendoncarroll/go-p2p/kademlia"
+	"github.com/brendoncarroll/go-p2p/p/kademlia"
 	proto "github.com/golang/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 )
 
-type Path []uint64
+var (
+	ErrNoRouteToPeer = errors.New("no route to peer")
+)
+
+type Path = []uint64
 
 type Router struct {
-	swarm p2p.AskSwarm
+	peerSwarm   *PeerSwarm
+	queryPeriod time.Duration
+
+	lm *LinkMap
+	cf context.CancelFunc
 
 	mu    sync.RWMutex
 	cache *kademlia.Cache
 }
 
-func NewRouter(swarm p2p.AskSwarm) *Router {
-	locus := swarm.LocalAddr().(*aggswarm.Edge).PeerID[:]
-	return &Router{
-		swarm: swarm,
-		cache: kademlia.NewCache(locus, 128, 1),
-	}
+type RouterParams struct {
+	PeerSwarm      *PeerSwarm
+	QueryPeriod    time.Duration
+	RouteCacheSize int
 }
 
-func (r *Router) Run(ctx context.Context) error {
-	ticker := time.NewTicker(time.Minute)
+func NewRouter(swarm p2p.SecureAskSwarm, peerStore PeerStore) *Router {
+	peerSwarm := NewPeerSwarm(swarm, peerStore)
+
+	lm := NewLinkMap()
+	lm.Int(peerSwarm.LocalID())
+
+	ctx, cf := context.WithCancel(context.Background())
+
+	localID := peerSwarm.LocalID()
+	r := &Router{
+		peerSwarm:   peerSwarm,
+		queryPeriod: time.Minute,
+
+		cf: cf,
+		lm: lm,
+
+		cache: kademlia.NewCache(localID[:], 128, 1),
+	}
+
+	peerSwarm.OnAsk(r.handleAsk)
+
+	go r.run(ctx)
+	return r
+}
+
+func (r *Router) Close() error {
+	r.cf()
+	return r.peerSwarm.Close()
+}
+
+// Lookup returns a routing tag, and an address for the next hop peer
+func (r *Router) Lookup(peerID p2p.PeerID) (*RoutingTag, p2p.PeerID) {
+	path := r.PathTo(peerID)
+	if path == nil {
+		return nil, p2p.ZeroPeerID()
+	}
+	rt := &RoutingTag{
+		DstId: peerID[:],
+		Path:  path,
+	}
+
+	nextHopPeer := r.lm.Peer(int(rt.Path[0]))
+	return rt, nextHopPeer
+}
+
+func (r *Router) PathTo(id p2p.PeerID) Path {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	x := r.cache.Lookup(id[:])
+	if x == nil {
+		// check if it's onehop
+		oneHop := r.OneHop()
+		for _, id2 := range oneHop {
+			if id.Equals(id2) {
+				return Path{uint64(r.lm.Int(id))}
+			}
+		}
+		return nil
+	}
+
+	return x.(Path)
+}
+
+func (r *Router) Closest(id p2p.PeerID) p2p.PeerID {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e := r.cache.Closest(id[:])
+	if e == nil {
+		return r.peerSwarm.LocalID()
+	}
+	ret := p2p.PeerID{}
+	copy(ret[:], e.Key)
+	return ret
+}
+
+func (r *Router) OneHop() []p2p.PeerID {
+	peerIDs := r.peerSwarm.ListPeers()
+	for _, peerID := range peerIDs {
+		r.lm.Int(peerID)
+	}
+	return peerIDs
+}
+
+func (r *Router) MultiHop() []p2p.PeerID {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	peerIDs := []p2p.PeerID{}
+	r.cache.ForEach(func(e kademlia.Entry) bool {
+		id := p2p.PeerID{}
+		copy(id[:], e.Key)
+		peerIDs = append(peerIDs, id)
+		return true
+	})
+	return peerIDs
+}
+
+func (r *Router) GetPeerInfos() []*PeerInfo {
+	peerInfos := []*PeerInfo{}
+	for _, peerID := range r.OneHop() {
+		pinfo := &PeerInfo{
+			Id:   peerID[:],
+			Path: Path{uint64(r.lm.Int(peerID))},
+		}
+		peerInfos = append(peerInfos, pinfo)
+	}
+
+	r.cache.ForEach(func(e kademlia.Entry) bool {
+		path := []uint64{}
+		for _, index := range e.Value.(Path) {
+			path = append(path, uint64(index))
+		}
+		pinfo := &PeerInfo{
+			Id:   e.Key,
+			Path: path,
+		}
+		peerInfos = append(peerInfos, pinfo)
+		return true
+	})
+	return peerInfos
+}
+
+func (r *Router) run(ctx context.Context) {
+	ticker := time.NewTicker(r.queryPeriod)
+	defer ticker.Stop()
+
 	r.queryPeers(ctx)
 
 	for {
 		select {
 		case <-ticker.C:
+			ctx, cf := context.WithTimeout(ctx, r.queryPeriod/2)
 			r.queryPeers(ctx)
+			cf()
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 		}
 	}
 }
 
 func (r *Router) queryPeers(ctx context.Context) {
-	// get list of peers
-	peers := append([]p2p.PeerID{}, r.swarm.OneHop())
-	r.cache.ForEach(func(key []byte, v interface{}) bool {
-		peerID := p2p.PeerID{}
-		copy(peerID[:], e.Key)
-		peers = append(peers, peerID)
-		return true
-	})
+	log.Debug("begin querying peers")
+	peerIDs := []p2p.PeerID{}
+	peerIDs = append(peerIDs, r.OneHop()...)
+	peerIDs = append(peerIDs, r.MultiHop()...)
 
+	log.Println("querying peers total", len(peerIDs))
 	wg := sync.WaitGroup{}
-	wg.Add(len(peers))
-	toDelete := make(chan p2p.PeerID)
-	for i, peerID := range peers {
-		i := i
+	wg.Add(len(peerIDs))
+	for _, peerID := range peerIDs {
 		peerID := peerID
 		go func() {
-			if _, err := r.queryPeer(ctx, peerID); err != nil {
-				log.Println("ERROR:", err)
-				log.Println("removing peer", peerID)
-				toDelete<-peerID
+			if err := r.queryPeer(ctx, peerID); err != nil {
+				log.Error(err)
 			}
 			wg.Done()
 		}()
 	}
 
-	select {
-	case <-ctx.Done():
-		log.Println(err)
-	case peerID := <-toDelete:
-		r.cache.Delete(peerID[:])
-	}
 	wg.Wait()
-	close (toDelete)
+	log.Debug("done querying peers")
 }
 
-func (r *Router) queryPeer(ctx context.Context, peerID p2p.PeerID) ([]p2p.PeerID, error) {
-	basePath := r.Lookup(peerID)
-	req := &ListPeersReq{
-		DstId: peerID,
-		Path:  basePath,
+func (r *Router) queryPeer(ctx context.Context, peerID p2p.PeerID) error {
+	rt, nextHopPeer := r.Lookup(peerID)
+	if rt == nil {
+		return ErrNoRouteToPeer
 	}
-	res, err := r.ListPeers(ctx, &req)
+	log.Println("querying peer at hops", len(rt.Path))
+
+	// errors in this section mean the peer should be deleted
+	res := &ListPeersRes{}
+	err := func() error {
+		req := &ListPeersReq{
+			RoutingTag: rt,
+		}
+		reqData, err := proto.Marshal(req)
+		if err != nil {
+			panic(err)
+		}
+		resData, err := r.peerSwarm.Ask(ctx, nextHopPeer, reqData)
+		if err != nil {
+			return err
+		}
+		if err := proto.Unmarshal(resData, res); err != nil {
+			return err
+		}
+		return nil
+	}()
 	if err != nil {
-		return nil, err
+		log.Error(err)
+		r.deletePeer(peerID)
+		return err
 	}
 
-	peers := []p2p.PeerID{}
 	for _, peerInfo := range res.PeerInfos {
-		path := basePath
-		for _, index := range peerInfo.Path {
-			path = append(path, uint(index))
-		}
-		r.cache.Add(peerInfo.PeerID, path)
+		path := r.PathTo(peerID)
+		path = append(path, peerInfo.Path...)
+
+		id := p2p.PeerID{}
+		copy(id[:], peerInfo.Id)
+
+		r.putPeer(id, path)
 	}
+
 	return nil
 }
 
-func (r *Router) ListPeers(ctx context.Context, peerID p2p.PeerID, req *ListPeersReq) (res *ListPeersRes, err error) {
-	reqData, err := proto.Marshal(req)
+func (r *Router) handleAsk(ctx context.Context, msg *p2p.Message, w io.Writer) {
+	req := &ListPeersReq{}
+	if err := proto.Unmarshal(msg.Payload, req); err != nil {
+		log.Error(err)
+		return
+	}
+	var (
+		rt      = req.RoutingTag
+		localID = r.peerSwarm.LocalID()
+		res     *ListPeersRes
+		err     error
+	)
+	switch {
+	// treat all these as asking for our peers
+	case rt == nil:
+		fallthrough
+	case bytes.Compare(rt.DstId, localID[:]) == 0:
+		fallthrough
+	case len(rt.Path) < 1:
+		log.WithFields(log.Fields{
+			"peer_id": msg.Src,
+		}).Debug("giving local peer info")
+		res = r.localAsk(ctx, req)
+
+	// a valid forwarding case
+	default:
+		res, err = r.forwardAsk(ctx, req)
+	}
+
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	resData, err := proto.Marshal(res)
 	if err != nil {
 		panic(err)
 	}
-	r.NextHopTo()
-	resData, err := r.swarm.Ask(ctx, addr, reqData)
+	if _, err := w.Write(resData); err != nil {
+		log.Error(err)
+	}
+}
+
+func (r *Router) forwardAsk(ctx context.Context, req *ListPeersReq) (*ListPeersRes, error) {
+	rt := req.RoutingTag
+	peerID := r.lm.Peer(int(rt.Path[0]))
+	dstID := p2p.PeerID{}
+	copy(dstID[:], rt.DstId)
+	log.WithFields(log.Fields{
+		"path":     rt.Path,
+		"next_hop": peerID,
+		"dst_id":   dstID,
+	}).Debug("forwarding ListPeersReq")
+
+	req2 := &ListPeersReq{
+		RoutingTag: &RoutingTag{
+			DstId: rt.DstId,
+			Path:  rt.Path[1:],
+		},
+	}
+	req2Data, err := proto.Marshal(req2)
+	if err != nil {
+		panic(err)
+	}
+
+	resData, err := r.peerSwarm.Ask(ctx, peerID, req2Data)
 	if err != nil {
 		return nil, err
 	}
-	res = &ListPeersRes{}
+	res := &ListPeersRes{}
 	if err := proto.Unmarshal(resData, res); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-func (r *Router) handleAsk(ctx context.Context, reqMsg *p2p.Message) []byte {
-	r.addPeer(reqMsg.SrcID)
-	req := &ListPeersReq{}
-	if err := proto.Unmarshal(reqMsg.Payload, req); err != nil {
-		log.Println(err)
-		return nil
+func (r *Router) localAsk(ctx context.Context, req *ListPeersReq) *ListPeersRes {
+	localID := r.peerSwarm.LocalID()
+	res := &ListPeersRes{
+		PeerId:    localID[:],
+		PeerInfos: r.GetPeerInfos(),
 	}
-
-	peerInfos := []*PeerInfo{}
-	for _, addr := range r.swarm.OneHop() {
-		peerID := p2p.PeerID{}
-		pinfo := &PeerInfo{}
-		peerInfos = append(peerInfos, pinfo)
-	}
-	r.cache.ForEach(func(key []byte, v interface{}) bool {
-		path := []uint64{}
-		for _, index := range v.(Path) {
-			path = append(path, uint64(index))
-		}
-		pinfo := &PeerInfo{
-			Id:   key,
-			Path: v.(Path),
-		}
-		peerInfos = append(peerInfos, pinfo)
-	})
-
-	res := &ListPeerRes{
-		PeerID:    r.swarm.LocalID(),
-		PeerInfos: peerInfos,
-	}
-	resData, err := proto.Marshal(res)
-	if err != nil {
-		panic(err)
-	}
-	return resData
+	return res
 }
 
-func (r *Router) addPeer(id p2p.PeerID) {
+func (r *Router) putPeer(id p2p.PeerID, p Path) {
+	// prevent ourselves from entering the cache
+	localID := r.peerSwarm.LocalID()
+	if id.Equals(localID) {
+		return
+	}
+	// prevent one hop peers from entering the cache
+	for _, id2 := range r.OneHop() {
+		if id.Equals(id2) {
+			return
+		}
+	}
+	log := log.WithFields(log.Fields{
+		"peer_id": id,
+		"path":    p,
+	})
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	_, exists := r.edges[id]
-	if !exists {
-		r.peer2Index[id] = r.nextIndex
-		r.index2Peer[r.nextIndex] = id
-		r.nextIndex++
+
+	v := r.cache.Lookup(id[:])
+	if v != nil {
+		p2 := v.(Path)
+		if len(p) < len(p2) {
+			r.cache.Put(id[:], p)
+		}
+	} else {
+		log.Info("found new peer")
+		r.cache.Put(id[:], p)
 	}
 }
 
 func (r *Router) deletePeer(id p2p.PeerID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	index, exists := r.edges[id]
-	if exists {
-		delete(r.peer2Index, id)
-		delete(r.index2Peer, index)
-	}
-}
+	log.WithFields(log.Fields{
+		"peer_id": id,
+	}).Debug("Deleting peer")
 
-func (r *Router) AtIndex(i uint64) p2p.PeerID {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.index2Peer[i]
-}
-
-func (r *Router) ClosestTo(id p2p.PeerID) p2p.PeerID {
-	return r.cache.ClosestTo(id)
-}
-
-func (r *Router) PathTo(id p2p.PeerID) Path {
-	x := r.cache.Lookup(id)
-	if ent == nil {
-		return nil
-	}
-	return x.(Path)
-}
-
-func (r *Router) NextHopTo(id p2p.PeerID) (uint, error) {
-	path := r.GetPathTo()
-	if path == nil {
-		return 0, errors.New("no path known")
-	}
-	return path[0], nil
+	r.cache.Delete(id[:])
 }
