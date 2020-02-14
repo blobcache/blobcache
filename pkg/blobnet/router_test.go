@@ -35,7 +35,10 @@ func TestRouter(t *testing.T) {
 			id := p2p.NewPeerID(swarms[i].LookupPublicKey(addr))
 			peerStore.AddAddr(id, addr)
 		}
-		routers[i] = NewRouter(swarms[i], peerStore)
+		routers[i] = NewRouter(RouterParams{
+			Swarm:     swarms[i],
+			PeerStore: peerStore,
+		})
 	}
 
 	for i := 0; i < N; i++ {
@@ -48,9 +51,9 @@ func TestRouter(t *testing.T) {
 		t.Log(r.peerSwarm.LocalID(), r.OneHop(), r.MultiHop())
 
 		if i == 0 || i == len(routers)-1 {
-			assert.Len(t, r.MultiHop(), 8)
+			assert.Len(t, r.MultiHop(), N-2)
 		} else {
-			assert.Len(t, r.MultiHop(), 7)
+			assert.Len(t, r.MultiHop(), N-3)
 		}
 	}
 }

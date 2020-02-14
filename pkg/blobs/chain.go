@@ -2,14 +2,12 @@ package blobs
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
 )
 
-type Chain []Getter
+type ReadChain []Getter
 
-func (c Chain) Get(ctx context.Context, id ID) (Blob, error) {
+func (c ReadChain) Get(ctx context.Context, id ID) (Blob, error) {
 	errs := []error{}
 	for _, s := range c {
 		data, err := s.Get(ctx, id)
@@ -25,25 +23,7 @@ func (c Chain) Get(ctx context.Context, id ID) (Blob, error) {
 	return nil, ErrNotFound
 }
 
-func (c Chain) Post(ctx context.Context, b Blob) (ID, error) {
-	var ret ID
-
-	for _, s := range c {
-		if p, ok := s.(Poster); ok {
-			id, err := p.Post(ctx, b)
-			if err != nil {
-				log.Println(err)
-			}
-			ret = id
-		}
-	}
-	if ret == ZeroID() {
-		return ret, errors.New("no successful posts")
-	}
-	return ret, nil
-}
-
-func (c Chain) List(ctx context.Context, prefix []byte, ids []ID) (n int, err error) {
+func (c ReadChain) List(ctx context.Context, prefix []byte, ids []ID) (n int, err error) {
 	for _, s := range c {
 		if l, ok := s.(Lister); ok {
 			n2, err := l.List(ctx, prefix, ids[n:])
@@ -54,4 +34,22 @@ func (c Chain) List(ctx context.Context, prefix []byte, ids []ID) (n int, err er
 		}
 	}
 	return n, nil
+}
+
+func (c ReadChain) Exists(ctx context.Context, id ID) (bool, error) {
+	errs := []error{}
+	for _, s := range c {
+		exists, err := s.Exists(ctx, id)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if exists {
+			return true, nil
+		}
+	}
+	if len(errs) > 0 {
+		return false, fmt.Errorf("multiple errors: %v", errs)
+	}
+	return false, nil
 }

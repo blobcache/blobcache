@@ -56,9 +56,9 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
-		s.post(ctx, w, r)
+		s.post(w, r)
 	case http.MethodGet:
-		s.get(ctx, w, r)
+		s.getBlob(w, r)
 	default:
 		w.WriteHeader(http.StatusBadRequest)
 	}

@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	"golang.org/x/crypto/sha3"
+	"lukechampine.com/blake3"
 )
 
 const IDSize = 32
@@ -39,5 +39,5 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 type Blob = []byte
 
 func Hash(data []byte) ID {
-	return ID(sha3.Sum256(data))
+	return ID(blake3.Sum256(data))
 }

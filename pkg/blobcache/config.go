@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
-
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/s/aggswarm"
-	"github.com/brendoncarroll/go-p2p/s/sshswarm"
+	"github.com/brendoncarroll/go-p2p/s/multiswarm"
+	"github.com/brendoncarroll/go-p2p/s/quicswarm"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet"
 	"github.com/dustin/go-humanize"
 	bolt "go.etcd.io/bbolt"
 	"gopkg.in/yaml.v3"
@@ -39,10 +39,10 @@ func (cf ConfigFile) Save(c Config) error {
 }
 
 type Config struct {
-	PrivateKey []byte     `yaml:"private_key,flow"`
-	DataDir    string     `yaml:"data_dir"`
-	Capacity   string     `yaml:"capacity"`
-	Peers      []PeerSpec `yaml:"peers"`
+	PrivateKey []byte             `yaml:"private_key,flow"`
+	DataDir    string             `yaml:"data_dir"`
+	Capacity   string             `yaml:"capacity"`
+	Peers      []blobnet.PeerSpec `yaml:"peers"`
 }
 
 func (c *Config) Params() (*Params, error) {
@@ -83,41 +83,26 @@ func (c *Config) Params() (*Params, error) {
 	mux := simplemux.MultiplexSwarm(swarm)
 
 	return &Params{
-		Mux: mux
+		Mux: mux,
 
-		Cache: Cache,
+		Cache:      cache,
 		MetadataDB: metadataDB,
-
-		Capacity: capacity,
 	}, nil
 }
 
 func setupSwarm(privKey p2p.PrivateKey) (p2p.Swarm, error) {
-	sshs, err := sshswarm.New("[]:", privKey)
+	quicSw, err := quicswarm.New("0.0.0.0:", privKey)
 	if err != nil {
 		return nil, err
 	}
-
-	transports := map[string]aggswarm.Transport{
-		"ssh": sshs,
+	transports := map[string]p2p.SecureAskSwarm{
+		"quic": quicSw,
 	}
-	return aggswarm.New(privKey, transports), nil
+	return multiswarm.NewSecureAsk(transports), nil
 }
 
 type PeerSpec struct {
-	Edge     aggswarm.Edge
 	Trust    int64
 	Nickname string
-}
-
-func setupSwarm(privKey p2p.PrivateKey) (p2p.Swarm, error) {
-	sshs, err := sshswarm.New("[]:", privKey, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	transports := map[string]aggswarm.Transport{
-		"ssh": sshs,
-	}
-	return aggswarm.New(privKey, transports), nil
+	Addrs    []string
 }

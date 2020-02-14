@@ -32,13 +32,22 @@ type Router struct {
 }
 
 type RouterParams struct {
-	PeerSwarm      *PeerSwarm
-	QueryPeriod    time.Duration
-	RouteCacheSize int
+	Swarm       p2p.SecureAskSwarm
+	PeerStore   PeerStore
+	QueryPeriod time.Duration
+	CacheSize   int
 }
 
-func NewRouter(swarm p2p.SecureAskSwarm, peerStore PeerStore) *Router {
-	peerSwarm := NewPeerSwarm(swarm, peerStore)
+func NewRouter(params RouterParams) *Router {
+	peerSwarm := NewPeerSwarm(params.Swarm, params.PeerStore)
+	queryPeriod := params.QueryPeriod
+	if queryPeriod == 0 {
+		queryPeriod = time.Minute
+	}
+	cacheSize := params.CacheSize
+	if cacheSize == 0 {
+		cacheSize = 128
+	}
 
 	lm := NewLinkMap()
 	lm.Int(peerSwarm.LocalID())
@@ -48,12 +57,12 @@ func NewRouter(swarm p2p.SecureAskSwarm, peerStore PeerStore) *Router {
 	localID := peerSwarm.LocalID()
 	r := &Router{
 		peerSwarm:   peerSwarm,
-		queryPeriod: time.Minute,
+		queryPeriod: queryPeriod,
 
 		cf: cf,
 		lm: lm,
 
-		cache: kademlia.NewCache(localID[:], 128, 1),
+		cache: kademlia.NewCache(localID[:], cacheSize, 1),
 	}
 
 	peerSwarm.OnAsk(r.handleAsk)
@@ -100,16 +109,26 @@ func (r *Router) PathTo(id p2p.PeerID) Path {
 	return x.(Path)
 }
 
-func (r *Router) Closest(id p2p.PeerID) p2p.PeerID {
+func (r *Router) Closest(key []byte) p2p.PeerID {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	e := r.cache.Closest(id[:])
-	if e == nil {
-		return r.peerSwarm.LocalID()
+	e := r.cache.Closest(key)
+	r.mu.Unlock()
+
+	closest := r.peerSwarm.LocalID()
+	if e != nil {
+		copy(closest[:], e.Key)
 	}
-	ret := p2p.PeerID{}
-	copy(ret[:], e.Key)
-	return ret
+
+	dist := kademlia.XORBytes(key, closest[:])
+	for _, id := range r.MultiHop() {
+		dist2 := kademlia.XORBytes(key, id[:])
+		if bytes.Compare(dist2, dist) < 0 {
+			closest = id
+			dist = dist2
+		}
+	}
+
+	return closest
 }
 
 func (r *Router) OneHop() []p2p.PeerID {
@@ -183,7 +202,6 @@ func (r *Router) queryPeers(ctx context.Context) {
 	peerIDs = append(peerIDs, r.OneHop()...)
 	peerIDs = append(peerIDs, r.MultiHop()...)
 
-	log.Println("querying peers total", len(peerIDs))
 	wg := sync.WaitGroup{}
 	wg.Add(len(peerIDs))
 	for _, peerID := range peerIDs {
@@ -205,7 +223,6 @@ func (r *Router) queryPeer(ctx context.Context, peerID p2p.PeerID) error {
 	if rt == nil {
 		return ErrNoRouteToPeer
 	}
-	log.Println("querying peer at hops", len(rt.Path))
 
 	// errors in this section mean the peer should be deleted
 	res := &ListPeersRes{}
@@ -345,15 +362,16 @@ func (r *Router) putPeer(id p2p.PeerID, p Path) {
 		"peer_id": id,
 		"path":    p,
 	})
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	v := r.cache.Lookup(id[:])
 	if v != nil {
 		p2 := v.(Path)
 		if len(p) < len(p2) {
 			r.cache.Put(id[:], p)
 		}
+		log.Info("found shorter path for peer")
 	} else {
 		log.Info("found new peer")
 		r.cache.Put(id[:], p)
@@ -365,7 +383,7 @@ func (r *Router) deletePeer(id p2p.PeerID) {
 	defer r.mu.Unlock()
 	log.WithFields(log.Fields{
 		"peer_id": id,
-	}).Debug("Deleting peer")
+	}).Debug("deleting peer")
 
 	r.cache.Delete(id[:])
 }
