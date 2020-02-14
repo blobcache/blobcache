@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+// Router
+message RoutingTag {
+    bytes dst_id = 1;
+    repeated uint64 path = 2;
+}
+
+message ListPeersReq {
+    RoutingTag routing_tag = 1;
+}
+
+message ListPeersRes {
+    bytes peer_id = 1;
+    repeated PeerInfo peer_infos = 2;
+}
+
+message PeerInfo {
+    bytes id = 1;
+    repeated uint64 path = 2;
+}
+
+// Indexer
+message ListBlobsReq {
+    RoutingTag routing_tag = 1;
+    bytes prefix = 2;
+}
+
+message ListBlobsRes {
+    bool too_many = 1;
+    repeated Claim = 2;
+}
+
+message Claim {
+
+}
+
+message BlobLoc {
+    bytes blob_id = 1;
+    bytes peer_id = 2;
+    bytes ttl = 3;
+}
+
+// Blobs
+message GetReq {
+    RoutingTag routing_tag = 1;
+    bytes blob_id = 2;
+    bool found = 3;
+}
+
+message GetRes {
+    bytes blob_id = 1;
+    
+    oneof res {
+        bytes data = 2;
+        GetReq redirect = 3;
+    }
+}

@@ -1,7 +1,9 @@
 package blobcache
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
@@ -10,7 +12,8 @@ import (
 )
 
 const (
-	bucketPinSets = "pinsets"
+	bucketPinSets      = "pinsets"
+	bucketPinRefCounts = "pinrefcount"
 )
 
 var (
@@ -31,6 +34,10 @@ type PinSetStore struct {
 func NewPinSetStore(db *bolt.DB) (*PinSetStore, error) {
 	err := db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(bucketPinSets))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(bucketPinRefCounts))
 		if err != nil {
 			return err
 		}
@@ -58,24 +65,32 @@ func (s *PinSetStore) Create(ctx context.Context, name string) error {
 
 func (s *PinSetStore) Pin(ctx context.Context, name string, id blobs.ID) error {
 	err := s.db.Update(func(tx *bolt.Tx) error {
+		rc := tx.Bucket([]byte(bucketPinRefCounts))
 		b := tx.Bucket([]byte(bucketPinSets))
 		pinSetB := b.Bucket([]byte(name))
 		if pinSetB == nil {
 			return ErrPinSetNotFound
 		}
-		return pinSetB.Put([]byte(name), []byte{})
+		if err := pinSetB.Put([]byte(name), []byte{}); err != nil {
+			return err
+		}
+		return pinIncr(rc, []byte(name))
 	})
 	return err
 }
 
 func (s *PinSetStore) Unpin(ctx context.Context, name string, id blobs.ID) error {
 	err := s.db.Update(func(tx *bolt.Tx) error {
+		rc := tx.Bucket([]byte(bucketPinRefCounts))
 		b := tx.Bucket([]byte(bucketPinSets))
 		pinSetB := b.Bucket([]byte(name))
 		if pinSetB == nil {
 			return ErrPinSetNotFound
 		}
-		return pinSetB.Put([]byte(name), []byte{})
+		if err := pinSetB.Delete([]byte(name)); err != nil {
+			return err
+		}
+		return pinDecr(rc, []byte(name))
 	})
 	return err
 }
@@ -135,6 +150,55 @@ func (s *PinSetStore) Get(ctx context.Context, name string) (*PinSet, error) {
 	return ps, err
 }
 
-func (s *PinSetStore) ListWithPrefix(ctx context.Context, name string, prefix []byte) ([]blobs.ID, error) {
-	panic("not implemented")
+func (s *PinSetStore) List(ctx context.Context, prefix []byte, ids []blobs.ID) (n int, err error) {
+	err2 := s.db.View(func(tx *bolt.Tx) error {
+		rc := tx.Bucket([]byte(bucketPinRefCounts))
+
+		c := rc.Cursor()
+		c.Seek(prefix)
+		for k, _ := c.Seek(prefix); bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			if n >= len(ids) {
+				err = blobs.ErrTooMany
+				return nil
+			}
+			copy(ids[n][:], k)
+			n++
+		}
+		return nil
+	})
+	if err2 != nil {
+		return 0, err
+	}
+
+	return n, err
+}
+
+func pinIncr(b *bolt.Bucket, key []byte) error {
+	data := b.Get(key)
+	if data == nil {
+		data := make([]byte, binary.MaxVarintLen64)
+		n := binary.PutUvarint(key, 1)
+		data = data[:n]
+	} else {
+		x, _ := binary.Uvarint(data)
+		x++
+		n := binary.PutUvarint(data, x)
+		data = data[:n]
+	}
+	return b.Put(key, data)
+}
+
+func pinDecr(b *bolt.Bucket, key []byte) error {
+	data := b.Get(key)
+	if data == nil {
+		return errors.New("can't decrement null")
+	}
+	x, _ := binary.Uvarint(data)
+	x--
+	if x == 0 {
+		return b.Delete(key)
+	}
+	n := binary.PutUvarint(data, x)
+	data = data[:n]
+	return b.Put(key, data)
 }

@@ -53,6 +53,17 @@ func (s *Server) Run(ctx context.Context) error {
 	return s.hs.ListenAndServe()
 }
 
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		s.post(w, r)
+	case http.MethodGet:
+		s.getBlob(w, r)
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+	}
+}
+
 func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	maxSize := s.n.MaxBlobSize()
