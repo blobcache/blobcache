@@ -2,6 +2,7 @@ package blobnet
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
@@ -15,15 +16,15 @@ type BlobRouterParams struct {
 	PeerRouter *Router
 	Swarm      p2p.SecureAskSwarm
 	PeerStore
-	KV      bckv.KV
-	Indexer *indexing.LocalIndexer
+	KV bckv.KV
 }
 
 type BlobRouter struct {
-	peerSwarm *PeerSwarm
-	store     *BlobLocStore
-	crawler   *Crawler
-	cf        context.CancelFunc
+	peerSwarm  *PeerSwarm
+	peerRouter *Router
+	store      *BlobLocStore
+	crawler    *Crawler
+	cf         context.CancelFunc
 }
 
 func NewBlobRouter(params BlobRouterParams) *BlobRouter {
@@ -36,10 +37,11 @@ func NewBlobRouter(params BlobRouterParams) *BlobRouter {
 	go crawler.run(ctx)
 
 	br := &BlobRouter{
-		peerSwarm: peerSwarm,
-		store:     store,
-		crawler:   crawler,
-		cf:        cf,
+		peerRouter: params.PeerRouter,
+		peerSwarm:  peerSwarm,
+		store:      store,
+		crawler:    crawler,
+		cf:         cf,
 	}
 	peerSwarm.OnAsk(br.handleAsk)
 
@@ -64,6 +66,18 @@ func (br *BlobRouter) handleAsk(ctx context.Context, msg *p2p.Message, w io.Writ
 		log.Error(err)
 		return
 	}
+	res, err := br.handleRequest(ctx, req)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	resData, err := proto.Marshal(res)
+	if err != nil {
+		panic(err)
+	}
+	w.Write(resData)
+}
 
-	br.Close()
+func (br *BlobRouter) handleRequest(ctx context.Context, req *ListBlobsReq) (*ListBlobsRes, error) {
+	return nil, errors.New("not implemented")
 }

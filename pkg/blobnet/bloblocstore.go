@@ -8,6 +8,7 @@ import (
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
 	"github.com/brendoncarroll/blobcache/pkg/bitstrings"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/kademlia"
 	proto "github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
@@ -64,7 +65,11 @@ func (s *BlobLocStore) Get(id blobs.ID) *BlobLoc {
 	return bl
 }
 
-func (s *BlobLocStore) Put(bl *BlobLoc) error {
+func (s *BlobLocStore) Put(blobID blobs.ID, peerID p2p.PeerID) error {
+	bl := &BlobLoc{
+		BlobId: blobID[:],
+		PeerId: peerID[:],
+	}
 	d := kademlia.XORBytes(s.locus, bl.BlobId)
 	lz := kademlia.Leading0s(d)
 
@@ -95,7 +100,7 @@ func (s *BlobLocStore) Put(bl *BlobLoc) error {
 		if err := s.evict(lz); err != nil {
 			return err
 		}
-		return s.Put(bl)
+		return s.Put(blobID, peerID)
 	case err != nil:
 		return err
 	}

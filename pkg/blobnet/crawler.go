@@ -1,12 +1,12 @@
 package blobnet
 
 import (
-	"bytes"
 	"context"
 	"time"
 
 	"github.com/brendoncarroll/blobcache/pkg/bitstrings"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
 	proto "github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
@@ -22,7 +22,7 @@ type Crawler struct {
 	store      *BlobLocStore
 	peerSwarm  *PeerSwarm
 
-	revs map[ShardID]blobs.ID
+	shards map[ShardID]blobs.ID
 }
 
 func newCrawler(peerRouter *Router, peerSwarm *PeerSwarm, store *BlobLocStore) *Crawler {
@@ -30,7 +30,7 @@ func newCrawler(peerRouter *Router, peerSwarm *PeerSwarm, store *BlobLocStore) *
 		peerRouter: peerRouter,
 		peerSwarm:  peerSwarm,
 		store:      store,
-		revs:       map[ShardID]blobs.ID{},
+		shards:     map[ShardID]blobs.ID{},
 	}
 }
 
@@ -75,9 +75,10 @@ func (c *Crawler) crawl(ctx context.Context) error {
 }
 
 func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byte) error {
+	shardID := ShardID{peerID, string(prefix)}
 	rt, nextHop := c.peerRouter.Lookup(peerID)
 	if rt == nil {
-		delete(c.revs, ShardID{peerID, string(prefix)})
+		delete(c.shards, shardID)
 		return ErrNoRouteToPeer
 	}
 
@@ -85,56 +86,57 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 		RoutingTag: rt,
 		Prefix:     prefix,
 	}
-	res, err := c.listBlobs(ctx, nextHop, req)
+	res, err := c.request(ctx, nextHop, req)
 	if err != nil {
-		delete(c.revs, ShardID{peerID, string(prefix)})
+		delete(c.shards, ShardID{peerID, string(prefix)})
 		return err
 	}
-	switch x := res.Res.(type) {
-	case *ListBlobsRes_TooMany:
-		if lastID, ok := c.revs[ShardID{peerID, string(prefix)}]; ok {
-			if bytes.Compare(res.TrieHash, lastID[:]) == 0 {
-				return nil
-			}
-		}
+
+	// Sharded below this point
+	if len(res.TrieHash) < 1 || len(res.TrieData) < 1 {
+		delete(c.shards, shardID)
 		for i := 0; i < 256; i++ {
 			prefix2 := append(prefix, byte(i))
 			if err := c.indexPeer(ctx, peerID, prefix2); err != nil {
 				return err
 			}
 		}
-		if len(res.TrieHash) > 0 {
-			id := blobs.ID{}
-			copy(id[:], res.TrieHash)
-			c.revs[ShardID{peerID, string(prefix)}] = id
-		}
-
-	case *ListBlobsRes_BlobList:
-		if lastID, ok := c.revs[ShardID{peerID, string(prefix)}]; ok {
-			if bytes.Compare(res.TrieHash, lastID[:]) == 0 {
-				return nil
-			}
-		}
-		for _, claim := range x.BlobList.Claims {
-			bloc := &BlobLoc{
-				BlobId:    claim.BlobId,
-				PeerId:    peerID[:],
-				ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
-			}
-			if err := c.store.Put(bloc); err != ErrShouldEvictThis {
-				return ErrShouldEvictThis
-			}
-		}
-		if len(res.TrieHash) > 0 {
-			id := blobs.ID{}
-			copy(id[:], res.TrieHash)
-			c.revs[ShardID{peerID, string(prefix)}] = id
-		}
+		return nil
 	}
+
+	// parse trie
+	t, err := tries.FromBytes(nil, res.TrieData)
+	if err != nil {
+		return err
+	}
+	id := blobs.Hash(res.TrieData)
+
+	// parent, need to recurse
+	if t.Children != nil {
+		for i, id := range t.Children {
+			prefix2 := append(prefix, byte(i))
+			shardID2 := ShardID{peerID, string(prefix2)}
+			if id2, exists := c.shards[shardID2]; exists && id.Equals(id2) {
+				continue
+			}
+			if err := c.indexPeer(ctx, peerID, prefix2); err != nil {
+				return err
+			}
+		}
+		c.shards[shardID] = id
+		return nil
+	}
+
+	// child
+	for _, pair := range t.Entries {
+		blobID, peerID := splitKey(pair.Key)
+		c.store.Put(blobID, peerID)
+	}
+	c.shards[shardID] = id
 	return nil
 }
 
-func (c *Crawler) listBlobs(ctx context.Context, nextHop p2p.PeerID, req *ListBlobsReq) (*ListBlobsRes, error) {
+func (c *Crawler) request(ctx context.Context, nextHop p2p.PeerID, req *ListBlobsReq) (*ListBlobsRes, error) {
 	reqData, err := proto.Marshal(req)
 	if err != nil {
 		panic(err)
@@ -150,16 +152,11 @@ func (c *Crawler) listBlobs(ctx context.Context, nextHop p2p.PeerID, req *ListBl
 	return res, nil
 }
 
-func (c *Crawler) getAtDistance(d int) []p2p.PeerID {
-	pinfos := c.peerRouter.GetPeerInfos()
-
-	peerIDs := []p2p.PeerID{}
-	for _, pinfo := range pinfos {
-		if len(pinfo.Path) == d {
-			id := p2p.PeerID{}
-			copy(id[:], pinfo.Id)
-			peerIDs = append(peerIDs, id)
-		}
-	}
-	return peerIDs
+func splitKey(x []byte) (blobs.ID, p2p.PeerID) {
+	l := len(x)
+	blobID := blobs.ID{}
+	peerID := p2p.PeerID{}
+	copy(blobID[:], x[l/2:])
+	copy(peerID[:], x[:l/2])
+	return blobID, peerID
 }

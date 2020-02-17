@@ -32,15 +32,6 @@ message ListBlobsRes {
     bytes trie_data = 2;
 }
 
-message BlobList {
-    repeated BlobClaim claims = 1;
-}
-
-message BlobClaim {
-    bytes blob_id = 1;
-    int64 expires_at = 2;
-}
-
 message BlobLoc {
     bytes blob_id = 1;
     bytes peer_id = 2;

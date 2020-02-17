@@ -7,7 +7,7 @@ import (
 	"errors"
 
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
-	"github.com/brendoncarroll/blobcache/pkg/trie"
+	"github.com/brendoncarroll/blobcache/pkg/tries"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -132,7 +132,7 @@ func (s *PinSetStore) Get(ctx context.Context, name string) (*PinSet, error) {
 		if pinSetB == nil {
 			return ErrPinSetNotFound
 		}
-		t := trie.New(blobs.NewMem())
+		t := tries.New(blobs.NewMem())
 		count := uint64(0)
 		err := pinSetB.ForEach(func(k, v []byte) error {
 			return t.Put(ctx, k, nil)

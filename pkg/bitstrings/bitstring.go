@@ -38,7 +38,7 @@ func (bs BitString) AppendBit(x bool) BitString {
 }
 
 func (bs BitString) At(i int) bool {
-	x := bs.b[i/8] & (127 >> uint(i%8))
+	x := bs.b[i/8] & (128 >> uint(i%8))
 	return x > 0
 }
 
