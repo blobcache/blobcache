@@ -34,6 +34,28 @@ func New(store blobs.GetPostDelete) *Trie {
 	}
 }
 
+func NewWithPrefix(store blobs.GetPostDelete, prefix []byte) *Trie {
+	return &Trie{
+		store:  store,
+		Prefix: prefix,
+	}
+}
+
+func (t *Trie) Clone() *Trie {
+	var children *[256]blobs.ID
+	if t.Children != nil {
+		c := *t.Children
+		children = &c
+	}
+
+	return &Trie{
+		store:    t.store,
+		Prefix:   t.Prefix,
+		Children: children,
+		Entries:  append([]Pair{}, t.Entries...),
+	}
+}
+
 func (t *Trie) Put(ctx context.Context, key, value []byte) error {
 	if err := t.Validate(); err != nil {
 		return err

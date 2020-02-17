@@ -3,49 +3,45 @@ package blobnet
 import (
 	"context"
 	"io"
-	"time"
 
+	"github.com/brendoncarroll/blobcache/pkg/bckv"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/kademlia"
+	proto "github.com/golang/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 )
 
-type BlobEntry struct {
-	Key       [16]byte
-	PeerID    p2p.PeerID
-	ExpiresAt time.Time
-}
-
 type BlobRouterParams struct {
-	Swarm p2p.SecureAskSwarm
+	PeerRouter *Router
+	Swarm      p2p.SecureAskSwarm
 	PeerStore
-
-	CacheSize int
+	KV      bckv.KV
+	Indexer *indexing.LocalIndexer
 }
 
 type BlobRouter struct {
 	peerSwarm *PeerSwarm
-	cache     *kademlia.Cache
+	store     *BlobLocStore
+	crawler   *Crawler
 	cf        context.CancelFunc
 }
 
 func NewBlobRouter(params BlobRouterParams) *BlobRouter {
-	cacheSize := params.CacheSize
-	if cacheSize < 1 {
-		cacheSize = 1e6
-	}
-
 	peerSwarm := NewPeerSwarm(params.Swarm, params.PeerStore)
 	localID := peerSwarm.LocalID()
+	store := newBlobLocStore(params.KV, localID[:])
 
 	ctx, cf := context.WithCancel(context.Background())
+	crawler := newCrawler(params.PeerRouter, peerSwarm, store)
+	go crawler.run(ctx)
+
 	br := &BlobRouter{
 		peerSwarm: peerSwarm,
-		cache:     kademlia.NewCache(localID[:], cacheSize, 0),
+		store:     store,
+		crawler:   crawler,
 		cf:        cf,
 	}
 	peerSwarm.OnAsk(br.handleAsk)
-	go br.run(ctx)
 
 	return br
 }
@@ -55,16 +51,19 @@ func (br *BlobRouter) Close() error {
 	return nil
 }
 
-func (br *BlobRouter) WhoHas(id blobs.ID) *p2p.PeerID {
-	// TODO
-	return nil
-}
-
-func (br *BlobRouter) run(ctx context.Context) {
-	select {
-	case <-ctx.Done():
-	}
+func (br *BlobRouter) WhoHas(id blobs.ID) []p2p.PeerID {
+	bloc := br.store.Get(id)
+	peerID := p2p.PeerID{}
+	copy(peerID[:], bloc.PeerId)
+	return []p2p.PeerID{peerID}
 }
 
 func (br *BlobRouter) handleAsk(ctx context.Context, msg *p2p.Message, w io.Writer) {
+	req := &ListBlobsReq{}
+	if err := proto.Unmarshal(msg.Payload, req); err != nil {
+		log.Error(err)
+		return
+	}
+
+	br.Close()
 }

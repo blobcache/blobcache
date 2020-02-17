@@ -7,6 +7,7 @@ import (
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/brendoncarroll/blobcache/pkg/bckv"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 )
 
@@ -19,6 +20,7 @@ const (
 type Params struct {
 	PeerStore PeerStore
 	Mux       simplemux.Muxer
+	KV        bckv.KV
 	Local     blobs.Getter
 }
 
@@ -53,6 +55,7 @@ func NewBlobNet(params Params) *Blobnet {
 	bn.blobRouter = NewBlobRouter(BlobRouterParams{
 		Swarm:     brSwarm.(p2p.SecureAskSwarm),
 		PeerStore: params.PeerStore,
+		KV:        params.KV.Bucket("blob-router"),
 	})
 
 	// fetcher

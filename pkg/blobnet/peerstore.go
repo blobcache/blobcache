@@ -18,26 +18,46 @@ type PeerSpec struct {
 	Addrs []string
 }
 
-type PeerList []PeerSpec
+type PeerList struct {
+	Peers []PeerSpec
+	Swarm p2p.Swarm
+}
 
 func (pl PeerList) TrustFor(id p2p.PeerID) (int64, error) {
 	i := pl.find(id)
 	if i < 0 {
 		return 0, errors.New("peer not found")
 	}
-	return pl[i].Trust, nil
+	return pl.Peers[i].Trust, nil
 }
 
 func (pl PeerList) ListPeers() []p2p.PeerID {
-	ids := make([]p2p.PeerID, len(pl))
-	for i := range pl {
-		ids[i] = pl[i].ID
+	ids := make([]p2p.PeerID, len(pl.Peers))
+	for i := range pl.Peers {
+		ids[i] = pl.Peers[i].ID
 	}
 	return ids
 }
 
+func (pl PeerList) GetAddrs(id p2p.PeerID) []p2p.Addr {
+	i := pl.find(id)
+	if i < 0 {
+		return nil
+	}
+	addrs := []p2p.Addr{}
+	addrStrs := pl.Peers[i].Addrs
+	for _, as := range addrStrs {
+		addr, err := pl.Swarm.ParseAddr([]byte(as))
+		if err != nil {
+			continue
+		}
+		addrs = append(addrs, addr)
+	}
+	return addrs
+}
+
 func (pl PeerList) find(id p2p.PeerID) int {
-	for i, pi := range pl {
+	for i, pi := range pl.Peers {
 		if pi.ID == id {
 			return i
 		}

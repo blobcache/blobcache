@@ -31,7 +31,7 @@ type PinSetStore struct {
 	db *bolt.DB
 }
 
-func NewPinSetStore(db *bolt.DB) (*PinSetStore, error) {
+func NewPinSetStore(db *bolt.DB) *PinSetStore {
 	err := db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(bucketPinSets))
 		if err != nil {
@@ -44,11 +44,11 @@ func NewPinSetStore(db *bolt.DB) (*PinSetStore, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	return &PinSetStore{
 		db: db,
-	}, nil
+	}
 }
 
 func (s *PinSetStore) Create(ctx context.Context, name string) error {
