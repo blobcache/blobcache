@@ -178,11 +178,13 @@ func (r *Router) GetPeerInfos() []*PeerInfo {
 	return peerInfos
 }
 
+func (r *Router) bootstrap(ctx context.Context) {
+	r.queryPeers(ctx)
+}
+
 func (r *Router) run(ctx context.Context) {
 	ticker := time.NewTicker(r.queryPeriod)
 	defer ticker.Stop()
-
-	r.queryPeers(ctx)
 
 	for {
 		select {

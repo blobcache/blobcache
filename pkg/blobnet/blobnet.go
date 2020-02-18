@@ -72,6 +72,10 @@ func NewBlobNet(params Params) *Blobnet {
 	return bn
 }
 
+func (bn *Blobnet) bootstrap(ctx context.Context) {
+	bn.peerRouter.bootstrap(ctx)
+}
+
 func (bn *Blobnet) Close() error {
 	closers := []interface {
 		Close() error
