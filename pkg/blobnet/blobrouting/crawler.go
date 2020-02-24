@@ -1,10 +1,11 @@
-package blobnet
+package blobrouting
 
 import (
 	"context"
 	"time"
 
 	"github.com/brendoncarroll/blobcache/pkg/bitstrings"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
@@ -18,14 +19,14 @@ type ShardID struct {
 }
 
 type Crawler struct {
-	peerRouter *Router
+	peerRouter *peerrouting.Router
 	store      *BlobLocStore
-	peerSwarm  *PeerSwarm
+	peerSwarm  PeerSwarm
 
 	shards map[ShardID]blobs.ID
 }
 
-func newCrawler(peerRouter *Router, peerSwarm *PeerSwarm, store *BlobLocStore) *Crawler {
+func newCrawler(peerRouter *peerrouting.Router, peerSwarm PeerSwarm, store *BlobLocStore) *Crawler {
 	return &Crawler{
 		peerRouter: peerRouter,
 		peerSwarm:  peerSwarm,
@@ -79,7 +80,7 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 	rt, nextHop := c.peerRouter.Lookup(peerID)
 	if rt == nil {
 		delete(c.shards, shardID)
-		return ErrNoRouteToPeer
+		return peerrouting.ErrNoRouteToPeer
 	}
 
 	req := &ListBlobsReq{
@@ -141,7 +142,7 @@ func (c *Crawler) request(ctx context.Context, nextHop p2p.PeerID, req *ListBlob
 	if err != nil {
 		panic(err)
 	}
-	resData, err := c.peerSwarm.Ask(ctx, nextHop, reqData)
+	resData, err := c.peerSwarm.AskPeer(ctx, nextHop, reqData)
 	if err != nil {
 		return nil, err
 	}
@@ -159,4 +160,8 @@ func splitKey(x []byte) (blobs.ID, p2p.PeerID) {
 	copy(blobID[:], x[l/2:])
 	copy(peerID[:], x[:l/2])
 	return blobID, peerID
+}
+
+func makeKey(blobID blobs.ID, peerID p2p.PeerID) []byte {
+	return append(blobID[:], peerID[:]...)
 }

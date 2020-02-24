@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"sort"
 
@@ -129,6 +128,21 @@ func (t *Trie) Get(ctx context.Context, key []byte) (*Pair, error) {
 	return subT.Get(ctx, key)
 }
 
+func (t *Trie) GetChild(ctx context.Context, c byte) (*Trie, error) {
+	if t.Children == nil {
+		panic("GetChild called on child trie")
+	}
+	return t.getChild(ctx, int(c))
+}
+
+func (t *Trie) GetPrefix() []byte {
+	return t.Prefix
+}
+
+func (t *Trie) IsParent() bool {
+	return t.Children != nil
+}
+
 func (t *Trie) split() []Trie {
 	subTs := make([]Trie, 256)
 	for i := range subTs {
@@ -185,22 +199,36 @@ func (t *Trie) replaceChild(ctx context.Context, key []byte, fn func(x Trie) (*T
 	}
 	data := child1.Marshal()
 	ref, err := t.store.Post(ctx, data)
+	if err != nil {
+		return err
+	}
+	if err := t.store.Delete(ctx, t.Children[i]); err != nil {
+		return err
+	}
 	t.Children[i] = ref
 	return nil
 }
 
 func (t *Trie) childFor(ctx context.Context, key []byte) (int, *Trie, error) {
 	i := int(key[len(t.Prefix)])
-	ref := t.Children[i]
-	data, err := t.store.Get(ctx, ref)
+	child, err := t.getChild(ctx, i)
 	if err != nil {
 		return -1, nil, err
 	}
-	child := &Trie{}
-	if err = json.Unmarshal(data, child); err != nil {
-		return -1, nil, err
-	}
 	return i, child, nil
+}
+
+func (t *Trie) getChild(ctx context.Context, i int) (*Trie, error) {
+	ref := t.Children[i]
+	data, err := t.store.Get(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	child := &Trie{}
+	if err = t.UnmarshalText(data); err != nil {
+		return nil, err
+	}
+	return child, nil
 }
 
 const (

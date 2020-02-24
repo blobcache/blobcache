@@ -1,4 +1,4 @@
-package blobnet
+package peers
 
 import (
 	"errors"

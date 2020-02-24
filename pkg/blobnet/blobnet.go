@@ -5,9 +5,13 @@ import (
 
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
+	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/blobrouting"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 )
 
@@ -18,16 +22,17 @@ const (
 )
 
 type Params struct {
-	PeerStore PeerStore
+	PeerStore peers.PeerStore
 	Mux       simplemux.Muxer
 	KV        bckv.KV
 	Local     blobs.Getter
+	Clock     clockwork.Clock
 }
 
 type Blobnet struct {
 	mux        simplemux.Muxer
-	peerRouter *Router
-	blobRouter *BlobRouter
+	peerRouter *peerrouting.Router
+	blobRouter *blobrouting.Router
 	fetcher    *Fetcher
 }
 
@@ -42,9 +47,9 @@ func NewBlobNet(params Params) *Blobnet {
 	if err != nil {
 		panic(err)
 	}
-	bn.peerRouter = NewRouter(RouterParams{
-		Swarm:     rSwarm.(p2p.SecureAskSwarm),
-		PeerStore: params.PeerStore,
+	bn.peerRouter = peerrouting.NewRouter(peerrouting.RouterParams{
+		PeerSwarm: peers.NewPeerSwarm(rSwarm.(p2p.SecureAskSwarm), params.PeerStore),
+		Clock:     params.Clock,
 	})
 
 	// blob router
@@ -52,10 +57,11 @@ func NewBlobNet(params Params) *Blobnet {
 	if err != nil {
 		panic(err)
 	}
-	bn.blobRouter = NewBlobRouter(BlobRouterParams{
-		Swarm:     brSwarm.(p2p.SecureAskSwarm),
-		PeerStore: params.PeerStore,
-		KV:        params.KV.Bucket("blob-router"),
+	bn.blobRouter = blobrouting.NewRouter(blobrouting.RouterParams{
+		PeerSwarm:  peers.NewPeerSwarm(brSwarm.(p2p.SecureAskSwarm), params.PeerStore),
+		PeerRouter: bn.peerRouter,
+		KV:         params.KV.Bucket("blob-router"),
+		Clock:      params.Clock,
 	})
 
 	// fetcher
@@ -64,8 +70,7 @@ func NewBlobNet(params Params) *Blobnet {
 		panic(err)
 	}
 	bn.fetcher = NewFetcher(FetcherParams{
-		Swarm:     fSwarm.(p2p.SecureAskSwarm),
-		PeerStore: params.PeerStore,
+		PeerSwarm: peers.NewPeerSwarm(fSwarm.(p2p.SecureAskSwarm), params.PeerStore),
 		Local:     params.Local,
 	})
 
@@ -73,7 +78,7 @@ func NewBlobNet(params Params) *Blobnet {
 }
 
 func (bn *Blobnet) bootstrap(ctx context.Context) {
-	bn.peerRouter.bootstrap(ctx)
+	bn.peerRouter.Bootstrap(ctx)
 }
 
 func (bn *Blobnet) Close() error {

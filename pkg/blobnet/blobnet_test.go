@@ -4,10 +4,12 @@ import (
 	"testing"
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
 	"github.com/brendoncarroll/go-p2p/p2ptest"
 	"github.com/brendoncarroll/go-p2p/s/memswarm"
+	"github.com/jonboulle/clockwork"
 )
 
 func TestBlobnet(t *testing.T) {
@@ -22,7 +24,7 @@ func TestBlobnet(t *testing.T) {
 
 	bns := make([]*Blobnet, N)
 	for i := range swarms {
-		peerStore := make(MemPeerStore)
+		peerStore := make(peers.MemPeerStore)
 		for _, addr := range adjList[i] {
 			id := p2p.NewPeerID(swarms[i].LookupPublicKey(addr))
 			peerStore.AddAddr(id, addr)
@@ -35,13 +37,14 @@ func TestBlobnet(t *testing.T) {
 	// }
 }
 
-func makeBlobnet(s p2p.SecureAskSwarm, ps PeerStore) *Blobnet {
+func makeBlobnet(s p2p.SecureAskSwarm, ps peers.PeerStore) *Blobnet {
 	mux := simplemux.MultiplexSwarm(s)
 	bn := NewBlobNet(Params{
 		PeerStore: ps,
 		Mux:       mux,
 		KV:        &bckv.MemKV{Capacity: 100},
 		Local:     bckv.BlobAdapter(&bckv.MemKV{Capacity: 100}),
+		Clock:     clockwork.NewRealClock(),
 	})
 	return bn
 }

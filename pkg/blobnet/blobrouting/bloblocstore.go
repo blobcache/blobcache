@@ -1,4 +1,4 @@
-package blobnet
+package blobrouting
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
 	"github.com/brendoncarroll/blobcache/pkg/bitstrings"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/bcproto"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/kademlia"
@@ -15,6 +16,8 @@ import (
 )
 
 var ErrShouldEvictThis = errors.New("no better entry to evict than this one")
+
+type BlobLoc = bcproto.BlobLoc
 
 type BlobLocStore struct {
 	locus []byte
