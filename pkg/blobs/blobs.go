@@ -2,11 +2,10 @@ package blobs
 
 import (
 	"bytes"
-
 	"encoding/base64"
 	"encoding/json"
 
-	"lukechampine.com/blake3"
+	"github.com/zeebo/blake3"
 )
 
 const IDSize = 32
@@ -39,5 +38,10 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 type Blob = []byte
 
 func Hash(data []byte) ID {
-	return ID(blake3.Sum256(data))
+	h := blake3.New()
+	h.Write(data)
+	id := ID{}
+	idBytes := h.Sum(make([]byte, 0, 32))
+	copy(id[:], idBytes)
+	return id
 }

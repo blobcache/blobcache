@@ -432,8 +432,8 @@ func (r *Router) putPeer(id p2p.PeerID, p Path) {
 	defer r.mu.Unlock()
 	v := r.cache.Lookup(id[:])
 	if v != nil {
-		p2 := v.(Path)
-		if len(p) < len(p2) {
+		currentPath := v.(Path)
+		if len(p) < len(currentPath) {
 			r.cache.Put(id[:], p)
 		}
 		log.Info("found shorter path for peer")

@@ -1,6 +1,7 @@
 package blobrouting
 
 import (
+	"bytes"
 	"context"
 	"sync"
 
@@ -31,12 +32,13 @@ type LocalIndexer struct {
 	m  map[string]Shard
 }
 
-func New(store Indexable, eb *trieevents.EventBus, localID p2p.PeerID) *LocalIndexer {
+func NewLocalIndexer(store Indexable, eb *trieevents.EventBus, localID p2p.PeerID) *LocalIndexer {
 	ctx, cf := context.WithCancel(context.Background())
 	in := &LocalIndexer{
 		store: store,
 		eb:    eb,
 		cf:    cf,
+		m:     map[string]Shard{},
 	}
 	go in.run(ctx)
 	return in
@@ -128,18 +130,16 @@ RESYNC:
 					goto RESYNC
 				}
 			}
-			data := trie.Marshal()
-			shard := Shard{
-				ID:        blobs.Hash(data),
-				TrieBytes: data,
+			if err := w.putAllShards(ctx, trie); err != nil {
+				log.Error(err)
+				goto RESYNC
 			}
-			w.li.putShard(w.prefix, shard)
 		}
 	}
 }
 
-func (w *worker) build(ctx context.Context, t *tries.Trie, prefix []byte) error {
-	ids := make([]blobs.ID, 2<<15)
+func (w *worker) build(ctx context.Context, t tries.Trie, prefix []byte) error {
+	ids := make([]blobs.ID, 1<<15)
 	n, err := w.store.List(ctx, w.prefix, ids)
 	switch {
 	case err == blobs.ErrTooMany:
@@ -150,23 +150,24 @@ func (w *worker) build(ctx context.Context, t *tries.Trie, prefix []byte) error 
 				return err
 			}
 		}
+		return nil
 	case err != nil:
 		return err
 	}
 
 	for _, blobID := range ids[:n] {
 		peerID := w.li.localID
-		key := append(blobID[:], peerID[:]...)
+		key := makeKey(blobID, peerID)
 		if err := t.Put(ctx, key, nil); err != nil {
 			return err
 		}
 	}
-	return nil
+	return w.putAllShards(ctx, t)
 }
 
-func (w *worker) putAllShards(ctx context.Context, t *tries.Trie) error {
+func (w *worker) putAllShards(ctx context.Context, t tries.Trie) error {
 	if t.IsParent() {
-		for i := range t.Children {
+		for i := 0; i < 256; i++ {
 			child, err := t.GetChild(ctx, byte(i))
 			if err != nil {
 				return err
@@ -180,6 +181,9 @@ func (w *worker) putAllShards(ctx context.Context, t *tries.Trie) error {
 		shard := Shard{
 			ID:        blobs.Hash(data),
 			TrieBytes: data,
+		}
+		if !bytes.HasPrefix(t.GetPrefix(), w.prefix) {
+			return nil
 		}
 		w.li.putShard(t.GetPrefix(), shard)
 	}

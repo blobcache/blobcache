@@ -6,6 +6,7 @@ import (
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
@@ -22,7 +23,7 @@ type Params struct {
 
 	Mux        simplemux.Muxer
 	PrivateKey p2p.PrivateKey
-	PeerStore  blobnet.PeerStore
+	PeerStore  peers.PeerStore
 
 	ExternalSources []blobs.Getter
 }

@@ -1,6 +1,7 @@
 package blobs
 
 import (
+	"bytes"
 	"context"
 	"sync"
 )
@@ -28,6 +29,23 @@ func (s *MemStore) Get(ctx context.Context, id ID) ([]byte, error) {
 		return nil, nil
 	}
 	return data.([]byte), nil
+}
+
+func (s *MemStore) List(ctx context.Context, prefix []byte, ids []ID) (n int, err error) {
+	s.m.Range(func(k, v interface{}) bool {
+		if n >= len(ids) {
+			err = ErrTooMany
+			return false
+		}
+		id := k.(ID)
+		if !bytes.HasPrefix(id[:], prefix) {
+			return true
+		}
+		ids[n] = id
+		n++
+		return true
+	})
+	return n, err
 }
 
 func (s *MemStore) Delete(ctx context.Context, id ID) error {

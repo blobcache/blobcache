@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
-	"github.com/brendoncarroll/blobcache/pkg/blobnet"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
 	"github.com/brendoncarroll/go-p2p/s/multiswarm"
@@ -39,11 +39,11 @@ func (cf ConfigFile) Save(c Config) error {
 }
 
 type Config struct {
-	PrivateKey    []byte             `yaml:"private_key,flow"`
-	DataDir       string             `yaml:"data_dir"`
-	EphemeralCap  uint64             `yaml:"ephemeral_capacity"`
-	PersistentCap uint64             `yaml:"persistent_capacity`
-	Peers         []blobnet.PeerSpec `yaml:"peers"`
+	PrivateKey    []byte           `yaml:"private_key,flow"`
+	DataDir       string           `yaml:"data_dir"`
+	EphemeralCap  uint64           `yaml:"ephemeral_capacity"`
+	PersistentCap uint64           `yaml:"persistent_capacity`
+	Peers         []peers.PeerSpec `yaml:"peers"`
 }
 
 func (c *Config) Params() (*Params, error) {
@@ -81,7 +81,7 @@ func (c *Config) Params() (*Params, error) {
 
 	return &Params{
 		Mux:        mux,
-		PeerStore:  &blobnet.PeerList{},
+		PeerStore:  &peers.PeerList{},
 		MetadataDB: metadataDB,
 
 		Ephemeral:  bckv.NewBoltKV(ephemeralDB, c.EphemeralCap),

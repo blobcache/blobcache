@@ -106,15 +106,16 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 	}
 
 	// parse trie
-	t, err := tries.FromBytes(nil, res.TrieData)
+	t, err := tries.Parse(nil, res.TrieData)
 	if err != nil {
 		return err
 	}
 	id := blobs.Hash(res.TrieData)
 
 	// parent, need to recurse
-	if t.Children != nil {
-		for i, id := range t.Children {
+	if t.IsParent() {
+		for i := 0; i < 256; i++ {
+			id := t.GetChildRef(byte(i))
 			prefix2 := append(prefix, byte(i))
 			shardID2 := ShardID{peerID, string(prefix2)}
 			if id2, exists := c.shards[shardID2]; exists && id.Equals(id2) {
@@ -129,7 +130,7 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 	}
 
 	// child
-	for _, pair := range t.Entries {
+	for _, pair := range t.ListEntries() {
 		blobID, peerID := splitKey(pair.Key)
 		c.store.Put(blobID, peerID)
 	}

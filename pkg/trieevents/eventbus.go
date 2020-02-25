@@ -35,7 +35,7 @@ func (eb *EventBus) Subscribe(prefix []byte, ch chan blobs.ID) {
 func (eb *EventBus) Unsubscribe(ch chan blobs.ID) {
 	eb.subs.Delete(ch)
 	eb.children.Range(func(k, v interface{}) bool {
-		k.(*EventBus).Unsubscribe(ch)
+		v.(*EventBus).Unsubscribe(ch)
 		return true
 	})
 }

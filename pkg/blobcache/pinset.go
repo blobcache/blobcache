@@ -142,7 +142,7 @@ func (s *PinSetStore) Get(ctx context.Context, name string) (*PinSet, error) {
 		}
 		ps = &PinSet{
 			Name:  name,
-			Root:  t.ID(),
+			Root:  blobs.Hash(t.Marshal()),
 			Count: count,
 		}
 		return nil
