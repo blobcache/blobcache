@@ -1,6 +1,7 @@
 package blobnet
 
 import (
+	"context"
 	"testing"
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
@@ -32,9 +33,9 @@ func TestBlobnet(t *testing.T) {
 		bns[i] = makeBlobnet(swarms[i], peerStore)
 	}
 
-	// for i := range bns {
-	// 	bns[i].bootstrap(context.TODO())
-	// }
+	for i := range bns {
+		bns[i].bootstrap(context.TODO())
+	}
 }
 
 func makeBlobnet(s p2p.SecureAskSwarm, ps peers.PeerStore) *Blobnet {

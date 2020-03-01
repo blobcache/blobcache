@@ -1,6 +1,7 @@
 package blobrouting
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/bcproto"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/jonboulle/clockwork"
@@ -38,22 +40,21 @@ type Router struct {
 	peerSwarm  PeerSwarm
 	peerRouter *peerrouting.Router
 
-	store   *BlobLocStore
-	crawler *Crawler
-	cf      context.CancelFunc
+	routeTable *KadRT
+	crawler    *Crawler
+	cf         context.CancelFunc
 }
 
 func NewRouter(params RouterParams) *Router {
 	peerSwarm := params.PeerSwarm
 	localID := peerSwarm.LocalID()
-	store := newBlobLocStore(params.KV, localID[:])
 
 	ctx, cf := context.WithCancel(context.Background())
 
 	br := &Router{
 		peerRouter: params.PeerRouter,
 		peerSwarm:  peerSwarm,
-		store:      store,
+		routeTable: NewKadRT(blobs.NewMem(), localID[:]),
 		cf:         cf,
 	}
 	peerSwarm.OnAsk(br.handleAsk)
@@ -63,7 +64,7 @@ func NewRouter(params RouterParams) *Router {
 }
 
 func (br *Router) run(ctx context.Context) {
-	crawler := newCrawler(br.peerRouter, br.peerSwarm, br.store)
+	crawler := newCrawler(br.peerRouter, br, br.peerSwarm)
 	crawler.run(ctx)
 }
 
@@ -72,11 +73,33 @@ func (br *Router) Close() error {
 	return nil
 }
 
-func (br *Router) WhoHas(id blobs.ID) []p2p.PeerID {
-	bloc := br.store.Get(id)
-	peerID := p2p.PeerID{}
-	copy(peerID[:], bloc.PeerId)
-	return []p2p.PeerID{peerID}
+func (br *Router) WhoHas(ctx context.Context, blobID blobs.ID) []p2p.PeerID {
+	peerIDs, err := br.routeTable.Lookup(ctx, blobID)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	return peerIDs
+}
+
+func (br *Router) Query(ctx context.Context, prefix []byte) (tries.Trie, error) {
+	return br.routeTable.Query(ctx, prefix)
+}
+
+func (br *Router) request(ctx context.Context, nextHop p2p.PeerID, req *ListBlobsReq) (*ListBlobsRes, error) {
+	reqData, err := proto.Marshal(req)
+	if err != nil {
+		panic(err)
+	}
+	resData, err := br.peerSwarm.AskPeer(ctx, nextHop, reqData)
+	if err != nil {
+		return nil, err
+	}
+	res := &ListBlobsRes{}
+	if err := proto.Unmarshal(resData, res); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 func (br *Router) handleAsk(ctx context.Context, msg *p2p.Message, w io.Writer) {
@@ -98,5 +121,35 @@ func (br *Router) handleAsk(ctx context.Context, msg *p2p.Message, w io.Writer) 
 }
 
 func (br *Router) handleRequest(ctx context.Context, req *ListBlobsReq) (*ListBlobsRes, error) {
-	return nil, errors.New("not implemented")
+	rt := req.GetRoutingTag()
+	localID := br.peerSwarm.LocalID()
+	if rt == nil || bytes.HasPrefix(localID[:], rt.DstId) {
+		return br.localRequest(ctx, req)
+	}
+	return br.forwardRequest(ctx, req)
+}
+
+func (br *Router) forwardRequest(ctx context.Context, req *ListBlobsReq) (*ListBlobsRes, error) {
+	rt2, nextHop := br.peerRouter.ForwardWhere(req.GetRoutingTag())
+	if rt2 == nil {
+		return nil, errors.New("error forwarding")
+	}
+	req2 := &ListBlobsReq{
+		Prefix: req.Prefix,
+	}
+	return br.request(ctx, nextHop, req2)
+}
+
+func (br *Router) localRequest(ctx context.Context, req *ListBlobsReq) (*ListBlobsRes, error) {
+	trie, err := br.routeTable.Query(ctx, req.Prefix)
+	if err != nil {
+		return nil, err
+	}
+	data := trie.Marshal()
+	id := blobs.Hash(data)
+	res := &ListBlobsRes{
+		TrieData: data,
+		TrieHash: id[:],
+	}
+	return res, nil
 }

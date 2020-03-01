@@ -8,7 +8,6 @@ import (
 
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/blobcache/pkg/trieevents"
-	"github.com/brendoncarroll/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,24 +16,39 @@ import (
 func TestIndexer(t *testing.T) {
 	store := blobs.NewMem()
 	addRandom(store)
-	li := NewLocalIndexer(store, trieevents.New(), p2p.ZeroPeerID())
-	time.Sleep(time.Second * 3)
+	li := NewLocalIndexer(IndexerParams{
+		Target:   store,
+		EventBus: trieevents.New(),
+		LocalID:  p2p.ZeroPeerID(),
+	})
 
-	assert.Nil(t, li.GetShard(nil))
-
-	shard := li.GetShard([]byte{'\x00'})
-	require.NotNil(t, shard)
-	trie, err := tries.Parse(store, shard.TrieBytes)
-	require.Nil(t, err)
+	numShards := pollShardCount(li, 256)
+	trie := li.GetShard([]byte{'\x00'})
+	require.NotNil(t, trie)
 	assert.Equal(t, []byte{'\x00'}, trie.GetPrefix())
-	t.Log("len(li.m)", len(li.m))
-	assert.True(t, len(li.m) >= 256)
+	assert.Equal(t, numShards, 256)
 }
 
 func addRandom(store blobs.Poster) {
-	for i := 0; i < 1<<17; i++ {
+	for i := 0; i < 1<<16; i++ {
 		data := make([]byte, 64)
 		mrand.Read(data)
 		store.Post(context.TODO(), data)
+	}
+}
+
+func pollShardCount(li *LocalIndexer, numShards int) int {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		li.mu.RLock()
+		l := len(li.shards)
+		li.mu.RUnlock()
+		if l >= numShards {
+			return l
+		}
+		if time.Now().After(deadline) {
+			return l
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }

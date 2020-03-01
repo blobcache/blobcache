@@ -9,7 +9,6 @@ import (
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
-	proto "github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -20,17 +19,19 @@ type ShardID struct {
 
 type Crawler struct {
 	peerRouter *peerrouting.Router
-	store      *BlobLocStore
+	blobRouter *Router
+	routeTable *KadRT
 	peerSwarm  PeerSwarm
 
 	shards map[ShardID]blobs.ID
 }
 
-func newCrawler(peerRouter *peerrouting.Router, peerSwarm PeerSwarm, store *BlobLocStore) *Crawler {
+func newCrawler(peerRouter *peerrouting.Router, blobRouter *Router, peerSwarm PeerSwarm) *Crawler {
 	return &Crawler{
 		peerRouter: peerRouter,
+		blobRouter: blobRouter,
 		peerSwarm:  peerSwarm,
-		store:      store,
+		routeTable: blobRouter.routeTable,
 		shards:     map[ShardID]blobs.ID{},
 	}
 }
@@ -57,10 +58,10 @@ func (c *Crawler) crawl(ctx context.Context) error {
 	peerIDs = append(peerIDs, c.peerRouter.MultiHop()...)
 
 	for _, peerID := range peerIDs {
-		bitstr := c.store.WouldAccept()
+		bitstr := c.routeTable.WouldAccept()
 		for _, prefix := range bitstr.EnumBytePrefixes() {
 			x := bitstrings.FromBytes(len(prefix)*8, prefix)
-			if !c.store.WouldAccept().HasPrefix(&x) {
+			if !c.routeTable.WouldAccept().HasPrefix(&x) {
 				continue
 			}
 			err := c.indexPeer(ctx, peerID, prefix)
@@ -87,7 +88,7 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 		RoutingTag: rt,
 		Prefix:     prefix,
 	}
-	res, err := c.request(ctx, nextHop, req)
+	res, err := c.blobRouter.request(ctx, nextHop, req)
 	if err != nil {
 		delete(c.shards, ShardID{peerID, string(prefix)})
 		return err
@@ -105,8 +106,8 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 		return nil
 	}
 
-	// parse trie
-	t, err := tries.Parse(nil, res.TrieData)
+	// parse trie; can't resolve any of the children without a store, but we don't need to here.
+	t, err := tries.FromBytes(nil, res.TrieData)
 	if err != nil {
 		return err
 	}
@@ -132,26 +133,10 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 	// child
 	for _, pair := range t.ListEntries() {
 		blobID, peerID := splitKey(pair.Key)
-		c.store.Put(blobID, peerID)
+		c.routeTable.Put(ctx, blobID, peerID)
 	}
 	c.shards[shardID] = id
 	return nil
-}
-
-func (c *Crawler) request(ctx context.Context, nextHop p2p.PeerID, req *ListBlobsReq) (*ListBlobsRes, error) {
-	reqData, err := proto.Marshal(req)
-	if err != nil {
-		panic(err)
-	}
-	resData, err := c.peerSwarm.AskPeer(ctx, nextHop, reqData)
-	if err != nil {
-		return nil, err
-	}
-	res := &ListBlobsRes{}
-	if err := proto.Unmarshal(resData, res); err != nil {
-		return nil, err
-	}
-	return res, nil
 }
 
 func splitKey(x []byte) (blobs.ID, p2p.PeerID) {

@@ -6,7 +6,6 @@ require (
 	github.com/brendoncarroll/go-p2p v0.0.0-20200213220407-ad3db897224e
 	github.com/go-chi/chi v4.0.3+incompatible
 	github.com/golang/protobuf v1.3.2
-	github.com/google/martian v2.1.0+incompatible
 	github.com/jonboulle/clockwork v0.1.1-0.20190114141812-62fb9bc030d1
 	github.com/multiformats/go-multihash v0.0.13
 	github.com/sirupsen/logrus v1.4.2

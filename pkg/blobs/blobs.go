@@ -2,6 +2,7 @@ package blobs
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 
@@ -44,4 +45,32 @@ func Hash(data []byte) ID {
 	idBytes := h.Sum(make([]byte, 0, 32))
 	copy(id[:], idBytes)
 	return id
+}
+
+func ForEach(ctx context.Context, s Lister, fn func(ID) error) error {
+	return forEach(ctx, s, []byte{}, fn)
+}
+
+func forEach(ctx context.Context, s Lister, prefix []byte, fn func(ID) error) error {
+	ids := make([]ID, 1<<10)
+	n, err := s.List(ctx, prefix, ids)
+	switch {
+	case err == ErrTooMany:
+		for i := 0; i < 256; i++ {
+			prefix2 := append(prefix, byte(i))
+			if err := forEach(ctx, s, prefix2, fn); err != nil {
+				return err
+			}
+		}
+		return nil
+	case err != nil:
+		return err
+	default:
+		for _, id := range ids[:n] {
+			if err := fn(id); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }

@@ -27,7 +27,7 @@ func TestMarshal(t *testing.T) {
 	}
 	data := t1.Marshal()
 	t.Log(hex.Dump(data))
-	t2, err := Parse(s, data)
+	t2, err := FromBytes(s, data)
 	assert.Nil(t, err)
 	assert.Equal(t, t1.IsParent(), t2.IsParent())
 	assert.Equal(t, t1.ListEntries(), t2.ListEntries())

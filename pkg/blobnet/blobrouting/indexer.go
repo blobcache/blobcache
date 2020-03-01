@@ -1,7 +1,6 @@
 package blobrouting
 
 import (
-	"bytes"
 	"context"
 	"sync"
 
@@ -17,47 +16,65 @@ type Indexable interface {
 	blobs.Getter
 }
 
-type Shard struct {
-	ID        blobs.ID
-	TrieBytes []byte
-}
-
 type LocalIndexer struct {
 	store   Indexable
 	eb      *trieevents.EventBus
 	localID p2p.PeerID
 
-	cf context.CancelFunc
-	mu sync.RWMutex
-	m  map[string]Shard
+	cf      context.CancelFunc
+	scratch blobs.GetPostDelete
+
+	mu     sync.RWMutex
+	shards map[string]blobs.ID
 }
 
-func NewLocalIndexer(store Indexable, eb *trieevents.EventBus, localID p2p.PeerID) *LocalIndexer {
+type IndexerParams struct {
+	Target   Indexable
+	EventBus *trieevents.EventBus
+	LocalID  p2p.PeerID
+}
+
+func NewLocalIndexer(params IndexerParams) *LocalIndexer {
 	ctx, cf := context.WithCancel(context.Background())
 	in := &LocalIndexer{
-		store: store,
-		eb:    eb,
-		cf:    cf,
-		m:     map[string]Shard{},
+		store:   params.Target,
+		eb:      params.EventBus,
+		cf:      cf,
+		scratch: blobs.NewMem(),
+		shards:  map[string]blobs.ID{},
 	}
 	go in.run(ctx)
 	return in
 }
 
-func (in *LocalIndexer) GetShard(prefix []byte) *Shard {
+func (in *LocalIndexer) GetShard(prefix []byte) tries.Trie {
 	in.mu.RLock()
 	defer in.mu.RUnlock()
 
-	shard, exists := in.m[string(prefix)]
-	if !exists {
-		return nil
+	// TODO: try longer and longer prefixes until the shard is found,
+	// then get the trie root and traverse.
+	for i := range prefix {
+		id, exists := in.shards[string(prefix[:i+1])]
+		if exists {
+			trieBytes, err := in.scratch.Get(context.TODO(), id)
+			if err != nil {
+				log.Error(err)
+				return nil
+			}
+			t, err := tries.FromBytes(in.scratch, trieBytes)
+			if err != nil {
+				log.Error(err)
+				return nil
+			}
+			return t
+		}
 	}
-	return &shard
+	return nil
 }
 
-func (in *LocalIndexer) putShard(prefix []byte, shard Shard) {
+func (in *LocalIndexer) putShard(prefix []byte, id blobs.ID) {
 	in.mu.Lock()
-	in.m[string(prefix)] = shard
+	in.shards[string(prefix)] = id
 	in.mu.Unlock()
 }
 
@@ -102,7 +119,7 @@ func (w *worker) run(ctx context.Context) error {
 	defer w.eb.Unsubscribe(ch)
 
 RESYNC:
-	scratch := blobs.NewMem()
+	scratch := w.li.scratch
 	trie := tries.NewWithPrefix(scratch, w.prefix)
 	if err := w.build(ctx, trie, w.prefix); err != nil {
 		return err
@@ -130,7 +147,8 @@ RESYNC:
 					goto RESYNC
 				}
 			}
-			if err := w.putAllShards(ctx, trie); err != nil {
+
+			if err := w.putShard(ctx, trie); err != nil {
 				log.Error(err)
 				goto RESYNC
 			}
@@ -162,30 +180,15 @@ func (w *worker) build(ctx context.Context, t tries.Trie, prefix []byte) error {
 			return err
 		}
 	}
-	return w.putAllShards(ctx, t)
+	return w.putShard(ctx, t)
 }
 
-func (w *worker) putAllShards(ctx context.Context, t tries.Trie) error {
-	if t.IsParent() {
-		for i := 0; i < 256; i++ {
-			child, err := t.GetChild(ctx, byte(i))
-			if err != nil {
-				return err
-			}
-			if err := w.putAllShards(ctx, child); err != nil {
-				return err
-			}
-		}
-	} else {
-		data := t.Marshal()
-		shard := Shard{
-			ID:        blobs.Hash(data),
-			TrieBytes: data,
-		}
-		if !bytes.HasPrefix(t.GetPrefix(), w.prefix) {
-			return nil
-		}
-		w.li.putShard(t.GetPrefix(), shard)
+func (w *worker) putShard(ctx context.Context, t tries.Trie) error {
+	data := t.Marshal()
+	id, err := w.li.scratch.Post(ctx, data)
+	if err != nil {
+		return err
 	}
+	w.li.putShard(w.prefix, id)
 	return nil
 }
