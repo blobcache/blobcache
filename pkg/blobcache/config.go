@@ -83,6 +83,7 @@ func (c *Config) Params() (*Params, error) {
 		Mux:        mux,
 		PeerStore:  &peers.PeerList{},
 		MetadataDB: metadataDB,
+		PrivateKey: privKey2,
 
 		Ephemeral:  bckv.NewBoltKV(ephemeralDB, c.EphemeralCap),
 		Persistent: bckv.NewBoltKV(persistentDB, c.PersistentCap),

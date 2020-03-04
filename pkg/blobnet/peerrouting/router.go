@@ -248,6 +248,8 @@ func (r *Router) Bootstrap(ctx context.Context) {
 func (r *Router) run(ctx context.Context) {
 	ticker := r.clock.NewTicker(r.queryPeriod)
 	defer ticker.Stop()
+	log.Info("starting peer router")
+	defer func() { log.Info("stopped peer router") }()
 
 	for {
 		select {

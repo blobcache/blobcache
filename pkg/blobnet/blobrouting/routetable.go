@@ -121,9 +121,7 @@ func (rt *KadRT) evict(ctx context.Context, lz int) error {
 				continue
 			}
 
-			log.Println("deleting branch", x)
 			err := rt.trie.DeleteBranch(ctx, p)
-			log.Println("delete branch error", err)
 			if err == tries.ErrBranchEmpty {
 				continue
 			} else {
@@ -156,7 +154,6 @@ func (rt *KadRT) storeRoot(x tries.Trie) error {
 }
 
 func getSubTrie(ctx context.Context, t tries.Trie, prefix []byte) (tries.Trie, error) {
-	log.Println("getSubTrie")
 	for bytes.HasPrefix(prefix, t.GetPrefix()) {
 		if len(prefix) == len(t.GetPrefix()) {
 			return t, nil

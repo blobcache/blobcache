@@ -25,6 +25,9 @@ func (kv *BoltKV) Get(key []byte) ([]byte, error) {
 	var data []byte
 	err := kv.db.View(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
+		if b == nil {
+			return nil
+		}
 		value := b.Get(key)
 		data = append([]byte{}, value...)
 		return nil
@@ -97,7 +100,12 @@ func (kv *BoltKV) SizeUsed() uint64 {
 }
 
 func (kv *BoltKV) selectBucket(tx *bolt.Tx) *bolt.Bucket {
-	var b = tx.Bucket(nil)
+	type hasBucket interface {
+		CreateBucketIfNotExists([]byte) (*bolt.Bucket, error)
+		Bucket([]byte) *bolt.Bucket
+	}
+	var b hasBucket = tx
+
 	if tx.Writable() {
 		for _, bname := range kv.bucketPath {
 			b2, err := b.CreateBucketIfNotExists(bname)
@@ -110,10 +118,10 @@ func (kv *BoltKV) selectBucket(tx *bolt.Tx) *bolt.Bucket {
 		for _, bname := range kv.bucketPath {
 			b2 := b.Bucket(bname)
 			if b2 == nil {
-				break
+				return nil
 			}
 			b = b2
 		}
 	}
-	return b
+	return b.(*bolt.Bucket)
 }

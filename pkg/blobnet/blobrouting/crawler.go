@@ -46,6 +46,8 @@ func newCrawler(params CrawlerParams) *Crawler {
 func (c *Crawler) run(ctx context.Context) {
 	ticker := c.clock.NewTicker(time.Minute)
 	defer ticker.Stop()
+	log.Info("starting blob crawler")
+	defer func() { log.Info("stopped blob crawler") }()
 
 	for {
 		select {
@@ -60,6 +62,9 @@ func (c *Crawler) run(ctx context.Context) {
 }
 
 func (c *Crawler) crawl(ctx context.Context) error {
+	log.Info("begin crawling")
+	defer func() { log.Info("done crawling") }()
+
 	peerIDs := []p2p.PeerID{}
 	peerIDs = append(peerIDs, c.peerRouter.OneHop()...)
 	peerIDs = append(peerIDs, c.peerRouter.MultiHop()...)
@@ -80,6 +85,10 @@ func (c *Crawler) crawl(ctx context.Context) error {
 }
 
 func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byte) error {
+	log.WithFields(log.Fields{
+		"peer_id": peerID,
+		"prefix":  prefix,
+	}).Debug("indexing peer")
 	shardID := ShardID{peerID, string(prefix)}
 	rt, nextHop := c.peerRouter.Lookup(peerID)
 	if rt == nil {
@@ -129,7 +138,7 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 				return err
 			}
 		}
-		c.shards[shardID] = id
+		c.putShard(shardID, id)
 		return nil
 	}
 
@@ -138,8 +147,17 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 		blobID, peerID := splitKey(pair.Key)
 		c.blobRouter.Put(ctx, blobID, peerID)
 	}
-	c.shards[shardID] = id
+	c.putShard(shardID, id)
 	return nil
+}
+
+func (c *Crawler) putShard(shardID ShardID, id blobs.ID) {
+	log.WithFields(log.Fields{
+		"peer_id": shardID.PeerID,
+		"prefix":  shardID.Prefix,
+		"blob_id": id,
+	}).Debug("synced shard")
+	c.shards[shardID] = id
 }
 
 func splitKey(x []byte) (blobs.ID, p2p.PeerID) {

@@ -10,6 +10,7 @@ import (
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
+	"github.com/jonboulle/clockwork"
 	"github.com/multiformats/go-multihash"
 	log "github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
@@ -56,6 +57,9 @@ func NewNode(params Params) *Node {
 		readChain = append(readChain, extSource)
 	}
 
+	log.WithFields(log.Fields{
+		"local_id": p2p.NewPeerID(params.PrivateKey.Public()),
+	}).Info("starting node")
 	n := &Node{
 		metadataDB: params.MetadataDB,
 
@@ -71,6 +75,7 @@ func NewNode(params Params) *Node {
 			Local:     readChain,
 			PeerStore: params.PeerStore,
 			KV:        params.Ephemeral.Bucket("blobnet"),
+			Clock:     clockwork.NewRealClock(),
 		}),
 	}
 
@@ -115,10 +120,7 @@ func (n *Node) Post(ctx context.Context, name string, data []byte) ([]byte, erro
 	if err := n.pinSets.Pin(ctx, name, id); err != nil {
 		return nil, err
 	}
-	mh, err := multihash.Encode(id[:], mhBLAKE3)
-	if err != nil {
-		panic(err)
-	}
+	mh := encodeMH(id)
 
 	// don't persist data if it is in an external source
 	for _, s := range n.extSources {
@@ -133,7 +135,7 @@ func (n *Node) Post(ctx context.Context, name string, data []byte) ([]byte, erro
 	}
 
 	// persist that data to local storage
-	err = n.persistent.Bucket("blobs").Put(id[:], data)
+	err := n.persistent.Bucket("blobs").Put(id[:], data)
 	if err == bckv.ErrFull {
 		// TODO: must be on the network
 		return nil, err
@@ -156,6 +158,14 @@ func (n *Node) MaxBlobSize() int {
 
 // https://github.com/multiformats/multicodec/blob/master/table.csv
 const mhBLAKE3 = 0x1e
+
+func encodeMH(id blobs.ID) []byte {
+	mh, err := multihash.Encode(id[:], mhBLAKE3)
+	if err != nil {
+		panic(err)
+	}
+	return mh
+}
 
 func decodeMH(mh []byte) (blobs.ID, error) {
 	id := blobs.ZeroID()
