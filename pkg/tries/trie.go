@@ -31,6 +31,7 @@ type Trie interface {
 	Get(ctx context.Context, key []byte) ([]byte, error)
 	Put(ctx context.Context, key, value []byte) error
 	Delete(ctx context.Context, key []byte) error
+	DeleteBranch(ctx context.Context, prefix []byte) error
 
 	// parent
 	IsParent() bool
@@ -48,13 +49,35 @@ type Trie interface {
 }
 
 func New(store blobs.GetPostDelete) Trie {
-	return newTrie(store, false, 0, 0)
+	return newTrie(store, false, nil, 0)
 }
 
 func NewWithPrefix(store blobs.GetPostDelete, prefix []byte) Trie {
-	t := newTrie(store, false, len(prefix), 0)
-	t.setPrefix(prefix)
+	t := newTrie(store, false, prefix, 0)
 	return t
+}
+
+func NewParent(ctx context.Context, store blobs.GetPostDelete, children [256]Trie) (Trie, error) {
+	prefix := children[0].GetPrefix()
+	prefix = prefix[:len(prefix)-1]
+
+	for _, child := range children {
+		if !bytes.HasPrefix(child.GetPrefix(), prefix) {
+			return nil, errors.New("tries cannot be siblings")
+		}
+	}
+	t := newTrie(store, true, prefix, 0)
+
+	for i, child := range children {
+		id, err := store.Post(ctx, child.Marshal())
+		if err != nil {
+			return nil, err
+		}
+		if !id.Equals(blobs.ZeroID()) {
+			t.setChildRef(byte(i), id)
+		}
+	}
+	return t, nil
 }
 
 func FromBytes(store blobs.GetPostDelete, data []byte) (Trie, error) {
@@ -65,6 +88,12 @@ func Equal(a, b Trie) bool {
 	idA := blobs.Hash(a.Marshal())
 	idB := blobs.Hash(b.Marshal())
 	return bytes.Compare(idA[:], idB[:]) == 0
+}
+
+// HowManyUniform returns how many uniformly sized entries can fit in a child trie before it must split.
+func HowManyUniform(prefixLen int, entrySize int) int {
+	room := blobs.MaxSize - HeaderSize - prefixLen
+	return room / (EntryOverhead + entrySize)
 }
 
 /*
@@ -87,7 +116,8 @@ type trie struct {
 	store blobs.GetPostDelete
 	buf   []byte
 
-	changes map[string]*Pair
+	changes   map[string]*Pair
+	ourBuffer bool
 }
 
 func sizeOf(isParent bool, prefixLen, entryCount, entrySize int) int {
@@ -102,9 +132,10 @@ func sizeOf(isParent bool, prefixLen, entryCount, entrySize int) int {
 		entrySize
 }
 
-func newTrie(store blobs.GetPostDelete, isParent bool, prefixLen int, entryCount int) *trie {
-	size := sizeOf(isParent, prefixLen, entryCount, 0)
+func newTrie(store blobs.GetPostDelete, isParent bool, prefix []byte, entryCount int) *trie {
+	size := sizeOf(isParent, len(prefix), entryCount, 0)
 	buf := make([]byte, size)
+	prefixLen := len(prefix)
 	if isParent {
 		if entryCount > 1 {
 			panic("parents cannot have more than 1 entry")
@@ -117,7 +148,9 @@ func newTrie(store blobs.GetPostDelete, isParent bool, prefixLen int, entryCount
 		putu16(buf[4:], uint16(8+prefixLen))
 		putu16(buf[6:], uint16(8+prefixLen+EntryOverhead*entryCount))
 	}
-	return &trie{store: store, buf: buf}
+	t := &trie{store: store, buf: buf}
+	t.setPrefix(prefix)
+	return t
 }
 
 func fromBytes(store blobs.GetPostDelete, data []byte) (*trie, error) {
@@ -171,7 +204,15 @@ func (t *trie) Get(ctx context.Context, key []byte) ([]byte, error) {
 }
 
 func (t *trie) GetChild(ctx context.Context, i byte) (Trie, error) {
-	return t.getChild(ctx, i)
+	child, err := t.getChild(ctx, i)
+	if err != nil {
+		return nil, err
+	}
+	if child == nil {
+		p := append(t.getPrefix(), i)
+		child = newTrie(t.store, false, p, 0)
+	}
+	return child, nil
 }
 
 func (t *trie) getChild(ctx context.Context, i byte) (*trie, error) {
@@ -179,6 +220,9 @@ func (t *trie) getChild(ctx context.Context, i byte) (*trie, error) {
 		panic("called GetChild on non-parent")
 	}
 	ref := t.getChildRef(i)
+	if ref.Equals(blobs.ZeroID()) {
+		return nil, nil
+	}
 	data, err := t.store.Get(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -195,17 +239,22 @@ func (t *trie) GetChildRef(i byte) blobs.ID {
 
 func (t *trie) ListEntries() (pairs []Pair) {
 	listed := map[string]bool{}
+
 	l := t.numEntries()
 	for i := 0; i < l; i++ {
 		pair := t.getEntry(i)
 		if pair2, exists := t.changes[string(pair.Key)]; exists {
-			if pair2 != nil {
+			if pair2 == nil {
+				listed[string(pair.Key)] = true
+				continue
+			} else {
 				pair = *pair2
 			}
-			listed[string(pair.Key)] = true
 		}
 		pairs = append(pairs, pair)
+		listed[string(pair.Key)] = true
 	}
+
 	for _, pair := range t.changes {
 		if pair == nil {
 			continue
@@ -214,6 +263,7 @@ func (t *trie) ListEntries() (pairs []Pair) {
 			pairs = append(pairs, *pair)
 		}
 	}
+
 	sortPairs(pairs)
 	return pairs
 }
@@ -255,6 +305,10 @@ func (t *trie) put(ctx context.Context, pair Pair) error {
 
 		c := pair.Key[len(prefix)]
 		return t.replaceChild(ctx, c, func(child *trie) (*trie, error) {
+			if child == nil {
+				p := append(t.getPrefix(), c)
+				child = newTrie(t.store, false, p, 0)
+			}
 			if err := child.put(ctx, pair); err != nil {
 				return nil, err
 			}
@@ -266,7 +320,8 @@ func (t *trie) put(ctx context.Context, pair Pair) error {
 		t.changes = make(map[string]*Pair, 1)
 	}
 	t.changes[string(pair.Key)] = &pair
-	if sizeOf(false, len(prefix), t.netAdditions(), t.netSizeChange()+t.entriesSize()) <= blobs.MaxSize {
+	size := sizeOf(false, len(prefix), t.numEntries()+t.netAdditions(), t.netSizeChange()+t.entriesSize())
+	if size <= blobs.MaxSize {
 		return nil
 	}
 
@@ -288,6 +343,7 @@ func (t *trie) split(ctx context.Context) (*trie, error) {
 	entriesSplit := [256][]Pair{}
 	for _, pair := range t.ListEntries() {
 		if len(pair.Key) == len(prefix) {
+			panic("keys in parent not supported")
 			continue
 		}
 		c := pair.Key[len(prefix)]
@@ -298,8 +354,7 @@ func (t *trie) split(ctx context.Context) (*trie, error) {
 	for i := range children {
 		// create child
 		prefix2 := append(prefix, byte(i))
-		child := newTrie(t.store, false, len(prefix2), len(entriesSplit[i]))
-		child.setPrefix(prefix2)
+		child := newTrie(t.store, false, prefix2, 0)
 
 		// add all pairs
 		for _, pair := range entriesSplit[i] {
@@ -309,24 +364,26 @@ func (t *trie) split(ctx context.Context) (*trie, error) {
 		}
 
 		// marshal and post the child
-		id, err := t.store.Post(ctx, child.Marshal())
-		if err != nil {
-			return nil, err
+		if len(entriesSplit[i]) > 0 {
+			id, err := t.store.Post(ctx, child.Marshal())
+			if err != nil {
+				return nil, err
+			}
+			children[i] = id
 		}
-		children[i] = id
 	}
 
 	entryCount := 0
-	if t.GetEntry(prefix) != nil {
-		entryCount = 1
-	}
-	parent := newTrie(t.store, true, len(prefix), entryCount)
+	// if t.GetEntry(prefix) != nil {
+	// 	entryCount = 1
+	// }
+	parent := newTrie(t.store, true, prefix, entryCount)
 	for i := range children {
 		parent.setChildRef(byte(i), children[i])
 	}
-	if pair := t.GetEntry(prefix); pair != nil {
-		parent.appendEntry(0, *pair)
-	}
+	// if pair := t.GetEntry(prefix); pair != nil {
+	// 	parent.appendEntry(0, *pair)
+	// }
 	return parent, nil
 }
 
@@ -345,6 +402,9 @@ func (t *trie) Delete(ctx context.Context, key []byte) error {
 		}
 		c := key[len(prefix)]
 		return t.replaceChild(ctx, c, func(child *trie) (*trie, error) {
+			if child == nil {
+				return nil, ErrBranchEmpty
+			}
 			if err := child.Delete(ctx, key); err != nil {
 				return nil, err
 			}
@@ -360,6 +420,46 @@ func (t *trie) Delete(ctx context.Context, key []byte) error {
 	return nil
 }
 
+func (t *trie) DeleteBranch(ctx context.Context, prefix []byte) error {
+	if !bytes.HasPrefix(t.GetPrefix(), prefix) {
+		panic("can't delete that key from this trie; wrong prefix")
+	}
+
+	switch {
+	case len(t.GetPrefix()) == len(prefix):
+		// recursed too far, cannot delete self
+		return ErrCannotDeleteRoot
+
+	case len(t.GetPrefix()) < len(prefix)-1:
+		// cannot delete yet, need to recurse
+		c := prefix[len(t.GetPrefix())]
+		return t.replaceChild(ctx, c, func(child *trie) (*trie, error) {
+			if child == nil {
+				return nil, ErrBranchEmpty
+			}
+			err := child.DeleteBranch(ctx, prefix)
+			return child, err
+		})
+
+	case len(t.GetPrefix()) == len(prefix)-1:
+		if !t.IsParent() {
+			return ErrPrefixNotParent
+		}
+		// delete the branch
+		c := prefix[len(t.GetPrefix())]
+		id := t.getChildRef(c)
+		if err := t.store.Delete(ctx, id); err != nil {
+			return err
+		}
+		t.ensureOurBuffer()
+		t.setChildRef(c, blobs.ID{})
+		return nil
+
+	default:
+		panic("trie.DeleteBranch: invalid case")
+	}
+}
+
 func (t *trie) replaceChild(ctx context.Context, c byte, fn func(*trie) (*trie, error)) error {
 	x, err := t.getChild(ctx, c)
 	if err != nil {
@@ -373,10 +473,18 @@ func (t *trie) replaceChild(ctx context.Context, c byte, fn func(*trie) (*trie, 
 		panic("child's replacement cannot be nil")
 	}
 	data := y.Marshal()
+
 	id, err := t.store.Post(ctx, data)
 	if err != nil {
 		return err
 	}
+	if CtxGetDeleteBlobs(ctx) {
+		oldID := t.getChildRef(c)
+		if err := t.store.Delete(ctx, oldID); err != nil {
+			return err
+		}
+	}
+	t.ensureOurBuffer()
 	t.setChildRef(c, id)
 	return nil
 }
@@ -390,7 +498,7 @@ func (t *trie) Marshal() []byte {
 		return t.buf
 	}
 	if t.IsParent() {
-		return t.buf
+		return append([]byte{}, t.buf...)
 	}
 
 	l := t.numEntries()
@@ -402,6 +510,7 @@ func (t *trie) Marshal() []byte {
 	for _, ent := range t.changes {
 		entriesMap[string(ent.Key)] = ent.Value
 	}
+
 	entries := []Pair{}
 	for k, v := range entriesMap {
 		entries = append(entries, Pair{
@@ -412,8 +521,7 @@ func (t *trie) Marshal() []byte {
 	sortPairs(entries)
 
 	prefix := t.getPrefix()
-	t2 := newTrie(t.store, false, len(prefix), len(entries))
-	t2.setPrefix(prefix)
+	t2 := newTrie(t.store, false, prefix, len(entries))
 
 	for i := range entries {
 		t2.appendEntry(i, entries[i])
@@ -425,6 +533,22 @@ func (t *trie) Marshal() []byte {
 
 func (t *trie) LenEntries() int {
 	return t.numEntries() + t.netAdditions()
+}
+
+func (t *trie) String() string {
+	parent := "CHILD"
+	children := []string{}
+	if t.IsParent() {
+		parent = "PARENT"
+		for i := 0; i < 256; i++ {
+			id := t.getChildRef(byte(i))
+			if !id.Equals(blobs.ZeroID()) {
+				children = append(children, fmt.Sprintf("%02x->", i)+id.String()[:7]+"...")
+			}
+		}
+	}
+
+	return fmt.Sprintf("Trie{%s, prefix: '%x', children: %v, %d entries}", parent, t.getPrefix(), children, t.LenEntries())
 }
 
 func (t *trie) Pretty() string {
@@ -488,9 +612,9 @@ func (t *trie) getChildRef(i byte) blobs.ID {
 		panic("cannot getChild on non-parent")
 	}
 	childrenStart := getu16(t.buf[2:])
-	off := int(childrenStart) + int(i)*32
+	off := int(childrenStart) + int(i)*blobs.IDSize
 	id := blobs.ID{}
-	copy(id[:], t.buf[off:off+32])
+	copy(id[:], t.buf[off:off+blobs.IDSize])
 	return id
 }
 
@@ -499,7 +623,7 @@ func (t *trie) setChildRef(i byte, id blobs.ID) {
 		panic("cannot setChildRef on non-parent")
 	}
 	childrenStart := getu16(t.buf[2:])
-	off := int(childrenStart) + int(i)*32
+	off := int(childrenStart) + int(i)*blobs.IDSize
 	copy(t.buf[off:off+blobs.IDSize], id[:])
 }
 
@@ -515,14 +639,12 @@ func (t *trie) getEntry(i int) Pair {
 	if i >= t.numEntries() {
 		panic("entry does not exist")
 	}
-	entriesStart := t.entriesStart()
-	entriesEnd := t.entriesEnd()
 
-	off := entriesStart + EntryOverhead*i
+	off := t.entriesStart() + EntryOverhead*i
 	keyStart := int(getu16(t.buf[off:]))
 	valueStart := int(getu16(t.buf[off+2:]))
 	valueEnd := len(t.buf)
-	if off+4 < entriesEnd {
+	if off+4 < t.entriesEnd() {
 		valueEnd = int(getu16(t.buf[off+4:]))
 	}
 
@@ -543,12 +665,18 @@ func (t *trie) numEntries() int {
 }
 
 func (t *trie) entriesSize() int {
-	return t.numEntries() * EntryOverhead
+	return len(t.buf) - t.entriesEnd()
 }
 
 func (t *trie) setEntryOffsets(i, keyStart, valueStart int) {
 	entriesStart := t.entriesStart()
 	off := entriesStart + EntryOverhead*i
+	if keyStart > blobs.MaxSize {
+		panic(keyStart)
+	}
+	if valueStart > blobs.MaxSize {
+		panic(valueStart)
+	}
 	putu16(t.buf[off:], uint16(keyStart))
 	putu16(t.buf[off+2:], uint16(valueStart))
 }
@@ -559,8 +687,12 @@ func (t *trie) appendEntry(i int, p Pair) {
 	prefix := t.getPrefix()
 	key := p.Key[len(prefix):]
 	value := p.Value
+
 	keyStart := len(t.buf)
 	valueStart := keyStart + len(key)
+	if keyStart >= blobs.MaxSize || valueStart >= blobs.MaxSize || valueStart+len(value) > blobs.MaxSize {
+		panic("trie is full")
+	}
 
 	t.buf = append(t.buf, key...)
 	t.buf = append(t.buf, value...)
@@ -597,29 +729,36 @@ func (t *trie) setPrefix(p []byte) {
 	copy(t.buf[prefixStart:prefixEnd], p)
 }
 
+func (t *trie) ensureOurBuffer() {
+	if !t.ourBuffer {
+		t.buf = append([]byte{}, t.buf...)
+		t.ourBuffer = true
+	}
+}
+
 func (t *trie) validate() error {
 	childrenStart := int(getu16(t.buf[2:]))
 	if int(childrenStart) >= len(t.buf) {
 		return &PointerError{
-			Name:   "children-start",
-			Ptr:    childrenStart,
-			BufLen: len(t.buf),
+			Name: "children-start",
+			Ptr:  childrenStart,
+			Buf:  t.buf,
 		}
 	}
 	entriesStart := t.entriesStart()
 	if entriesStart > len(t.buf) {
 		return &PointerError{
-			Name:   "entries-start",
-			Ptr:    entriesStart,
-			BufLen: len(t.buf),
+			Name: "entries-start",
+			Ptr:  entriesStart,
+			Buf:  t.buf,
 		}
 	}
 	entriesEnd := t.entriesEnd()
 	if entriesEnd > len(t.buf) {
 		return &PointerError{
-			Name:   "entriesEnd",
-			Ptr:    entriesEnd,
-			BufLen: len(t.buf),
+			Name: "entriesEnd",
+			Ptr:  entriesEnd,
+			Buf:  t.buf,
 		}
 	}
 	if entriesEnd < entriesStart {
@@ -641,17 +780,20 @@ func (t *trie) validate() error {
 		)
 		if keyStart > len(t.buf) {
 			return &PointerError{
-				Name:   fmt.Sprintf("entries[%d].keyStart", i),
-				Ptr:    keyStart,
-				BufLen: len(t.buf),
+				Name: fmt.Sprintf("entries[%d].keyStart", i),
+				Ptr:  keyStart,
+				Buf:  t.buf,
 			}
 		}
 		if valueStart > len(t.buf) {
 			return &PointerError{
-				Name:   fmt.Sprintf("entries[%d].valueStart", i),
-				Ptr:    valueStart,
-				BufLen: len(t.buf),
+				Name: fmt.Sprintf("entries[%d].valueStart", i),
+				Ptr:  valueStart,
+				Buf:  t.buf,
 			}
+		}
+		if valueStart < keyStart {
+			return fmt.Errorf("entries[%d] valueStart: %d < keyStart: %d", i, valueStart, keyStart)
 		}
 	}
 

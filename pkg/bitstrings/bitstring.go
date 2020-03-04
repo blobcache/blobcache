@@ -102,23 +102,21 @@ func (x BitString) EnumBytePrefixes() [][]byte {
 }
 
 func (a *BitString) full() string {
-	if a.n%8 == 0 {
-		return a.b
-	}
-	end := bufLen(a.n)
-	return a.b[:end-1]
-}
-
-func (a *BitString) mask() uint8 {
-	lut := [8]uint8{
-		0, 1, 3, 7, 15, 31, 63, 127,
-	}
-	return lut[a.n%8]
+	return string(a.b[:a.n/8])
 }
 
 func (a *BitString) last() uint8 {
-	end := bufLen(a.n)
-	return a.b[end-1]
+	if a.n == 0 {
+		return 0
+	}
+	if a.n < 8 {
+		return 0
+	}
+	return a.b[a.n/8-1]
+}
+
+func (a *BitString) mask() uint8 {
+	return ^(0xff >> (a.n % 8))
 }
 
 func bufLen(n int) int {

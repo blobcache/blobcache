@@ -66,7 +66,7 @@ func (f *Fetcher) get(ctx context.Context, id blobs.ID, redirect *GetReq, n int)
 		req.RoutingTag = rt2
 		nextHop = nh
 	} else {
-		peers := f.blobRouter.WhoHas(ctx, id)
+		peers := f.blobRouter.Lookup(ctx, id)
 		if len(peers) > 0 {
 			req.RoutingTag, nextHop = f.peerRouter.Lookup(peers[0])
 			req.Found = true

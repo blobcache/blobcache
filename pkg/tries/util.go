@@ -8,10 +8,27 @@ import (
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 )
 
+type ctxKey int
+
+const (
+	ctxDeleteBlobs = ctxKey(iota)
+)
+
+func CtxDeleteBlobs(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxDeleteBlobs, true)
+}
+
+func CtxGetDeleteBlobs(ctx context.Context) bool {
+	x := ctx.Value(ctxDeleteBlobs)
+	if x == nil {
+		return false
+	}
+	return x.(bool)
+}
+
 func ForEach(ctx context.Context, t Trie, prefix []byte, fn func(k, v []byte) error) error {
 	triePrefix := t.GetPrefix()
 	l := len(triePrefix)
-
 	switch {
 	case bytes.HasPrefix(triePrefix, prefix):
 		// x >= t
@@ -86,15 +103,13 @@ func GCStore(ctx context.Context, store ListDelete, ts ...Trie) error {
 func addRefs(ctx context.Context, refs map[blobs.ID]struct{}, t Trie) error {
 	if t.IsParent() {
 		for i := 0; i < 256; i++ {
-			id := t.GetChildRef(byte(i))
-			if _, exists := refs[id]; exists {
-				continue
-			}
 			child, err := t.GetChild(ctx, byte(i))
 			if err != nil {
 				return err
 			}
 			addRefs(ctx, refs, child)
+
+			id := t.GetChildRef(byte(i))
 			refs[id] = struct{}{}
 		}
 	}

@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/bitstrings"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/bcproto"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
@@ -37,12 +39,18 @@ type RouterParams struct {
 }
 
 type Router struct {
-	peerSwarm  PeerSwarm
-	peerRouter *peerrouting.Router
+	peerSwarm      PeerSwarm
+	peerRouter     *peerrouting.Router
+	minQueryLength int
+	clock          clockwork.Clock
 
+	localRT    *LocalRT
 	routeTable *KadRT
 	crawler    *Crawler
 	cf         context.CancelFunc
+
+	mu     sync.RWMutex
+	shards map[string]tries.Trie
 }
 
 func NewRouter(params RouterParams) *Router {
@@ -52,10 +60,15 @@ func NewRouter(params RouterParams) *Router {
 	ctx, cf := context.WithCancel(context.Background())
 
 	br := &Router{
-		peerRouter: params.PeerRouter,
-		peerSwarm:  peerSwarm,
-		routeTable: NewKadRT(blobs.NewMem(), localID[:]),
+		peerRouter:     params.PeerRouter,
+		peerSwarm:      peerSwarm,
+		minQueryLength: 1,
+		clock:          params.Clock,
+
+		localRT:    NewLocalRT(params.LocalBlobs, localID),
+		routeTable: NewKadRT(params.KV.Bucket("route_table"), localID[:]),
 		cf:         cf,
+		shards:     make(map[string]tries.Trie),
 	}
 	peerSwarm.OnAsk(br.handleAsk)
 	go br.run(ctx)
@@ -63,8 +76,13 @@ func NewRouter(params RouterParams) *Router {
 	return br
 }
 
-func (br *Router) run(ctx context.Context) {
-	crawler := newCrawler(br.peerRouter, br, br.peerSwarm)
+func (r *Router) run(ctx context.Context) {
+	crawler := newCrawler(CrawlerParams{
+		PeerRouter: r.peerRouter,
+		BlobRouter: r,
+		PeerSwarm:  r.peerSwarm,
+		Clock:      r.clock,
+	})
 	crawler.run(ctx)
 }
 
@@ -73,25 +91,111 @@ func (br *Router) Close() error {
 	return nil
 }
 
-func (br *Router) WhoHas(ctx context.Context, blobID blobs.ID) []p2p.PeerID {
-	peerIDs, err := br.routeTable.Lookup(ctx, blobID)
-	if err != nil {
-		log.Error(err)
+func (r *Router) Put(ctx context.Context, blobID blobs.ID, peerID p2p.PeerID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// evict from cache
+	r.delete(blobID)
+
+	if peerID.Equals(r.peerSwarm.LocalID()) {
 		return nil
 	}
-	return peerIDs
+	return r.routeTable.Put(ctx, blobID, peerID)
 }
 
-func (br *Router) Query(ctx context.Context, prefix []byte) (tries.Trie, error) {
-	return br.routeTable.Query(ctx, prefix)
+func (r *Router) Query(ctx context.Context, prefix []byte) (tries.Trie, error) {
+	ctx = tries.CtxDeleteBlobs(ctx)
+
+	// check the cache
+	r.mu.RLock()
+	trie, exists := r.shards[string(prefix)]
+	r.mu.RUnlock()
+	if exists {
+		return trie, nil
+	}
+
+	// construct trie, and fill cache.
+	lTrie, err := r.localRT.Query(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	rTrie, err := r.routeTable.Query(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	var m tries.Trie
+	if lTrie.IsParent() || rTrie.IsParent() {
+		children := [256]tries.Trie{}
+		for i := 0; i < 256; i++ {
+			prefix2 := append(prefix, byte(i))
+			t, err := r.Query(ctx, prefix2)
+			if err != nil {
+				return nil, err
+			}
+			children[i] = t
+		}
+		m, err = tries.NewParent(ctx, blobs.Void{}, children)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		m, err = tries.Merge(ctx, blobs.Void{}, lTrie, rTrie)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if m.IsParent() {
+		r.mu.Lock()
+		r.shards[string(prefix)] = m
+		r.mu.Unlock()
+	}
+
+	return m, nil
 }
 
-func (br *Router) request(ctx context.Context, nextHop p2p.PeerID, req *ListBlobsReq) (*ListBlobsRes, error) {
+func (r *Router) Lookup(ctx context.Context, blobID blobs.ID) []p2p.PeerID {
+	localRes, err := r.routeTable.Lookup(ctx, blobID)
+	if err != nil {
+		return nil
+	}
+	remoteRes, err := r.routeTable.Lookup(ctx, blobID)
+	if err != nil {
+		return nil
+	}
+	return append(localRes, remoteRes...)
+}
+
+func (r *Router) WouldAccept() bitstrings.BitString {
+	return r.routeTable.WouldAccept()
+}
+
+func (r *Router) Invalidate(ctx context.Context, id blobs.ID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.delete(id)
+	return nil
+}
+
+func (r *Router) delete(blobID blobs.ID) {
+	// get a lock before calling this
+	for i := range blobID {
+		if _, exists := r.shards[string(blobID[:i])]; exists {
+			delete(r.shards, string(blobID[:i]))
+		} else {
+			break
+		}
+	}
+}
+
+func (r *Router) request(ctx context.Context, nextHop p2p.PeerID, req *ListBlobsReq) (*ListBlobsRes, error) {
 	reqData, err := proto.Marshal(req)
 	if err != nil {
 		panic(err)
 	}
-	resData, err := br.peerSwarm.AskPeer(ctx, nextHop, reqData)
+	resData, err := r.peerSwarm.AskPeer(ctx, nextHop, reqData)
 	if err != nil {
 		return nil, err
 	}
@@ -102,13 +206,13 @@ func (br *Router) request(ctx context.Context, nextHop p2p.PeerID, req *ListBlob
 	return res, nil
 }
 
-func (br *Router) handleAsk(ctx context.Context, msg *p2p.Message, w io.Writer) {
+func (r *Router) handleAsk(ctx context.Context, msg *p2p.Message, w io.Writer) {
 	req := &ListBlobsReq{}
 	if err := proto.Unmarshal(msg.Payload, req); err != nil {
 		log.Error(err)
 		return
 	}
-	res, err := br.handleRequest(ctx, req)
+	res, err := r.handleRequest(ctx, req)
 	if err != nil {
 		log.Error(err)
 		return
@@ -120,13 +224,13 @@ func (br *Router) handleAsk(ctx context.Context, msg *p2p.Message, w io.Writer) 
 	w.Write(resData)
 }
 
-func (br *Router) handleRequest(ctx context.Context, req *ListBlobsReq) (*ListBlobsRes, error) {
+func (r *Router) handleRequest(ctx context.Context, req *ListBlobsReq) (*ListBlobsRes, error) {
 	rt := req.GetRoutingTag()
-	localID := br.peerSwarm.LocalID()
+	localID := r.peerSwarm.LocalID()
 	if rt == nil || bytes.HasPrefix(localID[:], rt.DstId) {
-		return br.localRequest(ctx, req)
+		return r.localRequest(ctx, req)
 	}
-	return br.forwardRequest(ctx, req)
+	return r.forwardRequest(ctx, req)
 }
 
 func (br *Router) forwardRequest(ctx context.Context, req *ListBlobsReq) (*ListBlobsRes, error) {
@@ -141,7 +245,10 @@ func (br *Router) forwardRequest(ctx context.Context, req *ListBlobsReq) (*ListB
 }
 
 func (br *Router) localRequest(ctx context.Context, req *ListBlobsReq) (*ListBlobsRes, error) {
-	trie, err := br.routeTable.Query(ctx, req.Prefix)
+	if len(req.Prefix) < br.minQueryLength {
+		return &ListBlobsRes{}, nil
+	}
+	trie, err := br.Query(ctx, req.Prefix)
 	if err != nil {
 		return nil, err
 	}

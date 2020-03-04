@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/brendoncarroll/blobcache/pkg/bitstrings"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
+	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -17,34 +17,41 @@ type ShardID struct {
 	Prefix string
 }
 
+type CrawlerParams struct {
+	PeerRouter *peerrouting.Router
+	BlobRouter *Router
+	PeerSwarm  PeerSwarm
+	Clock      clockwork.Clock
+}
+
 type Crawler struct {
 	peerRouter *peerrouting.Router
 	blobRouter *Router
-	routeTable *KadRT
 	peerSwarm  PeerSwarm
+	clock      clockwork.Clock
 
 	shards map[ShardID]blobs.ID
 }
 
-func newCrawler(peerRouter *peerrouting.Router, blobRouter *Router, peerSwarm PeerSwarm) *Crawler {
+func newCrawler(params CrawlerParams) *Crawler {
 	return &Crawler{
-		peerRouter: peerRouter,
-		blobRouter: blobRouter,
-		peerSwarm:  peerSwarm,
-		routeTable: blobRouter.routeTable,
+		peerRouter: params.PeerRouter,
+		blobRouter: params.BlobRouter,
+		peerSwarm:  params.PeerSwarm,
+		clock:      params.Clock,
 		shards:     map[ShardID]blobs.ID{},
 	}
 }
 
 func (c *Crawler) run(ctx context.Context) {
-	ticker := time.NewTicker(time.Minute)
+	ticker := c.clock.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			if err := c.crawl(ctx); err != nil {
 				log.Error(err)
 			}
@@ -58,12 +65,8 @@ func (c *Crawler) crawl(ctx context.Context) error {
 	peerIDs = append(peerIDs, c.peerRouter.MultiHop()...)
 
 	for _, peerID := range peerIDs {
-		bitstr := c.routeTable.WouldAccept()
+		bitstr := c.blobRouter.WouldAccept()
 		for _, prefix := range bitstr.EnumBytePrefixes() {
-			x := bitstrings.FromBytes(len(prefix)*8, prefix)
-			if !c.routeTable.WouldAccept().HasPrefix(&x) {
-				continue
-			}
 			err := c.indexPeer(ctx, peerID, prefix)
 			if err == ErrShouldEvictThis {
 				continue
@@ -133,7 +136,7 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 	// child
 	for _, pair := range t.ListEntries() {
 		blobID, peerID := splitKey(pair.Key)
-		c.routeTable.Put(ctx, blobID, peerID)
+		c.blobRouter.Put(ctx, blobID, peerID)
 	}
 	c.shards[shardID] = id
 	return nil

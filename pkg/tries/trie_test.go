@@ -2,6 +2,7 @@ package tries
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	mrand "math/rand"
@@ -37,22 +38,70 @@ func TestMarshal(t *testing.T) {
 func TestSplit(t *testing.T) {
 	ctx := context.TODO()
 	s := blobs.NewMem()
-	const N = 10000
-
 	x := New(s)
 
-	for i := 0; i < N; i++ {
+	const MAX = 10000
+	split := false
+	count := 0
+	for i := 0; i < MAX; i++ {
 		buf := []byte(fmt.Sprintf("test-value-%d", i))
 		id := blobs.Hash(buf)
 		err := x.Put(ctx, id[:], buf)
 		require.Nil(t, err)
+
+		if x.IsParent() {
+			split = true
+			break
+		}
+		count++
 	}
-	assert.True(t, x.IsParent(), "should be parent")
-	for i := 0; i < 256; i++ {
-		id := x.GetChildRef(byte(i))
-		_, err := s.Get(ctx, id)
-		assert.Nil(t, err)
+	if !split {
+		t.Error("trie did not split")
 	}
+
+	for i := 0; i < count; i++ {
+		buf := []byte(fmt.Sprintf("test-value-%d", i))
+		id := blobs.Hash(buf)
+		v, err := x.Get(ctx, id[:])
+		require.Nil(t, err)
+		require.Equal(t, string(buf), string(v), "split trie was missing value")
+	}
+}
+
+func TestMultiSplit(t *testing.T) {
+	ctx := context.TODO()
+	s := blobs.NewMem()
+	x := New(s)
+
+	const MAX = 10000
+	split := false
+	count := 0
+	largeData := make([]byte, 1<<12)
+	for i := 0; i < MAX; i++ {
+		buf := make([]byte, 8)
+		binary.BigEndian.PutUint64(buf, uint64(i))
+
+		err := x.Put(ctx, buf, largeData)
+		require.Nil(t, err)
+		if x.IsParent() {
+			split = true
+			break
+		}
+		count++
+	}
+	if !split {
+		t.Error("trie did not split")
+	}
+
+	for i := 0; i < count; i++ {
+		buf := make([]byte, 8)
+		binary.BigEndian.PutUint64(buf, uint64(i))
+		v, err := x.Get(ctx, buf)
+		require.Nil(t, err)
+		require.NotNil(t, v)
+	}
+
+	assert.Greater(t, s.Len(), 2)
 }
 
 func TestPutGet(t *testing.T) {
@@ -76,5 +125,19 @@ func TestPutGet(t *testing.T) {
 		actual, err := x.Get(ctx, id[:])
 		assert.Nil(t, err)
 		assert.Equal(t, expected, actual)
+	}
+}
+
+func TestLopsided(t *testing.T) {
+	ctx := context.TODO()
+	s := blobs.NewMem()
+	x := New(s)
+
+	for i := 0; i < 10000; i++ {
+		blobID := blobs.ID{}
+		binary.BigEndian.PutUint64(blobID[:], uint64(i))
+
+		err := x.Put(ctx, blobID[:], nil)
+		require.Nil(t, err)
 	}
 }

@@ -97,6 +97,14 @@ func (bn *Blobnet) Close() error {
 	return nil
 }
 
+func (bn *Blobnet) HaveLocally(ctx context.Context, id blobs.ID) error {
+	return bn.blobRouter.Invalidate(ctx, id)
+}
+
+func (bn *Blobnet) GoneLocally(ctx context.Context, id blobs.ID) error {
+	return bn.blobRouter.Invalidate(ctx, id)
+}
+
 func (bn *Blobnet) Get(ctx context.Context, id blobs.ID) ([]byte, error) {
 	return bn.fetcher.Get(ctx, id)
 }

@@ -57,3 +57,33 @@ func (s *MemStore) Exists(ctx context.Context, id ID) (bool, error) {
 	data, _ := s.Get(ctx, id)
 	return data == nil, nil
 }
+
+func (s *MemStore) Len() (count int) {
+	s.m.Range(func(k, v interface{}) bool {
+		count++
+		return true
+	})
+	return count
+}
+
+type Void struct{}
+
+func (s Void) Post(ctx context.Context, data []byte) (ID, error) {
+	return Hash(data), nil
+}
+
+func (s Void) Get(ctx context.Context, id ID) ([]byte, error) {
+	return nil, ErrNotFound
+}
+
+func (s Void) Exists(ctx context.Context, id ID) (bool, error) {
+	return false, nil
+}
+
+func (s Void) List(ctx context.Context, prefix []byte, ids []ID) (int, error) {
+	return 0, nil
+}
+
+func (s Void) Delete(ctx context.Context, id ID) error {
+	return nil
+}

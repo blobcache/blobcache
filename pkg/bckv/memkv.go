@@ -17,13 +17,18 @@ func (kv *MemKV) Get(key []byte) ([]byte, error) {
 	if !ok {
 		return nil, nil
 	}
-	return value.([]byte), nil
+	bytes := value.([]byte)
+	return append([]byte{}, bytes...), nil
 }
 
 func (kv *MemKV) Put(key, value []byte) error {
 	count := atomic.LoadInt64(&kv.count)
 	if uint64(count) >= kv.Capacity {
-		return ErrFull
+		if v, err := kv.Get(key); err != nil {
+			return err
+		} else if v == nil {
+			return ErrFull
+		}
 	}
 	atomic.AddInt64(&kv.count, 1)
 	data := append([]byte{}, value...)

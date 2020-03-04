@@ -5,6 +5,11 @@ import (
 	"errors"
 )
 
+type Store interface {
+	GetPostDelete
+	Lister
+}
+
 type GetPostDelete interface {
 	Getter
 	Poster
