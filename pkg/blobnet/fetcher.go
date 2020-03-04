@@ -5,37 +5,45 @@ import (
 	"errors"
 	"io"
 
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/bcproto"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/blobrouting"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/go-p2p"
 	proto "github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 )
 
+type (
+	GetReq          = bcproto.GetReq
+	GetRes          = bcproto.GetRes
+	GetRes_Data     = bcproto.GetRes_Data
+	GetRes_Redirect = bcproto.GetRes_Redirect
+)
+
 type FetcherParams struct {
-	PeerRouter *Router
-	BlobRouter *BlobRouter
-	Swarm      p2p.SecureAskSwarm
-	PeerStore
-	Local blobs.Getter
+	PeerRouter *peerrouting.Router
+	BlobRouter *blobrouting.Router
+	PeerSwarm  *peers.PeerSwarm
+	Local      blobs.Getter
 }
 
 type Fetcher struct {
-	peerRouter *Router
-	blobRouter *BlobRouter
-
-	peerSwarm *PeerSwarm
-	local     blobs.Getter
+	peerRouter *peerrouting.Router
+	blobRouter *blobrouting.Router
+	peerSwarm  *peers.PeerSwarm
+	local      blobs.Getter
 }
 
 func NewFetcher(params FetcherParams) *Fetcher {
-	peerSwarm := NewPeerSwarm(params.Swarm, params.PeerStore)
 	f := &Fetcher{
 		peerRouter: params.PeerRouter,
 		blobRouter: params.BlobRouter,
-		peerSwarm:  peerSwarm,
+		peerSwarm:  params.PeerSwarm,
 		local:      params.Local,
 	}
-	peerSwarm.OnAsk(f.handleAsk)
+	params.PeerSwarm.OnAsk(f.handleAsk)
 
 	return f
 }
@@ -53,12 +61,14 @@ func (f *Fetcher) get(ctx context.Context, id blobs.ID, redirect *GetReq, n int)
 	)
 
 	if redirect != nil {
-		nextHop = f.peerRouter.lm.Peer(int(req.RoutingTag.Path[0]))
+		rt2, nh := f.peerRouter.ForwardWhere(req.RoutingTag)
 		req = redirect
+		req.RoutingTag = rt2
+		nextHop = nh
 	} else {
-		dst := f.blobRouter.WhoHas(id)
-		if dst != nil {
-			req.RoutingTag, nextHop = f.peerRouter.Lookup(*dst)
+		peers := f.blobRouter.Lookup(ctx, id)
+		if len(peers) > 0 {
+			req.RoutingTag, nextHop = f.peerRouter.Lookup(peers[0])
 			req.Found = true
 		} else {
 			id := f.peerRouter.Closest(id[:])
@@ -106,7 +116,7 @@ func (f *Fetcher) getReq(ctx context.Context, nextHop p2p.PeerID, req *GetReq) (
 	if err != nil {
 		panic(err)
 	}
-	resData, err := f.peerSwarm.Ask(ctx, nextHop, reqData)
+	resData, err := f.peerSwarm.AskPeer(ctx, nextHop, reqData)
 	if err != nil {
 		return nil, err
 	}

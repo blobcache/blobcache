@@ -1,4 +1,4 @@
-package blobnet
+package peers
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func NewPeerSwarm(s p2p.SecureAskSwarm, peerStore PeerStore) *PeerSwarm {
 	}
 }
 
-func (ps *PeerSwarm) Ask(ctx context.Context, dst p2p.PeerID, data []byte) ([]byte, error) {
+func (ps *PeerSwarm) AskPeer(ctx context.Context, dst p2p.PeerID, data []byte) ([]byte, error) {
 	for _, addr := range ps.GetAddrs(dst) {
 		res, err := ps.s.Ask(ctx, addr, data)
 		if err != nil {
@@ -41,7 +41,7 @@ func (ps *PeerSwarm) Ask(ctx context.Context, dst p2p.PeerID, data []byte) ([]by
 	return nil, errors.New("peer unreachable")
 }
 
-func (ps *PeerSwarm) Tell(ctx context.Context, dst p2p.PeerID, data []byte) error {
+func (ps *PeerSwarm) TellPeer(ctx context.Context, dst p2p.PeerID, data []byte) error {
 	for _, addr := range ps.GetAddrs(dst) {
 		err := ps.s.Tell(ctx, addr, data)
 		if err != nil {

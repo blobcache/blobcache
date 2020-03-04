@@ -1,4 +1,4 @@
-package blobnet
+package peerrouting
 
 import (
 	"sync"

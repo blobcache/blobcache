@@ -7,7 +7,7 @@ import (
 	"errors"
 
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
-	"github.com/brendoncarroll/blobcache/pkg/trie"
+	"github.com/brendoncarroll/blobcache/pkg/tries"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -31,7 +31,7 @@ type PinSetStore struct {
 	db *bolt.DB
 }
 
-func NewPinSetStore(db *bolt.DB) (*PinSetStore, error) {
+func NewPinSetStore(db *bolt.DB) *PinSetStore {
 	err := db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(bucketPinSets))
 		if err != nil {
@@ -44,11 +44,11 @@ func NewPinSetStore(db *bolt.DB) (*PinSetStore, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	return &PinSetStore{
 		db: db,
-	}, nil
+	}
 }
 
 func (s *PinSetStore) Create(ctx context.Context, name string) error {
@@ -132,7 +132,7 @@ func (s *PinSetStore) Get(ctx context.Context, name string) (*PinSet, error) {
 		if pinSetB == nil {
 			return ErrPinSetNotFound
 		}
-		t := trie.New(blobs.NewMem())
+		t := tries.New(blobs.NewMem())
 		count := uint64(0)
 		err := pinSetB.ForEach(func(k, v []byte) error {
 			return t.Put(ctx, k, nil)
@@ -142,7 +142,7 @@ func (s *PinSetStore) Get(ctx context.Context, name string) (*PinSet, error) {
 		}
 		ps = &PinSet{
 			Name:  name,
-			Root:  t.ID(),
+			Root:  blobs.Hash(t.Marshal()),
 			Count: count,
 		}
 		return nil

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-// Router
+// PeerRouting
 message RoutingTag {
     bytes dst_id = 1;
     repeated uint64 path = 2;
@@ -20,32 +20,30 @@ message PeerInfo {
     repeated uint64 path = 2;
 }
 
-// Indexer
+// BlobRouting
 message ListBlobsReq {
     RoutingTag routing_tag = 1;
     bytes prefix = 2;
+    bytes hash_algo = 3;
 }
 
 message ListBlobsRes {
-    bool too_many = 1;
-    repeated Claim = 2;
-}
-
-message Claim {
-
+    bytes trie_hash = 1;
+    bytes trie_data = 2;
 }
 
 message BlobLoc {
     bytes blob_id = 1;
     bytes peer_id = 2;
-    bytes ttl = 3;
+    int64 expires_at = 3;
 }
 
-// Blobs
+// Fetching
 message GetReq {
     RoutingTag routing_tag = 1;
     bytes blob_id = 2;
-    bool found = 3;
+    uint32 hash_algo = 3;
+    bool found = 4;
 }
 
 message GetRes {

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/brendoncarroll/blobcache/pkg/blobcache"
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/go-chi/chi"
 )
 
@@ -28,7 +27,7 @@ func NewServer(n *blobcache.Node, laddr string) *Server {
 			Addr:           laddr,
 			ReadTimeout:    10 * time.Second,
 			WriteTimeout:   10 * time.Second,
-			MaxHeaderBytes: 1 << 20,
+			MaxHeaderBytes: 1 << 17,
 		},
 		laddr: laddr,
 	}
@@ -84,14 +83,14 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	id, err := s.n.Post(ctx, "", buf[:total])
+	mh, err := s.n.Post(ctx, "", buf[:total])
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	idb64 := make([]byte, base64.URLEncoding.EncodedLen(len(id)))
-	base64.URLEncoding.Encode(idb64, id[:])
+	idb64 := make([]byte, base64.URLEncoding.EncodedLen(len(mh)))
+	base64.URLEncoding.Encode(idb64, mh[:])
 
 	_, err = w.Write(idb64)
 	if err != nil {
@@ -113,17 +112,15 @@ func (s *Server) addPin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	idBytes := make([]byte, base64.URLEncoding.DecodedLen(len(idb64)))
-	n, err := base64.URLEncoding.Decode(idBytes, idb64)
+	mhBytes := make([]byte, base64.URLEncoding.DecodedLen(len(idb64)))
+	n, err := base64.URLEncoding.Decode(mhBytes, idb64)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	idBytes = idBytes[:n]
-	id := blobs.ID{}
-	copy(id[:], idBytes)
-	if err := s.n.Pin(r.Context(), pinSetName, id); err != nil {
+	mhBytes = mhBytes[:n]
+	if err := s.n.Pin(r.Context(), pinSetName, mhBytes); err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
@@ -138,15 +135,13 @@ func (s *Server) getBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := blobs.ID{}
-	idBytes, err := base64.URLEncoding.DecodeString(idStr)
+	mhBytes, err := base64.URLEncoding.DecodeString(idStr)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	copy(id[:], idBytes[:])
-	b, err := s.n.Get(ctx, id)
+	b, err := s.n.Get(ctx, mhBytes)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)

@@ -5,12 +5,12 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	"github.com/brendoncarroll/go-p2p/p/simplemux"
+	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
+	"github.com/brendoncarroll/go-p2p/p/simplemux"
 	"github.com/brendoncarroll/go-p2p/s/multiswarm"
 	"github.com/brendoncarroll/go-p2p/s/quicswarm"
-	"github.com/brendoncarroll/blobcache/pkg/blobnet"
-	"github.com/dustin/go-humanize"
 	bolt "go.etcd.io/bbolt"
 	"gopkg.in/yaml.v3"
 )
@@ -39,29 +39,26 @@ func (cf ConfigFile) Save(c Config) error {
 }
 
 type Config struct {
-	PrivateKey []byte             `yaml:"private_key,flow"`
-	DataDir    string             `yaml:"data_dir"`
-	Capacity   string             `yaml:"capacity"`
-	Peers      []blobnet.PeerSpec `yaml:"peers"`
+	PrivateKey    []byte           `yaml:"private_key,flow"`
+	DataDir       string           `yaml:"data_dir"`
+	EphemeralCap  uint64           `yaml:"ephemeral_capacity"`
+	PersistentCap uint64           `yaml:"persistent_capacity`
+	Peers         []peers.PeerSpec `yaml:"peers"`
 }
 
 func (c *Config) Params() (*Params, error) {
-	// local store
-	dataPath := filepath.Join(c.DataDir, "data.db")
-	dataDB, err := bolt.Open(dataPath, 0666, nil)
+	persistentPath := filepath.Join(c.DataDir, "blobcache_persistent.db")
+	persistentDB, err := bolt.Open(persistentPath, 0666, nil)
 	if err != nil {
 		return nil, err
 	}
-	metadataPath := filepath.Join(c.DataDir, "metadata.db")
+	ephemeralPath := filepath.Join(c.DataDir, "blobcache_ephemeral.db")
+	ephemeralDB, err := bolt.Open(ephemeralPath, 0666, nil)
+	if err != nil {
+		return nil, err
+	}
+	metadataPath := filepath.Join(c.DataDir, "blobcache_metadata.db")
 	metadataDB, err := bolt.Open(metadataPath, 0666, nil)
-	if err != nil {
-		return nil, err
-	}
-	capacity, err := humanize.ParseBytes(c.Capacity)
-	if err != nil {
-		return nil, err
-	}
-	cache, err := NewBoltKV(dataDB, []byte("data"), capacity)
 	if err != nil {
 		return nil, err
 	}
@@ -83,10 +80,13 @@ func (c *Config) Params() (*Params, error) {
 	mux := simplemux.MultiplexSwarm(swarm)
 
 	return &Params{
-		Mux: mux,
-
-		Cache:      cache,
+		Mux:        mux,
+		PeerStore:  &peers.PeerList{},
 		MetadataDB: metadataDB,
+		PrivateKey: privKey2,
+
+		Ephemeral:  bckv.NewBoltKV(ephemeralDB, c.EphemeralCap),
+		Persistent: bckv.NewBoltKV(persistentDB, c.PersistentCap),
 	}, nil
 }
 

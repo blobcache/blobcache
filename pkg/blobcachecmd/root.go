@@ -7,8 +7,6 @@ import (
 	"github.com/brendoncarroll/blobcache/pkg/bchttp"
 	"github.com/brendoncarroll/blobcache/pkg/blobcache"
 	"github.com/spf13/cobra"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 func Execute() error {
@@ -27,33 +25,25 @@ var runCmd = &cobra.Command{
 	Use:   "run",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		const laddr = "127.0.0.1:8026"
-		dataDB, err := bolt.Open("./data.db", 0666, nil)
+		configPath := "./blobcache.yml"
+		configFile := blobcache.NewConfigFile(configPath)
+		config, err := configFile.Load()
 		if err != nil {
 			return err
 		}
-		metadataDB, err := bolt.Open("./metadata.db", 0666, nil)
+		params, err := config.Params()
 		if err != nil {
 			return err
 		}
-
-		cache, err := blobcache.NewBoltKV(dataDB, []byte("data"), 1e5)
-		if err != nil {
-			return err
-		}
-
-		params := blobcache.Params{
-			MetadataDB: metadataDB,
-			Cache:      cache,
-		}
-		node, err = blobcache.NewNode(params)
-		if err != nil {
-			return err
-		}
+		node = blobcache.NewNode(*params)
 		defer func() {
 			if err := node.Shutdown(); err != nil {
 				log.Println(err)
 			}
 		}()
+		s := bchttp.NewServer(node, laddr)
+		return s.Run(context.Background())
+
 		server := bchttp.NewServer(node, laddr)
 		if err := server.Run(context.Background()); err != nil {
 			return err

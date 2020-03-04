@@ -1,4 +1,4 @@
-package blobnet
+package peerrouting
 
 import (
 	"bytes"
@@ -8,20 +8,47 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brendoncarroll/blobcache/pkg/blobnet/bcproto"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/kademlia"
 	proto "github.com/golang/protobuf/proto"
+	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
+)
+
+type (
+	RoutingTag   = bcproto.RoutingTag
+	PeerInfo     = bcproto.PeerInfo
+	ListPeersReq = bcproto.ListPeersReq
+	ListPeersRes = bcproto.ListPeersRes
+
+	Path = []uint64
 )
 
 var (
 	ErrNoRouteToPeer = errors.New("no route to peer")
 )
 
-type Path = []uint64
+type PeerSwarm interface {
+	AskPeer(ctx context.Context, id p2p.PeerID, data []byte) ([]byte, error)
+	OnAsk(p2p.AskHandler)
+
+	LocalID() p2p.PeerID
+	ListPeers() []p2p.PeerID
+
+	Close() error
+}
+
+type RouterParams struct {
+	PeerSwarm
+	QueryPeriod time.Duration
+	CacheSize   int
+	Clock       clockwork.Clock
+}
 
 type Router struct {
-	peerSwarm   *PeerSwarm
+	peerSwarm   PeerSwarm
+	clock       clockwork.Clock
 	queryPeriod time.Duration
 
 	lm *LinkMap
@@ -31,15 +58,8 @@ type Router struct {
 	cache *kademlia.Cache
 }
 
-type RouterParams struct {
-	Swarm       p2p.SecureAskSwarm
-	PeerStore   PeerStore
-	QueryPeriod time.Duration
-	CacheSize   int
-}
-
 func NewRouter(params RouterParams) *Router {
-	peerSwarm := NewPeerSwarm(params.Swarm, params.PeerStore)
+	peerSwarm := params.PeerSwarm
 	queryPeriod := params.QueryPeriod
 	if queryPeriod == 0 {
 		queryPeriod = time.Minute
@@ -58,6 +78,7 @@ func NewRouter(params RouterParams) *Router {
 	r := &Router{
 		peerSwarm:   peerSwarm,
 		queryPeriod: queryPeriod,
+		clock:       params.Clock,
 
 		cf: cf,
 		lm: lm,
@@ -94,6 +115,7 @@ func (r *Router) Lookup(peerID p2p.PeerID) (*RoutingTag, p2p.PeerID) {
 func (r *Router) PathTo(id p2p.PeerID) Path {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	x := r.cache.Lookup(id[:])
 	if x == nil {
 		// check if it's onehop
@@ -105,14 +127,44 @@ func (r *Router) PathTo(id p2p.PeerID) Path {
 		}
 		return nil
 	}
+	return append(Path{}, x.(Path)...)
+}
 
-	return x.(Path)
+// ForwardWhere looks up which peer rt.Path[0] corresponds to and returns
+// their id, and a modified routing tag for the next peer.
+// if routing tag is nil, the caller should abandon any attempt to forward the message.
+func (r *Router) ForwardWhere(rt *RoutingTag) (*RoutingTag, p2p.PeerID) {
+	if rt == nil {
+		return nil, p2p.ZeroPeerID()
+	}
+
+	// see if we know a shorter route
+	dstID := p2p.PeerID{}
+	copy(dstID[:], rt.DstId)
+	rt2, nextHop := r.Lookup(dstID)
+	if rt2 != nil && len(rt2.Path) < len(rt.Path) {
+		return rt2, nextHop
+	}
+
+	// lookup the peer at index
+	if len(rt.Path) == 0 {
+		return nil, p2p.ZeroPeerID()
+	}
+	id := r.lm.Peer(int(rt.Path[0]))
+	if id == p2p.ZeroPeerID() {
+		return nil, id
+	}
+	rt2 = &RoutingTag{
+		DstId: rt.DstId,
+		Path:  rt.Path[1:],
+	}
+	return rt2, id
 }
 
 func (r *Router) Closest(key []byte) p2p.PeerID {
-	r.mu.Lock()
+	r.mu.RLock()
 	e := r.cache.Closest(key)
-	r.mu.Unlock()
+	r.mu.RUnlock()
 
 	closest := r.peerSwarm.LocalID()
 	if e != nil {
@@ -163,6 +215,7 @@ func (r *Router) GetPeerInfos() []*PeerInfo {
 		peerInfos = append(peerInfos, pinfo)
 	}
 
+	r.mu.RLock()
 	r.cache.ForEach(func(e kademlia.Entry) bool {
 		path := []uint64{}
 		for _, index := range e.Value.(Path) {
@@ -175,18 +228,32 @@ func (r *Router) GetPeerInfos() []*PeerInfo {
 		peerInfos = append(peerInfos, pinfo)
 		return true
 	})
+	r.mu.RUnlock()
 	return peerInfos
 }
 
-func (r *Router) run(ctx context.Context) {
-	ticker := time.NewTicker(r.queryPeriod)
-	defer ticker.Stop()
+func (r *Router) Bootstrap(ctx context.Context) {
+	const max = 10
+	lastCount := r.cache.Count()
+	for i := 0; i < max; i++ {
+		r.queryPeers(ctx)
+		count := r.cache.Count()
+		if r.cache.IsFull() || count <= lastCount {
+			break
+		}
+		lastCount = count
+	}
+}
 
-	r.queryPeers(ctx)
+func (r *Router) run(ctx context.Context) {
+	ticker := r.clock.NewTicker(r.queryPeriod)
+	defer ticker.Stop()
+	log.Info("starting peer router")
+	defer func() { log.Info("stopped peer router") }()
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-ticker.Chan():
 			ctx, cf := context.WithTimeout(ctx, r.queryPeriod/2)
 			r.queryPeers(ctx)
 			cf()
@@ -234,7 +301,7 @@ func (r *Router) queryPeer(ctx context.Context, peerID p2p.PeerID) error {
 		if err != nil {
 			panic(err)
 		}
-		resData, err := r.peerSwarm.Ask(ctx, nextHopPeer, reqData)
+		resData, err := r.peerSwarm.AskPeer(ctx, nextHopPeer, reqData)
 		if err != nil {
 			return err
 		}
@@ -326,7 +393,7 @@ func (r *Router) forwardAsk(ctx context.Context, req *ListPeersReq) (*ListPeersR
 		panic(err)
 	}
 
-	resData, err := r.peerSwarm.Ask(ctx, peerID, req2Data)
+	resData, err := r.peerSwarm.AskPeer(ctx, peerID, req2Data)
 	if err != nil {
 		return nil, err
 	}
@@ -367,8 +434,8 @@ func (r *Router) putPeer(id p2p.PeerID, p Path) {
 	defer r.mu.Unlock()
 	v := r.cache.Lookup(id[:])
 	if v != nil {
-		p2 := v.(Path)
-		if len(p) < len(p2) {
+		currentPath := v.(Path)
+		if len(p) < len(currentPath) {
 			r.cache.Put(id[:], p)
 		}
 		log.Info("found shorter path for peer")
