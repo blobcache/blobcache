@@ -13,7 +13,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.4.0
 	github.com/zeebo/blake3 v0.0.1
-	go.etcd.io/bbolt v1.3.3
+	go.etcd.io/bbolt v1.3.4
 	gopkg.in/yaml.v3 v3.0.0-20191026110619-0b21df46bc1d
 	gotest.tools v2.2.0+incompatible
 )

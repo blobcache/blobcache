@@ -1,11 +1,14 @@
-package blobcache
+package blobcachecmd
 
 import (
+	"crypto/ed25519"
 	"crypto/x509"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 
 	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/blobcache"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
@@ -41,23 +44,52 @@ func (cf ConfigFile) Save(c Config) error {
 type Config struct {
 	PrivateKey    []byte           `yaml:"private_key,flow"`
 	DataDir       string           `yaml:"data_dir"`
+	QUICAddr      string           `yaml:"quic_addr"`
+	APIAddr       string           `yaml:"api_addr"`
 	EphemeralCap  uint64           `yaml:"ephemeral_capacity"`
-	PersistentCap uint64           `yaml:"persistent_capacity`
+	PersistentCap uint64           `yaml:"persistent_capacity"`
 	Peers         []peers.PeerSpec `yaml:"peers"`
 }
 
-func (c *Config) Params() (*Params, error) {
-	persistentPath := filepath.Join(c.DataDir, "blobcache_persistent.db")
+func DefaultConfig() *Config {
+	_, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		panic(err)
+	}
+	pkData, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		panic(err)
+	}
+
+	return &Config{
+		PrivateKey: pkData,
+		DataDir:    ".",
+
+		QUICAddr: "0.0.0.0:",
+		APIAddr:  "127.0.0.1:6025",
+
+		EphemeralCap:  1000,
+		PersistentCap: 1000,
+		Peers:         nil,
+	}
+}
+
+func buildParams(configPath string, c Config) (*blobcache.Params, error) {
+	dataDir := c.DataDir
+	if strings.HasPrefix(c.DataDir, "./") {
+		dataDir = filepath.Join(configPath, c.DataDir)
+	}
+	persistentPath := filepath.Join(dataDir, "blobcache_persistent.db")
 	persistentDB, err := bolt.Open(persistentPath, 0666, nil)
 	if err != nil {
 		return nil, err
 	}
-	ephemeralPath := filepath.Join(c.DataDir, "blobcache_ephemeral.db")
+	ephemeralPath := filepath.Join(dataDir, "blobcache_ephemeral.db")
 	ephemeralDB, err := bolt.Open(ephemeralPath, 0666, nil)
 	if err != nil {
 		return nil, err
 	}
-	metadataPath := filepath.Join(c.DataDir, "blobcache_metadata.db")
+	metadataPath := filepath.Join(dataDir, "blobcache_metadata.db")
 	metadataDB, err := bolt.Open(metadataPath, 0666, nil)
 	if err != nil {
 		return nil, err
@@ -73,13 +105,13 @@ func (c *Config) Params() (*Params, error) {
 		panic("bad private key")
 	}
 
-	swarm, err := setupSwarm(privKey2)
+	swarm, err := setupSwarm(privKey2, c.QUICAddr)
 	if err != nil {
 		return nil, err
 	}
 	mux := simplemux.MultiplexSwarm(swarm)
 
-	return &Params{
+	return &blobcache.Params{
 		Mux:        mux,
 		PeerStore:  &peers.PeerList{},
 		MetadataDB: metadataDB,
@@ -90,8 +122,8 @@ func (c *Config) Params() (*Params, error) {
 	}, nil
 }
 
-func setupSwarm(privKey p2p.PrivateKey) (p2p.Swarm, error) {
-	quicSw, err := quicswarm.New("0.0.0.0:", privKey)
+func setupSwarm(privKey p2p.PrivateKey, quicAddr string) (p2p.Swarm, error) {
+	quicSw, err := quicswarm.New(quicAddr, privKey)
 	if err != nil {
 		return nil, err
 	}
@@ -99,10 +131,4 @@ func setupSwarm(privKey p2p.PrivateKey) (p2p.Swarm, error) {
 		"quic": quicSw,
 	}
 	return multiswarm.NewSecureAsk(transports), nil
-}
-
-type PeerSpec struct {
-	Trust    int64
-	Nickname string
-	Addrs    []string
 }
