@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/brendoncarroll/blobcache/pkg/blobcache"
@@ -14,13 +15,13 @@ import (
 )
 
 type Server struct {
-	n     *blobcache.Node
+	n     blobcache.API
 	r     chi.Router
 	hs    http.Server
 	laddr string
 }
 
-func NewServer(n *blobcache.Node, laddr string) *Server {
+func NewServer(n blobcache.API, laddr string) *Server {
 	s := &Server{
 		n: n,
 		hs: http.Server{
@@ -36,9 +37,9 @@ func NewServer(n *blobcache.Node, laddr string) *Server {
 	r.Route("/s", func(r chi.Router) {
 		r.Post("/", s.createPinSet)
 
-		r.Put("/{pinSetName}", s.addPin)
-		r.Get("/{pinSetName}/{blobID}", s.getBlob)
-		r.Delete("/{pinSetName}/{blobID}", s.deletePin)
+		r.Put("/{pinSetID:[0-9]+}", s.addPin)
+		r.Get("/{pinSetID:[0-9]+}/{blobID}", s.getBlob)
+		r.Delete("/{pinSetID}/{blobID}", s.deletePin)
 	})
 
 	r.Get("/{blobID}", s.getBlob)
@@ -83,7 +84,7 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	mh, err := s.n.Post(ctx, "", buf[:total])
+	mh, err := s.n.Post(ctx, 0, buf[:total])
 	if err != nil {
 		log.Println(err)
 		return
@@ -100,8 +101,13 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) addPin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	pinSetName, ok := ctx.Value("pinSetName").(string)
+	idStr, ok := ctx.Value("pinSetID").(string)
 	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	pinSetID, err := strconv.Atoi(idStr)
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -120,7 +126,7 @@ func (s *Server) addPin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mhBytes = mhBytes[:n]
-	if err := s.n.Pin(r.Context(), pinSetName, mhBytes); err != nil {
+	if err := s.n.Pin(r.Context(), blobcache.PinSetID(pinSetID), mhBytes); err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
@@ -162,11 +168,12 @@ func (s *Server) createPinSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := s.n.CreatePinSet(ctx, string(data)); err != nil {
+	id, err := s.n.CreatePinSet(ctx, string(data))
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(strconv.Itoa(int(id))))
 }
 
 func (s *Server) deletePin(w http.ResponseWriter, r *http.Request) {

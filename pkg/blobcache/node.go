@@ -16,6 +16,23 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+type API interface {
+	// PinSets
+	CreatePinSet(ctx context.Context, name string) (PinSetID, error)
+	DeletePinSet(ctx context.Context, pinset PinSetID) error
+	GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error)
+	Pin(ctx context.Context, pinset PinSetID, mh []byte) error
+	Unpin(ctx context.Context, pinset PinSetID, mh []byte) error
+
+	// Blobs
+	Post(ctx context.Context, pinset PinSetID, data []byte) ([]byte, error)
+	Get(ctx context.Context, mh []byte) ([]byte, error)
+
+	MaxBlobSize() int
+}
+
+var _ API = &Node{}
+
 type Params struct {
 	MetadataDB *bolt.DB
 
@@ -86,24 +103,28 @@ func (n *Node) Shutdown() error {
 	return n.bn.Close()
 }
 
-func (n *Node) CreatePinSet(ctx context.Context, name string) error {
+func (n *Node) CreatePinSet(ctx context.Context, name string) (PinSetID, error) {
 	return n.pinSets.Create(ctx, name)
 }
 
-func (n *Node) Pin(ctx context.Context, name string, mh []byte) error {
-	id, err := decodeMH(mh)
-	if err != nil {
-		return err
-	}
-	return n.pinSets.Pin(ctx, name, id)
+func (n *Node) DeletePinSet(ctx context.Context, pinset PinSetID) error {
+	return n.pinSets.Delete(ctx, pinset)
 }
 
-func (n *Node) Unpin(ctx context.Context, name string, mh []byte) error {
+func (n *Node) Pin(ctx context.Context, pinset PinSetID, mh []byte) error {
 	id, err := decodeMH(mh)
 	if err != nil {
 		return err
 	}
-	return n.pinSets.Unpin(ctx, name, id)
+	return n.pinSets.Pin(ctx, pinset, id)
+}
+
+func (n *Node) Unpin(ctx context.Context, pinset PinSetID, mh []byte) error {
+	id, err := decodeMH(mh)
+	if err != nil {
+		return err
+	}
+	return n.pinSets.Unpin(ctx, pinset, id)
 }
 
 func (n *Node) Get(ctx context.Context, mh []byte) (blobs.Blob, error) {
@@ -115,9 +136,9 @@ func (n *Node) Get(ctx context.Context, mh []byte) (blobs.Blob, error) {
 	return readChain.Get(ctx, id)
 }
 
-func (n *Node) Post(ctx context.Context, name string, data []byte) ([]byte, error) {
+func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) ([]byte, error) {
 	id := blobs.Hash(data)
-	if err := n.pinSets.Pin(ctx, name, id); err != nil {
+	if err := n.pinSets.Pin(ctx, pinset, id); err != nil {
 		return nil, err
 	}
 	mh := encodeMH(id)
@@ -148,8 +169,8 @@ func (n *Node) Post(ctx context.Context, name string, data []byte) ([]byte, erro
 	return mh, nil
 }
 
-func (n *Node) GetPinSet(ctx context.Context, name string) (*PinSet, error) {
-	return n.pinSets.Get(ctx, name)
+func (n *Node) GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error) {
+	return n.pinSets.Get(ctx, pinset)
 }
 
 func (n *Node) MaxBlobSize() int {

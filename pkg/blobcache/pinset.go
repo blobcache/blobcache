@@ -13,6 +13,7 @@ import (
 
 const (
 	bucketPinSets      = "pinsets"
+	bucketPinSetNames  = "pinsets-names"
 	bucketPinRefCounts = "pinrefcount"
 )
 
@@ -21,7 +22,10 @@ var (
 	ErrPinSetNotFound = errors.New("pinset not found")
 )
 
+type PinSetID int64
+
 type PinSet struct {
+	ID    PinSetID `json:"id"`
 	Name  string   `json:"name"`
 	Root  blobs.ID `json:"root"`
 	Count uint64   `json:"count"`
@@ -51,46 +55,52 @@ func NewPinSetStore(db *bolt.DB) *PinSetStore {
 	}
 }
 
-func (s *PinSetStore) Create(ctx context.Context, name string) error {
+func (s *PinSetStore) Create(ctx context.Context, name string) (PinSetID, error) {
+	var id PinSetID
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketPinSets))
-		_, err := b.CreateBucketIfNotExists([]byte(name))
+		seq, err := b.NextSequence()
+		if err != nil {
+			return err
+		}
+		id = PinSetID(seq)
+		_, err = b.CreateBucketIfNotExists(idToKey(id))
 		if err == bolt.ErrBucketExists {
 			err = ErrPinSetExists
 		}
 		return err
 	})
-	return err
+	return id, err
 }
 
-func (s *PinSetStore) Pin(ctx context.Context, name string, id blobs.ID) error {
+func (s *PinSetStore) Pin(ctx context.Context, psID PinSetID, id blobs.ID) error {
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		rc := tx.Bucket([]byte(bucketPinRefCounts))
 		b := tx.Bucket([]byte(bucketPinSets))
-		pinSetB := b.Bucket([]byte(name))
+		pinSetB := b.Bucket(idToKey(psID))
 		if pinSetB == nil {
 			return ErrPinSetNotFound
 		}
-		if err := pinSetB.Put([]byte(name), []byte{}); err != nil {
+		if err := pinSetB.Put(id[:], []byte{}); err != nil {
 			return err
 		}
-		return pinIncr(rc, []byte(name))
+		return pinIncr(rc, id)
 	})
 	return err
 }
 
-func (s *PinSetStore) Unpin(ctx context.Context, name string, id blobs.ID) error {
+func (s *PinSetStore) Unpin(ctx context.Context, psID PinSetID, id blobs.ID) error {
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		rc := tx.Bucket([]byte(bucketPinRefCounts))
 		b := tx.Bucket([]byte(bucketPinSets))
-		pinSetB := b.Bucket([]byte(name))
+		pinSetB := b.Bucket(idToKey(psID))
 		if pinSetB == nil {
 			return ErrPinSetNotFound
 		}
-		if err := pinSetB.Delete([]byte(name)); err != nil {
+		if err := pinSetB.Delete(id[:]); err != nil {
 			return err
 		}
-		return pinDecr(rc, []byte(name))
+		return pinDecr(rc, id)
 	})
 	return err
 }
@@ -120,15 +130,14 @@ func (s *PinSetStore) IsPinned(ctx context.Context, id blobs.ID) (bool, error) {
 	return pinned, err
 }
 
-func (s *PinSetStore) Get(ctx context.Context, name string) (*PinSet, error) {
+func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
 	//TODO: cache this in the pinsets bucket
-	// i.e. pinset name -> json pinset data
 	// so we don't have to build the Trie every time
 
 	var ps *PinSet
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketPinSets))
-		pinSetB := b.Bucket([]byte(name))
+		pinSetB := b.Bucket(idToKey(id))
 		if pinSetB == nil {
 			return ErrPinSetNotFound
 		}
@@ -141,13 +150,34 @@ func (s *PinSetStore) Get(ctx context.Context, name string) (*PinSet, error) {
 			return err
 		}
 		ps = &PinSet{
-			Name:  name,
+			ID:    id,
 			Root:  blobs.Hash(t.Marshal()),
 			Count: count,
 		}
 		return nil
 	})
 	return ps, err
+}
+
+func (s *PinSetStore) Delete(ctx context.Context, id PinSetID) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		rc := tx.Bucket([]byte(bucketPinRefCounts))
+		b := tx.Bucket([]byte(bucketPinSets))
+		pinSetB := b.Bucket(idToKey(id))
+		if pinSetB == nil {
+			return ErrPinSetNotFound
+		}
+		// first decrement all the pins
+		c := pinSetB.Cursor()
+		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+			blobID := blobs.ID{}
+			copy(blobID[:], k)
+			if err := pinDecr(rc, blobID); err != nil {
+				return err
+			}
+		}
+		return b.DeleteBucket(idToKey(id))
+	})
 }
 
 func (s *PinSetStore) List(ctx context.Context, prefix []byte, ids []blobs.ID) (n int, err error) {
@@ -173,7 +203,8 @@ func (s *PinSetStore) List(ctx context.Context, prefix []byte, ids []blobs.ID) (
 	return n, err
 }
 
-func pinIncr(b *bolt.Bucket, key []byte) error {
+func pinIncr(b *bolt.Bucket, id blobs.ID) error {
+	key := id[:]
 	data := b.Get(key)
 	if data == nil {
 		data := make([]byte, binary.MaxVarintLen64)
@@ -188,7 +219,8 @@ func pinIncr(b *bolt.Bucket, key []byte) error {
 	return b.Put(key, data)
 }
 
-func pinDecr(b *bolt.Bucket, key []byte) error {
+func pinDecr(b *bolt.Bucket, id blobs.ID) error {
+	key := id[:]
 	data := b.Get(key)
 	if data == nil {
 		return errors.New("can't decrement null")
@@ -201,4 +233,14 @@ func pinDecr(b *bolt.Bucket, key []byte) error {
 	n := binary.PutUvarint(data, x)
 	data = data[:n]
 	return b.Put(key, data)
+}
+
+func idToKey(id PinSetID) []byte {
+	buf := [8]byte{}
+	binary.BigEndian.PutUint64(buf[:], uint64(id))
+	return buf[:]
+}
+
+func keyToID(x []byte) PinSetID {
+	return PinSetID(binary.BigEndian.Uint64(x))
 }
