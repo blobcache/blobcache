@@ -7,7 +7,7 @@ var (
 )
 
 type KV interface {
-	Get(k []byte) ([]byte, error)
+	GetF(k []byte, f func([]byte) error) error
 
 	Put(k, v []byte) error
 

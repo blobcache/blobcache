@@ -14,17 +14,17 @@ func BlobAdapter(c KV) blobAdapter {
 	return blobAdapter{c: c}
 }
 
-func (s blobAdapter) Get(ctx context.Context, id blobs.ID) ([]byte, error) {
-	data, err := s.c.Get(id[:])
-	if data == nil {
-		err = blobs.ErrNotFound
-	}
-	return data, err
+func (s blobAdapter) GetF(ctx context.Context, id blobs.ID, fn func(data []byte) error) error {
+	return s.c.GetF(id[:], fn)
 }
 
 func (s blobAdapter) Exists(ctx context.Context, id blobs.ID) (bool, error) {
-	_, err := s.Get(ctx, id)
-	return err != nil, err
+	exists := false
+	err := s.GetF(ctx, id, func(data []byte) error {
+		exists = true
+		return nil
+	})
+	return exists, err
 }
 
 func (s blobAdapter) Post(ctx context.Context, data []byte) (blobs.ID, error) {

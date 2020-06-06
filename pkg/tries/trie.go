@@ -223,7 +223,11 @@ func (t *trie) getChild(ctx context.Context, i byte) (*trie, error) {
 	if ref.Equals(blobs.ZeroID()) {
 		return nil, nil
 	}
-	data, err := t.store.Get(ctx, ref)
+	var data []byte
+	err := t.store.GetF(ctx, ref, func(b []byte) error {
+		data = append(data, b...)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}

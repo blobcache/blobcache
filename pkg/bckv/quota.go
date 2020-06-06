@@ -5,8 +5,8 @@ type FixedQuota struct {
 	Capacity uint64
 }
 
-func (q *FixedQuota) Get(key []byte) ([]byte, error) {
-	return q.Store.Get(key)
+func (q *FixedQuota) GetF(key []byte, f func([]byte) error) error {
+	return q.Store.GetF(key, f)
 }
 
 func (q *FixedQuota) Put(key, value []byte) error {

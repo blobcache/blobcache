@@ -17,7 +17,7 @@ type GetPostDelete interface {
 }
 
 type Getter interface {
-	Get(context.Context, ID) (Blob, error)
+	GetF(context.Context, ID, func(Blob) error) error
 	Exists(context.Context, ID) (bool, error)
 }
 

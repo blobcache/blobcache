@@ -21,18 +21,15 @@ func NewBoltKV(db *bolt.DB, capacity uint64) *BoltKV {
 	}
 }
 
-func (kv *BoltKV) Get(key []byte) ([]byte, error) {
-	var data []byte
-	err := kv.db.View(func(tx *bolt.Tx) error {
+func (kv *BoltKV) GetF(key []byte, f func([]byte) error) error {
+	return kv.db.View(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
 		if b == nil {
 			return nil
 		}
 		value := b.Get(key)
-		data = append([]byte{}, value...)
-		return nil
+		return f(value)
 	})
-	return data, err
 }
 
 func (kv *BoltKV) Put(key, value []byte) error {

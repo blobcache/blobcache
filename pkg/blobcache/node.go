@@ -16,6 +16,13 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+var _ API
+
+type API interface {
+}
+
+var _ API = &Node{}
+
 type Params struct {
 	MetadataDB *bolt.DB
 

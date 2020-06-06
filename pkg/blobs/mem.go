@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+var _ GetPostDelete = &MemStore{}
+
 type MemStore struct {
 	m sync.Map
 }
@@ -23,12 +25,12 @@ func (s *MemStore) Post(ctx context.Context, data []byte) (ID, error) {
 	return id, nil
 }
 
-func (s *MemStore) Get(ctx context.Context, id ID) ([]byte, error) {
+func (s *MemStore) GetF(ctx context.Context, id ID, f func(Blob) error) error {
 	data, exists := s.m.Load(id)
 	if !exists {
-		return nil, nil
+		return ErrNotFound
 	}
-	return data.([]byte), nil
+	return f(data.([]byte))
 }
 
 func (s *MemStore) List(ctx context.Context, prefix []byte, ids []ID) (n int, err error) {
@@ -54,8 +56,8 @@ func (s *MemStore) Delete(ctx context.Context, id ID) error {
 }
 
 func (s *MemStore) Exists(ctx context.Context, id ID) (bool, error) {
-	data, _ := s.Get(ctx, id)
-	return data == nil, nil
+	_, ok := s.m.Load(id)
+	return ok, nil
 }
 
 func (s *MemStore) Len() (count int) {
@@ -66,14 +68,16 @@ func (s *MemStore) Len() (count int) {
 	return count
 }
 
+var _ GetPostDelete = Void{}
+
 type Void struct{}
 
 func (s Void) Post(ctx context.Context, data []byte) (ID, error) {
 	return Hash(data), nil
 }
 
-func (s Void) Get(ctx context.Context, id ID) ([]byte, error) {
-	return nil, ErrNotFound
+func (s Void) GetF(ctx context.Context, id ID, f func(data []byte) error) error {
+	return ErrNotFound
 }
 
 func (s Void) Exists(ctx context.Context, id ID) (bool, error) {

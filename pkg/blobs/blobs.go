@@ -28,12 +28,18 @@ func (a ID) Cmp(b ID) int {
 
 func ZeroID() ID { return ID{} }
 
-func (id *ID) MarshalJSON() ([]byte, error) {
-	return json.Marshal(id[:])
+func (id ID) MarshalJSON() ([]byte, error) {
+	s := base64.RawURLEncoding.EncodeToString(id[:])
+	return json.Marshal(s)
 }
 
 func (id *ID) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, id[:])
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	_, err := base64.RawURLEncoding.Decode(id[:], []byte(s))
+	return err
 }
 
 type Blob = []byte
@@ -42,7 +48,7 @@ func Hash(data []byte) ID {
 	h := blake3.New()
 	h.Write(data)
 	id := ID{}
-	idBytes := h.Sum(make([]byte, 0, 32))
+	idBytes := h.Sum(nil)
 	copy(id[:], idBytes)
 	return id
 }
