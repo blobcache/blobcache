@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/bcstate"
 	"github.com/brendoncarroll/blobcache/pkg/blobcache"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
@@ -17,6 +17,8 @@ import (
 	bolt "go.etcd.io/bbolt"
 	"gopkg.in/yaml.v3"
 )
+
+const DefaultAPIAddr = "127.0.0.1:6025"
 
 type ConfigFile struct {
 	p string
@@ -66,7 +68,7 @@ func DefaultConfig() *Config {
 		DataDir:    ".",
 
 		QUICAddr: "0.0.0.0:",
-		APIAddr:  "127.0.0.1:6025",
+		APIAddr:  DefaultAPIAddr,
 
 		EphemeralCap:  1000,
 		PersistentCap: 1000,
@@ -117,8 +119,14 @@ func buildParams(configPath string, c Config) (*blobcache.Params, error) {
 		MetadataDB: metadataDB,
 		PrivateKey: privKey2,
 
-		Ephemeral:  bckv.NewBoltKV(ephemeralDB, c.EphemeralCap),
-		Persistent: bckv.NewBoltKV(persistentDB, c.PersistentCap),
+		Ephemeral: &bcstate.QuotaDB{
+			DB:       bcstate.NewBoltDB(ephemeralDB),
+			Capacity: c.EphemeralCap,
+		},
+		Persistent: &bcstate.QuotaDB{
+			DB:       bcstate.NewBoltDB(persistentDB),
+			Capacity: c.PersistentCap,
+		},
 	}, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/brendoncarroll/blobcache/pkg/blobcache"
+	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/go-chi/chi"
 )
 
@@ -141,18 +142,19 @@ func (s *Server) getBlob(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	b, err := s.n.Get(ctx, mhBytes)
+	err = s.n.GetF(ctx, mhBytes, func(data []byte) error {
+		_, err := w.Write(data)
+		return err
+	})
 	if err != nil {
+		if err == blobs.ErrNotFound {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if b == nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-	w.Write(b)
 }
 
 func (s *Server) createPinSet(w http.ResponseWriter, r *http.Request) {

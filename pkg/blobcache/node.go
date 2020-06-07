@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/bcstate"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
@@ -16,18 +16,11 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-var _ API
-
-type API interface {
-}
-
-var _ API = &Node{}
-
 type Params struct {
 	MetadataDB *bolt.DB
 
-	Ephemeral  bckv.KV
-	Persistent bckv.KV
+	Ephemeral  bcstate.DB
+	Persistent bcstate.DB
 
 	Mux        simplemux.Muxer
 	PrivateKey p2p.PrivateKey
@@ -38,10 +31,9 @@ type Params struct {
 
 type Node struct {
 	metadataDB *bolt.DB
-	dataDB     *bolt.DB
 
-	ephemeral  bckv.KV
-	persistent bckv.KV
+	ephemeral  bcstate.DB
+	persistent bcstate.DB
 	pinSets    *PinSetStore
 
 	readChain  blobs.ReadChain
@@ -57,8 +49,8 @@ func NewNode(params Params) *Node {
 	persistentBlobs := params.Persistent.Bucket("blobs")
 
 	readChain := blobs.ReadChain{
-		bckv.BlobAdapter(ephemeralBlobs),
-		bckv.BlobAdapter(persistentBlobs),
+		bcstate.BlobAdapter(ephemeralBlobs),
+		bcstate.BlobAdapter(persistentBlobs),
 	}
 	for _, extSource := range params.ExternalSources {
 		readChain = append(readChain, extSource)
@@ -81,7 +73,7 @@ func NewNode(params Params) *Node {
 			Mux:       params.Mux,
 			Local:     readChain,
 			PeerStore: params.PeerStore,
-			KV:        params.Ephemeral.Bucket("blobnet"),
+			DB:        bcstate.PrefixedDB{DB: params.Ephemeral, Prefix: "blobnet"},
 			Clock:     clockwork.NewRealClock(),
 		}),
 	}
@@ -113,13 +105,13 @@ func (n *Node) Unpin(ctx context.Context, name string, mh []byte) error {
 	return n.pinSets.Unpin(ctx, name, id)
 }
 
-func (n *Node) Get(ctx context.Context, mh []byte) (blobs.Blob, error) {
+func (n *Node) GetF(ctx context.Context, mh []byte, fn func([]byte) error) error {
 	id, err := decodeMH(mh)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	readChain := append(n.readChain, n.bn)
-	return readChain.Get(ctx, id)
+	return readChain.GetF(ctx, id, fn)
 }
 
 func (n *Node) Post(ctx context.Context, name string, data []byte) ([]byte, error) {
@@ -143,7 +135,7 @@ func (n *Node) Post(ctx context.Context, name string, data []byte) ([]byte, erro
 
 	// persist that data to local storage
 	err := n.persistent.Bucket("blobs").Put(id[:], data)
-	if err == bckv.ErrFull {
+	if err == bcstate.ErrFull {
 		// TODO: must be on the network
 		return nil, err
 	} else if err != nil {
