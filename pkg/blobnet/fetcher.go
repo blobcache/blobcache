@@ -48,8 +48,12 @@ func NewFetcher(params FetcherParams) *Fetcher {
 	return f
 }
 
-func (f *Fetcher) Get(ctx context.Context, id blobs.ID) ([]byte, error) {
-	return f.get(ctx, id, nil, 3)
+func (f *Fetcher) GetF(ctx context.Context, id blobs.ID, fn func([]byte) error) error {
+	data, err := f.get(ctx, id, nil, 3)
+	if err != nil {
+		return err
+	}
+	return fn(data)
 }
 
 func (f *Fetcher) get(ctx context.Context, id blobs.ID, redirect *GetReq, n int) ([]byte, error) {
@@ -164,7 +168,11 @@ func (f *Fetcher) handleGetReq(ctx context.Context, req *GetReq) (*GetRes, error
 }
 
 func (f *Fetcher) tryLocal(ctx context.Context, id blobs.ID) (*GetRes, error) {
-	data, err := f.local.Get(ctx, id)
+	var data []byte
+	err := f.local.GetF(ctx, id, func(data2 []byte) error {
+		data = append([]byte{}, data2...)
+		return nil
+	})
 	if err == nil {
 		return &GetRes{
 			BlobId: id[:],

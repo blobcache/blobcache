@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/bcstate"
 	"github.com/brendoncarroll/blobcache/pkg/bitstrings"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/blobcache/pkg/tries"
@@ -25,22 +25,21 @@ type RouteTable interface {
 
 // KadRT - Kademlia Route Table
 type KadRT struct {
-	kv          bckv.KV
+	locus []byte
+
+	cell        bcstate.Cell
+	kv          bcstate.KV
 	store       blobs.Store
-	locus       []byte
 	lastEvicted int
 
 	mu   sync.RWMutex
 	trie tries.Trie
 }
 
-func NewKadRT(kv bckv.KV, locus []byte) *KadRT {
-	// save 1 spot for the root
-	store := bckv.BlobAdapter(&bckv.FixedQuota{
-		Store:    kv.Bucket("blobs"),
-		Capacity: kv.SizeTotal() - 1,
-	})
+func NewKadRT(root bcstate.Cell, kv bcstate.KV, locus []byte) *KadRT {
+	store := bcstate.BlobAdapter(kv)
 	rt := &KadRT{
+		cell:  root,
 		kv:    kv,
 		store: store,
 		locus: locus,
@@ -66,7 +65,7 @@ func (rt *KadRT) Put(ctx context.Context, blobID blobs.ID, peerID p2p.PeerID) er
 
 	for i := 0; i < 10; i++ {
 		err := rt.trie.Put(ctx, key, nil)
-		if err == bckv.ErrFull {
+		if err == bcstate.ErrFull {
 			err2 := rt.evict(ctx, lz)
 			if err2 == ErrShouldEvictThis {
 				return nil
@@ -132,10 +131,12 @@ func (rt *KadRT) evict(ctx context.Context, lz int) error {
 	return ErrShouldEvictThis
 }
 
-var routetableRoot = []byte("root")
-
 func (rt *KadRT) loadRoot() (tries.Trie, error) {
-	data, err := rt.kv.Get(routetableRoot)
+	var data []byte
+	err := rt.cell.LoadF(func(v []byte) error {
+		data = append([]byte{}, v...)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -146,8 +147,8 @@ func (rt *KadRT) loadRoot() (tries.Trie, error) {
 }
 
 func (rt *KadRT) storeRoot(x tries.Trie) error {
-	err := rt.kv.Put(routetableRoot, x.Marshal())
-	if err == bckv.ErrFull {
+	err := rt.cell.Store(x.Marshal())
+	if err == bcstate.ErrFull {
 		panic(err)
 	}
 	return err

@@ -9,6 +9,6 @@ func Execute() error {
 }
 
 var rootCmd = &cobra.Command{
-	Short: "Blobcache",
+	Short: "blobcache",
 	Use:   "blobcache",
 }

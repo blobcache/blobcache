@@ -5,16 +5,17 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/bcstate"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPut(t *testing.T) {
-	kv := &bckv.MemKV{Capacity: 3}
+	cell := &bcstate.MemCell{}
+	kv := &bcstate.MemKV{Capacity: 2}
 	locus := make([]byte, 32)
-	rt := NewKadRT(kv, locus)
+	rt := NewKadRT(cell, kv, locus)
 	ctx := context.TODO()
 
 	const N = 1000

@@ -7,20 +7,23 @@ import (
 
 type ReadChain []Getter
 
-func (c ReadChain) Get(ctx context.Context, id ID) (Blob, error) {
+func (c ReadChain) GetF(ctx context.Context, id ID, f func(Blob) error) error {
 	errs := []error{}
 	for _, s := range c {
-		data, err := s.Get(ctx, id)
+		err := s.GetF(ctx, id, func(data []byte) error {
+			return f(data)
+		})
 		if err != nil {
+			if err == ErrNotFound {
+				continue
+			}
 			errs = append(errs, err)
 		}
-		return data, nil
 	}
-
 	if len(errs) > 0 {
-		return nil, fmt.Errorf("multiple errors: %v", errs)
+		return fmt.Errorf("multiple errors: %v", errs)
 	}
-	return nil, ErrNotFound
+	return ErrNotFound
 }
 
 func (c ReadChain) List(ctx context.Context, prefix []byte, ids []ID) (n int, err error) {

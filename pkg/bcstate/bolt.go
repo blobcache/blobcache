@@ -1,46 +1,54 @@
-package bckv
+package bcstate
 
 import (
 	"bytes"
+	"math"
 
 	bolt "go.etcd.io/bbolt"
 )
+
+var _ DB = &BoltDB{}
+
+type BoltDB struct {
+	db *bolt.DB
+}
+
+func NewBoltDB(db *bolt.DB) *BoltDB {
+	return &BoltDB{db: db}
+}
+
+func (db *BoltDB) Bucket(p string) KV {
+	return newBoltKV(db.db, p)
+}
 
 var _ KV = &BoltKV{}
 
 type BoltKV struct {
 	db         *bolt.DB
-	bucketPath [][]byte
-	capacity   uint64
+	bucketName []byte
 }
 
-func NewBoltKV(db *bolt.DB, capacity uint64) *BoltKV {
+func newBoltKV(db *bolt.DB, bucketName string) *BoltKV {
 	return &BoltKV{
-		db:       db,
-		capacity: capacity,
+		db:         db,
+		bucketName: []byte(bucketName),
 	}
 }
 
-func (kv *BoltKV) Get(key []byte) ([]byte, error) {
-	var data []byte
-	err := kv.db.View(func(tx *bolt.Tx) error {
+func (kv *BoltKV) GetF(key []byte, f func([]byte) error) error {
+	return kv.db.View(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
 		if b == nil {
 			return nil
 		}
 		value := b.Get(key)
-		data = append([]byte{}, value...)
-		return nil
+		return f(value)
 	})
-	return data, err
 }
 
 func (kv *BoltKV) Put(key, value []byte) error {
 	err := kv.db.Update(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
-		if uint64(b.Stats().KeyN) >= kv.capacity {
-			return ErrFull
-		}
 		return b.Put(key, value)
 	})
 	return err
@@ -52,14 +60,6 @@ func (kv *BoltKV) Delete(key []byte) error {
 		return b.Delete(key)
 	})
 	return err
-}
-
-func (kv *BoltKV) Bucket(p string) KV {
-	kv2 := &BoltKV{
-		db:         kv.db,
-		bucketPath: append(kv.bucketPath, []byte(p)),
-	}
-	return kv2
 }
 
 func (kv *BoltKV) ForEach(start, end []byte, fn func(k, v []byte) error) error {
@@ -81,7 +81,7 @@ func (kv *BoltKV) ForEach(start, end []byte, fn func(k, v []byte) error) error {
 }
 
 func (kv *BoltKV) SizeTotal() uint64 {
-	return kv.capacity
+	return uint64(math.MaxInt64)
 }
 
 func (kv *BoltKV) SizeUsed() uint64 {
@@ -107,21 +107,17 @@ func (kv *BoltKV) selectBucket(tx *bolt.Tx) *bolt.Bucket {
 	var b hasBucket = tx
 
 	if tx.Writable() {
-		for _, bname := range kv.bucketPath {
-			b2, err := b.CreateBucketIfNotExists(bname)
-			if err != nil {
-				panic(err)
-			}
-			b = b2
+		b2, err := b.CreateBucketIfNotExists(kv.bucketName)
+		if err != nil {
+			panic(err)
 		}
+		b = b2
 	} else {
-		for _, bname := range kv.bucketPath {
-			b2 := b.Bucket(bname)
-			if b2 == nil {
-				return nil
-			}
-			b = b2
+		b2 := b.Bucket(kv.bucketName)
+		if b2 == nil {
+			return nil
 		}
+		b = b2
 	}
 	return b.(*bolt.Bucket)
 }

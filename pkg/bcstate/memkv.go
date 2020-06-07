@@ -1,4 +1,4 @@
-package bckv
+package bcstate
 
 import (
 	"sync"
@@ -12,21 +12,20 @@ type MemKV struct {
 	count int64
 }
 
-func (kv *MemKV) Get(key []byte) ([]byte, error) {
+func (kv *MemKV) GetF(key []byte, f func([]byte) error) error {
 	value, ok := kv.m.Load(string(key))
 	if !ok {
-		return nil, nil
+		return ErrFull
 	}
 	bytes := value.([]byte)
-	return append([]byte{}, bytes...), nil
+	return f(bytes)
 }
 
 func (kv *MemKV) Put(key, value []byte) error {
 	count := atomic.LoadInt64(&kv.count)
 	if uint64(count) >= kv.Capacity {
-		if v, err := kv.Get(key); err != nil {
-			return err
-		} else if v == nil {
+		_, exists := kv.m.Load(string(key))
+		if !exists {
 			return ErrFull
 		}
 	}

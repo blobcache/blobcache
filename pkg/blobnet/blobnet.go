@@ -8,7 +8,7 @@ import (
 	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/bcstate"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/blobrouting"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
@@ -24,7 +24,7 @@ const (
 type Params struct {
 	PeerStore peers.PeerStore
 	Mux       simplemux.Muxer
-	KV        bckv.KV
+	DB        bcstate.DB
 	Local     blobs.Getter
 	Clock     clockwork.Clock
 }
@@ -60,7 +60,7 @@ func NewBlobNet(params Params) *Blobnet {
 	bn.blobRouter = blobrouting.NewRouter(blobrouting.RouterParams{
 		PeerSwarm:  peers.NewPeerSwarm(brSwarm.(p2p.SecureAskSwarm), params.PeerStore),
 		PeerRouter: bn.peerRouter,
-		KV:         params.KV.Bucket("blob-router"),
+		DB:         bcstate.PrefixedDB{Prefix: "blob-router", DB: params.DB},
 		Clock:      params.Clock,
 	})
 
@@ -105,11 +105,17 @@ func (bn *Blobnet) GoneLocally(ctx context.Context, id blobs.ID) error {
 	return bn.blobRouter.Invalidate(ctx, id)
 }
 
-func (bn *Blobnet) Get(ctx context.Context, id blobs.ID) ([]byte, error) {
-	return bn.fetcher.Get(ctx, id)
+func (bn *Blobnet) GetF(ctx context.Context, id blobs.ID, f func([]byte) error) error {
+	return bn.fetcher.GetF(ctx, id, f)
 }
 
 func (bn *Blobnet) Exists(ctx context.Context, id blobs.ID) (bool, error) {
-	_, err := bn.Get(ctx, id)
-	return err == nil, err
+	err := bn.GetF(ctx, id, func([]byte) error { return nil })
+	if err == bcstate.ErrNotExist {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }

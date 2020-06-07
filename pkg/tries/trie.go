@@ -81,7 +81,7 @@ func NewParent(ctx context.Context, store blobs.GetPostDelete, children [256]Tri
 }
 
 func FromBytes(store blobs.GetPostDelete, data []byte) (Trie, error) {
-	return fromBytes(store, data)
+	return fromBytes(store, data, true)
 }
 
 func Equal(a, b Trie) bool {
@@ -153,7 +153,10 @@ func newTrie(store blobs.GetPostDelete, isParent bool, prefix []byte, entryCount
 	return t
 }
 
-func fromBytes(store blobs.GetPostDelete, data []byte) (*trie, error) {
+func fromBytes(store blobs.GetPostDelete, data []byte, copy bool) (*trie, error) {
+	if copy {
+		data = append([]byte{}, data...)
+	}
 	if len(data) < 8 {
 		return nil, errors.New("parse error, buffer too short")
 	}
@@ -223,11 +226,15 @@ func (t *trie) getChild(ctx context.Context, i byte) (*trie, error) {
 	if ref.Equals(blobs.ZeroID()) {
 		return nil, nil
 	}
-	data, err := t.store.Get(ctx, ref)
+	var data []byte
+	err := t.store.GetF(ctx, ref, func(b []byte) error {
+		data = append(data, b...)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	return fromBytes(t.store, data)
+	return fromBytes(t.store, data, true)
 }
 
 func (t *trie) GetChildRef(i byte) blobs.ID {

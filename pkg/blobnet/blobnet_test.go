@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/bcstate"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
@@ -43,8 +43,8 @@ func makeBlobnet(s p2p.SecureAskSwarm, ps peers.PeerStore) *Blobnet {
 	bn := NewBlobNet(Params{
 		PeerStore: ps,
 		Mux:       mux,
-		KV:        &bckv.MemKV{Capacity: 100},
-		Local:     bckv.BlobAdapter(&bckv.MemKV{Capacity: 100}),
+		DB:        &bcstate.MemDB{},
+		Local:     bcstate.BlobAdapter(&bcstate.MemKV{Capacity: 100}),
 		Clock:     clockwork.NewRealClock(),
 	})
 	return bn

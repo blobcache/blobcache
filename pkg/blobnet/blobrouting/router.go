@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/brendoncarroll/blobcache/pkg/bckv"
+	"github.com/brendoncarroll/blobcache/pkg/bcstate"
 	"github.com/brendoncarroll/blobcache/pkg/bitstrings"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/bcproto"
 	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
@@ -33,7 +33,7 @@ type PeerSwarm interface {
 type RouterParams struct {
 	PeerSwarm
 	PeerRouter *peerrouting.Router
-	KV         bckv.KV
+	DB         bcstate.DB
 	LocalBlobs Indexable
 	Clock      clockwork.Clock
 }
@@ -59,6 +59,8 @@ func NewRouter(params RouterParams) *Router {
 
 	ctx, cf := context.WithCancel(context.Background())
 
+	rtRootCell := bcstate.KVCell{KV: params.DB.Bucket("route_table/root")}
+	rtStorage := params.DB.Bucket("route_table/storage")
 	br := &Router{
 		peerRouter:     params.PeerRouter,
 		peerSwarm:      peerSwarm,
@@ -66,7 +68,7 @@ func NewRouter(params RouterParams) *Router {
 		clock:          params.Clock,
 
 		localRT:    NewLocalRT(params.LocalBlobs, localID),
-		routeTable: NewKadRT(params.KV.Bucket("route_table"), localID[:]),
+		routeTable: NewKadRT(rtRootCell, rtStorage, localID[:]),
 		cf:         cf,
 		shards:     make(map[string]tries.Trie),
 	}
