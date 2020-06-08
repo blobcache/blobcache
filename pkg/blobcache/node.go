@@ -26,7 +26,7 @@ type API interface {
 
 	// Blobs
 	Post(ctx context.Context, pinset PinSetID, data []byte) ([]byte, error)
-	Get(ctx context.Context, mh []byte) ([]byte, error)
+	GetF(ctx context.Context, mh []byte, f func([]byte) error) error
 
 	MaxBlobSize() int
 }

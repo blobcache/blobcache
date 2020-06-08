@@ -51,6 +51,9 @@ func NewKadRT(root bcstate.Cell, kv bcstate.KV, locus []byte) *KadRT {
 		trie = tries.New(store)
 	}
 	rt.trie = trie
+	if err := rt.GC(context.Background()); err != nil {
+		log.Error(err)
+	}
 	return rt
 }
 
@@ -108,6 +111,16 @@ func (rt *KadRT) Query(ctx context.Context, prefix []byte) (tries.Trie, error) {
 func (rt *KadRT) WouldAccept() bitstrings.BitString {
 	x := bitstrings.FromBytes(rt.lastEvicted, rt.locus)
 	return x
+}
+
+func (rt *KadRT) GC(ctx context.Context) error {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	t, err := rt.loadRoot()
+	if err != nil {
+		return err
+	}
+	return tries.GCStore(ctx, rt.store, t)
 }
 
 func (rt *KadRT) evict(ctx context.Context, lz int) error {
