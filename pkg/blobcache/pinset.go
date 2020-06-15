@@ -1,20 +1,23 @@
 package blobcache
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"path"
 
+	"github.com/brendoncarroll/blobcache/pkg/bcstate"
 	"github.com/brendoncarroll/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/blobcache/pkg/tries"
-	bolt "go.etcd.io/bbolt"
 )
 
 const (
 	bucketPinSets      = "pinsets"
 	bucketPinSetNames  = "pinsets-names"
 	bucketPinRefCounts = "pinrefcount"
+
+	idBucketFmt = "%016x"
 )
 
 var (
@@ -32,24 +35,10 @@ type PinSet struct {
 }
 
 type PinSetStore struct {
-	db *bolt.DB
+	db bcstate.TxDB
 }
 
-func NewPinSetStore(db *bolt.DB) *PinSetStore {
-	err := db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(bucketPinSets))
-		if err != nil {
-			return err
-		}
-		_, err = tx.CreateBucketIfNotExists([]byte(bucketPinRefCounts))
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		panic(err)
-	}
+func NewPinSetStore(db bcstate.TxDB) *PinSetStore {
 	return &PinSetStore{
 		db: db,
 	}
@@ -57,93 +46,91 @@ func NewPinSetStore(db *bolt.DB) *PinSetStore {
 
 func (s *PinSetStore) Create(ctx context.Context, name string) (PinSetID, error) {
 	var id PinSetID
-	err := s.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketPinSets))
+	err := s.db.WriteTx(ctx, func(tx bcstate.DB) error {
+		b := tx.Bucket(path.Join(bucketPinSets))
 		seq, err := b.NextSequence()
 		if err != nil {
 			return err
 		}
 		id = PinSetID(seq)
-		_, err = b.CreateBucketIfNotExists(idToKey(id))
-		if err == bolt.ErrBucketExists {
-			err = ErrPinSetExists
-		}
 		return err
 	})
 	return id, err
 }
 
 func (s *PinSetStore) Pin(ctx context.Context, psID PinSetID, id blobs.ID) error {
-	err := s.db.Update(func(tx *bolt.Tx) error {
-		rc := tx.Bucket([]byte(bucketPinRefCounts))
-		b := tx.Bucket([]byte(bucketPinSets))
-		pinSetB := b.Bucket(idToKey(psID))
-		if pinSetB == nil {
+	err := s.db.WriteTx(ctx, func(tx bcstate.DB) error {
+		b := tx.Bucket(bucketPinSets)
+		exists, err := bcstate.Exists(b, idToKey(psID))
+		if err != nil {
+			return err
+		}
+		if !exists {
 			return ErrPinSetNotFound
 		}
+
+		pinSetB := tx.Bucket(idToBucket(psID))
 		if err := pinSetB.Put(id[:], []byte{}); err != nil {
 			return err
 		}
+
+		rc := tx.Bucket(bucketPinRefCounts)
 		return pinIncr(rc, id)
 	})
 	return err
 }
 
 func (s *PinSetStore) Unpin(ctx context.Context, psID PinSetID, id blobs.ID) error {
-	err := s.db.Update(func(tx *bolt.Tx) error {
-		rc := tx.Bucket([]byte(bucketPinRefCounts))
-		b := tx.Bucket([]byte(bucketPinSets))
-		pinSetB := b.Bucket(idToKey(psID))
-		if pinSetB == nil {
+	err := s.db.WriteTx(ctx, func(tx bcstate.DB) error {
+		b := tx.Bucket(bucketPinSets)
+		exists, err := bcstate.Exists(b, idToKey(psID))
+		if err != nil {
+			return err
+		}
+		if !exists {
 			return ErrPinSetNotFound
 		}
+
+		pinSetB := tx.Bucket(idToBucket(psID))
 		if err := pinSetB.Delete(id[:]); err != nil {
 			return err
 		}
+
+		rc := tx.Bucket(bucketPinRefCounts)
 		return pinDecr(rc, id)
 	})
 	return err
 }
 
-func (s *PinSetStore) IsPinned(ctx context.Context, id blobs.ID) (bool, error) {
-	var pinned bool
-
-	err := s.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketPinSets))
-		// iterate through buckets with cursor
-		c := b.Cursor()
-		c.First()
-		for key, value := c.Next(); key != nil; {
-			if value != nil {
-				// skip over non bucket values
-				continue
-			}
-			pinSetB := b.Bucket(key)
-			v := pinSetB.Get(id[:])
-			if v != nil {
-				pinned = true
-				return nil
-			}
-		}
-		return nil
+func (s *PinSetStore) Exists(ctx context.Context, id blobs.ID) (bool, error) {
+	var exists bool
+	err := s.db.ReadTx(ctx, func(tx bcstate.DB) error {
+		var err error
+		rc := tx.Bucket(bucketPinRefCounts)
+		exists, err = bcstate.Exists(rc, id[:])
+		return err
 	})
-	return pinned, err
+	return exists, err
 }
 
 func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
 	//TODO: cache this in the pinsets bucket
 	// so we don't have to build the Trie every time
-
 	var ps *PinSet
-	err := s.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketPinSets))
-		pinSetB := b.Bucket(idToKey(id))
-		if pinSetB == nil {
+	err := s.db.ReadTx(ctx, func(tx bcstate.DB) error {
+		b := tx.Bucket(bucketPinSets)
+		exists, err := bcstate.Exists(b, idToKey(id))
+		if err != nil {
+			return err
+		}
+		if !exists {
 			return ErrPinSetNotFound
 		}
+
+		pinSetB := tx.Bucket(idToBucket(id))
 		t := tries.New(blobs.NewMem())
 		count := uint64(0)
-		err := pinSetB.ForEach(func(k, v []byte) error {
+		err = pinSetB.ForEach(nil, nil, func(k, v []byte) error {
 			return t.Put(ctx, k, nil)
 		})
 		if err != nil {
@@ -160,79 +147,85 @@ func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
 }
 
 func (s *PinSetStore) Delete(ctx context.Context, id PinSetID) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
-		rc := tx.Bucket([]byte(bucketPinRefCounts))
-		b := tx.Bucket([]byte(bucketPinSets))
-		pinSetB := b.Bucket(idToKey(id))
-		if pinSetB == nil {
+	return s.db.WriteTx(ctx, func(tx bcstate.DB) error {
+		b := tx.Bucket(bucketPinSets)
+		exists, err := bcstate.Exists(b, idToKey(id))
+		if err != nil {
+			return err
+		}
+		if !exists {
 			return ErrPinSetNotFound
 		}
+
 		// first decrement all the pins
-		c := pinSetB.Cursor()
-		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+		rc := tx.Bucket(bucketPinRefCounts)
+		pinSetB := tx.Bucket(idToBucket(id))
+		err = pinSetB.ForEach(nil, nil, func(k, v []byte) error {
 			blobID := blobs.ID{}
 			copy(blobID[:], k)
 			if err := pinDecr(rc, blobID); err != nil {
 				return err
 			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
-		return b.DeleteBucket(idToKey(id))
+		return b.Delete(idToKey(id))
 	})
 }
 
 func (s *PinSetStore) List(ctx context.Context, prefix []byte, ids []blobs.ID) (n int, err error) {
-	err2 := s.db.View(func(tx *bolt.Tx) error {
-		rc := tx.Bucket([]byte(bucketPinRefCounts))
-
-		c := rc.Cursor()
-		c.Seek(prefix)
-		for k, _ := c.Seek(prefix); bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+	err = s.db.ReadTx(ctx, func(tx bcstate.DB) error {
+		rc := tx.Bucket(bucketPinRefCounts)
+		return rc.ForEach(prefix, bcstate.PrefixEnd(prefix), func(k, v []byte) error {
 			if n >= len(ids) {
-				err = blobs.ErrTooMany
-				return nil
+				return blobs.ErrTooMany
 			}
 			copy(ids[n][:], k)
 			n++
-		}
-		return nil
+			return nil
+		})
 	})
-	if err2 != nil {
-		return 0, err
-	}
-
 	return n, err
 }
 
-func pinIncr(b *bolt.Bucket, id blobs.ID) error {
+func pinIncr(b bcstate.KV, id blobs.ID) error {
 	key := id[:]
-	data := b.Get(key)
-	if data == nil {
-		data := make([]byte, binary.MaxVarintLen64)
-		n := binary.PutUvarint(key, 1)
-		data = data[:n]
-	} else {
-		x, _ := binary.Uvarint(data)
-		x++
-		n := binary.PutUvarint(data, x)
-		data = data[:n]
-	}
-	return b.Put(key, data)
+	return b.GetF(key, func(data []byte) error {
+		if data == nil {
+			data := make([]byte, binary.MaxVarintLen64)
+			n := binary.PutUvarint(key, 1)
+			data = data[:n]
+		} else {
+			x, _ := binary.Uvarint(data)
+			x++
+			n := binary.PutUvarint(data, x)
+			data = data[:n]
+		}
+		return b.Put(key, data)
+	})
 }
 
-func pinDecr(b *bolt.Bucket, id blobs.ID) error {
+func pinDecr(b bcstate.KV, id blobs.ID) error {
 	key := id[:]
-	data := b.Get(key)
-	if data == nil {
-		return errors.New("can't decrement null")
-	}
-	x, _ := binary.Uvarint(data)
-	x--
-	if x == 0 {
-		return b.Delete(key)
-	}
-	n := binary.PutUvarint(data, x)
-	data = data[:n]
-	return b.Put(key, data)
+	return b.GetF(key, func(data []byte) error {
+		if data == nil {
+			return errors.New("can't decrement null")
+		}
+		x, _ := binary.Uvarint(data)
+		x--
+		if x == 0 {
+			return b.Delete(key)
+		}
+		data2 := make([]byte, 8)
+		n := binary.PutUvarint(data2, x)
+		return b.Put(key, data2[:n])
+	})
+}
+
+func idToBucket(id PinSetID) string {
+	return path.Join(bucketPinSets, fmt.Sprintf(idBucketFmt, id))
 }
 
 func idToKey(id PinSetID) []byte {

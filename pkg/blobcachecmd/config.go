@@ -44,8 +44,10 @@ func (cf ConfigFile) Save(c Config) error {
 }
 
 type Config struct {
-	PrivateKey    []byte           `yaml:"private_key,flow"`
-	DataDir       string           `yaml:"data_dir"`
+	PrivateKey   []byte `yaml:"private_key,flow"`
+	PersistDir   string `yaml:"persist_dir"`
+	EphemeralDir string `yaml:"ephemeral_dir"`
+
 	QUICAddr      string           `yaml:"quic_addr"`
 	APIAddr       string           `yaml:"api_addr"`
 	EphemeralCap  uint64           `yaml:"ephemeral_capacity"`
@@ -64,8 +66,9 @@ func DefaultConfig() *Config {
 	}
 
 	return &Config{
-		PrivateKey: pkData,
-		DataDir:    ".",
+		PrivateKey:   pkData,
+		PersistDir:   ".",
+		EphemeralDir: ".",
 
 		QUICAddr: "0.0.0.0:",
 		APIAddr:  DefaultAPIAddr,
@@ -77,22 +80,22 @@ func DefaultConfig() *Config {
 }
 
 func buildParams(configPath string, c Config) (*blobcache.Params, error) {
-	dataDir := c.DataDir
-	if strings.HasPrefix(c.DataDir, "./") {
-		dataDir = filepath.Join(configPath, c.DataDir)
+	var persistDir, ephemeralDir string
+	if strings.HasPrefix(c.PersistDir, ".") {
+		persistDir = filepath.Join(configPath, c.PersistDir)
 	}
-	persistentPath := filepath.Join(dataDir, "blobcache_persistent.db")
-	persistentDB, err := bolt.Open(persistentPath, 0666, nil)
-	if err != nil {
-		return nil, err
+	persistPath := filepath.Join(persistDir, "blobcache_persist.db")
+
+	if strings.HasPrefix(c.EphemeralDir, ".") {
+		ephemeralDir = filepath.Join(configPath, c.EphemeralDir)
 	}
-	ephemeralPath := filepath.Join(dataDir, "blobcache_ephemeral.db")
+	ephemeralPath := filepath.Join(ephemeralDir, "blobcache_ephemeral.db")
+
 	ephemeralDB, err := bolt.Open(ephemeralPath, 0666, nil)
 	if err != nil {
 		return nil, err
 	}
-	metadataPath := filepath.Join(dataDir, "blobcache_metadata.db")
-	metadataDB, err := bolt.Open(metadataPath, 0666, nil)
+	persistDB, err := bolt.Open(persistPath, 0666, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -102,31 +105,22 @@ func buildParams(configPath string, c Config) (*blobcache.Params, error) {
 		return nil, err
 	}
 
-	privKey2, ok := privKey.(p2p.PrivateKey)
-	if !ok {
-		panic("bad private key")
-	}
-
-	swarm, err := setupSwarm(privKey2, c.QUICAddr)
+	swarm, err := setupSwarm(privKey.(p2p.PrivateKey), c.QUICAddr)
 	if err != nil {
 		return nil, err
 	}
 	mux := simplemux.MultiplexSwarm(swarm)
 
 	return &blobcache.Params{
-		Mux:        mux,
-		PeerStore:  &peers.PeerList{},
-		MetadataDB: metadataDB,
-		PrivateKey: privKey2,
+		Mux: mux,
+		PeerStore: &peers.PeerList{
+			Peers: c.Peers,
+			Swarm: swarm,
+		},
+		PrivateKey: privKey.(p2p.PrivateKey),
 
-		Ephemeral: &bcstate.QuotaDB{
-			DB:       bcstate.NewBoltDB(ephemeralDB),
-			Capacity: c.EphemeralCap,
-		},
-		Persistent: &bcstate.QuotaDB{
-			DB:       bcstate.NewBoltDB(persistentDB),
-			Capacity: c.PersistentCap,
-		},
+		Ephemeral:  bcstate.NewBoltDB(ephemeralDB),
+		Persistent: bcstate.NewBoltDB(persistDB),
 	}, nil
 }
 

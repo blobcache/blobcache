@@ -13,7 +13,6 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/multiformats/go-multihash"
 	log "github.com/sirupsen/logrus"
-	bolt "go.etcd.io/bbolt"
 )
 
 type API interface {
@@ -34,10 +33,8 @@ type API interface {
 var _ API = &Node{}
 
 type Params struct {
-	MetadataDB *bolt.DB
-
-	Ephemeral  bcstate.DB
-	Persistent bcstate.DB
+	Ephemeral  bcstate.TxDB
+	Persistent bcstate.TxDB
 
 	Mux        simplemux.Muxer
 	PrivateKey p2p.PrivateKey
@@ -47,8 +44,6 @@ type Params struct {
 }
 
 type Node struct {
-	metadataDB *bolt.DB
-
 	ephemeral  bcstate.DB
 	persistent bcstate.DB
 	pinSets    *PinSetStore
@@ -60,7 +55,10 @@ type Node struct {
 }
 
 func NewNode(params Params) *Node {
-	pinSetStore := NewPinSetStore(params.MetadataDB)
+	pinSetStore := NewPinSetStore(bcstate.PrefixedTxDB{
+		TxDB:   params.Persistent,
+		Prefix: "pinsets",
+	})
 
 	ephemeralBlobs := params.Ephemeral.Bucket("blobs")
 	persistentBlobs := params.Persistent.Bucket("blobs")
@@ -77,8 +75,6 @@ func NewNode(params Params) *Node {
 		"local_id": p2p.NewPeerID(params.PrivateKey.Public()),
 	}).Info("starting node")
 	n := &Node{
-		metadataDB: params.MetadataDB,
-
 		ephemeral:  params.Ephemeral,
 		persistent: params.Persistent,
 

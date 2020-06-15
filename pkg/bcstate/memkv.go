@@ -10,6 +10,7 @@ type MemKV struct {
 
 	m     sync.Map
 	count int64
+	seq   uint64
 }
 
 func (kv *MemKV) GetF(key []byte, f func([]byte) error) error {
@@ -62,4 +63,8 @@ func (kv *MemKV) ForEach(start, end []byte, fn func(k, v []byte) error) error {
 		return err == nil
 	})
 	return nil
+}
+
+func (kv *MemKV) NextSequence() (uint64, error) {
+	return atomic.AddUint64(&kv.seq, 1), nil
 }

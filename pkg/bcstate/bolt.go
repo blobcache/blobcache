@@ -2,6 +2,7 @@ package bcstate
 
 import (
 	"bytes"
+	"context"
 	"math"
 
 	bolt "go.etcd.io/bbolt"
@@ -18,25 +19,55 @@ func NewBoltDB(db *bolt.DB) *BoltDB {
 }
 
 func (db *BoltDB) Bucket(p string) KV {
-	return newBoltKV(db.db, p)
-}
-
-var _ KV = &BoltKV{}
-
-type BoltKV struct {
-	db         *bolt.DB
-	bucketName []byte
-}
-
-func newBoltKV(db *bolt.DB, bucketName string) *BoltKV {
-	return &BoltKV{
-		db:         db,
-		bucketName: []byte(bucketName),
+	return &boltKV{
+		update: func(f func(tx *bolt.Tx) error) error {
+			return db.db.Update(f)
+		},
+		view: func(f func(tx *bolt.Tx) error) error {
+			return db.db.Update(f)
+		},
+		bucketName: []byte(p),
 	}
 }
 
-func (kv *BoltKV) GetF(key []byte, f func([]byte) error) error {
-	return kv.db.View(func(tx *bolt.Tx) error {
+func (kv *BoltDB) WriteTx(ctx context.Context, f func(db DB) error) error {
+	return kv.db.Update(func(tx *bolt.Tx) error {
+		return f(boltTx{tx})
+	})
+}
+
+func (kv *BoltDB) ReadTx(ctx context.Context, f func(db DB) error) error {
+	return kv.db.Update(func(tx *bolt.Tx) error {
+		return f(boltTx{tx})
+	})
+}
+
+type boltTx struct {
+	tx *bolt.Tx
+}
+
+func (btx boltTx) Bucket(name string) KV {
+	return &boltKV{
+		update: func(f func(tx *bolt.Tx) error) error {
+			return f(btx.tx)
+		},
+		view: func(f func(tx *bolt.Tx) error) error {
+			return f(btx.tx)
+		},
+		bucketName: []byte(name),
+	}
+}
+
+var _ KV = &boltKV{}
+
+type boltKV struct {
+	update     func(func(tx *bolt.Tx) error) error
+	view       func(func(tx *bolt.Tx) error) error
+	bucketName []byte
+}
+
+func (kv *boltKV) GetF(key []byte, f func([]byte) error) error {
+	return kv.view(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
 		if b == nil {
 			return nil
@@ -46,24 +77,24 @@ func (kv *BoltKV) GetF(key []byte, f func([]byte) error) error {
 	})
 }
 
-func (kv *BoltKV) Put(key, value []byte) error {
-	err := kv.db.Update(func(tx *bolt.Tx) error {
+func (kv *boltKV) Put(key, value []byte) error {
+	err := kv.update(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
 		return b.Put(key, value)
 	})
 	return err
 }
 
-func (kv *BoltKV) Delete(key []byte) error {
-	err := kv.db.Update(func(tx *bolt.Tx) error {
+func (kv *boltKV) Delete(key []byte) error {
+	err := kv.update(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
 		return b.Delete(key)
 	})
 	return err
 }
 
-func (kv *BoltKV) ForEach(start, end []byte, fn func(k, v []byte) error) error {
-	err := kv.db.View(func(tx *bolt.Tx) error {
+func (kv *boltKV) ForEach(start, end []byte, fn func(k, v []byte) error) error {
+	err := kv.view(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
 
 		c := b.Cursor()
@@ -80,13 +111,26 @@ func (kv *BoltKV) ForEach(start, end []byte, fn func(k, v []byte) error) error {
 	return err
 }
 
-func (kv *BoltKV) SizeTotal() uint64 {
+func (kv *boltKV) NextSequence() (uint64, error) {
+	var seq uint64
+	err := kv.update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists(kv.bucketName)
+		if err != nil {
+			return err
+		}
+		seq, err = b.NextSequence()
+		return err
+	})
+	return seq, err
+}
+
+func (kv *boltKV) SizeTotal() uint64 {
 	return uint64(math.MaxInt64)
 }
 
-func (kv *BoltKV) SizeUsed() uint64 {
+func (kv *boltKV) SizeUsed() uint64 {
 	var size uint64
-	err := kv.db.View(func(tx *bolt.Tx) error {
+	err := kv.view(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)
 		if b != nil {
 			size = uint64(b.Stats().KeyN)
@@ -99,7 +143,7 @@ func (kv *BoltKV) SizeUsed() uint64 {
 	return size
 }
 
-func (kv *BoltKV) selectBucket(tx *bolt.Tx) *bolt.Bucket {
+func (kv *boltKV) selectBucket(tx *bolt.Tx) *bolt.Bucket {
 	type hasBucket interface {
 		CreateBucketIfNotExists([]byte) (*bolt.Bucket, error)
 		Bucket([]byte) *bolt.Bucket
