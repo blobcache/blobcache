@@ -1,4 +1,4 @@
-module github.com/brendoncarroll/blobcache
+module github.com/blobcache/blobcache
 
 go 1.13
 
