@@ -3,7 +3,7 @@ package tries
 import (
 	"context"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/blobs"
 )
 
 func Merge(ctx context.Context, s blobs.GetPostDelete, ts ...Trie) (Trie, error) {

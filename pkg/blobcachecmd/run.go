@@ -5,8 +5,8 @@ import (
 	"errors"
 	"log"
 
-	"github.com/brendoncarroll/blobcache/pkg/bchttp"
-	"github.com/brendoncarroll/blobcache/pkg/blobcache"
+	"github.com/blobcache/blobcache/pkg/bchttp"
+	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/spf13/cobra"
 )
 

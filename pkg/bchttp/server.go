@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobcache"
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/blobcache"
+	"github.com/blobcache/blobcache/pkg/blobs"
 	"github.com/go-chi/chi"
 )
 

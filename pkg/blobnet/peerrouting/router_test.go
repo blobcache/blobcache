@@ -11,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
+	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 )
 
 func init() {

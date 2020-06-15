@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
-	"github.com/brendoncarroll/blobcache/pkg/tries"
+	"github.com/blobcache/blobcache/pkg/blobnet/peerrouting"
+	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"

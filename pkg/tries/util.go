@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/blobs"
 )
 
 type ctxKey int

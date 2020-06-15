@@ -8,11 +8,11 @@ import (
 	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/brendoncarroll/blobcache/pkg/bcstate"
-	"github.com/brendoncarroll/blobcache/pkg/blobnet/blobrouting"
-	"github.com/brendoncarroll/blobcache/pkg/blobnet/peerrouting"
-	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/bcstate"
+	"github.com/blobcache/blobcache/pkg/blobnet/blobrouting"
+	"github.com/blobcache/blobcache/pkg/blobnet/peerrouting"
+	"github.com/blobcache/blobcache/pkg/blobnet/peers"
+	"github.com/blobcache/blobcache/pkg/blobs"
 )
 
 const (

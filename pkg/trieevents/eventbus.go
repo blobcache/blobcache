@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"sync"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/blobs"
 )
 
 type EventBus struct {

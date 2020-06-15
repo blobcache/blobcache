@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/blobs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

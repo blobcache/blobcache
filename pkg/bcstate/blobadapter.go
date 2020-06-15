@@ -3,7 +3,7 @@ package bcstate
 import (
 	"context"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/blobs"
 )
 
 type blobAdapter struct {

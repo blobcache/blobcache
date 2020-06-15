@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/blobs"
 )
 
 var enc = base64.URLEncoding

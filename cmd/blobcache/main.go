@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobcachecmd"
+	"github.com/blobcache/blobcache/pkg/blobcachecmd"
 )
 
 func main() {

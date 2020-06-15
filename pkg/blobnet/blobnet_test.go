@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/brendoncarroll/blobcache/pkg/bcstate"
-	"github.com/brendoncarroll/blobcache/pkg/blobnet/peers"
+	"github.com/blobcache/blobcache/pkg/bcstate"
+	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
 	"github.com/brendoncarroll/go-p2p/p2ptest"

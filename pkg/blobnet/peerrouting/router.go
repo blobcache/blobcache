@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/brendoncarroll/blobcache/pkg/blobnet/bcproto"
+	"github.com/blobcache/blobcache/pkg/blobnet/bcproto"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/kademlia"
 	proto "github.com/golang/protobuf/proto"
