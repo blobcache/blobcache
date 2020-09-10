@@ -43,7 +43,7 @@ func NewBlobNet(params Params) *Blobnet {
 	}
 
 	// peer router
-	rSwarm, err := bn.mux.OpenChannel(ChannelPeerRoutingV0)
+	rSwarm, err := bn.mux.OpenSecureAsk(ChannelPeerRoutingV0)
 	if err != nil {
 		panic(err)
 	}
@@ -53,7 +53,7 @@ func NewBlobNet(params Params) *Blobnet {
 	})
 
 	// blob router
-	brSwarm, err := bn.mux.OpenChannel(ChannelBlobRoutingV0)
+	brSwarm, err := bn.mux.OpenSecureAsk(ChannelBlobRoutingV0)
 	if err != nil {
 		panic(err)
 	}
@@ -65,7 +65,7 @@ func NewBlobNet(params Params) *Blobnet {
 	})
 
 	// fetcher
-	fSwarm, err := bn.mux.OpenChannel(ChannelFetchingV0)
+	fSwarm, err := bn.mux.OpenSecureAsk(ChannelFetchingV0)
 	if err != nil {
 		panic(err)
 	}
