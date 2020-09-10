@@ -13,10 +13,9 @@ import (
 )
 
 func TestPut(t *testing.T) {
-	cell := &bcstate.MemCell{}
-	kv := &bcstate.MemKV{Capacity: 2}
+	kv := &bcstate.MemKV{Capacity: 15}
 	locus := make([]byte, 32)
-	rt := NewKadRT(cell, bcstate.BlobAdapter(kv), locus)
+	rt := NewKadRT(kv, locus)
 	ctx := context.TODO()
 
 	const N = 1000
@@ -29,18 +28,18 @@ func TestPut(t *testing.T) {
 		err := rt.Put(ctx, blobID, peerID, time.Now())
 		require.Nil(t, err)
 
-		peerIDs, err := rt.Lookup(ctx, blobs.ID{})
+		ents, err := rt.Lookup(ctx, blobs.ID{})
 		require.Nil(t, err)
-		require.Len(t, peerIDs, 1, "should still have locus after %d %v", i, rt.trie)
+		require.Len(t, ents, 1, "should still have locus after %d", i)
 	}
 
 	// check that we have entries close to us in keyspace
 	for i := 0; i < 10; i++ {
 		blobID := blobs.ID{}
 		binary.BigEndian.PutUint64(blobID[:], uint64(i))
-		peerIDs, err := rt.Lookup(ctx, blobID)
+		ents, err := rt.Lookup(ctx, blobID)
 		require.Nil(t, err)
-		require.Len(t, peerIDs, 1, "%v should have an entry", blobID)
+		require.Len(t, ents, 1, "%v should have an entry", blobID)
 	}
 
 	// check that we evicted entries far away

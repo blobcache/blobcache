@@ -6,7 +6,6 @@ import (
 
 	"github.com/blobcache/blobcache/pkg/blobnet/peerrouting"
 	"github.com/blobcache/blobcache/pkg/blobs"
-	"github.com/blobcache/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
@@ -29,8 +28,6 @@ type Crawler struct {
 	blobRouter *Router
 	peerSwarm  PeerSwarm
 	clock      clockwork.Clock
-
-	shards map[ShardID]blobs.ID
 }
 
 func newCrawler(params CrawlerParams) *Crawler {
@@ -39,7 +36,6 @@ func newCrawler(params CrawlerParams) *Crawler {
 		blobRouter: params.BlobRouter,
 		peerSwarm:  params.PeerSwarm,
 		clock:      params.Clock,
-		shards:     map[ShardID]blobs.ID{},
 	}
 }
 
@@ -89,26 +85,20 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 		"peer_id": peerID,
 		"prefix":  prefix,
 	}).Debug("indexing peer")
-	shardID := ShardID{peerID, string(prefix)}
 	rt, nextHop := c.peerRouter.Lookup(peerID)
 	if rt == nil {
-		delete(c.shards, shardID)
 		return peerrouting.ErrNoRouteToPeer
 	}
-
 	req := &ListBlobsReq{
 		RoutingTag: rt,
 		Prefix:     prefix,
 	}
 	res, err := c.blobRouter.request(ctx, nextHop, req)
 	if err != nil {
-		delete(c.shards, ShardID{peerID, string(prefix)})
 		return err
 	}
-
-	// Sharded below this point
-	if len(res.TrieHash) < 1 || len(res.TrieData) < 1 {
-		delete(c.shards, shardID)
+	// too many, request sub prefixes
+	if res.TooMany {
 		for i := 0; i < 256; i++ {
 			prefix2 := append(prefix, byte(i))
 			if err := c.indexPeer(ctx, peerID, prefix2); err != nil {
@@ -117,57 +107,23 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 		}
 		return nil
 	}
-
-	// parse trie; can't resolve any of the children without a store, but we don't need to here.
-	t, err := tries.FromBytes(nil, res.TrieData)
-	if err != nil {
-		return err
-	}
-	id := blobs.Hash(res.TrieData)
-
-	// parent, need to recurse
-	if t.IsParent() {
-		for i := 0; i < 256; i++ {
-			id := t.GetChildRef(byte(i))
-			prefix2 := append(prefix, byte(i))
-			shardID2 := ShardID{peerID, string(prefix2)}
-			if id2, exists := c.shards[shardID2]; exists && id.Equals(id2) {
-				continue
-			}
-			if err := c.indexPeer(ctx, peerID, prefix2); err != nil {
-				return err
-			}
-		}
-		c.putShard(shardID, id)
-		return nil
-	}
-
 	// child
 	now := c.clock.Now()
-	for _, pair := range t.ListEntries() {
-		blobID, peerID := splitKey(pair.Key)
-		sightedAt, err := parseTime(pair.Value)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
+	for _, blobLoc := range res.BlobLocs {
+		blobID := blobs.ID{}
+		copy(blobID[:], blobLoc.BlobId)
+		peerID := p2p.PeerID{}
+		copy(peerID[:], blobLoc.PeerId)
+		sightedAt := time.Unix(int64(blobLoc.SightedAt), 0)
 		if sightedAt.After(now) {
 			log.Error("got route entry with time in future")
 			continue
 		}
-		c.blobRouter.Put(ctx, blobID, peerID, *sightedAt)
+		if err := c.blobRouter.Put(ctx, blobID, peerID, sightedAt); err != nil {
+			return err
+		}
 	}
-	c.putShard(shardID, id)
 	return nil
-}
-
-func (c *Crawler) putShard(shardID ShardID, id blobs.ID) {
-	log.WithFields(log.Fields{
-		"peer_id": shardID.PeerID,
-		"prefix":  shardID.Prefix,
-		"blob_id": id,
-	}).Debug("synced shard")
-	c.shards[shardID] = id
 }
 
 func splitKey(x []byte) (blobs.ID, p2p.PeerID) {

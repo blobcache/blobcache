@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/blobcache/blobcache/pkg/blobs"
-	"github.com/blobcache/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/jonboulle/clockwork"
 )
@@ -39,35 +38,6 @@ func (rt *LocalRT) Delete(context.Context, blobs.ID, p2p.PeerID) error {
 	panic("don't call Delete on local route table")
 }
 
-func (rt *LocalRT) GetTrie(ctx context.Context, prefix []byte) (tries.Trie, error) {
-	ids := make([]blobs.ID, tries.HowManyUniform(len(prefix), 64))
-	n, err := rt.store.List(ctx, prefix, ids)
-	switch {
-	case err == blobs.ErrTooMany:
-		children := [256]tries.Trie{}
-		for i := 0; i < 256; i++ {
-			prefix2 := append(prefix, byte(i))
-			t, err := rt.GetTrie(ctx, prefix2)
-			if err != nil {
-				return nil, err
-			}
-			children[i] = t
-		}
-		return tries.NewParent(ctx, blobs.Void{}, children)
-	case err != nil:
-		return nil, err
-	default:
-		t := tries.NewWithPrefix(nil, prefix)
-		for _, id := range ids[:n] {
-			key := makeKey(id, rt.localID)
-			if err := t.Put(ctx, key, nil); err != nil {
-				return nil, err
-			}
-		}
-		return t, nil
-	}
-}
-
 func (rt *LocalRT) Lookup(ctx context.Context, blobID blobs.ID) ([]RTEntry, error) {
 	exists, err := rt.store.Exists(ctx, blobID)
 	if err != nil {
@@ -81,4 +51,21 @@ func (rt *LocalRT) Lookup(ctx context.Context, blobID blobs.ID) ([]RTEntry, erro
 		return []RTEntry{entry}, nil
 	}
 	return nil, nil
+}
+
+func (rt *LocalRT) List(ctx context.Context, prefix []byte, entries []RTEntry) (int, error) {
+	ids := make([]blobs.ID, len(entries))
+	n, err := rt.store.List(ctx, prefix, ids)
+	if err != nil {
+		return -1, err
+	}
+	now := time.Now().UTC()
+	for i, id := range ids[:n] {
+		entries[i] = RTEntry{
+			BlobID:    id,
+			PeerID:    rt.localID,
+			SightedAt: now,
+		}
+	}
+	return n, nil
 }

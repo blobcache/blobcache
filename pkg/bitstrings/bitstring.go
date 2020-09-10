@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/bits"
 	"strings"
 )
 
@@ -72,15 +71,6 @@ func (x BitString) LongString() string {
 		}
 	}
 	return sb.String()
-}
-
-func (a BitString) HasPrefix(b *BitString) bool {
-	if !strings.HasPrefix(a.full(), b.full()) {
-		return false
-	}
-	xor := a.last() ^ b.last()
-	zeros := bits.TrailingZeros8(xor)
-	return zeros >= min(a.n%8, b.n%8)
 }
 
 func (x BitString) EnumBytePrefixes() [][]byte {
@@ -155,4 +145,16 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func HasPrefix(x, prefix BitString) bool {
+	if x.n < prefix.n {
+		return false
+	}
+	for i := 0; i < prefix.n; i++ {
+		if x.At(i) != prefix.At(i) {
+			return false
+		}
+	}
+	return true
 }

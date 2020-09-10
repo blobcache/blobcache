@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/blobcache/blobcache/pkg/bcstate"
@@ -13,7 +12,6 @@ import (
 	"github.com/blobcache/blobcache/pkg/blobnet/bcproto"
 	"github.com/blobcache/blobcache/pkg/blobnet/peerrouting"
 	"github.com/blobcache/blobcache/pkg/blobs"
-	"github.com/blobcache/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/jonboulle/clockwork"
@@ -49,9 +47,6 @@ type Router struct {
 	kadRT   *KadRT
 	crawler *Crawler
 	cf      context.CancelFunc
-
-	mu     sync.RWMutex
-	shards map[string]tries.Trie
 }
 
 func NewRouter(params RouterParams) *Router {
@@ -60,8 +55,7 @@ func NewRouter(params RouterParams) *Router {
 
 	ctx, cf := context.WithCancel(context.Background())
 
-	rtRootCell := bcstate.KVCell{KV: params.DB.Bucket("root")}
-	rtStorage := params.DB.Bucket("store")
+	rtStorage := params.DB.Bucket("route_table")
 	br := &Router{
 		peerRouter:     params.PeerRouter,
 		peerSwarm:      peerSwarm,
@@ -69,9 +63,8 @@ func NewRouter(params RouterParams) *Router {
 		clock:          params.Clock,
 
 		localRT: NewLocalRT(params.LocalBlobs, localID, params.Clock),
-		kadRT:   NewKadRT(rtRootCell, bcstate.BlobAdapter(rtStorage), localID[:]),
+		kadRT:   NewKadRT(rtStorage, localID[:]),
 		cf:      cf,
-		shards:  make(map[string]tries.Trie),
 	}
 	peerSwarm.OnAsk(br.handleAsk)
 	go br.run(ctx)
@@ -95,68 +88,25 @@ func (br *Router) Close() error {
 }
 
 func (r *Router) Put(ctx context.Context, blobID blobs.ID, peerID p2p.PeerID, sightedAt time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// evict from cache
-	r.delete(blobID)
-
 	if peerID.Equals(r.peerSwarm.LocalID()) {
 		return nil
 	}
 	return r.kadRT.Put(ctx, blobID, peerID, sightedAt)
 }
 
-func (r *Router) GetTrie(ctx context.Context, prefix []byte) (tries.Trie, error) {
-	ctx = tries.CtxDeleteBlobs(ctx)
-
-	// check the cache
-	r.mu.RLock()
-	trie, exists := r.shards[string(prefix)]
-	r.mu.RUnlock()
-	if exists {
-		return trie, nil
-	}
-
-	// construct trie, and fill cache.
-	lTrie, err := r.localRT.GetTrie(ctx, prefix)
+func (r *Router) List(ctx context.Context, prefix []byte, entries []RTEntry) (int, error) {
+	total := 0
+	n, err := r.localRT.List(ctx, prefix, entries)
 	if err != nil {
-		return nil, err
+		return -1, err
 	}
-	rTrie, err := r.kadRT.GetTrie(ctx, prefix)
+	total += n
+	n, err = r.kadRT.List(ctx, prefix, entries[total:])
 	if err != nil {
-		return nil, err
+		return -1, err
 	}
-
-	var m tries.Trie
-	if lTrie.IsParent() || rTrie.IsParent() {
-		children := [256]tries.Trie{}
-		for i := 0; i < 256; i++ {
-			prefix2 := append(prefix, byte(i))
-			t, err := r.GetTrie(ctx, prefix2)
-			if err != nil {
-				return nil, err
-			}
-			children[i] = t
-		}
-		m, err = tries.NewParent(ctx, blobs.Void{}, children)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		m, err = tries.Merge(ctx, blobs.Void{}, lTrie, rTrie)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if m.IsParent() {
-		r.mu.Lock()
-		r.shards[string(prefix)] = m
-		r.mu.Unlock()
-	}
-
-	return m, nil
+	total += n
+	return total, nil
 }
 
 func (r *Router) Lookup(ctx context.Context, blobID blobs.ID) []RTEntry {
@@ -173,24 +123,6 @@ func (r *Router) Lookup(ctx context.Context, blobID blobs.ID) []RTEntry {
 
 func (r *Router) WouldAccept() bitstrings.BitString {
 	return r.kadRT.WouldAccept()
-}
-
-func (r *Router) Invalidate(ctx context.Context, id blobs.ID) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.delete(id)
-	return nil
-}
-
-func (r *Router) delete(blobID blobs.ID) {
-	// get a lock before calling this
-	for i := range blobID {
-		if _, exists := r.shards[string(blobID[:i])]; exists {
-			delete(r.shards, string(blobID[:i]))
-		} else {
-			break
-		}
-	}
 }
 
 func (r *Router) request(ctx context.Context, nextHop p2p.PeerID, req *ListBlobsReq) (*ListBlobsRes, error) {
@@ -251,15 +183,24 @@ func (br *Router) localRequest(ctx context.Context, req *ListBlobsReq) (*ListBlo
 	if len(req.Prefix) < br.minQueryLength {
 		return &ListBlobsRes{}, nil
 	}
-	trie, err := br.GetTrie(ctx, req.Prefix)
+	entries := make([]RTEntry, 1024)
+	n, err := br.List(ctx, req.Prefix, entries)
 	if err != nil {
+		if err == blobs.ErrTooMany {
+			return &bcproto.ListBlobsRes{TooMany: true}, nil
+		}
 		return nil, err
 	}
-	data := trie.Marshal()
-	id := blobs.Hash(data)
-	res := &ListBlobsRes{
-		TrieData: data,
-		TrieHash: id[:],
+	entries = entries[:n]
+	blobLocs := make([]*bcproto.BlobLoc, len(entries))
+	for i, ent := range entries {
+		blobLocs[i] = &bcproto.BlobLoc{
+			BlobId:    ent.BlobID[:],
+			PeerId:    ent.PeerID[:],
+			SightedAt: uint64(ent.SightedAt.Unix()),
+		}
 	}
-	return res, nil
+	return &bcproto.ListBlobsRes{
+		BlobLocs: blobLocs,
+	}, nil
 }

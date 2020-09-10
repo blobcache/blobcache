@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+option go_package = "github.com/blobcache/blobcache/pkg/blobnet/bcproto";
+
 // PeerRouting
 message RoutingTag {
     bytes dst_id = 1;
@@ -24,18 +26,17 @@ message PeerInfo {
 message ListBlobsReq {
     RoutingTag routing_tag = 1;
     bytes prefix = 2;
-    bytes hash_algo = 3;
 }
 
 message ListBlobsRes {
-    bytes trie_hash = 1;
-    bytes trie_data = 2;
+    repeated BlobLoc blob_locs = 1;
+    bool too_many = 2;
 }
 
 message BlobLoc {
     bytes blob_id = 1;
     bytes peer_id = 2;
-    int64 expires_at = 3;
+    uint64 sighted_at = 3;
 }
 
 // Fetching

@@ -14,12 +14,11 @@ type RouteTable interface {
 	Put(context.Context, blobs.ID, p2p.PeerID, time.Time) error
 	Lookup(context.Context, blobs.ID) ([]RTEntry, error)
 	Delete(context.Context, blobs.ID, p2p.PeerID) error
-
-	//GetRange(ctx context.Context, prefix []byte) (map[blobs.ID][]RTEntry, error)
-	//GetTrie(ctx context.Context, prefix []byte) (tries.Trie, error)
+	List(ctx context.Context, prefix []byte, entries []RTEntry) (int, error)
 }
 
 type RTEntry struct {
+	BlobID    blobs.ID
 	PeerID    p2p.PeerID
 	SightedAt time.Time
 }

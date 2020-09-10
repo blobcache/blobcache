@@ -1,6 +1,7 @@
 package bcstate
 
 import (
+	"bytes"
 	"sync"
 	"sync/atomic"
 )
@@ -59,8 +60,13 @@ func (kv *MemKV) SizeUsed() uint64 {
 func (kv *MemKV) ForEach(start, end []byte, fn func(k, v []byte) error) error {
 	var err error
 	kv.m.Range(func(k, v interface{}) bool {
-		err = fn([]byte(k.(string)), v.([]byte))
-		return err == nil
+		key := []byte(k.(string))
+		value := v.([]byte)
+		if bytes.Compare(key, start) >= 0 && bytes.Compare(key, end) < 0 {
+			err = fn(key, value)
+			return err == nil
+		}
+		return true
 	})
 	return nil
 }
