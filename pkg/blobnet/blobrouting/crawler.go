@@ -143,9 +143,19 @@ func (c *Crawler) indexPeer(ctx context.Context, peerID p2p.PeerID, prefix []byt
 	}
 
 	// child
+	now := c.clock.Now()
 	for _, pair := range t.ListEntries() {
 		blobID, peerID := splitKey(pair.Key)
-		c.blobRouter.Put(ctx, blobID, peerID)
+		sightedAt, err := parseTime(pair.Value)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		if sightedAt.After(now) {
+			log.Error("got route entry with time in future")
+			continue
+		}
+		c.blobRouter.Put(ctx, blobID, peerID, *sightedAt)
 	}
 	c.putShard(shardID, id)
 	return nil

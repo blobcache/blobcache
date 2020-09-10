@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 
 	"github.com/zeebo/blake3"
 )
@@ -15,7 +16,18 @@ const MaxSize = 1 << 16
 type ID [IDSize]byte
 
 func (id ID) String() string {
-	return base64.URLEncoding.EncodeToString(id[:])
+	return base64.RawURLEncoding.EncodeToString(id[:])
+}
+
+func (id *ID) UnmarshalB64(data []byte) error {
+	n, err := base64.RawURLEncoding.Decode(id[:], data)
+	if err != nil {
+		return err
+	}
+	if n != IDSize {
+		return errors.New("base64 string is too short")
+	}
+	return nil
 }
 
 func (a ID) Equals(b ID) bool {

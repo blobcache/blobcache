@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"testing"
+	"time"
 
 	"github.com/blobcache/blobcache/pkg/bcstate"
 	"github.com/blobcache/blobcache/pkg/blobs"
@@ -15,7 +16,7 @@ func TestPut(t *testing.T) {
 	cell := &bcstate.MemCell{}
 	kv := &bcstate.MemKV{Capacity: 2}
 	locus := make([]byte, 32)
-	rt := NewKadRT(cell, kv, locus)
+	rt := NewKadRT(cell, bcstate.BlobAdapter(kv), locus)
 	ctx := context.TODO()
 
 	const N = 1000
@@ -25,7 +26,7 @@ func TestPut(t *testing.T) {
 		binary.BigEndian.PutUint64(blobID[:], uint64(i))
 		binary.BigEndian.PutUint64(peerID[:], uint64(i))
 
-		err := rt.Put(ctx, blobID, peerID)
+		err := rt.Put(ctx, blobID, peerID, time.Now())
 		require.Nil(t, err)
 
 		peerIDs, err := rt.Lookup(ctx, blobs.ID{})

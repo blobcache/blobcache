@@ -40,7 +40,7 @@ func NewServer(n blobcache.API, laddr string) *Server {
 
 		r.Put("/{pinSetID:[0-9]+}", s.addPin)
 		r.Get("/{pinSetID:[0-9]+}/{blobID}", s.getBlob)
-		r.Delete("/{pinSetID}/{blobID}", s.deletePin)
+		r.Delete("/{pinSetID:[0-9]}/{blobID}", s.deletePin)
 	})
 
 	r.Get("/{blobID}", s.getBlob)
@@ -119,15 +119,13 @@ func (s *Server) addPin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	mhBytes := make([]byte, base64.URLEncoding.DecodedLen(len(idb64)))
-	n, err := base64.URLEncoding.Decode(mhBytes, idb64)
-	if err != nil {
+	id := blobs.ID{}
+	if err := id.UnmarshalB64(idb64); err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	mhBytes = mhBytes[:n]
-	if err := s.n.Pin(r.Context(), blobcache.PinSetID(pinSetID), mhBytes); err != nil {
+	if err := s.n.Pin(r.Context(), blobcache.PinSetID(pinSetID), id); err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
@@ -142,13 +140,13 @@ func (s *Server) getBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mhBytes, err := base64.URLEncoding.DecodeString(idStr)
-	if err != nil {
+	id := blobs.ID{}
+	if err := id.UnmarshalB64([]byte(idStr)); err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err = s.n.GetF(ctx, mhBytes, func(data []byte) error {
+	err := s.n.GetF(ctx, id, func(data []byte) error {
 		_, err := w.Write(data)
 		return err
 	})

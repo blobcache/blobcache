@@ -2,7 +2,6 @@ package blobcache
 
 import (
 	"context"
-	"errors"
 
 	"github.com/blobcache/blobcache/pkg/bcstate"
 	"github.com/blobcache/blobcache/pkg/blobnet"
@@ -11,7 +10,6 @@ import (
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-p2p/p/simplemux"
 	"github.com/jonboulle/clockwork"
-	"github.com/multiformats/go-multihash"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -20,12 +18,12 @@ type API interface {
 	CreatePinSet(ctx context.Context, name string) (PinSetID, error)
 	DeletePinSet(ctx context.Context, pinset PinSetID) error
 	GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error)
-	Pin(ctx context.Context, pinset PinSetID, mh []byte) error
-	Unpin(ctx context.Context, pinset PinSetID, mh []byte) error
+	Pin(ctx context.Context, pinset PinSetID, id blobs.ID) error
+	Unpin(ctx context.Context, pinset PinSetID, id blobs.ID) error
 
 	// Blobs
-	Post(ctx context.Context, pinset PinSetID, data []byte) ([]byte, error)
-	GetF(ctx context.Context, mh []byte, f func([]byte) error) error
+	Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID, error)
+	GetF(ctx context.Context, id blobs.ID, f func([]byte) error) error
 
 	MaxBlobSize() int
 }
@@ -106,47 +104,33 @@ func (n *Node) DeletePinSet(ctx context.Context, pinset PinSetID) error {
 	return n.pinSets.Delete(ctx, pinset)
 }
 
-func (n *Node) Pin(ctx context.Context, pinset PinSetID, mh []byte) error {
-	id, err := decodeMH(mh)
-	if err != nil {
-		return err
-	}
+func (n *Node) Pin(ctx context.Context, pinset PinSetID, id blobs.ID) error {
 	return n.pinSets.Pin(ctx, pinset, id)
 }
 
-func (n *Node) Unpin(ctx context.Context, pinset PinSetID, mh []byte) error {
-	id, err := decodeMH(mh)
-	if err != nil {
-		return err
-	}
+func (n *Node) Unpin(ctx context.Context, pinset PinSetID, id blobs.ID) error {
 	return n.pinSets.Unpin(ctx, pinset, id)
 }
 
-func (n *Node) GetF(ctx context.Context, mh []byte, fn func([]byte) error) error {
-	id, err := decodeMH(mh)
-	if err != nil {
-		return err
-	}
+func (n *Node) GetF(ctx context.Context, id blobs.ID, fn func([]byte) error) error {
 	readChain := append(n.readChain, n.bn)
 	return readChain.GetF(ctx, id, fn)
 }
 
-func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) ([]byte, error) {
+func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID, error) {
 	id := blobs.Hash(data)
 	if err := n.pinSets.Pin(ctx, pinset, id); err != nil {
-		return nil, err
+		return blobs.ID{}, err
 	}
-	mh := encodeMH(id)
 
 	// don't persist data if it is in an external source
 	for _, s := range n.extSources {
 		exists, err := s.Exists(ctx, id)
 		if err != nil {
-			log.Error(err)
-			continue
+			return blobs.ID{}, err
 		}
 		if exists {
-			return mh, nil
+			return id, nil
 		}
 	}
 
@@ -154,14 +138,14 @@ func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) ([]byte, 
 	err := n.persistent.Bucket("blobs").Put(id[:], data)
 	if err == bcstate.ErrFull {
 		// TODO: must be on the network
-		return nil, err
+		return blobs.ID{}, err
 	} else if err != nil {
-		return nil, err
+		return blobs.ID{}, err
 	}
 
 	// TODO: fire and forget to network
 	// TODO: depending on persistance config, ensure replication
-	return mh, nil
+	return id, nil
 }
 
 func (n *Node) GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error) {
@@ -170,31 +154,4 @@ func (n *Node) GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error) 
 
 func (n *Node) MaxBlobSize() int {
 	return blobs.MaxSize
-}
-
-// https://github.com/multiformats/multicodec/blob/master/table.csv
-const mhBLAKE3 = 0x1e
-
-func encodeMH(id blobs.ID) []byte {
-	mh, err := multihash.Encode(id[:], mhBLAKE3)
-	if err != nil {
-		panic(err)
-	}
-	return mh
-}
-
-func decodeMH(mh []byte) (blobs.ID, error) {
-	id := blobs.ZeroID()
-	dmh, err := multihash.Decode(mh)
-	if err != nil {
-		return id, err
-	}
-	if dmh.Code != mhBLAKE3 {
-		return id, errors.New("unsupported hash function")
-	}
-	if dmh.Length != 32 {
-		return id, errors.New("unsupported hash length")
-	}
-	copy(id[:], dmh.Digest)
-	return id, nil
 }

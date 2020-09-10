@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/blobcache/blobcache/pkg/bcstate"
 	"github.com/blobcache/blobcache/pkg/bitstrings"
@@ -44,10 +45,10 @@ type Router struct {
 	minQueryLength int
 	clock          clockwork.Clock
 
-	localRT    *LocalRT
-	routeTable *KadRT
-	crawler    *Crawler
-	cf         context.CancelFunc
+	localRT *LocalRT
+	kadRT   *KadRT
+	crawler *Crawler
+	cf      context.CancelFunc
 
 	mu     sync.RWMutex
 	shards map[string]tries.Trie
@@ -59,18 +60,18 @@ func NewRouter(params RouterParams) *Router {
 
 	ctx, cf := context.WithCancel(context.Background())
 
-	rtRootCell := bcstate.KVCell{KV: params.DB.Bucket("route_table/root")}
-	rtStorage := params.DB.Bucket("route_table/storage")
+	rtRootCell := bcstate.KVCell{KV: params.DB.Bucket("root")}
+	rtStorage := params.DB.Bucket("store")
 	br := &Router{
 		peerRouter:     params.PeerRouter,
 		peerSwarm:      peerSwarm,
 		minQueryLength: 1,
 		clock:          params.Clock,
 
-		localRT:    NewLocalRT(params.LocalBlobs, localID),
-		routeTable: NewKadRT(rtRootCell, rtStorage, localID[:]),
-		cf:         cf,
-		shards:     make(map[string]tries.Trie),
+		localRT: NewLocalRT(params.LocalBlobs, localID, params.Clock),
+		kadRT:   NewKadRT(rtRootCell, bcstate.BlobAdapter(rtStorage), localID[:]),
+		cf:      cf,
+		shards:  make(map[string]tries.Trie),
 	}
 	peerSwarm.OnAsk(br.handleAsk)
 	go br.run(ctx)
@@ -93,7 +94,7 @@ func (br *Router) Close() error {
 	return nil
 }
 
-func (r *Router) Put(ctx context.Context, blobID blobs.ID, peerID p2p.PeerID) error {
+func (r *Router) Put(ctx context.Context, blobID blobs.ID, peerID p2p.PeerID, sightedAt time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -103,10 +104,10 @@ func (r *Router) Put(ctx context.Context, blobID blobs.ID, peerID p2p.PeerID) er
 	if peerID.Equals(r.peerSwarm.LocalID()) {
 		return nil
 	}
-	return r.routeTable.Put(ctx, blobID, peerID)
+	return r.kadRT.Put(ctx, blobID, peerID, sightedAt)
 }
 
-func (r *Router) Query(ctx context.Context, prefix []byte) (tries.Trie, error) {
+func (r *Router) GetTrie(ctx context.Context, prefix []byte) (tries.Trie, error) {
 	ctx = tries.CtxDeleteBlobs(ctx)
 
 	// check the cache
@@ -118,11 +119,11 @@ func (r *Router) Query(ctx context.Context, prefix []byte) (tries.Trie, error) {
 	}
 
 	// construct trie, and fill cache.
-	lTrie, err := r.localRT.Query(ctx, prefix)
+	lTrie, err := r.localRT.GetTrie(ctx, prefix)
 	if err != nil {
 		return nil, err
 	}
-	rTrie, err := r.routeTable.Query(ctx, prefix)
+	rTrie, err := r.kadRT.GetTrie(ctx, prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +133,7 @@ func (r *Router) Query(ctx context.Context, prefix []byte) (tries.Trie, error) {
 		children := [256]tries.Trie{}
 		for i := 0; i < 256; i++ {
 			prefix2 := append(prefix, byte(i))
-			t, err := r.Query(ctx, prefix2)
+			t, err := r.GetTrie(ctx, prefix2)
 			if err != nil {
 				return nil, err
 			}
@@ -158,12 +159,12 @@ func (r *Router) Query(ctx context.Context, prefix []byte) (tries.Trie, error) {
 	return m, nil
 }
 
-func (r *Router) Lookup(ctx context.Context, blobID blobs.ID) []p2p.PeerID {
-	localRes, err := r.routeTable.Lookup(ctx, blobID)
+func (r *Router) Lookup(ctx context.Context, blobID blobs.ID) []RTEntry {
+	localRes, err := r.localRT.Lookup(ctx, blobID)
 	if err != nil {
 		return nil
 	}
-	remoteRes, err := r.routeTable.Lookup(ctx, blobID)
+	remoteRes, err := r.kadRT.Lookup(ctx, blobID)
 	if err != nil {
 		return nil
 	}
@@ -171,7 +172,7 @@ func (r *Router) Lookup(ctx context.Context, blobID blobs.ID) []p2p.PeerID {
 }
 
 func (r *Router) WouldAccept() bitstrings.BitString {
-	return r.routeTable.WouldAccept()
+	return r.kadRT.WouldAccept()
 }
 
 func (r *Router) Invalidate(ctx context.Context, id blobs.ID) error {
@@ -250,7 +251,7 @@ func (br *Router) localRequest(ctx context.Context, req *ListBlobsReq) (*ListBlo
 	if len(req.Prefix) < br.minQueryLength {
 		return &ListBlobsRes{}, nil
 	}
-	trie, err := br.Query(ctx, req.Prefix)
+	trie, err := br.GetTrie(ctx, req.Prefix)
 	if err != nil {
 		return nil, err
 	}
