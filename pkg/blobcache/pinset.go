@@ -128,17 +128,24 @@ func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
 		}
 
 		pinSetB := tx.Bucket(idToBucket(id))
-		t := tries.New(blobs.NewMem())
+		t := tries.New()
 		count := uint64(0)
-		err = pinSetB.ForEach(nil, nil, func(k, v []byte) error {
-			return t.Put(ctx, k, nil)
-		})
+		if err := pinSetB.ForEach(nil, nil, func(k, v []byte) error {
+			t.Entries = append(t.Entries, &tries.Entry{
+				Key: k,
+			})
+			count++
+			return nil
+		}); err != nil {
+			return err
+		}
+		root, err := tries.PostNode(ctx, blobs.NewMem(), t)
 		if err != nil {
 			return err
 		}
 		ps = &PinSet{
 			ID:    id,
-			Root:  blobs.Hash(t.Marshal()),
+			Root:  *root,
 			Count: count,
 		}
 		return nil

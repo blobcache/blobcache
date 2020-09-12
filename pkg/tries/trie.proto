@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+option go_package = "github.com/blobcache/blobcache/pkg/tries";
+
+message Entry {
+    bytes key = 1;
+    bytes value = 2;
+}
+
+message Node {
+    bytes prefix = 1;
+    repeated Entry entries = 2;
+    repeated bytes children = 3;
+}
