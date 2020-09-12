@@ -15,6 +15,12 @@ const MaxSize = 1 << 16
 
 type ID [IDSize]byte
 
+func IDFromBytes(x []byte) ID {
+	id := ID{}
+	copy(id[:], x)
+	return id
+}
+
 func (id ID) String() string {
 	return base64.RawURLEncoding.EncodeToString(id[:])
 }
