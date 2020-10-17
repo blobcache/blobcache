@@ -21,18 +21,14 @@ func New() *Node {
 	return &Node{}
 }
 
-func PostNode(ctx context.Context, s blobs.Store, n *Node) (*blobs.ID, error) {
+func PostNode(ctx context.Context, s blobs.Store, n *Node) (*Ref, error) {
 	for {
 		data, err := proto.Marshal(n)
 		if err != nil {
 			return nil, err
 		}
 		if len(data) <= blobs.MaxSize {
-			id, err := s.Post(ctx, data)
-			if err != nil {
-				return nil, err
-			}
-			return &id, nil
+			return post(ctx, s, data)
 		}
 		n, err = Split(ctx, s, n)
 		if err != nil {
@@ -41,9 +37,9 @@ func PostNode(ctx context.Context, s blobs.Store, n *Node) (*blobs.ID, error) {
 	}
 }
 
-func GetNode(ctx context.Context, s blobs.Store, id blobs.ID) (*Node, error) {
+func GetNode(ctx context.Context, s blobs.Store, ref Ref) (*Node, error) {
 	n := &Node{}
-	if err := s.GetF(ctx, id, func(data []byte) error {
+	if err := getF(ctx, s, ref, func(data []byte) error {
 		return proto.Unmarshal(data, n)
 	}); err != nil {
 		return nil, err
@@ -54,8 +50,8 @@ func GetNode(ctx context.Context, s blobs.Store, id blobs.ID) (*Node, error) {
 	return n, nil
 }
 
-func Put(ctx context.Context, s blobs.Store, id blobs.ID, key, value []byte) (*blobs.ID, error) {
-	n, err := GetNode(ctx, s, id)
+func Put(ctx context.Context, s blobs.Store, ref Ref, key, value []byte) (*Ref, error) {
+	n, err := GetNode(ctx, s, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -69,12 +65,12 @@ func Put(ctx context.Context, s blobs.Store, id blobs.ID, key, value []byte) (*b
 			return PostNode(ctx, s, n)
 		}
 		c := key[len(n.Prefix)]
-		childID := blobs.IDFromBytes(n.Children[c])
-		childID2, err := Put(ctx, s, childID, key, value)
+		childRef := fromChildProto(n.Children[c])
+		childRef2, err := Put(ctx, s, childRef, key, value)
 		if err != nil {
 			return nil, err
 		}
-		n.Children[c] = childID2[:]
+		n.Children[c] = toChildProto(*childRef2)
 		return PostNode(ctx, s, n)
 	}
 	n.Entries = append(n.Entries, makeEntry(n.Prefix, key, value))
@@ -84,8 +80,8 @@ func Put(ctx context.Context, s blobs.Store, id blobs.ID, key, value []byte) (*b
 	return PostNode(ctx, s, n)
 }
 
-func Get(ctx context.Context, s blobs.Store, id blobs.ID, key []byte) ([]byte, error) {
-	n, err := GetNode(ctx, s, id)
+func Get(ctx context.Context, s blobs.Store, ref Ref, key []byte) ([]byte, error) {
+	n, err := GetNode(ctx, s, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -100,11 +96,11 @@ func Get(ctx context.Context, s blobs.Store, id blobs.ID, key []byte) ([]byte, e
 			return n.Entries[0].Value, nil
 		}
 		c := key[len(n.Prefix)]
-		if len(n.Children[c]) == 0 {
+		if n.Children[c] == nil {
 			return nil, ErrNotExist
 		}
-		childID := blobs.IDFromBytes(n.Children[c])
-		return Get(ctx, s, childID, key)
+		childRef := fromChildProto(n.Children[c])
+		return Get(ctx, s, childRef, key)
 	}
 	for _, ent := range n.Entries {
 		entKey := append(n.Prefix, ent.Key...)
@@ -115,8 +111,8 @@ func Get(ctx context.Context, s blobs.Store, id blobs.ID, key []byte) ([]byte, e
 	return nil, ErrNotExist
 }
 
-func Delete(ctx context.Context, s blobs.Store, id blobs.ID, key []byte) (*blobs.ID, error) {
-	n, err := GetNode(ctx, s, id)
+func Delete(ctx context.Context, s blobs.Store, ref Ref, key []byte) (*Ref, error) {
+	n, err := GetNode(ctx, s, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -129,18 +125,18 @@ func Delete(ctx context.Context, s blobs.Store, id blobs.ID, key []byte) (*blobs
 				n.Entries = nil
 				return PostNode(ctx, s, n)
 			}
-			return &id, nil
+			return &ref, nil
 		}
 		c := key[len(n.Prefix)]
-		if len(n.Children[c]) == 0 {
-			return &id, nil
+		if n.Children[c] == nil {
+			return &ref, nil
 		}
-		childID := blobs.IDFromBytes(n.Children[c])
-		childID2, err := Delete(ctx, s, childID, key)
+		childRef := fromChildProto(n.Children[c])
+		childRef2, err := Delete(ctx, s, childRef, key)
 		if err != nil {
 			return nil, err
 		}
-		n.Children[c] = childID2[:]
+		n.Children[c] = toChildProto(*childRef2)
 		n2, err := Collapse(ctx, s, n)
 		if err != nil && err != ErrCannotCollapse {
 			return nil, err
@@ -156,7 +152,7 @@ func Delete(ctx context.Context, s blobs.Store, id blobs.ID, key []byte) (*blobs
 			return PostNode(ctx, s, n)
 		}
 	}
-	return &id, nil
+	return &ref, nil
 }
 
 func Split(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
@@ -174,7 +170,7 @@ func Split(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
 		childEntries[c] = append(childEntries[c], ent)
 	}
 
-	y.Children = make([][]byte, 256)
+	y.Children = make([]*ChildRef, 256)
 	for i := range childEntries {
 		if len(childEntries[i]) < 1 {
 			y.Children[i] = nil
@@ -184,11 +180,11 @@ func Split(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
 			Prefix:  append(x.Prefix, uint8(i)),
 			Entries: childEntries[i],
 		}
-		childID, err := PostNode(ctx, s, child)
+		childRef, err := PostNode(ctx, s, child)
 		if err != nil {
 			return nil, err
 		}
-		y.Children[i] = childID[:]
+		y.Children[i] = toChildProto(*childRef)
 	}
 	return y, nil
 }
@@ -199,11 +195,11 @@ func Collapse(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
 	}
 	y := &Node{}
 	for i := range x.Children {
-		if len(x.Children[i]) == 0 {
+		if x.Children[i] == nil {
 			continue
 		}
-		childID := blobs.IDFromBytes(x.Children[i])
-		child, err := GetNode(ctx, s, childID)
+		childRef := fromChildProto(x.Children[i])
+		child, err := GetNode(ctx, s, childRef)
 		if err != nil {
 			return nil, err
 		}
@@ -218,8 +214,8 @@ func Collapse(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
 	return y, nil
 }
 
-func Validate(ctx context.Context, s blobs.Store, id blobs.ID) error {
-	n, err := GetNode(ctx, s, id)
+func Validate(ctx context.Context, s blobs.Store, ref Ref) error {
+	n, err := GetNode(ctx, s, ref)
 	if err != nil {
 		return err
 	}
@@ -228,7 +224,7 @@ func Validate(ctx context.Context, s blobs.Store, id blobs.ID) error {
 	}
 	if IsParent(n) {
 		for i := range n.Children {
-			childID := blobs.IDFromBytes(n.Children[i])
+			childID := fromChildProto(n.Children[i])
 			if err := Validate(ctx, s, childID); err != nil {
 				return err
 			}
@@ -249,13 +245,6 @@ func ValidateNode(x *Node) error {
 		}
 		return nil
 	case len(x.Children) == 256 && len(x.Entries) < 2:
-		for i := range x.Children {
-			l := len(x.Children[i])
-			if l != 0 && l != blobs.IDSize {
-				return errors.Errorf("child ref is wrong size")
-			}
-
-		}
 		return nil
 	default:
 		return errors.Errorf("children is incorrect length %d", len(x.Children))

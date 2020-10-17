@@ -4,7 +4,7 @@ import "sync"
 
 type Cell interface {
 	LoadF(func([]byte) error) error
-	Store([]byte) error
+	Save([]byte) error
 }
 
 type KVCell struct {
@@ -16,7 +16,7 @@ func (c KVCell) LoadF(f func(data []byte) error) error {
 	return c.KV.GetF([]byte(c.Key), f)
 }
 
-func (c KVCell) Store(data []byte) error {
+func (c KVCell) Save(data []byte) error {
 	return c.KV.Put([]byte(c.Key), data)
 }
 
@@ -31,7 +31,7 @@ func (c *MemCell) LoadF(f func(data []byte) error) error {
 	return f(c.data)
 }
 
-func (c *MemCell) Store(data []byte) error {
+func (c *MemCell) Save(data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.data = append([]byte{}, data...)

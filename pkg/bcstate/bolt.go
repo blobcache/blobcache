@@ -124,11 +124,11 @@ func (kv *boltKV) NextSequence() (uint64, error) {
 	return seq, err
 }
 
-func (kv *boltKV) SizeTotal() uint64 {
+func (kv *boltKV) MaxCount() uint64 {
 	return uint64(math.MaxInt64)
 }
 
-func (kv *boltKV) SizeUsed() uint64 {
+func (kv *boltKV) Count() uint64 {
 	var size uint64
 	err := kv.view(func(tx *bolt.Tx) error {
 		b := kv.selectBucket(tx)

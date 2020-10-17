@@ -49,11 +49,11 @@ func (kv *MemKV) Bucket(p string) KV {
 	}
 }
 
-func (kv *MemKV) SizeTotal() uint64 {
+func (kv *MemKV) MaxCount() uint64 {
 	return kv.Capacity
 }
 
-func (kv *MemKV) SizeUsed() uint64 {
+func (kv *MemKV) Count() uint64 {
 	return uint64(atomic.LoadInt64(&kv.count))
 }
 

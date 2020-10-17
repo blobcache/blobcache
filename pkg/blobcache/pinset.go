@@ -145,7 +145,7 @@ func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
 		}
 		ps = &PinSet{
 			ID:    id,
-			Root:  *root,
+			Root:  root.ID,
 			Count: count,
 		}
 		return nil

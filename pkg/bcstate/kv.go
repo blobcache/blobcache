@@ -17,8 +17,8 @@ type KV interface {
 	// if last == nil ForEach will call fn with the last key
 	ForEach(first, last []byte, fn func(k, v []byte) error) error
 
-	SizeTotal() uint64
-	SizeUsed() uint64
+	Count() uint64
+	MaxCount() uint64
 }
 
 func Exists(kv KV, key []byte) (bool, error) {

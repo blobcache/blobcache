@@ -31,14 +31,14 @@ func (q *quotaDBKV) SizeTotal() uint64 {
 	defer q.quotaDB.mu.RUnlock()
 	othersUsed := uint64(0)
 	for _, kv := range q.quotaDB.buckets {
-		othersUsed += kv.SizeUsed()
+		othersUsed += kv.Count()
 	}
 
-	return q.quotaDB.Capacity - othersUsed + q.SizeUsed()
+	return q.quotaDB.Capacity - othersUsed + q.Count()
 }
 
 func (q *quotaDBKV) Put(key, value []byte) error {
-	if q.SizeUsed() >= q.SizeTotal() {
+	if q.Count() >= q.MaxCount() {
 		exists, err := Exists(q.KV, key)
 		if err != nil {
 			return err

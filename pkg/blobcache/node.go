@@ -28,8 +28,6 @@ type API interface {
 	MaxBlobSize() int
 }
 
-var _ API = &Node{}
-
 type Params struct {
 	Ephemeral  bcstate.TxDB
 	Persistent bcstate.TxDB
@@ -40,6 +38,8 @@ type Params struct {
 
 	ExternalSources []blobs.Getter
 }
+
+var _ API = &Node{}
 
 type Node struct {
 	ephemeral  bcstate.DB
