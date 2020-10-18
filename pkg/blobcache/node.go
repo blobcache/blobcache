@@ -13,21 +13,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type API interface {
-	// PinSets
-	CreatePinSet(ctx context.Context, name string) (PinSetID, error)
-	DeletePinSet(ctx context.Context, pinset PinSetID) error
-	GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error)
-	Pin(ctx context.Context, pinset PinSetID, id blobs.ID) error
-	Unpin(ctx context.Context, pinset PinSetID, id blobs.ID) error
-
-	// Blobs
-	Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID, error)
-	GetF(ctx context.Context, id blobs.ID, f func([]byte) error) error
-
-	MaxBlobSize() int
-}
-
 type Params struct {
 	Ephemeral  bcstate.TxDB
 	Persistent bcstate.TxDB
@@ -36,7 +21,7 @@ type Params struct {
 	PrivateKey p2p.PrivateKey
 	PeerStore  peers.PeerStore
 
-	ExternalSources []blobs.Getter
+	ExternalSources []Source
 }
 
 var _ API = &Node{}
@@ -47,7 +32,7 @@ type Node struct {
 	pinSets    *PinSetStore
 
 	readChain  blobs.ReadChain
-	extSources []blobs.Getter
+	extSources []Source
 
 	bn *blobnet.Blobnet
 }

@@ -3,10 +3,10 @@ package blobcachecmd
 import (
 	"context"
 	"errors"
-	"log"
 
-	"github.com/blobcache/blobcache/pkg/bchttp"
-	"github.com/blobcache/blobcache/pkg/blobcache"
+	"github.com/brendoncarroll/go-p2p"
+	"github.com/brendoncarroll/go-p2p/p/simplemux"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -38,14 +38,31 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		node := blobcache.NewNode(*params)
-
-		defer func() {
-			if err := node.Shutdown(); err != nil {
-				log.Println(err)
-			}
-		}()
-		s := bchttp.NewServer(node, config.APIAddr)
-		return s.Run(context.Background())
+		swarm, err := setupSwarm(params.PrivateKey, config.QUICAddr)
+		if err != nil {
+			return err
+		}
+		mux := simplemux.MultiplexSwarm(swarm)
+		params.Mux = mux
+		for _, addr := range addrsToStrs(p2p.FilterIPs(swarm.LocalAddrs(), p2p.NoLinkLocal, p2p.NoLoopback)) {
+			logrus.Info("local addr: ", addr)
+		}
+		trackers, err := setupTrackers(config.Trackers)
+		if err != nil {
+			return err
+		}
+		pstore, err := newPeerStore(swarm, config.Peers)
+		if err != nil {
+			return err
+		}
+		params.PeerStore = pstore
+		d := NewDaemon(DaemonParams{
+			BlobcacheParams: *params,
+			Trackers:        trackers,
+			APIAddr:         config.APIAddr,
+			PeerStore:       pstore,
+			Swarm:           swarm,
+		})
+		return d.Run(context.Background())
 	},
 }

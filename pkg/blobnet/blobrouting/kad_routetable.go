@@ -35,7 +35,8 @@ func NewKadRT(kv bcstate.KV, locus []byte) *KadRT {
 }
 
 func (rt *KadRT) Put(ctx context.Context, blobID blobs.ID, peerID p2p.PeerID, createdAt time.Time) error {
-	d := kademlia.XORBytes(rt.locus, blobID[:])
+	d := make([]byte, len(rt.locus))
+	kademlia.XORBytes(d, rt.locus, blobID[:])
 	lz := kademlia.Leading0s(d)
 	key := makeKey(blobID, peerID)
 

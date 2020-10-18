@@ -11,11 +11,12 @@ import (
 var _ DB = &BoltDB{}
 
 type BoltDB struct {
-	db *bolt.DB
+	db  *bolt.DB
+	cap uint64
 }
 
-func NewBoltDB(db *bolt.DB) *BoltDB {
-	return &BoltDB{db: db}
+func NewBoltDB(db *bolt.DB, capacity uint64) *BoltDB {
+	return &BoltDB{db: db, cap: capacity}
 }
 
 func (db *BoltDB) Bucket(p string) KV {

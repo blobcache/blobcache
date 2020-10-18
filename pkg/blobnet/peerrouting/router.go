@@ -171,9 +171,11 @@ func (r *Router) Closest(key []byte) p2p.PeerID {
 		copy(closest[:], e.Key)
 	}
 
-	dist := kademlia.XORBytes(key, closest[:])
+	dist := make([]byte, len(closest))
+	kademlia.XORBytes(dist, key, closest[:])
 	for _, id := range r.MultiHop() {
-		dist2 := kademlia.XORBytes(key, id[:])
+		dist2 := make([]byte, len(dist))
+		kademlia.XORBytes(dist2, key, id[:])
 		if bytes.Compare(dist2, dist) < 0 {
 			closest = id
 			dist = dist2
