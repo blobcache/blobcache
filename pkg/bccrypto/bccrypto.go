@@ -3,6 +3,7 @@ package bccrypto
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 
 	"golang.org/x/crypto/chacha20"
 
@@ -34,6 +35,15 @@ func RandomKey(blobs.ID) DEK {
 }
 
 type DEK [32]byte
+
+func (dek DEK) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + base64.RawURLEncoding.EncodeToString(dek[:]) + `"`), nil
+}
+
+func (dek *DEK) UnmarshalJSON(data []byte) error {
+	_, err := base64.RawURLEncoding.Decode(dek[:], data[1:len(data)-1])
+	return err
+}
 
 func Post(ctx context.Context, s blobs.Poster, keyFunc KeyFunc, data []byte) (blobs.ID, *DEK, error) {
 	id := blobs.Hash(data)
