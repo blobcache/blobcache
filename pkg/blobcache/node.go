@@ -110,11 +110,9 @@ func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID
 
 	// don't persist data if it is in an external source
 	for _, s := range n.extSources {
-		exists, err := s.Exists(ctx, id)
-		if err != nil {
+		if exists, err := s.Exists(ctx, id); err != nil {
 			return blobs.ID{}, err
-		}
-		if exists {
+		} else if exists {
 			return id, nil
 		}
 	}
@@ -131,6 +129,14 @@ func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID
 	// TODO: fire and forget to network
 	// TODO: depending on persistance config, ensure replication
 	return id, nil
+}
+
+func (node *Node) List(ctx context.Context, psID PinSetID, prefix []byte, ids []blobs.ID) (n int, err error) {
+	return node.pinSets.List(ctx, psID, prefix, ids)
+}
+
+func (n *Node) Exists(ctx context.Context, psID PinSetID, id blobs.ID) (bool, error) {
+	return n.pinSets.Exists(ctx, psID, id)
 }
 
 func (n *Node) GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error) {

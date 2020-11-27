@@ -3,7 +3,7 @@ module github.com/blobcache/blobcache
 go 1.15
 
 require (
-	github.com/brendoncarroll/go-p2p v0.0.0-20201018010319-d49817d31031
+	github.com/brendoncarroll/go-p2p v0.0.0-20201022031311-0751a14857a5
 	github.com/docker/go-units v0.4.0
 	github.com/go-chi/chi v4.0.3+incompatible
 	github.com/golang/protobuf v1.4.2
@@ -17,7 +17,7 @@ require (
 	go.etcd.io/bbolt v1.3.4
 	golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
-	golang.org/x/sys v0.0.0-20201017003518-b09fb700fbb7 // indirect
+	golang.org/x/sys v0.0.0-20201020230747-6e5568b54d1a // indirect
 	google.golang.org/protobuf v1.25.0
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
 	gotest.tools v2.2.0+incompatible

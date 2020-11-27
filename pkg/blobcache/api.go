@@ -12,12 +12,15 @@ type API interface {
 	CreatePinSet(ctx context.Context, name string) (PinSetID, error)
 	DeletePinSet(ctx context.Context, pinset PinSetID) error
 	GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error)
+
 	Pin(ctx context.Context, pinset PinSetID, id blobs.ID) error
 	Unpin(ctx context.Context, pinset PinSetID, id blobs.ID) error
 
 	// Blobs
 	Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID, error)
 	GetF(ctx context.Context, id blobs.ID, f func([]byte) error) error
+	Exists(ctx context.Context, pinset PinSetID, id blobs.ID) (bool, error)
+	List(ctx context.Context, pinSet PinSetID, prefix []byte, ids []blobs.ID) (n int, err error)
 
 	MaxBlobSize() int
 }

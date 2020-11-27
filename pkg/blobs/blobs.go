@@ -10,8 +10,10 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-const IDSize = 32
-const MaxSize = 1 << 16
+const (
+	IDSize  = 32
+	MaxSize = 1 << 16
+)
 
 type ID [IDSize]byte
 
