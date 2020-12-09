@@ -38,19 +38,13 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		swarm, err := setupSwarm(params.PrivateKey, config.QUICAddr)
+		swarm, err := setupSwarm(params.PrivateKey, config.INet256API)
 		if err != nil {
 			return err
 		}
+		logrus.Info("LOCAL ID: ", swarm.LocalAddrs()[0].(p2p.PeerID))
 		mux := simplemux.MultiplexSwarm(swarm)
 		params.Mux = mux
-		for _, addr := range addrsToStrs(p2p.FilterIPs(swarm.LocalAddrs(), p2p.NoLinkLocal, p2p.NoLoopback)) {
-			logrus.Info("local addr: ", addr)
-		}
-		trackers, err := setupTrackers(config.Trackers)
-		if err != nil {
-			return err
-		}
 		pstore, err := newPeerStore(swarm, config.Peers)
 		if err != nil {
 			return err
@@ -58,7 +52,6 @@ var runCmd = &cobra.Command{
 		params.PeerStore = pstore
 		d := NewDaemon(DaemonParams{
 			BlobcacheParams: *params,
-			Trackers:        trackers,
 			APIAddr:         config.APIAddr,
 			PeerStore:       pstore,
 			Swarm:           swarm,

@@ -9,10 +9,9 @@ import (
 	"strings"
 
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/d/celltracker"
-	"github.com/brendoncarroll/go-p2p/s/multiswarm"
-	"github.com/brendoncarroll/go-p2p/s/quicswarm"
+	"github.com/brendoncarroll/go-p2p/s/peerswarm"
 	"github.com/docker/go-units"
+	"github.com/inet256/inet256/pkg/inet256p2p"
 	"github.com/pkg/errors"
 	bolt "go.etcd.io/bbolt"
 	"gopkg.in/yaml.v3"
@@ -29,12 +28,11 @@ type Config struct {
 	PersistDir   string `yaml:"persist_dir"`
 	EphemeralDir string `yaml:"ephemeral_dir"`
 
-	QUICAddr      string           `yaml:"quic_addr"`
+	INet256API    string           `yaml:"inet256_api"`
 	APIAddr       string           `yaml:"api_addr"`
 	EphemeralCap  string           `yaml:"ephemeral_capacity"`
 	PersistentCap string           `yaml:"persistent_capacity"`
 	Peers         []peers.PeerSpec `yaml:"peers"`
-	Trackers      []TrackerSpec    `yaml:"trackers"`
 }
 
 func (c *Config) Marshal() []byte {
@@ -68,17 +66,13 @@ func DefaultConfig() *Config {
 		PersistDir:   ".",
 		EphemeralDir: ".",
 
-		QUICAddr: "0.0.0.0:",
-		APIAddr:  DefaultAPIAddr,
+		INet256API: "127.0.0.1:25600",
+		APIAddr:    DefaultAPIAddr,
 
 		EphemeralCap:  "10GB",
 		PersistentCap: "1GB",
 		Peers:         nil,
 	}
-}
-
-type TrackerSpec struct {
-	CellTracker *string `yaml:"cell_tracker"`
 }
 
 func buildParams(configPath string, c Config) (*blobcache.Params, error) {
@@ -138,32 +132,12 @@ func buildParams(configPath string, c Config) (*blobcache.Params, error) {
 	}, nil
 }
 
-func setupSwarm(privKey p2p.PrivateKey, quicAddr string) (p2p.SecureAskSwarm, error) {
-	quicSw, err := quicswarm.New(quicAddr, privKey)
+func setupSwarm(privKey p2p.PrivateKey, inet256APIAddr string) (peerswarm.AskSwarm, error) {
+	sw, err := inet256p2p.NewSwarm(inet256APIAddr, privKey)
 	if err != nil {
 		return nil, err
 	}
-	transports := map[string]p2p.SecureAskSwarm{
-		"quic": quicSw,
-	}
-	return multiswarm.NewSecureAsk(transports).(p2p.SecureAskSwarm), nil
-}
-
-func setupTrackers(specs []TrackerSpec) ([]p2p.DiscoveryService, error) {
-	var trackers []p2p.DiscoveryService
-	for _, spec := range specs {
-		switch {
-		case spec.CellTracker != nil:
-			client, err := celltracker.NewClient(*spec.CellTracker)
-			if err != nil {
-				return nil, err
-			}
-			trackers = append(trackers, client)
-		default:
-			return nil, errors.Errorf("empty tracker spec")
-		}
-	}
-	return trackers, nil
+	return sw, nil
 }
 
 type ConfigFile struct {
@@ -184,9 +158,4 @@ func (cf ConfigFile) Load() (Config, error) {
 		return Config{}, err
 	}
 	return config, nil
-}
-
-func (cf ConfigFile) Save(c Config) error {
-	data, _ := yaml.Marshal(c)
-	return ioutil.WriteFile(cf.p, data, 0644)
 }

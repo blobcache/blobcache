@@ -11,6 +11,7 @@ import (
 	"github.com/brendoncarroll/go-p2p/p2ptest"
 	"github.com/brendoncarroll/go-p2p/s/memswarm"
 	"github.com/jonboulle/clockwork"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBlobnet(t *testing.T) {
@@ -18,7 +19,7 @@ func TestBlobnet(t *testing.T) {
 	realm := memswarm.NewRealm()
 	swarms := make([]p2p.SecureAskSwarm, N)
 	for i := range swarms {
-		swarms[i] = realm.NewSwarmWithKey(p2ptest.GetTestKey(t, i))
+		swarms[i] = realm.NewSwarmWithKey(p2ptest.NewTestKey(t, i))
 	}
 
 	adjList := p2ptest.Chain(p2ptest.CastSlice(swarms))
@@ -27,7 +28,9 @@ func TestBlobnet(t *testing.T) {
 	for i := range swarms {
 		peerStore := make(peers.MemPeerStore)
 		for _, addr := range adjList[i] {
-			id := p2p.NewPeerID(swarms[i].LookupPublicKey(addr))
+			pubKey, err := swarms[i].LookupPublicKey(context.TODO(), addr)
+			require.NoError(t, err)
+			id := p2p.NewPeerID(pubKey)
 			peerStore.AddAddr(id, addr)
 		}
 		bns[i] = makeBlobnet(swarms[i], peerStore)

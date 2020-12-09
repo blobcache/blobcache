@@ -6,6 +6,9 @@ Some of the components have been prototyped, and are available in this repositor
 
 Take a look in `./docs` for design documents.
 
+Blobcache depends on [INET256](https://github.com/inet256/inet256) for connections to peers.
+The INET256 daemon must be running and accessible for blobcache to work.
+
 ## Goals
 - Store data. Blobcache figures out with who and for how long, and how much will be owed in exchange.
 - Request data. A node should be able to request any data on the network, even data which it did not post.

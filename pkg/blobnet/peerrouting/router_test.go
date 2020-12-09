@@ -10,6 +10,7 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 )
@@ -26,7 +27,7 @@ func TestRouter(t *testing.T) {
 	realm := memswarm.NewRealm()
 	swarms := make([]p2p.SecureAskSwarm, N)
 	for i := range swarms {
-		swarms[i] = realm.NewSwarmWithKey(p2ptest.GetTestKey(t, i))
+		swarms[i] = realm.NewSwarmWithKey(p2ptest.NewTestKey(t, i))
 	}
 
 	adjList := p2ptest.Chain(p2ptest.CastSlice(swarms))
@@ -35,7 +36,9 @@ func TestRouter(t *testing.T) {
 	for i := range swarms {
 		peerStore := make(peers.MemPeerStore)
 		for _, addr := range adjList[i] {
-			id := p2p.NewPeerID(swarms[i].LookupPublicKey(addr))
+			pubKey, err := swarms[i].LookupPublicKey(context.TODO(), addr)
+			require.NoError(t, err)
+			id := p2p.NewPeerID(pubKey)
 			peerStore.AddAddr(id, addr)
 		}
 		routers[i] = NewRouter(RouterParams{

@@ -56,7 +56,8 @@ func (ps *PeerSwarm) TellPeer(ctx context.Context, dst p2p.PeerID, data []byte) 
 
 func (ps *PeerSwarm) OnAsk(fn p2p.AskHandler) {
 	ps.s.OnAsk(func(ctx context.Context, m *p2p.Message, w io.Writer) {
-		m.Src = p2p.NewPeerID(ps.s.LookupPublicKey(m.Src))
+		pubKey := p2p.LookupPublicKeyInHandler(ps.s, m.Src)
+		m.Src = p2p.NewPeerID(pubKey)
 		m.Dst = ps.localID
 		fn(ctx, m, w)
 	})
@@ -64,7 +65,8 @@ func (ps *PeerSwarm) OnAsk(fn p2p.AskHandler) {
 
 func (ps *PeerSwarm) OnTell(fn p2p.TellHandler) {
 	ps.s.OnTell(func(m *p2p.Message) {
-		m.Src = p2p.NewPeerID(ps.s.LookupPublicKey(m.Src))
+		pubKey := p2p.LookupPublicKeyInHandler(ps.s, m.Src)
+		m.Src = p2p.NewPeerID(pubKey)
 		m.Dst = ps.localID
 		fn(m)
 	})
