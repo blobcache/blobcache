@@ -18,7 +18,7 @@ func SaltedConvergent(salt []byte) KeyFunc {
 		var x []byte
 		x = append(x, salt[:]...)
 		x = append(x, ptextHash[:]...)
-		return DEK(blobs.Hash(ptextHash[:]))
+		return DEK(blobs.Hash(x))
 	}
 }
 
