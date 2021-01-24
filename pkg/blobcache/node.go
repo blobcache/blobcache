@@ -8,7 +8,7 @@ import (
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 	"github.com/blobcache/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/simplemux"
+	"github.com/brendoncarroll/go-p2p/p/dynmux"
 	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
 )
@@ -17,7 +17,7 @@ type Params struct {
 	Ephemeral  bcstate.TxDB
 	Persistent bcstate.TxDB
 
-	Mux        simplemux.Muxer
+	Mux        dynmux.Muxer
 	PrivateKey p2p.PrivateKey
 	PeerStore  peers.PeerStore
 

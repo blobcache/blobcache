@@ -116,7 +116,7 @@ func (r *Router) PathTo(id p2p.PeerID) Path {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	x := r.cache.Lookup(id[:])
+	x := r.cache.Get(id[:])
 	if x == nil {
 		// check if it's onehop
 		oneHop := r.OneHop()
@@ -434,7 +434,7 @@ func (r *Router) putPeer(id p2p.PeerID, p Path) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	v := r.cache.Lookup(id[:])
+	v := r.cache.Get(id[:])
 	if v != nil {
 		currentPath := v.(Path)
 		if len(p) < len(currentPath) {

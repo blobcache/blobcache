@@ -7,7 +7,7 @@ import (
 	"github.com/blobcache/blobcache/pkg/bcstate"
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/simplemux"
+	"github.com/brendoncarroll/go-p2p/p/dynmux"
 	"github.com/brendoncarroll/go-p2p/p2ptest"
 	"github.com/brendoncarroll/go-p2p/s/memswarm"
 	"github.com/jonboulle/clockwork"
@@ -42,7 +42,7 @@ func TestBlobnet(t *testing.T) {
 }
 
 func makeBlobnet(s p2p.SecureAskSwarm, ps peers.PeerStore) *Blobnet {
-	mux := simplemux.MultiplexSwarm(s)
+	mux := dynmux.MultiplexSwarm(s)
 	bn := NewBlobNet(Params{
 		PeerStore: ps,
 		Mux:       mux,

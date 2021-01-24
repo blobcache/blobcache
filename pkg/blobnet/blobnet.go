@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/simplemux"
+	"github.com/brendoncarroll/go-p2p/p/dynmux"
 	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
 
@@ -23,14 +23,14 @@ const (
 
 type Params struct {
 	PeerStore peers.PeerStore
-	Mux       simplemux.Muxer
+	Mux       dynmux.Muxer
 	DB        bcstate.DB
 	Local     blobs.Getter
 	Clock     clockwork.Clock
 }
 
 type Blobnet struct {
-	mux        simplemux.Muxer
+	mux        dynmux.Muxer
 	peerRouter *peerrouting.Router
 	blobRouter *blobrouting.Router
 	fetcher    *Fetcher

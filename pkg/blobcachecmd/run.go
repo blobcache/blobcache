@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/simplemux"
+	"github.com/brendoncarroll/go-p2p/p/dynmux"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -43,7 +43,7 @@ var runCmd = &cobra.Command{
 			return err
 		}
 		logrus.Info("LOCAL ID: ", swarm.LocalAddrs()[0].(p2p.PeerID))
-		mux := simplemux.MultiplexSwarm(swarm)
+		mux := dynmux.MultiplexSwarm(swarm)
 		params.Mux = mux
 		pstore, err := newPeerStore(swarm, config.Peers)
 		if err != nil {
