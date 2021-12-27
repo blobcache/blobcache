@@ -8,8 +8,9 @@ import (
 	"path"
 
 	"github.com/blobcache/blobcache/pkg/bcstate"
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/blobcache/blobcache/pkg/tries"
+	"github.com/brendoncarroll/go-state/cadata"
 )
 
 const (
@@ -28,10 +29,10 @@ var (
 type PinSetID int64
 
 type PinSet struct {
-	ID    PinSetID `json:"id"`
-	Name  string   `json:"name"`
-	Root  blobs.ID `json:"root"`
-	Count uint64   `json:"count"`
+	ID    PinSetID  `json:"id"`
+	Name  string    `json:"name"`
+	Root  cadata.ID `json:"root"`
+	Count uint64    `json:"count"`
 }
 
 type PinSetStore struct {
@@ -86,7 +87,7 @@ func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
 		}); err != nil {
 			return err
 		}
-		root, err := tries.PostNode(ctx, blobs.NewMem(), t)
+		root, err := tries.PostNode(ctx, stores.NewMem(), t)
 		if err != nil {
 			return err
 		}
@@ -116,7 +117,7 @@ func (s *PinSetStore) Delete(ctx context.Context, id PinSetID) error {
 		rc := tx.Bucket(bucketPinRefCounts)
 		pinSetB := tx.Bucket(idToBucket(id))
 		err = pinSetB.ForEach(nil, nil, func(k, v []byte) error {
-			blobID := blobs.ID{}
+			blobID := cadata.ID{}
 			copy(blobID[:], k)
 			if err := pinDecr(rc, blobID); err != nil {
 				return err
@@ -131,7 +132,7 @@ func (s *PinSetStore) Delete(ctx context.Context, id PinSetID) error {
 }
 
 // Pin ensures that a pinset contain a blob
-func (s *PinSetStore) Pin(ctx context.Context, psID PinSetID, id blobs.ID) error {
+func (s *PinSetStore) Pin(ctx context.Context, psID PinSetID, id cadata.ID) error {
 	err := s.db.WriteTx(ctx, func(tx bcstate.DB) error {
 		b := tx.Bucket(bucketPinSets)
 		exists, err := bcstate.Exists(b, idToKey(psID))
@@ -154,7 +155,7 @@ func (s *PinSetStore) Pin(ctx context.Context, psID PinSetID, id blobs.ID) error
 }
 
 // Unpin ensures that a pinset does not contain a blob
-func (s *PinSetStore) Unpin(ctx context.Context, psID PinSetID, id blobs.ID) error {
+func (s *PinSetStore) Unpin(ctx context.Context, psID PinSetID, id cadata.ID) error {
 	err := s.db.WriteTx(ctx, func(tx bcstate.DB) error {
 		b := tx.Bucket(bucketPinSets)
 		exists, err := bcstate.Exists(b, idToKey(psID))
@@ -177,7 +178,7 @@ func (s *PinSetStore) Unpin(ctx context.Context, psID PinSetID, id blobs.ID) err
 }
 
 // Exists returns true iff a pinset contains id
-func (s *PinSetStore) Exists(ctx context.Context, psID PinSetID, id blobs.ID) (bool, error) {
+func (s *PinSetStore) Exists(ctx context.Context, psID PinSetID, id cadata.ID) (bool, error) {
 	var exists bool
 	err := s.db.ReadTx(ctx, func(tx bcstate.DB) error {
 		b := tx.Bucket(bucketPinSets)
@@ -198,7 +199,7 @@ func (s *PinSetStore) Exists(ctx context.Context, psID PinSetID, id blobs.ID) (b
 }
 
 // List lists all the items in the pinset
-func (s *PinSetStore) List(ctx context.Context, pinSetID PinSetID, prefix []byte, ids []blobs.ID) (n int, err error) {
+func (s *PinSetStore) List(ctx context.Context, pinSetID PinSetID, prefix []byte, ids []cadata.ID) (n int, err error) {
 	err = s.db.ReadTx(ctx, func(tx bcstate.DB) error {
 		rc := tx.Bucket(bucketPinRefCounts)
 		return rc.ForEach(prefix, bcstate.PrefixEnd(prefix), func(k, v []byte) error {
@@ -213,7 +214,7 @@ func (s *PinSetStore) List(ctx context.Context, pinSetID PinSetID, prefix []byte
 			pinSetB := tx.Bucket(idToBucket(pinSetID))
 			return pinSetB.ForEach(prefix, bcstate.PrefixEnd(prefix), func(k, v []byte) error {
 				if n >= len(ids) {
-					return blobs.ErrTooMany
+					return nil
 				}
 				copy(ids[n][:], k)
 				n++
@@ -224,11 +225,11 @@ func (s *PinSetStore) List(ctx context.Context, pinSetID PinSetID, prefix []byte
 	return n, err
 }
 
-func pinIncr(b bcstate.KV, id blobs.ID) error {
+func pinIncr(b bcstate.KV, id cadata.ID) error {
 	key := id[:]
 	return b.GetF(key, func(data []byte) error {
 		if data == nil {
-			data := make([]byte, binary.MaxVarintLen64)
+			data = make([]byte, binary.MaxVarintLen64)
 			n := binary.PutUvarint(key, 1)
 			data = data[:n]
 		} else {
@@ -241,7 +242,7 @@ func pinIncr(b bcstate.KV, id blobs.ID) error {
 	})
 }
 
-func pinDecr(b bcstate.KV, id blobs.ID) error {
+func pinDecr(b bcstate.KV, id cadata.ID) error {
 	key := id[:]
 	return b.GetF(key, func(data []byte) error {
 		if data == nil {

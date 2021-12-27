@@ -5,28 +5,31 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 
-	"golang.org/x/crypto/chacha20"
-
 	"github.com/blobcache/blobcache/pkg/bcpool"
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/go-state/cadata"
+	"golang.org/x/crypto/chacha20"
 )
 
-type KeyFunc func(ptextHash blobs.ID) DEK
+func Hash(x []byte) cadata.ID {
+	return cadata.DefaultHash(x)
+}
+
+type KeyFunc func(ptextHash cadata.ID) DEK
 
 func SaltedConvergent(salt []byte) KeyFunc {
-	return func(ptextHash blobs.ID) DEK {
+	return func(ptextHash cadata.ID) DEK {
 		var x []byte
 		x = append(x, salt[:]...)
 		x = append(x, ptextHash[:]...)
-		return DEK(blobs.Hash(x))
+		return DEK(Hash(x))
 	}
 }
 
-func Convergent(ptextHash blobs.ID) DEK {
-	return DEK(blobs.Hash(ptextHash[:]))
+func Convergent(ptextHash cadata.ID) DEK {
+	return DEK(Hash(ptextHash[:]))
 }
 
-func RandomKey(blobs.ID) DEK {
+func RandomKey(cadata.ID) DEK {
 	dek := DEK{}
 	if _, err := rand.Read(dek[:]); err != nil {
 		panic(err)
@@ -45,8 +48,8 @@ func (dek *DEK) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-func Post(ctx context.Context, s blobs.Poster, keyFunc KeyFunc, data []byte) (blobs.ID, *DEK, error) {
-	id := blobs.Hash(data)
+func Post(ctx context.Context, s cadata.Poster, keyFunc KeyFunc, data []byte) (cadata.ID, *DEK, error) {
+	id := Hash(data)
 	dek := keyFunc(id)
 	buf := bcpool.Acquire()
 	defer bcpool.Release(buf)
@@ -54,16 +57,16 @@ func Post(ctx context.Context, s blobs.Poster, keyFunc KeyFunc, data []byte) (bl
 	cryptoXOR(dek, ctext, data)
 	id, err := s.Post(ctx, ctext)
 	if err != nil {
-		return blobs.ID{}, nil, err
+		return cadata.ID{}, nil, err
 	}
 	return id, &dek, nil
 }
 
-func GetF(ctx context.Context, s blobs.Getter, dek DEK, id blobs.ID, fn func([]byte) error) error {
+func GetF(ctx context.Context, s cadata.Getter, dek DEK, id cadata.ID, fn func([]byte) error) error {
 	buf := bcpool.Acquire()
 	defer bcpool.Release(buf)
 	var ptext []byte
-	if err := s.GetF(ctx, id, func(ctext []byte) error {
+	if err := cadata.GetF(ctx, s, id, func(ctext []byte) error {
 		ptext = buf[:len(ctext)]
 		cryptoXOR(dek, ptext, ctext)
 		return nil

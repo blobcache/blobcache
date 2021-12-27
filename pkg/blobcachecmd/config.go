@@ -1,38 +1,45 @@
 package blobcachecmd
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"io/ioutil"
+	"path"
 	"path/filepath"
 	"strings"
-
-	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/s/peerswarm"
-	"github.com/docker/go-units"
-	"github.com/inet256/inet256/pkg/inet256p2p"
-	"github.com/pkg/errors"
-	bolt "go.etcd.io/bbolt"
-	"gopkg.in/yaml.v3"
 
 	"github.com/blobcache/blobcache/pkg/bcstate"
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
+	"github.com/blobcache/blobcache/pkg/stores"
+	"github.com/brendoncarroll/go-p2p"
+	"github.com/brendoncarroll/go-p2p/p/mbapp"
+	"github.com/brendoncarroll/go-state/posixfs"
+	"github.com/inet256/inet256/client/go_client/inet256client"
+	"github.com/pkg/errors"
+	bolt "go.etcd.io/bbolt"
+	"gopkg.in/yaml.v3"
 )
 
 const DefaultAPIAddr = "127.0.0.1:6025"
 
 type Config struct {
-	PrivateKey   string `yaml:"private_key,flow"`
-	PersistDir   string `yaml:"persist_dir"`
-	EphemeralDir string `yaml:"ephemeral_dir"`
+	PrivateKey string           `yaml:"private_key,flow"`
+	DataDir    string           `yaml:"data_dir"`
+	APIAddr    string           `yaml:"api_addr"`
+	Peers      []peers.PeerSpec `yaml:"peers"`
+	Stores     []StoreSpec      `yaml:"stores"`
+}
 
-	INet256API    string           `yaml:"inet256_api"`
-	APIAddr       string           `yaml:"api_addr"`
-	EphemeralCap  string           `yaml:"ephemeral_capacity"`
-	PersistentCap string           `yaml:"persistent_capacity"`
-	Peers         []peers.PeerSpec `yaml:"peers"`
+type LocalStoreSpec struct {
+	Capacity string
+}
+
+type StoreSpec struct {
+	Local *LocalStoreSpec `yaml:"local,omitempty"`
 }
 
 func (c *Config) Marshal() []byte {
@@ -62,47 +69,26 @@ func DefaultConfig() *Config {
 	})
 
 	return &Config{
-		PrivateKey:   string(privPEM),
-		PersistDir:   ".",
-		EphemeralDir: ".",
+		PrivateKey: string(privPEM),
+		DataDir:    ".",
 
-		INet256API: "127.0.0.1:25600",
-		APIAddr:    DefaultAPIAddr,
-
-		EphemeralCap:  "10GB",
-		PersistentCap: "1GB",
-		Peers:         nil,
+		APIAddr: DefaultAPIAddr,
+		Stores: []StoreSpec{
+			{Local: &LocalStoreSpec{}},
+		},
+		Peers: nil,
 	}
 }
 
 func buildParams(configPath string, c Config) (*blobcache.Params, error) {
 	configDir := filepath.Dir(configPath)
-	// Capacities
-	persistCap, err := units.FromHumanSize(c.PersistentCap)
-	if err != nil {
-		return nil, errors.Errorf("invalid peristent_capacity (%s)", c.PersistentCap)
-	}
-	ephemeralCap, err := units.FromHumanSize(c.EphemeralCap)
-	if err != nil {
-		return nil, errors.Errorf("invalid ephemeral_capacity (%s)", c.EphemeralCap)
-	}
 
-	var persistDir, ephemeralDir string
-	if strings.HasPrefix(c.PersistDir, ".") {
-		persistDir = filepath.Join(configDir, c.PersistDir)
+	var dataDir string
+	if strings.HasPrefix(c.DataDir, ".") {
+		dataDir = filepath.Join(configDir, c.DataDir)
 	}
-	persistPath := filepath.Join(persistDir, "blobcache_persist.db")
-
-	if strings.HasPrefix(c.EphemeralDir, ".") {
-		ephemeralDir = filepath.Join(configDir, c.EphemeralDir)
-	}
-	ephemeralPath := filepath.Join(ephemeralDir, "blobcache_ephemeral.db")
-
-	ephemeralDB, err := bolt.Open(ephemeralPath, 0666, nil)
-	if err != nil {
-		return nil, err
-	}
-	persistDB, err := bolt.Open(persistPath, 0666, nil)
+	dbPath := filepath.Join(dataDir, "blobcache.db")
+	db, err := bolt.Open(dbPath, 0o644, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -123,21 +109,61 @@ func buildParams(configPath string, c Config) (*blobcache.Params, error) {
 			return nil, errors.Errorf("peer # %d cannot have zero id", i)
 		}
 	}
-
-	return &blobcache.Params{
-		PrivateKey: privKey.(p2p.PrivateKey),
-
-		Ephemeral:  bcstate.NewBoltDB(ephemeralDB, uint64(ephemeralCap)),
-		Persistent: bcstate.NewBoltDB(persistDB, uint64(persistCap)),
-	}, nil
-}
-
-func setupSwarm(privKey p2p.PrivateKey, inet256APIAddr string) (peerswarm.AskSwarm, error) {
-	sw, err := inet256p2p.NewSwarm(inet256APIAddr, privKey)
+	stores, err := makeStores(dataDir, c.Stores)
 	if err != nil {
 		return nil, err
 	}
-	return sw, nil
+	return &blobcache.Params{
+		PrivateKey: privKey.(p2p.PrivateKey),
+		Stores:     stores,
+		DB:         bcstate.NewBoltDB(db),
+	}, nil
+}
+
+func makeStores(dataDir string, specs []StoreSpec) ([]blobcache.Store, error) {
+	ret := make([]blobcache.Store, len(specs))
+	for i, spec := range specs {
+		var s blobcache.Store
+		var err error
+		switch {
+		case spec.Local != nil:
+			s, err = makeLocalStore(dataDir, i, *spec.Local)
+			if err != nil {
+				return nil, err
+			}
+		default:
+			err = errors.Errorf("invalid store spec")
+		}
+		if err != nil {
+			return nil, err
+		}
+		ret[i] = s
+	}
+	return ret, nil
+}
+
+func makeLocalStore(dataDir string, i int, spec LocalStoreSpec) (blobcache.Store, error) {
+	p := makeStorePath(dataDir, i)
+	fs := posixfs.NewDirFS(p)
+	return stores.NewFSStore(fs), nil
+}
+
+func makeStorePath(dataDir string, i int) string {
+	return path.Join(dataDir, "stores", fmt.Sprint(i))
+}
+
+func setupSwarm(privKey p2p.PrivateKey) (p2p.SecureAskSwarm, error) {
+	client, err := inet256client.NewEnvClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.TODO()
+	node, err := client.CreateNode(ctx, privKey)
+	if err != nil {
+		return nil, err
+	}
+	sw := inet256client.NewSwarm(node, privKey.Public())
+	return mbapp.New(sw, 1<<22), nil
 }
 
 type ConfigFile struct {

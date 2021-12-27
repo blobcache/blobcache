@@ -3,37 +3,49 @@ package blobcache
 import (
 	"context"
 
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/go-state/cadata"
 )
 
 type store struct {
-	bc       API
+	bc       Service
 	pinSetID PinSetID
 }
 
-func NewStore(bc API, pinSetID PinSetID) blobs.Store {
+func NewStore(bc Service, pinSetID PinSetID) cadata.Store {
 	return &store{
 		bc:       bc,
 		pinSetID: pinSetID,
 	}
 }
 
-func (s *store) Post(ctx context.Context, data []byte) (blobs.ID, error) {
+func (s *store) Post(ctx context.Context, data []byte) (cadata.ID, error) {
 	return s.bc.Post(ctx, s.pinSetID, data)
 }
 
-func (s *store) GetF(ctx context.Context, id blobs.ID, fn func([]byte) error) error {
-	return s.bc.GetF(ctx, id, fn)
+func (s *store) Add(ctx context.Context, id cadata.ID) error {
+	return s.bc.Add(ctx, s.pinSetID, id)
 }
 
-func (s *store) Delete(ctx context.Context, id blobs.ID) error {
-	return s.bc.Unpin(ctx, s.pinSetID, id)
+func (s *store) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error) {
+	return s.bc.Get(ctx, s.pinSetID, id, buf)
 }
 
-func (s *store) Exists(ctx context.Context, id blobs.ID) (bool, error) {
+func (s *store) Delete(ctx context.Context, id cadata.ID) error {
+	return s.bc.Delete(ctx, s.pinSetID, id)
+}
+
+func (s *store) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return s.bc.Exists(ctx, s.pinSetID, id)
 }
 
-func (s *store) List(ctx context.Context, prefix []byte, ids []blobs.ID) (n int, err error) {
-	return s.bc.List(ctx, s.pinSetID, prefix, ids)
+func (s *store) List(ctx context.Context, first []byte, ids []cadata.ID) (n int, err error) {
+	return s.bc.List(ctx, s.pinSetID, first, ids)
+}
+
+func (s *store) Hash(x []byte) cadata.ID {
+	return Hash(x)
+}
+
+func (s *store) MaxSize() int {
+	return MaxSize
 }

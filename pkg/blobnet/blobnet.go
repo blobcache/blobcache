@@ -2,38 +2,28 @@ package blobnet
 
 import (
 	"context"
+	"io"
 
-	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/dynmux"
+	"github.com/brendoncarroll/go-p2p/p/p2pmux"
+	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/jonboulle/clockwork"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/blobcache/blobcache/pkg/bcstate"
-	"github.com/blobcache/blobcache/pkg/blobnet/blobrouting"
-	"github.com/blobcache/blobcache/pkg/blobnet/peerrouting"
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
-	"github.com/blobcache/blobcache/pkg/blobs"
-)
-
-const (
-	ChannelPeerRoutingV0 = "blobcache/peer-routing-v0"
-	ChannelBlobRoutingV0 = "blobcache/blob-routing-v0"
-	ChannelFetchingV0    = "blobcache/fetching-v0"
 )
 
 type Params struct {
 	PeerStore peers.PeerStore
-	Mux       dynmux.Muxer
+	Mux       p2pmux.StringSecureAskMux
 	DB        bcstate.DB
-	Local     blobs.Getter
+	Local     cadata.Getter
 	Clock     clockwork.Clock
 }
 
+var _ cadata.Getter = &Blobnet{}
+
 type Blobnet struct {
-	mux        dynmux.Muxer
-	peerRouter *peerrouting.Router
-	blobRouter *blobrouting.Router
-	fetcher    *Fetcher
+	mux p2pmux.StringSecureAskMux
 }
 
 func NewBlobNet(params Params) *Blobnet {
@@ -41,76 +31,30 @@ func NewBlobNet(params Params) *Blobnet {
 	bn := &Blobnet{
 		mux: mux,
 	}
-
-	// peer router
-	rSwarm, err := bn.mux.OpenSecureAsk(ChannelPeerRoutingV0)
-	if err != nil {
-		panic(err)
-	}
-	bn.peerRouter = peerrouting.NewRouter(peerrouting.RouterParams{
-		PeerSwarm: peers.NewPeerSwarm(rSwarm.(p2p.SecureAskSwarm), params.PeerStore),
-		Clock:     params.Clock,
-	})
-
-	// blob router
-	brSwarm, err := bn.mux.OpenSecureAsk(ChannelBlobRoutingV0)
-	if err != nil {
-		panic(err)
-	}
-	bn.blobRouter = blobrouting.NewRouter(blobrouting.RouterParams{
-		PeerSwarm:  peers.NewPeerSwarm(brSwarm.(p2p.SecureAskSwarm), params.PeerStore),
-		PeerRouter: bn.peerRouter,
-		DB:         bcstate.PrefixedDB{Prefix: "blob_router", DB: params.DB},
-		Clock:      params.Clock,
-	})
-
-	// fetcher
-	fSwarm, err := bn.mux.OpenSecureAsk(ChannelFetchingV0)
-	if err != nil {
-		panic(err)
-	}
-	bn.fetcher = NewFetcher(FetcherParams{
-		PeerSwarm: peers.NewPeerSwarm(fSwarm.(p2p.SecureAskSwarm), params.PeerStore),
-		Local:     params.Local,
-	})
-
 	return bn
 }
 
-func (bn *Blobnet) bootstrap(ctx context.Context) {
-	bn.peerRouter.Bootstrap(ctx)
-}
-
 func (bn *Blobnet) Close() error {
-	closers := []interface {
-		Close() error
-	}{
-		bn.peerRouter,
-		bn.blobRouter,
+	return nil
+}
+
+func (bn *Blobnet) HaveLocally(ctx context.Context, id cadata.ID) error {
+	return nil
+}
+
+func (bn *Blobnet) GoneLocally(ctx context.Context, id cadata.ID) error {
+	return nil
+}
+
+func (bn *Blobnet) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error) {
+	panic("not implemented")
+}
+
+func (bn *Blobnet) Exists(ctx context.Context, id cadata.ID) (bool, error) {
+	_, err := bn.Get(ctx, id, nil)
+	if err == io.ErrShortBuffer {
+		err = nil
 	}
-
-	for _, c := range closers {
-		if err := c.Close(); err != nil {
-			log.Error(err)
-		}
-	}
-	return nil
-}
-
-func (bn *Blobnet) HaveLocally(ctx context.Context, id blobs.ID) error {
-	return nil
-}
-
-func (bn *Blobnet) GoneLocally(ctx context.Context, id blobs.ID) error {
-	return nil
-}
-
-func (bn *Blobnet) GetF(ctx context.Context, id blobs.ID, f func([]byte) error) error {
-	return bn.fetcher.GetF(ctx, id, f)
-}
-
-func (bn *Blobnet) Exists(ctx context.Context, id blobs.ID) (bool, error) {
-	err := bn.GetF(ctx, id, func([]byte) error { return nil })
 	if err == bcstate.ErrNotExist {
 		return false, nil
 	}
@@ -118,4 +62,8 @@ func (bn *Blobnet) Exists(ctx context.Context, id blobs.ID) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func (bn *Blobnet) MaxSize() int {
+	return 1 << 22
 }

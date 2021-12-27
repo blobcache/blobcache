@@ -16,9 +16,6 @@ type KV interface {
 	// calls fn with first <= k < last
 	// if last == nil ForEach will call fn with the last key
 	ForEach(first, last []byte, fn func(k, v []byte) error) error
-
-	Count() uint64
-	MaxCount() uint64
 }
 
 func Exists(kv KV, key []byte) (bool, error) {

@@ -7,9 +7,10 @@ import (
 	"github.com/blobcache/blobcache/pkg/bcstate"
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/dynmux"
+	"github.com/brendoncarroll/go-p2p/p/p2pmux"
 	"github.com/brendoncarroll/go-p2p/p2ptest"
 	"github.com/brendoncarroll/go-p2p/s/memswarm"
+	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/jonboulle/clockwork"
 	"github.com/stretchr/testify/require"
 )
@@ -22,12 +23,13 @@ func TestBlobnet(t *testing.T) {
 		swarms[i] = realm.NewSwarmWithKey(p2ptest.NewTestKey(t, i))
 	}
 
-	adjList := p2ptest.Chain(p2ptest.CastSlice(swarms))
+	adjList := p2ptest.MakeChain(len(swarms))
 
 	bns := make([]*Blobnet, N)
 	for i := range swarms {
 		peerStore := make(peers.MemPeerStore)
-		for _, addr := range adjList[i] {
+		for _, j := range adjList[i] {
+			addr := swarms[j].LocalAddrs()[0]
 			pubKey, err := swarms[i].LookupPublicKey(context.TODO(), addr)
 			require.NoError(t, err)
 			id := p2p.NewPeerID(pubKey)
@@ -35,19 +37,15 @@ func TestBlobnet(t *testing.T) {
 		}
 		bns[i] = makeBlobnet(swarms[i], peerStore)
 	}
-
-	for i := range bns {
-		bns[i].bootstrap(context.TODO())
-	}
 }
 
 func makeBlobnet(s p2p.SecureAskSwarm, ps peers.PeerStore) *Blobnet {
-	mux := dynmux.MultiplexSwarm(s)
+	mux := p2pmux.NewStringSecureAskMux(s)
 	bn := NewBlobNet(Params{
 		PeerStore: ps,
 		Mux:       mux,
 		DB:        &bcstate.MemDB{},
-		Local:     bcstate.BlobAdapter(&bcstate.MemKV{Capacity: 100}),
+		Local:     bcstate.BlobAdapter(&bcstate.MemKV{Capacity: 100}, 1<<22, cadata.DefaultHash),
 		Clock:     clockwork.NewRealClock(),
 	})
 	return bn

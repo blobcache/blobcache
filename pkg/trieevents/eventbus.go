@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"sync"
 
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/go-state/cadata"
 )
 
 type EventBus struct {
@@ -18,7 +18,7 @@ func New() *EventBus {
 	return &EventBus{}
 }
 
-func (eb *EventBus) Subscribe(prefix []byte, ch chan blobs.ID) {
+func (eb *EventBus) Subscribe(prefix []byte, ch chan cadata.ID) {
 	switch {
 	case !bytes.HasPrefix(prefix, eb.prefix):
 		panic("can't insert into this event bus")
@@ -32,7 +32,7 @@ func (eb *EventBus) Subscribe(prefix []byte, ch chan blobs.ID) {
 	}
 }
 
-func (eb *EventBus) Unsubscribe(ch chan blobs.ID) {
+func (eb *EventBus) Unsubscribe(ch chan cadata.ID) {
 	eb.subs.Delete(ch)
 	eb.children.Range(func(k, v interface{}) bool {
 		v.(*EventBus).Unsubscribe(ch)
@@ -40,12 +40,12 @@ func (eb *EventBus) Unsubscribe(ch chan blobs.ID) {
 	})
 }
 
-func (eb *EventBus) Publish(id blobs.ID) {
+func (eb *EventBus) Publish(id cadata.ID) {
 	if !bytes.HasPrefix(id[:], eb.prefix) {
 		panic("can't notify on this event bus")
 	}
 	eb.subs.Range(func(k, v interface{}) bool {
-		ch := k.(chan blobs.ID)
+		ch := k.(chan cadata.ID)
 		ch <- id
 		return true
 	})

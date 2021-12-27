@@ -2,11 +2,11 @@ package bcpool
 
 import (
 	"sync"
-
-	"github.com/blobcache/blobcache/pkg/blobs"
 )
 
-type buffer = [blobs.MaxSize]byte
+const MaxSize = 1 << 22
+
+type buffer = [MaxSize]byte
 
 var bufferPool = sync.Pool{
 	New: func() interface{} {
@@ -14,7 +14,7 @@ var bufferPool = sync.Pool{
 	},
 }
 
-func WithBuffer(fn func(*[blobs.MaxSize]byte) error) error {
+func WithBuffer(fn func(*[MaxSize]byte) error) error {
 	buf := Acquire()
 	defer Release(buf)
 	return fn(buf)

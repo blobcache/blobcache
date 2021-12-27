@@ -6,19 +6,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/blobcache/blobcache/pkg/blobs"
 	"github.com/blobcache/blobcache/pkg/tries"
+	"github.com/brendoncarroll/go-state/cadata"
 )
 
 var _ KV = &TrieKV{}
 
 type TrieKV struct {
 	mu    sync.RWMutex
-	store blobs.Store
+	store cadata.Store
 	cell  Cell
 }
 
-func NewTrieKV(store blobs.Store, cell Cell) *TrieKV {
+func NewTrieKV(store cadata.Store, cell Cell) *TrieKV {
 	return &TrieKV{
 		cell:  cell,
 		store: store,

@@ -36,14 +36,3 @@ DELETE /ps/My_New_PinSet
 POST /ps/My_New_Pinset // Creates a new blob in the PinSet
 GET /psg/My_New_PinSet/QmAg0GSdg... alias for GET /{blob_id}
 ```
-
-## A Quick Note About Multihash
-
-https://github.com/multiformats/multihash
-
-All IDs which blob cache exposes externally are multihash, however we do not store multihashes throughout the stack.
-Multihash needlessly complicates many of the routing algorithms and data structures, and so we try to avoid it where possible.
-
-It does give us the ability to change hash functions without clients noticing; that is very valuable.
-We however, will notice if we have to change hash functions, and it will be a lot of effort to add indexing and storage for what is essentially a separate network.
-Designing a whole system now for the case where our preferred hash function is compromised is not a good use of effort.

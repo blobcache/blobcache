@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/blobcache/blobcache/pkg/blobcache"
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/go-chi/chi"
 )
 
@@ -119,8 +119,8 @@ func (s *Server) addPin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	id := blobs.ID{}
-	if err := id.UnmarshalB64(idb64); err != nil {
+	id := cadata.ID{}
+	if err := id.UnmarshalBase64(idb64); err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -134,24 +134,34 @@ func (s *Server) addPin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getBlob(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	pinIdStr, ok := ctx.Value("pinSetID").(string)
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	pinSetID, err := strconv.Atoi(pinIdStr)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	idStr, ok := ctx.Value("blobID").(string)
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	id := blobs.ID{}
-	if err := id.UnmarshalB64([]byte(idStr)); err != nil {
+	id := cadata.ID{}
+	if err := id.UnmarshalBase64([]byte(idStr)); err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err := s.n.GetF(ctx, id, func(data []byte) error {
+	store := blobcache.NewStore(s.n, blobcache.PinSetID(pinSetID))
+	err = cadata.GetF(ctx, store, id, func(data []byte) error {
 		_, err := w.Write(data)
 		return err
 	})
 	if err != nil {
-		if err == blobs.ErrNotFound {
+		if err == cadata.ErrNotFound {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}

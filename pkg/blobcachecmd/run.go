@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/dynmux"
+	"github.com/brendoncarroll/go-p2p/p/p2pmux"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -38,12 +38,12 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		swarm, err := setupSwarm(params.PrivateKey, config.INet256API)
+		swarm, err := setupSwarm(params.PrivateKey)
 		if err != nil {
 			return err
 		}
 		logrus.Info("LOCAL ID: ", swarm.LocalAddrs()[0].(p2p.PeerID))
-		mux := dynmux.MultiplexSwarm(swarm)
+		mux := p2pmux.NewStringSecureAskMux(swarm)
 		params.Mux = mux
 		pstore, err := newPeerStore(swarm, config.Peers)
 		if err != nil {

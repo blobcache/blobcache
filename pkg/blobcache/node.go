@@ -6,32 +6,32 @@ import (
 	"github.com/blobcache/blobcache/pkg/bcstate"
 	"github.com/blobcache/blobcache/pkg/blobnet"
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/dynmux"
+	"github.com/brendoncarroll/go-p2p/p/p2pmux"
+	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/jonboulle/clockwork"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
+var _ Service = &Node{}
+
 type Params struct {
-	Ephemeral  bcstate.TxDB
-	Persistent bcstate.TxDB
-
-	Mux        dynmux.Muxer
-	PrivateKey p2p.PrivateKey
-	PeerStore  peers.PeerStore
-
+	DB              bcstate.TxDB
+	Mux             p2pmux.StringSecureAskMux
+	PrivateKey      p2p.PrivateKey
+	PeerStore       peers.PeerStore
+	Stores          []stores.Store
 	ExternalSources []Source
 }
 
-var _ API = &Node{}
-
 type Node struct {
-	ephemeral  bcstate.DB
-	persistent bcstate.DB
-	pinSets    *PinSetStore
+	db      bcstate.TxDB
+	pinSets *PinSetStore
 
-	readChain  blobs.ReadChain
+	readChain  stores.ReadChain
+	stores     []stores.Store
 	extSources []Source
 
 	bn *blobnet.Blobnet
@@ -39,16 +39,13 @@ type Node struct {
 
 func NewNode(params Params) *Node {
 	pinSetStore := NewPinSetStore(bcstate.PrefixedTxDB{
-		TxDB:   params.Persistent,
+		TxDB:   params.DB,
 		Prefix: "pinsets",
 	})
 
-	ephemeralBlobs := params.Ephemeral.Bucket("blobs")
-	persistentBlobs := params.Persistent.Bucket("blobs")
-
-	readChain := blobs.ReadChain{
-		bcstate.BlobAdapter(ephemeralBlobs),
-		bcstate.BlobAdapter(persistentBlobs),
+	readChain := stores.ReadChain{}
+	for _, s := range params.Stores {
+		readChain = append(readChain, s)
 	}
 	for _, extSource := range params.ExternalSources {
 		readChain = append(readChain, extSource)
@@ -58,22 +55,20 @@ func NewNode(params Params) *Node {
 		"local_id": p2p.NewPeerID(params.PrivateKey.Public()),
 	}).Info("starting node")
 	n := &Node{
-		ephemeral:  params.Ephemeral,
-		persistent: params.Persistent,
-
+		db:         params.DB,
 		pinSets:    pinSetStore,
 		readChain:  readChain,
+		stores:     params.Stores,
 		extSources: params.ExternalSources,
 
 		bn: blobnet.NewBlobNet(blobnet.Params{
 			Mux:       params.Mux,
 			Local:     readChain,
 			PeerStore: params.PeerStore,
-			DB:        bcstate.PrefixedDB{DB: params.Ephemeral, Prefix: "blobnet"},
+			DB:        bcstate.PrefixedDB{DB: params.DB, Prefix: "blobnet"},
 			Clock:     clockwork.NewRealClock(),
 		}),
 	}
-
 	return n
 }
 
@@ -89,41 +84,41 @@ func (n *Node) DeletePinSet(ctx context.Context, pinset PinSetID) error {
 	return n.pinSets.Delete(ctx, pinset)
 }
 
-func (n *Node) Pin(ctx context.Context, pinset PinSetID, id blobs.ID) error {
+func (n *Node) Pin(ctx context.Context, pinset PinSetID, id cadata.ID) error {
 	return n.pinSets.Pin(ctx, pinset, id)
 }
 
-func (n *Node) Unpin(ctx context.Context, pinset PinSetID, id blobs.ID) error {
+func (n *Node) Unpin(ctx context.Context, pinset PinSetID, id cadata.ID) error {
 	return n.pinSets.Unpin(ctx, pinset, id)
 }
 
-func (n *Node) GetF(ctx context.Context, id blobs.ID, fn func([]byte) error) error {
+func (n *Node) Get(ctx context.Context, pinsetID PinSetID, id cadata.ID, buf []byte) (int, error) {
 	readChain := append(n.readChain, n.bn)
-	return readChain.GetF(ctx, id, fn)
+	return readChain.Get(ctx, id, buf)
 }
 
-func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID, error) {
-	id := blobs.Hash(data)
+func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) (cadata.ID, error) {
+	id := cadata.DefaultHash(data)
 	if err := n.pinSets.Pin(ctx, pinset, id); err != nil {
-		return blobs.ID{}, err
+		return cadata.ID{}, err
 	}
 
 	// don't persist data if it is in an external source
 	for _, s := range n.extSources {
 		if exists, err := s.Exists(ctx, id); err != nil {
-			return blobs.ID{}, err
+			return cadata.ID{}, err
 		} else if exists {
 			return id, nil
 		}
 	}
 
-	// persist that data to local storage
-	err := n.persistent.Bucket("blobs").Put(id[:], data)
-	if err == bcstate.ErrFull {
-		// TODO: must be on the network
-		return blobs.ID{}, err
-	} else if err != nil {
-		return blobs.ID{}, err
+	if len(n.stores) < 1 {
+		return cadata.ID{}, errors.Errorf("cannot post data, no stores")
+	}
+	store := n.stores[0]
+	id, err := store.Post(ctx, data)
+	if err != nil {
+		return cadata.ID{}, nil
 	}
 
 	// TODO: fire and forget to network
@@ -131,11 +126,11 @@ func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID
 	return id, nil
 }
 
-func (node *Node) List(ctx context.Context, psID PinSetID, prefix []byte, ids []blobs.ID) (n int, err error) {
+func (node *Node) List(ctx context.Context, psID PinSetID, prefix []byte, ids []cadata.ID) (n int, err error) {
 	return node.pinSets.List(ctx, psID, prefix, ids)
 }
 
-func (n *Node) Exists(ctx context.Context, psID PinSetID, id blobs.ID) (bool, error) {
+func (n *Node) Exists(ctx context.Context, psID PinSetID, id cadata.ID) (bool, error) {
 	return n.pinSets.Exists(ctx, psID, id)
 }
 
@@ -144,5 +139,5 @@ func (n *Node) GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error) 
 }
 
 func (n *Node) MaxBlobSize() int {
-	return blobs.MaxSize
+	return stores.MaxSize
 }
