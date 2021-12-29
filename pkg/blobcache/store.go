@@ -7,39 +7,40 @@ import (
 )
 
 type store struct {
-	bc       Service
-	pinSetID PinSetID
+	bc     Service
+	pinSet PinSetHandle
 }
 
-func NewStore(bc Service, pinSetID PinSetID) cadata.Store {
+// NewStore returns a cadata.Store
+func NewStore(bc Service, pinSet PinSetHandle) cadata.Store {
 	return &store{
-		bc:       bc,
-		pinSetID: pinSetID,
+		bc:     bc,
+		pinSet: pinSet,
 	}
 }
 
 func (s *store) Post(ctx context.Context, data []byte) (cadata.ID, error) {
-	return s.bc.Post(ctx, s.pinSetID, data)
-}
-
-func (s *store) Add(ctx context.Context, id cadata.ID) error {
-	return s.bc.Add(ctx, s.pinSetID, id)
+	return s.bc.Post(ctx, s.pinSet, data)
 }
 
 func (s *store) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error) {
-	return s.bc.Get(ctx, s.pinSetID, id, buf)
+	return s.bc.Get(ctx, s.pinSet, id, buf)
+}
+
+func (s *store) Add(ctx context.Context, id cadata.ID) error {
+	return s.bc.Add(ctx, s.pinSet, id)
 }
 
 func (s *store) Delete(ctx context.Context, id cadata.ID) error {
-	return s.bc.Delete(ctx, s.pinSetID, id)
+	return s.bc.Delete(ctx, s.pinSet, id)
 }
 
 func (s *store) Exists(ctx context.Context, id cadata.ID) (bool, error) {
-	return s.bc.Exists(ctx, s.pinSetID, id)
+	return s.bc.Exists(ctx, s.pinSet, id)
 }
 
 func (s *store) List(ctx context.Context, first []byte, ids []cadata.ID) (n int, err error) {
-	return s.bc.List(ctx, s.pinSetID, first, ids)
+	return s.bc.List(ctx, s.pinSet, first, ids)
 }
 
 func (s *store) Hash(x []byte) cadata.ID {

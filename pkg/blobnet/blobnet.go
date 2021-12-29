@@ -8,14 +8,14 @@ import (
 	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/jonboulle/clockwork"
 
-	"github.com/blobcache/blobcache/pkg/bcstate"
+	"github.com/blobcache/blobcache/pkg/bcdb"
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 )
 
 type Params struct {
 	PeerStore peers.PeerStore
 	Mux       p2pmux.StringSecureAskMux
-	DB        bcstate.DB
+	DB        bcdb.DB
 	Local     cadata.Getter
 	Clock     clockwork.Clock
 }
@@ -55,7 +55,7 @@ func (bn *Blobnet) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	if err == io.ErrShortBuffer {
 		err = nil
 	}
-	if err == bcstate.ErrNotExist {
+	if err == bcdb.ErrNotExist {
 		return false, nil
 	}
 	if err != nil {

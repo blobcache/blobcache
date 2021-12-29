@@ -3,138 +3,98 @@ package blobcache
 import (
 	"context"
 
-	"github.com/blobcache/blobcache/pkg/bcstate"
-	"github.com/blobcache/blobcache/pkg/blobnet"
-	"github.com/blobcache/blobcache/pkg/blobnet/peers"
-	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/p2pmux"
 	"github.com/brendoncarroll/go-state/cadata"
-	"github.com/jonboulle/clockwork"
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+	"github.com/dgraph-io/badger/v2"
+	"github.com/inet256/inet256/pkg/inet256"
+
+	"github.com/blobcache/blobcache/pkg/bcdb"
+	"github.com/blobcache/blobcache/pkg/calock"
+	"github.com/blobcache/blobcache/pkg/stores"
 )
 
 var _ Service = &Node{}
 
+type PeerInfo struct {
+	ID         inet256.ID
+	QuotaCount uint64
+}
+
 type Params struct {
-	DB              bcstate.TxDB
-	Mux             p2pmux.StringSecureAskMux
-	PrivateKey      p2p.PrivateKey
-	PeerStore       peers.PeerStore
-	Stores          []stores.Store
-	ExternalSources []Source
+	DB         badger.DB
+	Store      cadata.Store
+	PrivateKey p2p.PrivateKey
+	Peers      []PeerInfo
+	INET256    inet256.Service
 }
 
 type Node struct {
-	db      bcstate.TxDB
+	db      *badger.DB
 	pinSets *PinSetStore
 
-	readChain  stores.ReadChain
-	stores     []stores.Store
-	extSources []Source
-
-	bn *blobnet.Blobnet
+	locker *calock.Locker
+	store  Store
 }
 
 func NewNode(params Params) *Node {
-	pinSetStore := NewPinSetStore(bcstate.PrefixedTxDB{
+	pinSetStore := NewPinSetStore(bcdb.PrefixedTxDB{
 		TxDB:   params.DB,
 		Prefix: "pinsets",
 	})
-
-	readChain := stores.ReadChain{}
-	for _, s := range params.Stores {
-		readChain = append(readChain, s)
-	}
-	for _, extSource := range params.ExternalSources {
-		readChain = append(readChain, extSource)
-	}
-
-	log.WithFields(log.Fields{
-		"local_id": p2p.NewPeerID(params.PrivateKey.Public()),
-	}).Info("starting node")
 	n := &Node{
-		db:         params.DB,
-		pinSets:    pinSetStore,
-		readChain:  readChain,
-		stores:     params.Stores,
-		extSources: params.ExternalSources,
-
-		bn: blobnet.NewBlobNet(blobnet.Params{
-			Mux:       params.Mux,
-			Local:     readChain,
-			PeerStore: params.PeerStore,
-			DB:        bcstate.PrefixedDB{DB: params.DB, Prefix: "blobnet"},
-			Clock:     clockwork.NewRealClock(),
-		}),
+		db:      params.DB,
+		pinSets: pinSetStore,
+		locker:  calock.NewLocker(),
+		store:   params.Store,
 	}
 	return n
 }
 
-func (n *Node) Shutdown() error {
-	return n.bn.Close()
-}
-
-func (n *Node) CreatePinSet(ctx context.Context, name string) (PinSetID, error) {
+func (n *Node) CreatePinSet(ctx context.Context, opts PinSetOptions) (PinSetID, error) {
 	return n.pinSets.Create(ctx, name)
 }
 
-func (n *Node) DeletePinSet(ctx context.Context, pinset PinSetID) error {
+func (n *Node) DeletePinSet(ctx context.Context, psh PinSetHandle) error {
+	ps, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return err
+	}
 	return n.pinSets.Delete(ctx, pinset)
 }
 
-func (n *Node) Pin(ctx context.Context, pinset PinSetID, id cadata.ID) error {
+func (n *Node) Add(ctx context.Context, psh PinSetHandle, id cadata.ID) error {
+	ps, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return err
+	}
+	if err := n.locker.LockAdd(ctx, id); err != nil {
+		return err
+	}
 	return n.pinSets.Pin(ctx, pinset, id)
 }
 
-func (n *Node) Unpin(ctx context.Context, pinset PinSetID, id cadata.ID) error {
+func (n *Node) Delete(ctx context.Context, psh PinSetHandle, id cadata.ID) error {
 	return n.pinSets.Unpin(ctx, pinset, id)
 }
 
-func (n *Node) Get(ctx context.Context, pinsetID PinSetID, id cadata.ID, buf []byte) (int, error) {
+func (n *Node) Post(ctx context.Context, psh PinSetHandle, data []byte) (cadata.ID, error) {
+	return n.pinSets.Post(ctx, psh, data)
+}
+
+func (n *Node) Get(ctx context.Context, psh PinSetHandle, id cadata.ID, buf []byte) (int, error) {
 	readChain := append(n.readChain, n.bn)
 	return readChain.Get(ctx, id, buf)
 }
 
-func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) (cadata.ID, error) {
-	id := cadata.DefaultHash(data)
-	if err := n.pinSets.Pin(ctx, pinset, id); err != nil {
-		return cadata.ID{}, err
-	}
-
-	// don't persist data if it is in an external source
-	for _, s := range n.extSources {
-		if exists, err := s.Exists(ctx, id); err != nil {
-			return cadata.ID{}, err
-		} else if exists {
-			return id, nil
-		}
-	}
-
-	if len(n.stores) < 1 {
-		return cadata.ID{}, errors.Errorf("cannot post data, no stores")
-	}
-	store := n.stores[0]
-	id, err := store.Post(ctx, data)
-	if err != nil {
-		return cadata.ID{}, nil
-	}
-
-	// TODO: fire and forget to network
-	// TODO: depending on persistance config, ensure replication
-	return id, nil
-}
-
-func (node *Node) List(ctx context.Context, psID PinSetID, prefix []byte, ids []cadata.ID) (n int, err error) {
+func (node *Node) List(ctx context.Context, psh PinSetHandle, prefix []byte, ids []cadata.ID) (n int, err error) {
 	return node.pinSets.List(ctx, psID, prefix, ids)
 }
 
-func (n *Node) Exists(ctx context.Context, psID PinSetID, id cadata.ID) (bool, error) {
+func (n *Node) Exists(ctx context.Context, psh PinSetHandle, id cadata.ID) (bool, error) {
 	return n.pinSets.Exists(ctx, psID, id)
 }
 
-func (n *Node) GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error) {
+func (n *Node) GetPinSet(ctx context.Context, psh PinSetHandle) (*PinSet, error) {
 	return n.pinSets.Get(ctx, pinset)
 }
 

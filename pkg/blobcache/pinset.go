@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/blobcache/blobcache/pkg/bcstate"
+	"github.com/blobcache/blobcache/pkg/bcdb"
 	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/blobcache/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-state/cadata"
+	"github.com/dgraph-io/badger/v2"
 )
 
 const (
@@ -26,29 +27,20 @@ var (
 	ErrPinSetNotFound = errors.New("pinset not found")
 )
 
-type PinSetID int64
-
-type PinSet struct {
-	ID    PinSetID  `json:"id"`
-	Name  string    `json:"name"`
-	Root  cadata.ID `json:"root"`
-	Count uint64    `json:"count"`
-}
-
 type PinSetStore struct {
-	db bcstate.TxDB
+	db bcdb.DB
 }
 
-func NewPinSetStore(db bcstate.TxDB) *PinSetStore {
+func NewPinSetStore(db *badger.DB) *PinSetStore {
 	return &PinSetStore{
 		db: db,
 	}
 }
 
 // Create creates a new PinSet
-func (s *PinSetStore) Create(ctx context.Context, name string) (PinSetID, error) {
+func (s *PinSetStore) Create(ctx context.Context, opts PinSetOptions) (PinSetID, error) {
 	var id PinSetID
-	err := s.db.WriteTx(ctx, func(tx bcstate.DB) error {
+	err := s.db.Update(ctx, func(tx bcdb.Tx) error {
 		b := tx.Bucket(path.Join(bucketPinSets))
 		seq, err := b.NextSequence()
 		if err != nil {
@@ -62,12 +54,12 @@ func (s *PinSetStore) Create(ctx context.Context, name string) (PinSetID, error)
 
 // Get returns a pinset by id
 func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
-	//TODO: cache this in the pinsets bucket
+	// TODO: cache this in the pinsets bucket
 	// so we don't have to build the Trie every time
 	var ps *PinSet
-	err := s.db.ReadTx(ctx, func(tx bcstate.DB) error {
+	err := s.db.View(ctx, func(tx bcdb.Tx) error {
 		b := tx.Bucket(bucketPinSets)
-		exists, err := bcstate.Exists(b, idToKey(id))
+		exists, err := bcdb.Exists(b, idToKey(id))
 		if err != nil {
 			return err
 		}
@@ -103,9 +95,9 @@ func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
 
 // Delete ensures a pinset does not exist
 func (s *PinSetStore) Delete(ctx context.Context, id PinSetID) error {
-	return s.db.WriteTx(ctx, func(tx bcstate.DB) error {
+	return s.db.WriteTx(ctx, func(tx bcdb.DB) error {
 		b := tx.Bucket(bucketPinSets)
-		exists, err := bcstate.Exists(b, idToKey(id))
+		exists, err := bcdb.Exists(b, idToKey(id))
 		if err != nil {
 			return err
 		}
@@ -133,9 +125,9 @@ func (s *PinSetStore) Delete(ctx context.Context, id PinSetID) error {
 
 // Pin ensures that a pinset contain a blob
 func (s *PinSetStore) Pin(ctx context.Context, psID PinSetID, id cadata.ID) error {
-	err := s.db.WriteTx(ctx, func(tx bcstate.DB) error {
+	err := s.db.WriteTx(ctx, func(tx bcdb.DB) error {
 		b := tx.Bucket(bucketPinSets)
-		exists, err := bcstate.Exists(b, idToKey(psID))
+		exists, err := bcdb.Exists(b, idToKey(psID))
 		if err != nil {
 			return err
 		}
@@ -156,9 +148,9 @@ func (s *PinSetStore) Pin(ctx context.Context, psID PinSetID, id cadata.ID) erro
 
 // Unpin ensures that a pinset does not contain a blob
 func (s *PinSetStore) Unpin(ctx context.Context, psID PinSetID, id cadata.ID) error {
-	err := s.db.WriteTx(ctx, func(tx bcstate.DB) error {
+	err := s.db.WriteTx(ctx, func(tx bcdb.DB) error {
 		b := tx.Bucket(bucketPinSets)
-		exists, err := bcstate.Exists(b, idToKey(psID))
+		exists, err := bcdb.Exists(b, idToKey(psID))
 		if err != nil {
 			return err
 		}
@@ -180,9 +172,9 @@ func (s *PinSetStore) Unpin(ctx context.Context, psID PinSetID, id cadata.ID) er
 // Exists returns true iff a pinset contains id
 func (s *PinSetStore) Exists(ctx context.Context, psID PinSetID, id cadata.ID) (bool, error) {
 	var exists bool
-	err := s.db.ReadTx(ctx, func(tx bcstate.DB) error {
+	err := s.db.ReadTx(ctx, func(tx bcdb.DB) error {
 		b := tx.Bucket(bucketPinSets)
-		exists, err := bcstate.Exists(b, idToKey(psID))
+		exists, err := bcdb.Exists(b, idToKey(psID))
 		if err != nil {
 			return err
 		}
@@ -200,11 +192,11 @@ func (s *PinSetStore) Exists(ctx context.Context, psID PinSetID, id cadata.ID) (
 
 // List lists all the items in the pinset
 func (s *PinSetStore) List(ctx context.Context, pinSetID PinSetID, prefix []byte, ids []cadata.ID) (n int, err error) {
-	err = s.db.ReadTx(ctx, func(tx bcstate.DB) error {
+	err = s.db.ReadTx(ctx, func(tx bcdb.DB) error {
 		rc := tx.Bucket(bucketPinRefCounts)
-		return rc.ForEach(prefix, bcstate.PrefixEnd(prefix), func(k, v []byte) error {
+		return rc.ForEach(prefix, bcdb.PrefixEnd(prefix), func(k, v []byte) error {
 			b := tx.Bucket(bucketPinSets)
-			exists, err := bcstate.Exists(b, idToKey(pinSetID))
+			exists, err := bcdb.Exists(b, idToKey(pinSetID))
 			if err != nil {
 				return err
 			}
@@ -212,7 +204,7 @@ func (s *PinSetStore) List(ctx context.Context, pinSetID PinSetID, prefix []byte
 				return ErrPinSetNotFound
 			}
 			pinSetB := tx.Bucket(idToBucket(pinSetID))
-			return pinSetB.ForEach(prefix, bcstate.PrefixEnd(prefix), func(k, v []byte) error {
+			return pinSetB.ForEach(prefix, bcdb.PrefixEnd(prefix), func(k, v []byte) error {
 				if n >= len(ids) {
 					return nil
 				}
@@ -225,7 +217,7 @@ func (s *PinSetStore) List(ctx context.Context, pinSetID PinSetID, prefix []byte
 	return n, err
 }
 
-func pinIncr(b bcstate.KV, id cadata.ID) error {
+func pinIncr(b bcdb.KV, id cadata.ID) error {
 	key := id[:]
 	return b.GetF(key, func(data []byte) error {
 		if data == nil {
@@ -242,7 +234,7 @@ func pinIncr(b bcstate.KV, id cadata.ID) error {
 	})
 }
 
-func pinDecr(b bcstate.KV, id cadata.ID) error {
+func pinDecr(b bcdb.KV, id cadata.ID) error {
 	key := id[:]
 	return b.GetF(key, func(data []byte) error {
 		if data == nil {

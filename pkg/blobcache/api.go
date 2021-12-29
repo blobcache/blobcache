@@ -3,15 +3,23 @@ package blobcache
 import (
 	"context"
 
-	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/brendoncarroll/go-state/cadata"
 )
 
+// MaxSize is the maximum blob size
 const MaxSize = 1 << 21
 
+// Hash is the hash function used to compute cadata.IDs
 func Hash(x []byte) cadata.ID {
 	return stores.Hash(x)
+}
+
+type PinSet struct {
+	ID          PinSetID  `json:"id"`
+	Description string    `json:"name"`
+	Root        cadata.ID `json:"root"`
+	Count       uint64    `json:"count"`
 }
 
 type PinSetOptions struct {
@@ -22,14 +30,17 @@ type PinSetHandle struct {
 	Secret [16]byte `json:"secret"`
 }
 
+type PinSetID uint64
+
 // Service is the API exposed by either a blobcache client, or inmemory node.
 type Service interface {
-	// PinSets
+	// CreatePinSet creates a PinSet with the provided options and returns a handle to it.
 	CreatePinSet(ctx context.Context, opts PinSetOptions) (*PinSetHandle, error)
+	// DeletePinSet deletes the PinSet referenced by the handle
 	DeletePinSet(ctx context.Context, pinset PinSetHandle) error
+	// GetPinSet returns information about the PinSet
 	GetPinSet(ctx context.Context, pinset PinSetHandle) (*PinSet, error)
 
-	// Operations on PinSets
 	// Add adds data to the PinSet by ID.
 	Add(ctx context.Context, pinset PinSetHandle, id cadata.ID) error
 	// Delete removes data from the PinSet by ID.
@@ -47,12 +58,4 @@ type Service interface {
 	MaxBlobSize() int
 }
 
-type Store = stores.Store
-
-type Source interface {
-	cadata.Getter
-	cadata.Lister
-	cadata.Exister
-}
-
-type PeerStore = peers.PeerStore
+type Store = cadata.Store

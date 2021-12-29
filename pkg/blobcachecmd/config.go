@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/blobcache/blobcache/pkg/bcstate"
+	"github.com/blobcache/blobcache/pkg/bcdb"
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/blobcache/blobcache/pkg/blobnet/peers"
 	"github.com/blobcache/blobcache/pkg/stores"
@@ -116,7 +116,7 @@ func buildParams(configPath string, c Config) (*blobcache.Params, error) {
 	return &blobcache.Params{
 		PrivateKey: privKey.(p2p.PrivateKey),
 		Stores:     stores,
-		DB:         bcstate.NewBoltDB(db),
+		DB:         bcdb.NewBoltDB(db),
 	}, nil
 }
 
