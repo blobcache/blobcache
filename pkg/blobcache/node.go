@@ -30,6 +30,7 @@ type Params struct {
 	Peers           []PeerInfo
 	INET256         inet256.Service
 	ExternalSources []Source
+	Logger          *logrus.Logger
 }
 
 func NewMemParams() Params {

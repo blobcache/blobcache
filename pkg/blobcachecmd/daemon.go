@@ -21,6 +21,7 @@ type Daemon struct {
 
 	node      *blobcache.Node
 	apiServer *bchttp.Server
+	log       *logrus.Logger
 }
 
 func NewDaemon(params DaemonParams) *Daemon {
@@ -29,6 +30,7 @@ func NewDaemon(params DaemonParams) *Daemon {
 		params:    params,
 		node:      node,
 		apiServer: bchttp.NewServer(node, params.Logger),
+		log:       params.Logger,
 	}
 }
 
@@ -47,6 +49,7 @@ func (d *Daemon) runAPI(ctx context.Context) error {
 	}
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
+		d.log.Infof("serving API on %s", hs.Addr)
 		return hs.ListenAndServe()
 	})
 	eg.Go(func() error {
@@ -54,8 +57,4 @@ func (d *Daemon) runAPI(ctx context.Context) error {
 		return ctx.Err()
 	})
 	return eg.Wait()
-}
-
-func (d *Daemon) Close() error {
-	return nil
 }
