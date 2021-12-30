@@ -151,7 +151,18 @@ func (s *Server) list(r *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]cadata.ID, 100)
+	limitStr := r.URL.Query().Get("limit")
+	limit := 100
+	if limitStr != "" {
+		l, err := strconv.Atoi(limitStr)
+		if err != nil {
+			return nil, err
+		}
+		if l < 1024 {
+			limit = l
+		}
+	}
+	ids := make([]cadata.ID, limit)
 	n, err := s.n.List(ctx, *psh, first, ids)
 	if err != nil && err != cadata.ErrEndOfList {
 		return nil, err
@@ -163,7 +174,7 @@ func (s *Server) list(r *http.Request) ([]byte, error) {
 		buf.WriteString("\n")
 	}
 	if err == cadata.ErrEndOfList {
-		buf.WriteString("END OF LIST\n")
+		buf.WriteString(endOfList + "\n")
 	}
 	return buf.Bytes(), nil
 }

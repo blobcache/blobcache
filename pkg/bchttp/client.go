@@ -11,12 +11,16 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/pkg/errors"
 )
+
+const endOfList = "END OF LIST"
 
 var _ blobcache.Service = &Client{}
 
@@ -117,7 +121,10 @@ func (c Client) Get(ctx context.Context, pinset blobcache.PinSetHandle, id cadat
 
 func (c Client) List(ctx context.Context, pinset blobcache.PinSetHandle, first []byte, ids []cadata.ID) (int, error) {
 	u, headers := makePinSetURLHeaders(pinset)
-	u += "/list?first=" + base64.URLEncoding.EncodeToString(first)
+	u += "/list?" + url.Values{
+		"first": []string{base64.URLEncoding.EncodeToString(first)},
+		"limit": []string{strconv.Itoa(len(ids))},
+	}.Encode()
 	rc, err := c.streamResponse(ctx, http.MethodGet, u, headers, nil)
 	if err != nil {
 		return 0, err
@@ -127,7 +134,7 @@ func (c Client) List(ctx context.Context, pinset blobcache.PinSetHandle, first [
 	var n int
 	var eol bool
 	for sc.Scan() && n < len(ids) {
-		if bytes.Equal([]byte("END OF LIST"), sc.Bytes()) {
+		if bytes.Equal([]byte(endOfList), sc.Bytes()) {
 			eol = true
 			break
 		}
@@ -135,6 +142,9 @@ func (c Client) List(ctx context.Context, pinset blobcache.PinSetHandle, first [
 			return n, err
 		}
 		n++
+	}
+	if sc.Err() != nil {
+		return n, err
 	}
 	var retErr error
 	if eol {

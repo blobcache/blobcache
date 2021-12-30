@@ -7,15 +7,20 @@ import (
 	"github.com/blobcache/blobcache/pkg/blobcachecmd"
 )
 
-// EnvBlobcacheAPI is the name of the environment variable used
-// as the endpoint for the BLOBCACHE_API
 const (
+	// EnvBlobcacheAPI is the name of the environment variable used
+	// as the endpoint for the BLOBCACHE_API
 	EnvBlobcacheAPI = "BLOBCACHE_API"
+	// DefaultEndpoint is the endpoint assumed if the environment variable
+	// defined by EnvBlobcacheAPI (BLOBCACHE_API) is not set.
 	DefaultEndpoint = blobcachecmd.DefaultAPIAddr
 )
 
+// Client implements blobcache.Service
+// by connecting to a daemon over HTTP
 type Client = bchttp.Client
 
+// NewClient creates a Client backed by the server at endpoint
 func NewClient(endpoint string) *Client {
 	return bchttp.NewClient(endpoint)
 }

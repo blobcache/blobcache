@@ -29,7 +29,8 @@ func (l *Locker) LockAdd(ctx context.Context, id cadata.ID) (func(), error) {
 	if err := l.lock(ctx, id, false); err != nil {
 		return nil, err
 	}
-	uf := func() { l.unlock(id, false) }
+	once := sync.Once{}
+	uf := func() { once.Do(func() { l.unlock(id, false) }) }
 	return uf, nil
 }
 
@@ -37,7 +38,8 @@ func (l *Locker) LockDelete(ctx context.Context, id cadata.ID) (func(), error) {
 	if err := l.lock(ctx, id, true); err != nil {
 		return nil, err
 	}
-	uf := func() { l.unlock(id, true) }
+	once := sync.Once{}
+	uf := func() { once.Do(func() { l.unlock(id, true) }) }
 	return uf, nil
 }
 
@@ -56,13 +58,13 @@ func (bl *Locker) lock(ctx context.Context, id cadata.ID, isDelete bool) error {
 			bl.mu.Unlock()
 			return nil
 
-		// lock into the mode we want, increment count and return
+		// lock is in the mode we want, increment count and return
 		case status.isDelete == isDelete:
 			status.count++
 			bl.mu.Unlock()
 			return nil
 
-		// lock into different mode, release bl.mu and wait, then try again.
+		// lock is in different mode, release bl.mu and wait, then try again.
 		default:
 			bl.mu.Unlock()
 			select {

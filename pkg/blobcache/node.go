@@ -7,6 +7,7 @@ import (
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/inet256/inet256/pkg/inet256"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"lukechampine.com/blake3"
 
@@ -123,8 +124,14 @@ func (node *Node) Add(ctx context.Context, psh PinSetHandle, id cadata.ID) error
 		if err := node.pinSets.Pin(ctx, psID, id); err != nil {
 			return err
 		}
-		_, err = node.store.Post(ctx, buf[:n])
-		return err
+		id2, err := node.store.Post(ctx, buf[:n])
+		if err != nil {
+			return err
+		}
+		if id != id2 {
+			return errors.Errorf("internal store is using a different hashing algorithm than the source")
+		}
+		return nil
 	}
 	return ErrDataNotFound
 }
@@ -166,7 +173,13 @@ func (n *Node) Post(ctx context.Context, psh PinSetHandle, data []byte) (cadata.
 	if err := n.pinSets.Pin(ctx, psID, id); err != nil {
 		return cadata.ID{}, err
 	}
-	_, err = n.store.Post(ctx, data)
+	id2, err := n.store.Post(ctx, data)
+	if err != nil {
+		return cadata.ID{}, err
+	}
+	if id != id2 {
+		panic("internal store returned inconsistent hashes. something is very wrong.")
+	}
 	return id, err
 }
 
