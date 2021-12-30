@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/blobcache/blobcache/pkg/bchttp"
-	"github.com/blobcache/blobcache/pkg/blobcachecmd"
 )
 
 const (
@@ -13,7 +12,7 @@ const (
 	EnvBlobcacheAPI = "BLOBCACHE_API"
 	// DefaultEndpoint is the endpoint assumed if the environment variable
 	// defined by EnvBlobcacheAPI (BLOBCACHE_API) is not set.
-	DefaultEndpoint = blobcachecmd.DefaultAPIAddr
+	DefaultEndpoint = "http://127.0.0.1:6025"
 )
 
 // Client implements blobcache.Service

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -174,7 +173,6 @@ func (c Client) jsonRPC(ctx context.Context, method, path string, headers map[st
 	if err != nil {
 		return err
 	}
-	log.Println("res", string(resData))
 	if res != nil {
 		return json.Unmarshal(resData, res)
 	}

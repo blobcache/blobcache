@@ -2,16 +2,25 @@ package blobcachecmd
 
 import (
 	"bufio"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 
 	"github.com/inet256/inet256/pkg/serde"
 	"github.com/spf13/cobra"
+
+	bcclient "github.com/blobcache/blobcache/client/go_client"
+)
+
+var (
+	ctx    = context.Background()
+	client *bcclient.Client
 )
 
 func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(keygenCmd)
+	rootCmd.AddCommand(createCmd)
 }
 
 func Execute() error {
@@ -41,4 +50,9 @@ var keygenCmd = &cobra.Command{
 		}
 		return w.Flush()
 	},
+}
+
+func setupClient(cmd *cobra.Command, args []string) error {
+	client = bcclient.NewEnvClient()
+	return nil
 }
