@@ -2,9 +2,11 @@ package bcpool
 
 import (
 	"sync"
+
+	"github.com/blobcache/blobcache/pkg/stores"
 )
 
-const MaxSize = 1 << 22
+const MaxSize = stores.MaxSize
 
 type buffer = [MaxSize]byte
 

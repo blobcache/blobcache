@@ -3,6 +3,7 @@ package bcdb
 import (
 	"context"
 
+	"github.com/brendoncarroll/go-state"
 	"github.com/dgraph-io/badger/v2"
 	"github.com/dgraph-io/badger/v2/options"
 )
@@ -12,7 +13,7 @@ type Badger struct {
 }
 
 func NewBadgerMemory() DB {
-	opts := badger.DefaultOptions("./badger_memory").
+	opts := badger.DefaultOptions("").
 		WithInMemory(true)
 	db, err := badger.Open(opts)
 	if err != nil {
@@ -60,5 +61,26 @@ func (tx badgerTx) Get(key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return item.ValueCopy(nil)
+	return item.ValueCopy([]byte{})
+}
+
+func (tx badgerTx) Delete(key []byte) error {
+	return tx.tx.Delete(key)
+}
+
+func (tx badgerTx) ForEach(span state.ByteRange, fn func(key, value []byte) error) error {
+	iter := tx.tx.NewIterator(badger.DefaultIteratorOptions)
+	defer iter.Close()
+	for iter.Seek(span.Begin); iter.Valid(); iter.Next() {
+		item := iter.Item()
+		if span.AllLt(item.Key()) {
+			break
+		}
+		if err := item.Value(func(value []byte) error {
+			return fn(item.Key(), value)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -3,264 +3,340 @@ package blobcache
 import (
 	"context"
 	"encoding/binary"
-	"errors"
-	"fmt"
-	"path"
+	"encoding/json"
+
+	"github.com/brendoncarroll/go-state"
+	"github.com/brendoncarroll/go-state/cadata"
+	"github.com/pkg/errors"
 
 	"github.com/blobcache/blobcache/pkg/bcdb"
-	"github.com/blobcache/blobcache/pkg/stores"
-	"github.com/blobcache/blobcache/pkg/tries"
-	"github.com/brendoncarroll/go-state/cadata"
-	"github.com/dgraph-io/badger/v2"
 )
 
 const (
-	bucketPinSets      = "pinsets"
-	bucketPinSetNames  = "pinsets-names"
-	bucketPinRefCounts = "pinrefcount"
-
-	idBucketFmt = "%016x"
+	refCountPrefix = "rc\x00"
+	pinPrefix      = "pin\x00"
+	metadataPrefix = "metadata\x00"
+	idSequence     = "id_seq"
 )
 
-var (
-	ErrPinSetExists   = errors.New("pinset exists")
-	ErrPinSetNotFound = errors.New("pinset not found")
-)
+type PinSetInfo struct {
+	Count uint64
+}
 
-type PinSetStore struct {
+// pinSetStore stores metadata about PinSets and which blobs are contained by which pinsets
+type pinSetStore struct {
 	db bcdb.DB
 }
 
-func NewPinSetStore(db *badger.DB) *PinSetStore {
-	return &PinSetStore{
+func newPinSetStore(db bcdb.DB) *pinSetStore {
+	return &pinSetStore{
 		db: db,
 	}
 }
 
 // Create creates a new PinSet
-func (s *PinSetStore) Create(ctx context.Context, opts PinSetOptions) (PinSetID, error) {
+func (s *pinSetStore) Create(ctx context.Context, opts PinSetOptions) (*PinSetID, error) {
+	data, err := json.Marshal(PinSetInfo{})
+	if err != nil {
+		return nil, err
+	}
 	var id PinSetID
-	err := s.db.Update(ctx, func(tx bcdb.Tx) error {
-		b := tx.Bucket(path.Join(bucketPinSets))
-		seq, err := b.NextSequence()
+	if err := s.db.Update(ctx, func(tx bcdb.Tx) error {
+		seq, err := bcdb.Increment(tx, []byte(idSequence))
 		if err != nil {
 			return err
 		}
 		id = PinSetID(seq)
-		return err
-	})
-	return id, err
+		return tx.Put(s.metadataKey(id), data)
+	}); err != nil {
+		return nil, err
+	}
+	return &id, nil
 }
 
 // Get returns a pinset by id
-func (s *PinSetStore) Get(ctx context.Context, id PinSetID) (*PinSet, error) {
-	// TODO: cache this in the pinsets bucket
-	// so we don't have to build the Trie every time
-	var ps *PinSet
+// Get returns (nil, nil) if no PinSet at id exists
+func (s *pinSetStore) Get(ctx context.Context, id PinSetID) (ret *PinSetInfo, _ error) {
 	err := s.db.View(ctx, func(tx bcdb.Tx) error {
-		b := tx.Bucket(bucketPinSets)
-		exists, err := bcdb.Exists(b, idToKey(id))
+		k := s.metadataKey(id)
+		value, err := tx.Get(k)
 		if err != nil {
 			return err
 		}
-		if !exists {
+		if value == nil {
 			return ErrPinSetNotFound
 		}
-
-		pinSetB := tx.Bucket(idToBucket(id))
-		t := tries.New()
-		count := uint64(0)
-		if err := pinSetB.ForEach(nil, nil, func(k, v []byte) error {
-			t.Entries = append(t.Entries, &tries.Entry{
-				Key: k,
-			})
-			count++
-			return nil
-		}); err != nil {
+		var info PinSetInfo
+		if err := json.Unmarshal(value, &info); err != nil {
 			return err
 		}
-		root, err := tries.PostNode(ctx, stores.NewMem(), t)
-		if err != nil {
-			return err
-		}
-		ps = &PinSet{
-			ID:    id,
-			Root:  root.ID,
-			Count: count,
-		}
+		ret = &info
 		return nil
 	})
-	return ps, err
+	return ret, err
 }
 
 // Delete ensures a pinset does not exist
-func (s *PinSetStore) Delete(ctx context.Context, id PinSetID) error {
-	return s.db.WriteTx(ctx, func(tx bcdb.DB) error {
-		b := tx.Bucket(bucketPinSets)
-		exists, err := bcdb.Exists(b, idToKey(id))
+func (s *pinSetStore) Delete(ctx context.Context, id PinSetID) error {
+	return s.db.Update(ctx, func(tx bcdb.Tx) error {
+		k := s.metadataKey(id)
+		value, err := tx.Get(k)
 		if err != nil {
 			return err
 		}
-		if !exists {
+		if value == nil {
 			return nil
 		}
-
-		// first decrement all the pins
-		rc := tx.Bucket(bucketPinRefCounts)
-		pinSetB := tx.Bucket(idToBucket(id))
-		err = pinSetB.ForEach(nil, nil, func(k, v []byte) error {
-			blobID := cadata.ID{}
-			copy(blobID[:], k)
-			if err := pinDecr(rc, blobID); err != nil {
+		if err := tx.Delete(k); err != nil {
+			return err
+		}
+		// decrement all the pins
+		return s.forEachPin(tx, id, nil, func(blobID cadata.ID) error {
+			if _, err := s.rcDecr(tx, blobID); err != nil {
 				return err
 			}
-			return nil
+			return tx.Delete(k)
 		})
-		if err != nil {
-			return err
-		}
-		return b.Delete(idToKey(id))
 	})
 }
 
 // Pin ensures that a pinset contain a blob
-func (s *PinSetStore) Pin(ctx context.Context, psID PinSetID, id cadata.ID) error {
-	err := s.db.WriteTx(ctx, func(tx bcdb.DB) error {
-		b := tx.Bucket(bucketPinSets)
-		exists, err := bcdb.Exists(b, idToKey(psID))
+func (s *pinSetStore) Pin(ctx context.Context, psID PinSetID, id cadata.ID) error {
+	err := s.db.Update(ctx, func(tx bcdb.Tx) error {
+		if value, err := tx.Get(s.metadataKey(psID)); err != nil {
+			return err
+		} else if value == nil {
+			return ErrPinSetNotFound
+		}
+		pinKey := s.pinKey(psID, id)
+		if value, err := tx.Get(pinKey); err != nil {
+			return err
+		} else if value != nil {
+			return nil
+		}
+		if err := tx.Put(pinKey, nil); err != nil {
+			return err
+		}
+		_, err := s.rcIncr(tx, id)
 		if err != nil {
 			return err
 		}
-		if !exists {
-			return ErrPinSetNotFound
-		}
-
-		pinSetB := tx.Bucket(idToBucket(psID))
-		if err := pinSetB.Put(id[:], []byte{}); err != nil {
+		if err := s.updateInfo(tx, psID, func(info *PinSetInfo) (*PinSetInfo, error) {
+			if info == nil {
+				return nil, ErrPinSetNotFound
+			}
+			info.Count++
+			return info, nil
+		}); err != nil {
 			return err
 		}
-
-		rc := tx.Bucket(bucketPinRefCounts)
-		return pinIncr(rc, id)
+		return nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Unpin ensures that a pinset does not contain a blob
-func (s *PinSetStore) Unpin(ctx context.Context, psID PinSetID, id cadata.ID) error {
-	err := s.db.WriteTx(ctx, func(tx bcdb.DB) error {
-		b := tx.Bucket(bucketPinSets)
-		exists, err := bcdb.Exists(b, idToKey(psID))
+func (s *pinSetStore) Unpin(ctx context.Context, psID PinSetID, id cadata.ID) (ret uint64, _ error) {
+	err := s.db.Update(ctx, func(tx bcdb.Tx) error {
+		if value, err := tx.Get(s.metadataKey(psID)); err != nil {
+			return err
+		} else if value == nil {
+			return ErrPinSetNotFound
+		}
+		pinKey := s.pinKey(psID, id)
+		if value, err := tx.Get(pinKey); err != nil {
+			return err
+		} else if value == nil {
+			count, err := s.rcGet(tx, id)
+			if err != nil {
+				return err
+			}
+			ret = count
+			return nil
+		}
+		if err := tx.Delete(pinKey); err != nil {
+			return err
+		}
+		count, err := s.rcDecr(tx, id)
 		if err != nil {
 			return err
 		}
-		if !exists {
-			return ErrPinSetNotFound
-		}
-
-		pinSetB := tx.Bucket(idToBucket(psID))
-		if err := pinSetB.Delete(id[:]); err != nil {
+		if err := s.updateInfo(tx, psID, func(info *PinSetInfo) (*PinSetInfo, error) {
+			if info == nil {
+				return nil, ErrPinSetNotFound
+			}
+			info.Count--
+			return info, nil
+		}); err != nil {
 			return err
 		}
-
-		rc := tx.Bucket(bucketPinRefCounts)
-		return pinDecr(rc, id)
+		ret = count
+		return nil
 	})
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return ret, nil
 }
 
 // Exists returns true iff a pinset contains id
-func (s *PinSetStore) Exists(ctx context.Context, psID PinSetID, id cadata.ID) (bool, error) {
+func (s *pinSetStore) Exists(ctx context.Context, psID PinSetID, id cadata.ID) (bool, error) {
 	var exists bool
-	err := s.db.ReadTx(ctx, func(tx bcdb.DB) error {
-		b := tx.Bucket(bucketPinSets)
-		exists, err := bcdb.Exists(b, idToKey(psID))
+	err := s.db.View(ctx, func(tx bcdb.Tx) error {
+		if value, err := tx.Get(s.metadataKey(psID)); err != nil {
+			return err
+		} else if value == nil {
+			return ErrPinSetNotFound
+		}
+		value, err := tx.Get(s.pinKey(psID, id))
 		if err != nil {
 			return err
 		}
-		if !exists {
-			return ErrPinSetNotFound
-		}
-		pinSetB := tx.Bucket(idToBucket(psID))
-		return pinSetB.GetF(id[:], func([]byte) error {
-			exists = true
-			return nil
-		})
+		exists = value != nil
+		return nil
 	})
 	return exists, err
 }
 
 // List lists all the items in the pinset
-func (s *PinSetStore) List(ctx context.Context, pinSetID PinSetID, prefix []byte, ids []cadata.ID) (n int, err error) {
-	err = s.db.ReadTx(ctx, func(tx bcdb.DB) error {
-		rc := tx.Bucket(bucketPinRefCounts)
-		return rc.ForEach(prefix, bcdb.PrefixEnd(prefix), func(k, v []byte) error {
-			b := tx.Bucket(bucketPinSets)
-			exists, err := bcdb.Exists(b, idToKey(pinSetID))
-			if err != nil {
-				return err
+func (s *pinSetStore) List(ctx context.Context, psID PinSetID, first []byte, ids []cadata.ID) (n int, err error) {
+	stopIter := errors.New("stop iteration")
+	err = s.db.View(ctx, func(tx bcdb.Tx) error {
+		if value, err := tx.Get(s.metadataKey(psID)); err != nil {
+			return err
+		} else if value == nil {
+			return ErrPinSetNotFound
+		}
+		var count int
+		err := s.forEachPin(tx, psID, first, func(id cadata.ID) error {
+			if count >= len(ids) {
+				return stopIter
 			}
-			if !exists {
-				return ErrPinSetNotFound
-			}
-			pinSetB := tx.Bucket(idToBucket(pinSetID))
-			return pinSetB.ForEach(prefix, bcdb.PrefixEnd(prefix), func(k, v []byte) error {
-				if n >= len(ids) {
-					return nil
-				}
-				copy(ids[n][:], k)
-				n++
-				return nil
-			})
+			ids[count] = id
+			count++
+			return nil
 		})
+		if errors.Is(err, stopIter) {
+			err = nil
+		} else {
+			err = cadata.ErrEndOfList
+		}
+		n = count
+		return err
 	})
 	return n, err
 }
 
-func pinIncr(b bcdb.KV, id cadata.ID) error {
-	key := id[:]
-	return b.GetF(key, func(data []byte) error {
-		if data == nil {
-			data = make([]byte, binary.MaxVarintLen64)
-			n := binary.PutUvarint(key, 1)
-			data = data[:n]
-		} else {
-			x, _ := binary.Uvarint(data)
-			x++
-			n := binary.PutUvarint(data, x)
-			data = data[:n]
+func (s *pinSetStore) GetRefCount(ctx context.Context, id cadata.ID) (count uint64, _ error) {
+	if err := s.db.View(ctx, func(tx bcdb.Tx) error {
+		var err error
+		count, err = s.rcGet(tx, id)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s *pinSetStore) updateInfo(tx bcdb.Tx, psID PinSetID, fn func(*PinSetInfo) (*PinSetInfo, error)) error {
+	key := s.metadataKey(psID)
+	value, err := tx.Get(key)
+	if err != nil {
+		return err
+	}
+	var x *PinSetInfo
+	if len(value) > 0 {
+		x = &PinSetInfo{}
+		if err := json.Unmarshal(value, x); err != nil {
+			return err
 		}
-		return b.Put(key, data)
+	}
+	y, err := fn(x)
+	if err != nil {
+		return err
+	}
+	value2, err := json.Marshal(y)
+	if err != nil {
+		return err
+	}
+	return tx.Put(key, value2)
+}
+
+func (s *pinSetStore) forEachPin(tx bcdb.Tx, psID PinSetID, first []byte, fn func(cadata.ID) error) error {
+	buf := [8]byte{}
+	binary.BigEndian.PutUint64(buf[:], uint64(psID))
+	prefix := append([]byte(pinPrefix), buf[:]...)
+	span := state.ByteRange{
+		Begin: append(prefix, first...),
+		End:   bcdb.PrefixEnd(prefix),
+	}
+	return tx.ForEach(span, func(key, value []byte) error {
+		_, blobID, err := s.parsePin(key)
+		if err != nil {
+			return nil
+		}
+		return fn(blobID)
 	})
 }
 
-func pinDecr(b bcdb.KV, id cadata.ID) error {
-	key := id[:]
-	return b.GetF(key, func(data []byte) error {
-		if data == nil {
-			return errors.New("can't decrement null")
-		}
-		x, _ := binary.Uvarint(data)
-		x--
-		if x == 0 {
-			return b.Delete(key)
-		}
-		data2 := make([]byte, 8)
-		n := binary.PutUvarint(data2, x)
-		return b.Put(key, data2[:n])
-	})
-}
-
-func idToBucket(id PinSetID) string {
-	return path.Join(bucketPinSets, fmt.Sprintf(idBucketFmt, id))
-}
-
-func idToKey(id PinSetID) []byte {
+func (s *pinSetStore) metadataKey(id PinSetID) []byte {
 	buf := [8]byte{}
 	binary.BigEndian.PutUint64(buf[:], uint64(id))
-	return buf[:]
+	return append([]byte(metadataPrefix), buf[:]...)
 }
 
-func keyToID(x []byte) PinSetID {
-	return PinSetID(binary.BigEndian.Uint64(x))
+func (s *pinSetStore) pinKey(psID PinSetID, blobID cadata.ID) []byte {
+	buf := [8]byte{}
+	binary.BigEndian.PutUint64(buf[:], uint64(psID))
+	k := []byte(pinPrefix)
+	k = append(k, buf[:]...)
+	k = append(k, blobID[:]...)
+	return k
+}
+
+func (s *pinSetStore) parsePin(k []byte) (PinSetID, cadata.ID, error) {
+	if len(k) < len(pinPrefix)+8+cadata.IDSize {
+		return 0, cadata.ID{}, errors.Errorf("key=%q len=%d is too short to be pin", k, len(k))
+	}
+	psID := PinSetID(binary.BigEndian.Uint64(k[len(pinPrefix) : len(pinPrefix)+8]))
+	blobID := cadata.IDFromBytes(k[len(pinPrefix)+8:])
+	return psID, blobID, nil
+}
+
+func (s *pinSetStore) rcKey(id cadata.ID) []byte {
+	return append([]byte(refCountPrefix), id[:]...)
+}
+
+func (s *pinSetStore) rcDecr(tx bcdb.Tx, id cadata.ID) (uint64, error) {
+	k := s.rcKey(id)
+	x, err := bcdb.Decrement(tx, k)
+	if err != nil {
+		return 0, err
+	}
+	if x == 0 {
+		if err := tx.Delete(k); err != nil {
+			return 0, err
+		}
+	}
+	return x, nil
+}
+
+func (s *pinSetStore) rcIncr(tx bcdb.Tx, id cadata.ID) (uint64, error) {
+	k := s.rcKey(id)
+	return bcdb.Increment(tx, k)
+}
+
+func (s *pinSetStore) rcGet(tx bcdb.Tx, id cadata.ID) (uint64, error) {
+	k := s.rcKey(id)
+	v, err := tx.Get(k)
+	if err != nil {
+		return 0, err
+	}
+	if len(v) != 8 {
+		return 0, errors.Errorf("not a 64 bit integer")
+	}
+	return binary.BigEndian.Uint64(v), nil
 }

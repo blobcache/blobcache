@@ -12,7 +12,7 @@ import (
 
 func TestPutGet(t *testing.T) {
 	ctx := context.TODO()
-	s := cadata.NewMem(1 << 22)
+	s := cadata.NewMem(cadata.DefaultHash, 1<<22)
 	const N = 1000
 
 	ref, err := PostNode(ctx, s, New())

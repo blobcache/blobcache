@@ -11,7 +11,7 @@ func Hash(x []byte) cadata.ID {
 	return blake3.Sum256(x)
 }
 
-const MaxSize = 1 << 22
+const MaxSize = 1 << 21
 
 type Store interface {
 	cadata.Store
@@ -22,5 +22,5 @@ func NewFSStore(fs posixfs.FS) Store {
 }
 
 func NewMem() Store {
-	return cadata.NewMem(MaxSize)
+	return cadata.NewMem(Hash, MaxSize)
 }

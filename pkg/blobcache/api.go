@@ -2,24 +2,27 @@ package blobcache
 
 import (
 	"context"
+	"errors"
 
 	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/brendoncarroll/go-state/cadata"
 )
 
 // MaxSize is the maximum blob size
-const MaxSize = 1 << 21
+const MaxSize = stores.MaxSize
 
 // Hash is the hash function used to compute cadata.IDs
 func Hash(x []byte) cadata.ID {
 	return stores.Hash(x)
 }
 
+const (
+	StatusOK = "OK"
+)
+
 type PinSet struct {
-	ID          PinSetID  `json:"id"`
-	Description string    `json:"name"`
-	Root        cadata.ID `json:"root"`
-	Count       uint64    `json:"count"`
+	Status string `json:"status"`
+	Count  uint64 `json:"count"`
 }
 
 type PinSetOptions struct {
@@ -31,6 +34,11 @@ type PinSetHandle struct {
 }
 
 type PinSetID uint64
+
+var (
+	ErrPinSetNotFound = errors.New("pinset not found")
+	ErrDataNotFound   = cadata.ErrNotFound
+)
 
 // Service is the API exposed by either a blobcache client, or inmemory node.
 type Service interface {
@@ -53,9 +61,17 @@ type Service interface {
 	Exists(ctx context.Context, pinset PinSetHandle, id cadata.ID) (bool, error)
 	// List lists the ids in the pinSet.
 	List(ctx context.Context, pinSet PinSetHandle, first []byte, ids []cadata.ID) (n int, err error)
+	// WaitOK waits until the pinSet is status is OK.
+	// This means that all the blobs in the pinSet are correctly replicated according to the pinset's config.
+	WaitOK(ctx context.Context, pinSet PinSetHandle) error
 
-	// MaxBlobSize returns the maximum blob size
-	MaxBlobSize() int
+	// MaxSize returns the maximum blob size
+	MaxSize() int
 }
 
 type Store = cadata.Store
+
+type Source = interface {
+	cadata.Exister
+	cadata.Getter
+}

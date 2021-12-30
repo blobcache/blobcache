@@ -17,14 +17,17 @@ func TestService(t *testing.T, newService func(t testing.TB) blobcache.Service) 
 		psh, err := srv.CreatePinSet(ctx, blobcache.PinSetOptions{})
 		require.NoError(t, err)
 		t.Log(psh)
+		_, err = srv.GetPinSet(ctx, *psh)
+		require.NoError(t, err)
 	})
 	t.Run("Store", func(t *testing.T) {
 		ctx := context.Background()
 		srv := newService(t)
 		storetest.TestStore(t, func(t testing.TB) cadata.Store {
 			psh, err := srv.CreatePinSet(ctx, blobcache.PinSetOptions{})
+			t.Log("created pinset", psh.ID)
 			require.NoError(t, err)
-			return blobcache.NewStore(srv, psh)
+			return blobcache.NewStore(srv, *psh)
 		})
 	})
 }

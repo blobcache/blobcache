@@ -25,20 +25,20 @@ func NewLocker() *Locker {
 	}
 }
 
-func (l *Locker) LockAdd(ctx context.Context, id cadata.ID) error {
-	return l.lock(ctx, id, false)
+func (l *Locker) LockAdd(ctx context.Context, id cadata.ID) (func(), error) {
+	if err := l.lock(ctx, id, false); err != nil {
+		return nil, err
+	}
+	uf := func() { l.unlock(id, false) }
+	return uf, nil
 }
 
-func (l *Locker) LockDelete(ctx context.Context, id cadata.ID) error {
-	return l.lock(ctx, id, true)
-}
-
-func (l *Locker) UnlockAdd(id cadata.ID) {
-	l.unlock(id, false)
-}
-
-func (l *Locker) UnlockDelete(ctx context.Context, id cadata.ID) {
-	l.unlock(id, true)
+func (l *Locker) LockDelete(ctx context.Context, id cadata.ID) (func(), error) {
+	if err := l.lock(ctx, id, true); err != nil {
+		return nil, err
+	}
+	uf := func() { l.unlock(id, true) }
+	return uf, nil
 }
 
 func (bl *Locker) lock(ctx context.Context, id cadata.ID, isDelete bool) error {
