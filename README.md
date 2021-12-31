@@ -5,7 +5,7 @@ Blobcache is still in the early development phases, but many of the components h
 
 Blobcache depends on [INET256](https://github.com/inet256/inet256) for connections to peers.
 
-To learn more, checkout read the [docs](./docs/00_Intro.md)
+To learn more, checkout the [docs](./docs/00_Intro.md)
 
 ## Goals
 - Store data.  Blobcache ensures data is replicated on peers according to the configuration.

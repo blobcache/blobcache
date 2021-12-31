@@ -1,14 +1,14 @@
 # Client API
 
 Blobcache provides an HTTP API for client applications to consume.
-It listens on `localhost` on port `6025` by default.
+It listens on `localhost` port `6025` by default.
 Clients can be found underneath the `client` directory.
 
 Blobcache organizes blobs into sets which it calls `PinSets`.
-Instead of a permissions system, blobcache uses handles which contain a secret value to control access to resources.
+Instead of a permissions system, blobcache uses handles, which contain a secret value, to control access to resources.
 If you have the handle to a PinSet, you can perform operations on the PinSet.
 If applications want to protect a PinSet from being modified, they should be careful to keep the PinSet handles safe.
-PinSets do not exists in any global sense; they are a node-local concept, and only exist to facilitate client maniuplation of blobs.
+PinSets do not exist in any global sense; they are a node-local concept, and only exist to facilitate client maniuplation of blobs.
 Handles on one node will be invalid on another node.
 
 In the HTTP API, anywhere a PinSetID is used, the header `X-Handle-Secret` must be set to the base64 encoding of the 16 byte secret for the handle.

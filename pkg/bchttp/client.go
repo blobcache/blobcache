@@ -14,9 +14,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/pkg/errors"
+
+	"github.com/blobcache/blobcache/pkg/blobcache"
 )
 
 const endOfList = "END OF LIST"
