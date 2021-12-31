@@ -5,7 +5,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 )
@@ -21,13 +21,13 @@ func New() *Node {
 	return &Node{}
 }
 
-func PostNode(ctx context.Context, s blobs.Store, n *Node) (*Ref, error) {
+func PostNode(ctx context.Context, s cadata.Store, n *Node) (*Ref, error) {
 	for {
 		data, err := proto.Marshal(n)
 		if err != nil {
 			return nil, err
 		}
-		if len(data) <= blobs.MaxSize {
+		if len(data) < s.MaxSize() {
 			return post(ctx, s, data)
 		}
 		n, err = Split(ctx, s, n)
@@ -37,7 +37,7 @@ func PostNode(ctx context.Context, s blobs.Store, n *Node) (*Ref, error) {
 	}
 }
 
-func GetNode(ctx context.Context, s blobs.Store, ref Ref) (*Node, error) {
+func GetNode(ctx context.Context, s cadata.Store, ref Ref) (*Node, error) {
 	n := &Node{}
 	if err := getF(ctx, s, ref, func(data []byte) error {
 		return proto.Unmarshal(data, n)
@@ -50,7 +50,7 @@ func GetNode(ctx context.Context, s blobs.Store, ref Ref) (*Node, error) {
 	return n, nil
 }
 
-func Put(ctx context.Context, s blobs.Store, ref Ref, key, value []byte) (*Ref, error) {
+func Put(ctx context.Context, s cadata.Store, ref Ref, key, value []byte) (*Ref, error) {
 	n, err := GetNode(ctx, s, ref)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func Put(ctx context.Context, s blobs.Store, ref Ref, key, value []byte) (*Ref, 
 	return PostNode(ctx, s, n)
 }
 
-func Get(ctx context.Context, s blobs.Store, ref Ref, key []byte) ([]byte, error) {
+func Get(ctx context.Context, s cadata.Store, ref Ref, key []byte) ([]byte, error) {
 	n, err := GetNode(ctx, s, ref)
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func Get(ctx context.Context, s blobs.Store, ref Ref, key []byte) ([]byte, error
 	return nil, ErrNotExist
 }
 
-func Delete(ctx context.Context, s blobs.Store, ref Ref, key []byte) (*Ref, error) {
+func Delete(ctx context.Context, s cadata.Store, ref Ref, key []byte) (*Ref, error) {
 	n, err := GetNode(ctx, s, ref)
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func Delete(ctx context.Context, s blobs.Store, ref Ref, key []byte) (*Ref, erro
 	return &ref, nil
 }
 
-func Split(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
+func Split(ctx context.Context, s cadata.Store, x *Node) (*Node, error) {
 	if len(x.Entries) < 2 {
 		return nil, ErrCannotSplit
 	}
@@ -189,7 +189,7 @@ func Split(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
 	return y, nil
 }
 
-func Collapse(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
+func Collapse(ctx context.Context, s cadata.Store, x *Node) (*Node, error) {
 	if !IsParent(x) {
 		return x, nil
 	}
@@ -208,13 +208,13 @@ func Collapse(ctx context.Context, s blobs.Store, x *Node) (*Node, error) {
 		}
 		y.Entries = append(y.Entries, child.Entries...)
 	}
-	if proto.Size(y) > blobs.MaxSize {
+	if proto.Size(y) > s.MaxSize() {
 		return nil, ErrCannotCollapse
 	}
 	return y, nil
 }
 
-func Validate(ctx context.Context, s blobs.Store, ref Ref) error {
+func Validate(ctx context.Context, s cadata.Store, ref Ref) error {
 	n, err := GetNode(ctx, s, ref)
 	if err != nil {
 		return err

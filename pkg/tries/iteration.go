@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/go-state/cadata"
 )
 
-func ForEach(ctx context.Context, s blobs.Store, x Ref, first, last []byte, fn func(key, value []byte) error) error {
+func ForEach(ctx context.Context, s cadata.Store, x Ref, first, last []byte, fn func(key, value []byte) error) error {
 	n, err := GetNode(ctx, s, x)
 	if err != nil {
 		return err

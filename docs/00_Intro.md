@@ -1,47 +1,46 @@
-# The Blobcache Storage Network
-Blobcache is a web of trust storage network.
+# Introduction to Blobcache
 
-## 1. Model
-Blobcache is a content addressed data store.
-You give it data, it gives you a hash.
-You give it back a hash, it gives the data.
+Blobcache is unlike other storage networks, which use a blockchain to coordinate the buying and selling of storage.
+Instead, Blobcache forms a web of trust.
+The network is comprised of nodes, which store data for their respective peers.
 
-### 1.1 [Client API](11_Client_API.md)
+How much data to store and for whom is managed by human operators.
+You might set up a Blobcache node on your desktop, and extend an unlimited quota to your laptop.
+You might extend 100GB to your friends' devices.
+Maybe they extend the same quota to you.
+Maybe they have quotas extended to them by their friends as well.
 
-## 2. Networking
+Forming the web of trust is easy, thanks to [INET256](https://github.com/inet256/inet256).
+Adding a peer is as simple as exchanging INET256 addresses.
+There are no certificates, static IP addresses, or port-forwarding required.
+Communication is always secure, and addresses never need to be changed.
 
-### 2.1 Transport
+Blobcache is a content-addressed data store. CA-Store for short.
+The fudamental operations on CA-Stores are `post(data) -> hash`, and `get(hash) -> data`.
+You give it data, and it gives you a hash, you give it a hash, and it gives you back the data.
+The hash is cryptographically derrived from the data, so you can be sure you got the right data back.
+In addition to those fundamental operations: Blobcache provides methods for listing and deleting data as well.
 
-Blobcache nodes peer to an explicitly defined lists of peers.
-There is no dynamic peering.
-Blobcache nodes typically know the IP address of their one hop peers, but not further than that.
-The network is friend-to-friend in this way.
+Blobcache isn't just one CA-Store, but many.
+Blobcache creates multiple independent CA-Stores, and data can be added, removed and listed from each store independently from the other stores.
+This allows a single Blobcache node to serve multiple applications.
+Each application can create as many stores as it needs.
+Multiple stores makes it easier for applications to organize the data they create.
+Each store can be configured with different levels of replication as well.
 
-Blobcache depends on being able to send `Tell` and `Ask` messages.
-- `Tell` Messages are fire and forget.
-- `Ask` Messages demand a response or are considered a failure.
+Blobcache calls these multiple client facing CA-Stores `PinSets`.
+The word "pin" evokes a metaphor of a bulletin board.
+If a note has a pin attaching it to the board, it won't fall off.
+More than one pin through a note, means that you can remove a pin and the note will still be there, supported by the remaining pins.
+The notes in this analogy are data blobs, and the pins represent their membership in a set.
+You could imagine that each `PinSet` has different colored pins.
+A data blob is considered to be contained in a PinSet if it has a pin of that set's color holding it on the board.
 
-These messages are only to one-hop peers and should be encrypted by the transport.
-Messages are not encrypted in the overlay network, and can be inspected by intermediate nodes to ensure fairplay and prevent abuse of the network.
+## Use Cases
+ - I want the data from my laptop to be backed up to my desktop.
+ - I have a lot of extra storage capacity, which I want my family and friends to utilize.
+ - I want to trade storage with one of my friends, so that we can both have more redundant backups.
 
-### 2.2 [Peer Routing](22_Peer_Routing.md)
-### 2.3 [Blob Routing](23_Blob_Routing.md)
-### 2.4 [Blob Fetching](24_Blob_Fetching.md)
+# Table of Contents
 
-## 3. Economics
-There is one very important criterion that governs much of the design.
-
-> Nodes should never perform actions which are not in their own self interest.
-
-If there is ever a strategy discovered for gaming the protocol that gives nodes an advantage, it should become part of the reference implementation.
-Or the protocol should be changed so that the strategy is no longer advantagous.
-
-The protocol should guarantee that if one of your peers tries to exploit you:
-1. You will know exactly how they are trying to exploit you.
-2. You never stand to loose more than the `trust` you have placed in them.
-
-Nodes should only be connecting to peers they trust to some degree.
-So any attempted exploitation will likely result in a real life confrontation in which someone will have some explaining to do.
-
-The whole protocol can be thought of as nodes performing favors for one another in expectation that the favors will be repaid.
-Nodes keep track of how many favors they owe, and are owed.
+## [Client API](./01_Client_API.md)

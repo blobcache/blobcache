@@ -2,21 +2,40 @@ package blobcachecmd
 
 import (
 	"context"
-	"errors"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
-	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/dynmux"
+	"github.com/blobcache/blobcache/pkg/bcdb"
+	"github.com/blobcache/blobcache/pkg/blobcache"
+	"github.com/blobcache/blobcache/pkg/stores"
+	"github.com/brendoncarroll/go-state/cadata"
+	"github.com/brendoncarroll/go-state/posixfs"
+	"github.com/inet256/inet256/pkg/inet256"
+	"github.com/inet256/inet256/pkg/serde"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
+const (
+	DefaultAPIAddr = "127.0.0.1:6025"
+)
+
 var (
-	configPath string
+	privateKeyPath string
+	dataDir        string
+	peerSpecs      []string
+	apiAddr        string
 )
 
 func init() {
-	rootCmd.AddCommand(runCmd)
-	runCmd.Flags().StringVar(&configPath, "config", defaultConfigPath, "")
+	runCmd.Flags().StringVar(&dataDir, "data-dir", "", "--data-dir=path/to/data-dir")
+	runCmd.Flags().StringVar(&privateKeyPath, "private-key", "", "--private-key=path/to/private-key.pem")
+	runCmd.Flags().StringVar(&apiAddr, "api-addr", DefaultAPIAddr, "--api-addr=192.168.1.100:8080")
+	runCmd.Flags().StringArrayVar(&peerSpecs, "peer", nil, "--peer=<peer-id>,<quota>")
 }
 
 var runCmd = &cobra.Command{
@@ -26,36 +45,89 @@ var runCmd = &cobra.Command{
 		if err := cmd.ParseFlags(args); err != nil {
 			return err
 		}
-		if configPath == "" {
-			return errors.New("must specify config path")
+		// private key
+		if privateKeyPath == "" {
+			return errors.Errorf("flag private-key is required")
 		}
-		cf := NewConfigFile(configPath)
-		config, err := cf.Load()
+		privateKey, err := loadPrivateKey(privateKeyPath)
 		if err != nil {
 			return err
 		}
-		params, err := buildParams(configPath, config)
+		// data-dir
+		if dataDir == "" {
+			return errors.Errorf("flag data-dir is required")
+		}
+		db, store, err := setupDataDir(dataDir)
 		if err != nil {
 			return err
 		}
-		swarm, err := setupSwarm(params.PrivateKey, config.INet256API)
+		peerInfos, err := parsePeerInfos(peerSpecs)
 		if err != nil {
 			return err
 		}
-		logrus.Info("LOCAL ID: ", swarm.LocalAddrs()[0].(p2p.PeerID))
-		mux := dynmux.MultiplexSwarm(swarm)
-		params.Mux = mux
-		pstore, err := newPeerStore(swarm, config.Peers)
-		if err != nil {
-			return err
+		log := logrus.StandardLogger()
+		nodeParams := blobcache.Params{
+			Peers:      peerInfos,
+			PrivateKey: privateKey,
+			DB:         db,
+			Store:      store,
+			Logger:     log,
 		}
-		params.PeerStore = pstore
 		d := NewDaemon(DaemonParams{
-			BlobcacheParams: *params,
-			APIAddr:         config.APIAddr,
-			PeerStore:       pstore,
-			Swarm:           swarm,
+			NodeParams: nodeParams,
+			APIAddr:    apiAddr,
+			Logger:     log,
 		})
 		return d.Run(context.Background())
 	},
+}
+
+func parsePeerInfos(xs []string) (ret []blobcache.PeerInfo, _ error) {
+	for _, x := range xs {
+		parts := strings.SplitN(x, ",", 2)
+		if len(parts) < 2 {
+			return nil, errors.Errorf("must specify quota in peer spec: %q", x)
+		}
+		id, err := inet256.ParseAddrB64([]byte(parts[0]))
+		if err != nil {
+			return nil, err
+		}
+		quotaCount, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		info := blobcache.PeerInfo{
+			ID:         id,
+			QuotaCount: quotaCount,
+		}
+		ret = append(ret, info)
+	}
+	return ret, nil
+}
+
+func loadPrivateKey(p string) (inet256.PrivateKey, error) {
+	data, err := ioutil.ReadFile(p)
+	if err != nil {
+		return nil, err
+	}
+	return serde.ParsePrivateKeyPEM(data)
+}
+
+func setupDataDir(dataDir string) (bcdb.DB, cadata.Store, error) {
+	dataDir, err := filepath.Abs(dataDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	dbPath := filepath.Join(dataDir, "db")
+	db, err := bcdb.NewBadger(dbPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	storePath := filepath.Join(dataDir, "blobs")
+	if err := os.MkdirAll(storePath, 0o755); err != nil {
+		return nil, nil, err
+	}
+	storeFS := posixfs.NewDirFS(storePath)
+	store := stores.NewFSStore(storeFS)
+	return db, store, nil
 }

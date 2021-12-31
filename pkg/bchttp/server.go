@@ -1,77 +1,85 @@
 package bchttp
 
 import (
-	"context"
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strconv"
-	"time"
 
+	"github.com/blobcache/blobcache/pkg/bcpool"
 	"github.com/blobcache/blobcache/pkg/blobcache"
-	"github.com/blobcache/blobcache/pkg/blobs"
+	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/go-chi/chi"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
+const headerHandleSecret = "X-Handle-Secret"
+
 type Server struct {
-	n     blobcache.API
-	r     chi.Router
-	hs    http.Server
-	laddr string
+	n blobcache.Service
+	r chi.Router
 }
 
-func NewServer(n blobcache.API, laddr string) *Server {
-	s := &Server{
-		n: n,
-		hs: http.Server{
-			Addr:           laddr,
-			ReadTimeout:    10 * time.Second,
-			WriteTimeout:   10 * time.Second,
-			MaxHeaderBytes: 1 << 17,
-		},
-		laddr: laddr,
-	}
+func NewServer(n blobcache.Service, log *logrus.Logger) *Server {
+	s := &Server{n: n}
 	r := chi.NewRouter()
-
 	r.Route("/s", func(r chi.Router) {
-		r.Post("/", s.createPinSet)
+		r.Post("/", unaryHandler(log, s.createPinSet))
+		r.Get("/{pinSetID}", unaryHandler(log, s.getPinSet))
 
-		r.Put("/{pinSetID:[0-9]+}", s.addPin)
-		r.Get("/{pinSetID:[0-9]+}/{blobID}", s.getBlob)
-		r.Delete("/{pinSetID:[0-9]}/{blobID}", s.deletePin)
+		r.Post("/{pinSetID}", unaryHandler(log, s.post))
+		r.Get("/{pinSetID}/{blobID}", streamHandler(log, s.getBlob))
+		r.Get("/{pinSetID}/list", unaryHandler(log, s.list))
+		r.Put("/{pinSetID}/{blobID}", unaryHandler(log, s.addPin))
+		r.Delete("/{pinSetID}/{blobID}", unaryHandler(log, s.deletePin))
 	})
-
-	r.Get("/{blobID}", s.getBlob)
-
 	s.r = r
-	s.hs.Handler = s.r
 	return s
 }
 
-func (s *Server) Run(ctx context.Context) error {
-	return s.hs.ListenAndServe()
-}
-
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		s.post(w, r)
-	case http.MethodGet:
-		s.getBlob(w, r)
-	default:
-		w.WriteHeader(http.StatusBadRequest)
-	}
+	s.r.ServeHTTP(w, r)
 }
 
-func (s *Server) post(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createPinSet(r *http.Request) ([]byte, error) {
 	ctx := r.Context()
-	maxSize := s.n.MaxBlobSize()
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	var opts blobcache.PinSetOptions
+	if err := json.Unmarshal(data, &opts); err != nil {
+		return nil, err
+	}
+	psh, err := s.n.CreatePinSet(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(psh)
+}
 
+func (s *Server) getPinSet(r *http.Request) ([]byte, error) {
+	ctx := r.Context()
+	psh, err := getHandle(r)
+	if err != nil {
+		return nil, err
+	}
+	pinset, err := s.n.GetPinSet(ctx, *psh)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(pinset)
+}
+
+func (s *Server) post(r *http.Request) ([]byte, error) {
+	ctx := r.Context()
+	maxSize := s.n.MaxSize()
 	total := 0
 	buf := make([]byte, maxSize)
-
 	for total < maxSize {
 		n, err := r.Body.Read(buf[total:])
 		total += int(n)
@@ -79,103 +87,150 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			log.Println(err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			return nil, err
 		}
 	}
-
-	mh, err := s.n.Post(ctx, 0, buf[:total])
+	psh, err := getHandle(r)
 	if err != nil {
-		log.Println(err)
-		return
+		return nil, err
 	}
-
-	idb64 := make([]byte, base64.URLEncoding.EncodedLen(len(mh)))
-	base64.URLEncoding.Encode(idb64, mh[:])
-
-	_, err = w.Write(idb64)
+	id, err := s.n.Post(ctx, *psh, buf[:total])
 	if err != nil {
-		log.Println(err)
+		return nil, err
 	}
+	return id.MarshalBase64()
 }
 
-func (s *Server) addPin(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getBlob(w io.Writer, r *http.Request) error {
 	ctx := r.Context()
-	idStr, ok := ctx.Value("pinSetID").(string)
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	pinSetID, err := strconv.Atoi(idStr)
+	psh, err := getHandle(r)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	idb64, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	id := blobs.ID{}
-	if err := id.UnmarshalB64(idb64); err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if err := s.n.Pin(r.Context(), blobcache.PinSetID(pinSetID), id); err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-	w.WriteHeader(http.StatusOK)
-}
-
-func (s *Server) getBlob(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	idStr, ok := ctx.Value("blobID").(string)
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	id := blobs.ID{}
-	if err := id.UnmarshalB64([]byte(idStr)); err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	err := s.n.GetF(ctx, id, func(data []byte) error {
-		_, err := w.Write(data)
 		return err
-	})
+	}
+	blobID, err := getBlobID(r)
 	if err != nil {
-		if err == blobs.ErrNotFound {
-			w.WriteHeader(http.StatusNotFound)
+		return err
+	}
+	buf := bcpool.Acquire()
+	defer bcpool.Release(buf)
+	n, err := s.n.Get(ctx, *psh, blobID, buf[:])
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(buf[:n])
+	return err
+}
+
+func (s *Server) addPin(r *http.Request) ([]byte, error) {
+	ctx := r.Context()
+	psh, err := getHandle(r)
+	if err != nil {
+		return nil, err
+	}
+	blobID, err := getBlobID(r)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.n.Add(ctx, *psh, blobID); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (s *Server) deletePin(r *http.Request) ([]byte, error) {
+	return nil, nil
+}
+
+func (s *Server) list(r *http.Request) ([]byte, error) {
+	ctx := r.Context()
+	psh, err := getHandle(r)
+	if err != nil {
+		return nil, err
+	}
+	first, err := base64.URLEncoding.DecodeString(r.URL.Query().Get("first"))
+	if err != nil {
+		return nil, err
+	}
+	limitStr := r.URL.Query().Get("limit")
+	limit := 100
+	if limitStr != "" {
+		l, err := strconv.Atoi(limitStr)
+		if err != nil {
+			return nil, err
+		}
+		if l < 1024 {
+			limit = l
+		}
+	}
+	ids := make([]cadata.ID, limit)
+	n, err := s.n.List(ctx, *psh, first, ids)
+	if err != nil && err != cadata.ErrEndOfList {
+		return nil, err
+	}
+	buf := bytes.Buffer{}
+	for _, id := range ids[:n] {
+		data, _ := id.MarshalBase64()
+		buf.Write(data)
+		buf.WriteString("\n")
+	}
+	if err == cadata.ErrEndOfList {
+		buf.WriteString(endOfList + "\n")
+	}
+	return buf.Bytes(), nil
+}
+
+func getHandle(r *http.Request) (*blobcache.PinSetHandle, error) {
+	idStr := chi.URLParam(r, "pinSetID")
+	idInt, err := strconv.Atoi(string(idStr))
+	if err != nil {
+		return nil, err
+	}
+	var psh blobcache.PinSetHandle
+	psh.ID = blobcache.PinSetID(idInt)
+	if _, err := base64.URLEncoding.Decode(psh.Secret[:], []byte(r.Header.Get(headerHandleSecret))); err != nil {
+		return nil, err
+	}
+	return &psh, nil
+}
+
+func getBlobID(r *http.Request) (cadata.ID, error) {
+	idStr := chi.URLParam(r, "blobID")
+	data, err := base64.URLEncoding.DecodeString(idStr)
+	if err != nil {
+		return cadata.ID{}, err
+	}
+	return cadata.IDFromBytes(data), nil
+}
+
+func streamHandler(log *logrus.Logger, fn func(w io.Writer, r *http.Request) error) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := fn(w, r); err != nil {
+			log.Warn(err)
+			w.WriteHeader(codeForError(err))
+			w.Write([]byte(err.Error()))
 			return
 		}
-		log.Println(err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	})
 }
 
-func (s *Server) createPinSet(w http.ResponseWriter, r *http.Request) {
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-	}
-
-	ctx := r.Context()
-	id, err := s.n.CreatePinSet(ctx, string(data))
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	w.Write([]byte(strconv.Itoa(int(id))))
+func unaryHandler(log *logrus.Logger, fn func(r *http.Request) ([]byte, error)) http.HandlerFunc {
+	return streamHandler(log, func(w io.Writer, r *http.Request) error {
+		resData, err := fn(r)
+		if err != nil {
+			return err
+		}
+		if _, err := w.Write(resData); err != nil {
+			log.Error(err)
+		}
+		return nil
+	})
 }
 
-func (s *Server) deletePin(w http.ResponseWriter, r *http.Request) {
-
+func codeForError(err error) int {
+	switch {
+	case errors.Is(err, cadata.ErrNotFound):
+		return http.StatusNotFound
+	default:
+		return http.StatusInternalServerError
+	}
 }

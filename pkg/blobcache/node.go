@@ -2,147 +2,261 @@ package blobcache
 
 import (
 	"context"
+	"encoding/binary"
 
-	"github.com/blobcache/blobcache/pkg/bcstate"
-	"github.com/blobcache/blobcache/pkg/blobnet"
-	"github.com/blobcache/blobcache/pkg/blobnet/peers"
-	"github.com/blobcache/blobcache/pkg/blobs"
 	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/dynmux"
-	"github.com/jonboulle/clockwork"
-	log "github.com/sirupsen/logrus"
+	"github.com/brendoncarroll/go-state/cadata"
+	"github.com/inet256/inet256/pkg/inet256"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"lukechampine.com/blake3"
+
+	"github.com/blobcache/blobcache/pkg/bcdb"
+	"github.com/blobcache/blobcache/pkg/calock"
+	"github.com/blobcache/blobcache/pkg/stores"
 )
 
-type Params struct {
-	Ephemeral  bcstate.TxDB
-	Persistent bcstate.TxDB
+var _ Service = &Node{}
 
-	Mux        dynmux.Muxer
-	PrivateKey p2p.PrivateKey
-	PeerStore  peers.PeerStore
-
-	ExternalSources []Source
+type PeerInfo struct {
+	ID         inet256.ID
+	QuotaCount uint64
 }
 
-var _ API = &Node{}
+type Params struct {
+	DB              bcdb.DB
+	Store           cadata.Store
+	PrivateKey      p2p.PrivateKey
+	Peers           []PeerInfo
+	INET256         inet256.Service
+	ExternalSources []Source
+	Logger          *logrus.Logger
+}
+
+func NewMemParams() Params {
+	return Params{
+		DB:    bcdb.NewBadgerMemory(),
+		Store: stores.NewMem(),
+	}
+}
 
 type Node struct {
-	ephemeral  bcstate.DB
-	persistent bcstate.DB
-	pinSets    *PinSetStore
+	db      bcdb.DB
+	pinSets *pinSetStore
 
-	readChain  blobs.ReadChain
-	extSources []Source
-
-	bn *blobnet.Blobnet
+	locker  *calock.Locker
+	store   Store
+	sources []Source
 }
 
 func NewNode(params Params) *Node {
-	pinSetStore := NewPinSetStore(bcstate.PrefixedTxDB{
-		TxDB:   params.Persistent,
-		Prefix: "pinsets",
-	})
-
-	ephemeralBlobs := params.Ephemeral.Bucket("blobs")
-	persistentBlobs := params.Persistent.Bucket("blobs")
-
-	readChain := blobs.ReadChain{
-		bcstate.BlobAdapter(ephemeralBlobs),
-		bcstate.BlobAdapter(persistentBlobs),
-	}
-	for _, extSource := range params.ExternalSources {
-		readChain = append(readChain, extSource)
-	}
-
-	log.WithFields(log.Fields{
-		"local_id": p2p.NewPeerID(params.PrivateKey.Public()),
-	}).Info("starting node")
+	pinSetStore := newPinSetStore(bcdb.NewPrefixed(params.DB, "pinsets\x00"))
 	n := &Node{
-		ephemeral:  params.Ephemeral,
-		persistent: params.Persistent,
-
-		pinSets:    pinSetStore,
-		readChain:  readChain,
-		extSources: params.ExternalSources,
-
-		bn: blobnet.NewBlobNet(blobnet.Params{
-			Mux:       params.Mux,
-			Local:     readChain,
-			PeerStore: params.PeerStore,
-			DB:        bcstate.PrefixedDB{DB: params.Ephemeral, Prefix: "blobnet"},
-			Clock:     clockwork.NewRealClock(),
-		}),
+		db:      params.DB,
+		pinSets: pinSetStore,
+		locker:  calock.NewLocker(),
+		store:   params.Store,
 	}
-
 	return n
 }
 
-func (n *Node) Shutdown() error {
-	return n.bn.Close()
-}
-
-func (n *Node) CreatePinSet(ctx context.Context, name string) (PinSetID, error) {
-	return n.pinSets.Create(ctx, name)
-}
-
-func (n *Node) DeletePinSet(ctx context.Context, pinset PinSetID) error {
-	return n.pinSets.Delete(ctx, pinset)
-}
-
-func (n *Node) Pin(ctx context.Context, pinset PinSetID, id blobs.ID) error {
-	return n.pinSets.Pin(ctx, pinset, id)
-}
-
-func (n *Node) Unpin(ctx context.Context, pinset PinSetID, id blobs.ID) error {
-	return n.pinSets.Unpin(ctx, pinset, id)
-}
-
-func (n *Node) GetF(ctx context.Context, id blobs.ID, fn func([]byte) error) error {
-	readChain := append(n.readChain, n.bn)
-	return readChain.GetF(ctx, id, fn)
-}
-
-func (n *Node) Post(ctx context.Context, pinset PinSetID, data []byte) (blobs.ID, error) {
-	id := blobs.Hash(data)
-	if err := n.pinSets.Pin(ctx, pinset, id); err != nil {
-		return blobs.ID{}, err
+// CreatePinSet implementes Service
+func (n *Node) CreatePinSet(ctx context.Context, opts PinSetOptions) (*PinSetHandle, error) {
+	id, err := n.pinSets.Create(ctx, PinSetOptions{})
+	if err != nil {
+		return nil, err
 	}
+	return &PinSetHandle{ID: *id}, nil
+}
 
-	// don't persist data if it is in an external source
-	for _, s := range n.extSources {
-		if exists, err := s.Exists(ctx, id); err != nil {
-			return blobs.ID{}, err
-		} else if exists {
-			return id, nil
+// GetPinSet implements Service
+func (n *Node) GetPinSet(ctx context.Context, psh PinSetHandle) (*PinSet, error) {
+	psID, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return nil, err
+	}
+	info, err := n.pinSets.Get(ctx, psID)
+	if err != nil {
+		return nil, err
+	}
+	return &PinSet{
+		Status: StatusOK,
+		Count:  info.Count,
+	}, nil
+}
+
+// DeletePinSet implements Service
+func (n *Node) DeletePinSet(ctx context.Context, psh PinSetHandle) error {
+	psID, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return err
+	}
+	if err := n.pinSets.Delete(ctx, psID); err != nil {
+		return err
+	}
+	return n.cleanupStore(ctx)
+}
+
+// Add implements Service
+func (node *Node) Add(ctx context.Context, psh PinSetHandle, id cadata.ID) error {
+	psID, err := node.resolvePinSet(ctx, psh)
+	if err != nil {
+		return err
+	}
+	if uf, err := node.locker.LockAdd(ctx, id); err != nil {
+		return err
+	} else {
+		defer uf()
+	}
+	if exists, err := node.store.Exists(ctx, id); err != nil {
+		return err
+	} else if exists {
+		return node.pinSets.Pin(ctx, psID, id)
+	}
+	buf := make([]byte, MaxSize)
+	for _, source := range node.sources {
+		n, err := source.Get(ctx, id, buf)
+		if cadata.IsNotFound(err) {
+			continue
 		}
+		if err != nil {
+			return err
+		}
+		if err := node.pinSets.Pin(ctx, psID, id); err != nil {
+			return err
+		}
+		id2, err := node.store.Post(ctx, buf[:n])
+		if err != nil {
+			return err
+		}
+		if id != id2 {
+			return errors.Errorf("internal store is using a different hashing algorithm than the source")
+		}
+		return nil
 	}
-
-	// persist that data to local storage
-	err := n.persistent.Bucket("blobs").Put(id[:], data)
-	if err == bcstate.ErrFull {
-		// TODO: must be on the network
-		return blobs.ID{}, err
-	} else if err != nil {
-		return blobs.ID{}, err
-	}
-
-	// TODO: fire and forget to network
-	// TODO: depending on persistance config, ensure replication
-	return id, nil
+	return ErrDataNotFound
 }
 
-func (node *Node) List(ctx context.Context, psID PinSetID, prefix []byte, ids []blobs.ID) (n int, err error) {
+func (n *Node) Delete(ctx context.Context, psh PinSetHandle, id cadata.ID) error {
+	psID, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return err
+	}
+	if uf, err := n.locker.LockDelete(ctx, id); err != nil {
+		return err
+	} else {
+		defer uf()
+	}
+	count, err := n.pinSets.Unpin(ctx, psID, id)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return n.store.Delete(ctx, id)
+	}
+	return nil
+}
+
+func (n *Node) Post(ctx context.Context, psh PinSetHandle, data []byte) (cadata.ID, error) {
+	psID, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return cadata.ID{}, err
+	}
+	if len(data) > n.MaxSize() {
+		return cadata.ID{}, cadata.ErrTooLarge
+	}
+	id := n.store.Hash(data)
+	if uf, err := n.locker.LockAdd(ctx, id); err != nil {
+		return cadata.ID{}, err
+	} else {
+		defer uf()
+	}
+	if err := n.pinSets.Pin(ctx, psID, id); err != nil {
+		return cadata.ID{}, err
+	}
+	id2, err := n.store.Post(ctx, data)
+	if err != nil {
+		return cadata.ID{}, err
+	}
+	if id != id2 {
+		panic("internal store returned inconsistent hashes. something is very wrong.")
+	}
+	return id, err
+}
+
+func (n *Node) Get(ctx context.Context, psh PinSetHandle, id cadata.ID, buf []byte) (int, error) {
+	psID, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return 0, err
+	}
+	if uf, err := n.locker.LockAdd(ctx, id); err != nil {
+		return 0, err
+	} else {
+		defer uf()
+	}
+	if exists, err := n.pinSets.Exists(ctx, psID, id); err != nil {
+		return 0, err
+	} else if !exists {
+		return 0, cadata.ErrNotFound
+	}
+	return n.store.Get(ctx, id, buf)
+}
+
+func (node *Node) List(ctx context.Context, psh PinSetHandle, prefix []byte, ids []cadata.ID) (n int, err error) {
+	psID, err := node.resolvePinSet(ctx, psh)
+	if err != nil {
+		return 0, err
+	}
 	return node.pinSets.List(ctx, psID, prefix, ids)
 }
 
-func (n *Node) Exists(ctx context.Context, psID PinSetID, id blobs.ID) (bool, error) {
+func (n *Node) Exists(ctx context.Context, psh PinSetHandle, id cadata.ID) (bool, error) {
+	psID, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return false, err
+	}
 	return n.pinSets.Exists(ctx, psID, id)
 }
 
-func (n *Node) GetPinSet(ctx context.Context, pinset PinSetID) (*PinSet, error) {
-	return n.pinSets.Get(ctx, pinset)
+func (n *Node) WaitOK(ctx context.Context, psh PinSetHandle) error {
+	return nil
 }
 
-func (n *Node) MaxBlobSize() int {
-	return blobs.MaxSize
+func (n *Node) MaxSize() int {
+	return MaxSize
+}
+
+// cleanupStore deletes unreferenced blobs in the store
+func (n *Node) cleanupStore(ctx context.Context) error {
+	return cadata.ForEach(ctx, n.store, func(id cadata.ID) error {
+		count, err := n.pinSets.GetRefCount(ctx, id)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			if uf, err := n.locker.LockDelete(ctx, id); err != nil {
+				return err
+			} else {
+				defer uf()
+			}
+			return n.store.Delete(ctx, id)
+		}
+		return nil
+	})
+}
+
+func (n *Node) resolvePinSet(ctx context.Context, psh PinSetHandle) (PinSetID, error) {
+	key := handleKey(psh)
+	logrus.Info("resolved handle ", key)
+	// TODO: lookup in db
+	return psh.ID, nil
+}
+
+func handleKey(psh PinSetHandle) (ret [16]byte) {
+	h := blake3.New(32, nil)
+	binary.Write(h, binary.BigEndian, psh.ID)
+	h.Write(psh.Secret[:])
+	sum := h.Sum(nil)
+	copy(ret[:], sum)
+	return ret
 }
