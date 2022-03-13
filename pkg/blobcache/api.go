@@ -3,6 +3,7 @@ package blobcache
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/brendoncarroll/go-state/cadata"
@@ -34,6 +35,10 @@ type PinSetHandle struct {
 }
 
 type PinSetID uint64
+
+func (id PinSetID) HexString() string {
+	return strconv.FormatUint(uint64(id), 16)
+}
 
 var (
 	ErrPinSetNotFound = errors.New("pinset not found")

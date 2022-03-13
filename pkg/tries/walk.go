@@ -60,7 +60,7 @@ func (o *Operator) Walk(ctx context.Context, s cadata.Store, root Root, w Walker
 func (o *Operator) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn func(*Entry) error) error {
 	return o.Walk(ctx, src, root, Walker{
 		ShouldWalk: func(root Root) bool {
-			exists, err := dst.Exists(ctx, root.Ref.ID)
+			exists, err := cadata.Exists(ctx, dst, root.Ref.ID)
 			if err != nil {
 				exists = false
 			}

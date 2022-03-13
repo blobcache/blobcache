@@ -2,6 +2,7 @@ package blobcache
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/binary"
 
 	"github.com/brendoncarroll/go-p2p"
@@ -11,7 +12,8 @@ import (
 	"lukechampine.com/blake3"
 
 	"github.com/blobcache/blobcache/pkg/bcdb"
-	"github.com/blobcache/blobcache/pkg/calock"
+	"github.com/blobcache/blobcache/pkg/bcnet"
+	"github.com/blobcache/blobcache/pkg/blobcache/control"
 	"github.com/blobcache/blobcache/pkg/stores"
 )
 
@@ -23,36 +25,80 @@ type PeerInfo struct {
 }
 
 type Params struct {
-	DB         bcdb.DB
-	Store      cadata.Store
+	DB      bcdb.DB
+	Primary cadata.Store
+
+	INET256    inet256.Service
 	PrivateKey p2p.PrivateKey
 	Peers      []PeerInfo
-	INET256    inet256.Service
-	Logger     *logrus.Logger
+
+	Logger   *logrus.Logger
+	MaxCount int64
 }
 
 func NewMemParams() Params {
+	pk := ed25519.NewKeyFromSeed(make([]byte, 32))
 	return Params{
-		DB:    bcdb.NewBadgerMemory(),
-		Store: stores.NewMem(),
+		DB:         bcdb.NewBadgerMemory(),
+		Primary:    stores.NewMem(),
+		PrivateKey: pk,
 	}
 }
 
 type Node struct {
 	db      bcdb.DB
-	pinSets *pinSetStore
+	localID bcnet.PeerID
 
-	locker *calock.Locker
-	store  Store
+	storeMux *storeMux    // manages all access to the local store
+	setMan   *setManager  // default set manager
+	psSetMan *setManager  // set manager for pinset blobs
+	pinSets  *pinSetStore // pinset metadata store
+	ctrl     *control.Controller
+
+	log *logrus.Logger
 }
 
 func NewNode(params Params) *Node {
-	pinSetStore := newPinSetStore(bcdb.NewPrefixed(params.DB, "pinsets\x00"))
+	pinSetStore := newPinSetStore(bcdb.NewPrefixed(params.DB, "pinset-meta\x00"))
+	psSetMan := newSetManager(bcdb.NewPrefixed(params.DB, "pinset-sets\x00"))
+	setMan := newSetManager(bcdb.NewPrefixed(params.DB, "sets\x00"))
+	storeMux := newStoreMux(bcdb.NewPrefixed(params.DB, "stores\x00"), params.Primary)
 	n := &Node{
 		db:      params.DB,
-		pinSets: pinSetStore,
-		locker:  calock.NewLocker(),
-		store:   params.Store,
+		localID: inet256.NewAddr(params.PrivateKey.Public()),
+
+		storeMux: storeMux,
+		setMan:   setMan,
+		psSetMan: psSetMan,
+		pinSets:  pinSetStore,
+		ctrl:     control.New(),
+		log:      params.Logger,
+	}
+	n.ctrl.AttachSource("local", control.Source{
+		Set:              psSetMan.union(),
+		ExpectedReplicas: 2.0,
+	})
+	n.ctrl.AttachSink("local", control.Sink{
+		Locus:   n.localID,
+		Desired: setMan.open("desired/local"),
+		// TODO
+		Notify: func(cadata.ID) {},
+		Flush:  func(context.Context, map[cadata.ID]struct{}) error { return nil },
+	})
+	for _, peer := range params.Peers {
+		sourceName := "peer-source/" + peer.ID.String()
+		n.ctrl.AttachSource(sourceName, control.Source{
+			Set:              setMan.open(sourceName),
+			ExpectedReplicas: 1,
+		})
+		sinkName := "peer-sink/" + peer.ID.String()
+		n.ctrl.AttachSink(sinkName, control.Sink{
+			Locus:   peer.ID,
+			Desired: setMan.open(sinkName),
+			// TODO
+			Notify: func(cadata.ID) {},
+			Flush:  func(context.Context, map[cadata.ID]struct{}) error { return nil },
+		})
 	}
 	return n
 }
@@ -72,13 +118,12 @@ func (n *Node) GetPinSet(ctx context.Context, psh PinSetHandle) (*PinSet, error)
 	if err != nil {
 		return nil, err
 	}
-	info, err := n.pinSets.Get(ctx, psID)
+	_, err = n.pinSets.Get(ctx, psID)
 	if err != nil {
 		return nil, err
 	}
 	return &PinSet{
 		Status: StatusOK,
-		Count:  info.Count,
 	}, nil
 }
 
@@ -91,7 +136,7 @@ func (n *Node) DeletePinSet(ctx context.Context, psh PinSetHandle) error {
 	if err := n.pinSets.Delete(ctx, psID); err != nil {
 		return err
 	}
-	return n.cleanupStore(ctx)
+	return n.psSetMan.drop(ctx, psID.HexString())
 }
 
 // Add implements Service
@@ -100,15 +145,12 @@ func (node *Node) Add(ctx context.Context, psh PinSetHandle, id cadata.ID) error
 	if err != nil {
 		return err
 	}
-	if uf, err := node.locker.LockAdd(ctx, id); err != nil {
-		return err
-	} else {
-		defer uf()
-	}
-	if exists, err := node.store.Exists(ctx, id); err != nil {
+	store := node.mainStore()
+	set := node.getPSSet(psID)
+	if exists, err := cadata.Exists(ctx, store, id); err != nil {
 		return err
 	} else if exists {
-		return node.pinSets.Pin(ctx, psID, id)
+		return set.Add(ctx, id)
 	}
 	return ErrDataNotFound
 }
@@ -118,18 +160,11 @@ func (n *Node) Delete(ctx context.Context, psh PinSetHandle, id cadata.ID) error
 	if err != nil {
 		return err
 	}
-	if uf, err := n.locker.LockDelete(ctx, id); err != nil {
-		return err
-	} else {
-		defer uf()
-	}
-	count, err := n.pinSets.Unpin(ctx, psID, id)
-	if err != nil {
+	set := n.getPSSet(psID)
+	if err := set.Delete(ctx, id); err != nil {
 		return err
 	}
-	if count == 0 {
-		return n.store.Delete(ctx, id)
-	}
+	// n.ctrl.Notify(ctx, id)
 	return nil
 }
 
@@ -141,23 +176,17 @@ func (n *Node) Post(ctx context.Context, psh PinSetHandle, data []byte) (cadata.
 	if len(data) > n.MaxSize() {
 		return cadata.ID{}, cadata.ErrTooLarge
 	}
-	id := n.store.Hash(data)
-	if uf, err := n.locker.LockAdd(ctx, id); err != nil {
-		return cadata.ID{}, err
-	} else {
-		defer uf()
-	}
-	if err := n.pinSets.Pin(ctx, psID, id); err != nil {
-		return cadata.ID{}, err
-	}
-	id2, err := n.store.Post(ctx, data)
+	store := n.mainStore()
+	id, err := store.Post(ctx, data)
 	if err != nil {
 		return cadata.ID{}, err
 	}
-	if id != id2 {
-		panic("internal store returned inconsistent hashes. something is very wrong.")
+	set := n.getPSSet(psID)
+	if err := set.Add(ctx, id); err != nil {
+		return cadata.ID{}, err
 	}
-	return id, err
+	// n.ctrl.Notify(ctx, id)
+	return id, nil
 }
 
 func (n *Node) Get(ctx context.Context, psh PinSetHandle, id cadata.ID, buf []byte) (int, error) {
@@ -165,17 +194,15 @@ func (n *Node) Get(ctx context.Context, psh PinSetHandle, id cadata.ID, buf []by
 	if err != nil {
 		return 0, err
 	}
-	if uf, err := n.locker.LockAdd(ctx, id); err != nil {
-		return 0, err
-	} else {
-		defer uf()
-	}
-	if exists, err := n.pinSets.Exists(ctx, psID, id); err != nil {
+	set := n.getPSSet(psID)
+	if exists, err := set.Exists(ctx, id); err != nil {
 		return 0, err
 	} else if !exists {
 		return 0, cadata.ErrNotFound
 	}
-	return n.store.Get(ctx, id, buf)
+	store := n.mainStore()
+	// TODO: need to handle cases where the blob is not in the local store.
+	return store.Get(ctx, id, buf)
 }
 
 func (node *Node) List(ctx context.Context, psh PinSetHandle, prefix []byte, ids []cadata.ID) (n int, err error) {
@@ -183,7 +210,8 @@ func (node *Node) List(ctx context.Context, psh PinSetHandle, prefix []byte, ids
 	if err != nil {
 		return 0, err
 	}
-	return node.pinSets.List(ctx, psID, prefix, ids)
+	set := node.getPSSet(psID)
+	return set.List(ctx, prefix, ids)
 }
 
 func (n *Node) Exists(ctx context.Context, psh PinSetHandle, id cadata.ID) (bool, error) {
@@ -191,34 +219,20 @@ func (n *Node) Exists(ctx context.Context, psh PinSetHandle, id cadata.ID) (bool
 	if err != nil {
 		return false, err
 	}
-	return n.pinSets.Exists(ctx, psID, id)
+	set := n.getPSSet(psID)
+	return cadata.Exists(ctx, set, id)
 }
 
 func (n *Node) WaitOK(ctx context.Context, psh PinSetHandle) error {
-	return nil
+	_, err := n.resolvePinSet(ctx, psh)
+	if err != nil {
+		return err
+	}
+	return n.ctrl.Flush(ctx, "local")
 }
 
 func (n *Node) MaxSize() int {
 	return MaxSize
-}
-
-// cleanupStore deletes unreferenced blobs in the store
-func (n *Node) cleanupStore(ctx context.Context) error {
-	return cadata.ForEach(ctx, n.store, func(id cadata.ID) error {
-		count, err := n.pinSets.GetRefCount(ctx, id)
-		if err != nil {
-			return err
-		}
-		if count == 0 {
-			if uf, err := n.locker.LockDelete(ctx, id); err != nil {
-				return err
-			} else {
-				defer uf()
-			}
-			return n.store.Delete(ctx, id)
-		}
-		return nil
-	})
 }
 
 func (n *Node) resolvePinSet(ctx context.Context, psh PinSetHandle) (PinSetID, error) {
@@ -226,6 +240,14 @@ func (n *Node) resolvePinSet(ctx context.Context, psh PinSetHandle) (PinSetID, e
 	logrus.Info("resolved handle ", key)
 	// TODO: lookup in db
 	return psh.ID, nil
+}
+
+func (n *Node) mainStore() cadata.Store {
+	return n.storeMux.open("main")
+}
+
+func (n *Node) getPSSet(psID PinSetID) cadata.Set {
+	return n.psSetMan.open(psID.HexString())
 }
 
 func handleKey(psh PinSetHandle) (ret [16]byte) {

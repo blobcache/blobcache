@@ -19,10 +19,8 @@ github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625/go.mod h1:HYsPBT
 github.com/brendoncarroll/go-p2p v0.0.0-20211024183131-c0c41d099b71 h1:2RehssELLWw6135cG/LnxkK4yX8k5SJ+vDn5kq+D/XQ=
 github.com/brendoncarroll/go-p2p v0.0.0-20211024183131-c0c41d099b71/go.mod h1:IYW1gZ9twSWJrkAil9jLMtHnVlAJ0wVc9Y5WpNlv9Oc=
 github.com/brendoncarroll/go-state v0.0.0-20210627233638-99c825eb7040/go.mod h1:EQKdXJyc93dh3yN1wRYdKjAZk+MutF5DFwoW+Vqe5U0=
-github.com/brendoncarroll/go-state v0.0.0-20211224171650-20dda2daa9ae h1:N7B/FwaCQaUtIWblPC/06WFil9NRLkL0IWa0T7x0RDo=
-github.com/brendoncarroll/go-state v0.0.0-20211224171650-20dda2daa9ae/go.mod h1:RLj/N8MmYCrBuPRKizRhmee7fyyKo7ew/MdKv+oPdb8=
-github.com/brendoncarroll/go-state v0.0.0-20220123170153-8cabc0c969dd h1:b6iNeSyZrZ0rMIUYzhGCbcjOfesYQwdFldkk8VvEgBI=
-github.com/brendoncarroll/go-state v0.0.0-20220123170153-8cabc0c969dd/go.mod h1:RLj/N8MmYCrBuPRKizRhmee7fyyKo7ew/MdKv+oPdb8=
+github.com/brendoncarroll/go-state v0.0.0-20220313164317-9be716fdbc4b h1:t2JycKIVoy/vEgeiOyKtvgaC2C6RnvhU/3XlVpUO3iI=
+github.com/brendoncarroll/go-state v0.0.0-20220313164317-9be716fdbc4b/go.mod h1:RLj/N8MmYCrBuPRKizRhmee7fyyKo7ew/MdKv+oPdb8=
 github.com/buger/jsonparser v0.0.0-20181115193947-bf1c66bbce23/go.mod h1:bbYlZJ7hK1yFx9hf58LP0zeX7UjIGs20ufpu3evjr+s=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/xxhash v1.1.0 h1:a6HrQnmkObjyL+Gs60czilIUGqrzKutQD6XZog3p+ko=

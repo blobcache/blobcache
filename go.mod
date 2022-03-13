@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/brendoncarroll/go-p2p v0.0.0-20211024183131-c0c41d099b71
-	github.com/brendoncarroll/go-state v0.0.0-20220123170153-8cabc0c969dd
+	github.com/brendoncarroll/go-state v0.0.0-20220313164317-9be716fdbc4b
 	github.com/dgraph-io/badger/v2 v2.0.3
 	github.com/go-chi/chi v4.0.3+incompatible
 	github.com/golang/protobuf v1.5.2

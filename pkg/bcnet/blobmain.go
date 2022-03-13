@@ -112,7 +112,7 @@ func (s *BlobMainServer) handleAdd(ctx context.Context, from PeerID, ids []cadat
 	eg, ctx := errgroup.WithContext(ctx)
 	for i := range ids {
 		i := i
-		exists, err := store.Exists(ctx, ids[i])
+		exists, err := cadata.Exists(ctx, store, ids[i])
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +142,7 @@ func (s *BlobMainServer) handleDelete(ctx context.Context, from PeerID, ids []ca
 	store := s.open(from)
 	affected := make([]bool, len(ids))
 	for i := range ids {
-		exists, err := store.Exists(ctx, ids[i])
+		exists, err := cadata.Exists(ctx, store, ids[i])
 		if err != nil {
 			return nil, err
 		}
@@ -160,7 +160,7 @@ func (s *BlobMainServer) handleExists(ctx context.Context, from PeerID, ids []ca
 	store := s.open(from)
 	exists := make([]bool, len(ids))
 	for i := range ids {
-		yes, err := store.Exists(ctx, ids[i])
+		yes, err := cadata.Exists(ctx, store, ids[i])
 		if err != nil {
 			return nil, err
 		}

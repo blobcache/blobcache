@@ -70,7 +70,7 @@ var runCmd = &cobra.Command{
 			Peers:      peerInfos,
 			PrivateKey: privateKey,
 			DB:         db,
-			Store:      store,
+			Primary:    store,
 			Logger:     log,
 		}
 		d := NewDaemon(DaemonParams{

@@ -1,4 +1,4 @@
-package calock
+package cadutil
 
 import (
 	"context"
