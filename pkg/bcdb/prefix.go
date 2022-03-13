@@ -49,7 +49,7 @@ func (tx prefixTx) Delete(key []byte) error {
 	return tx.inner.Delete(tx.getKey(key))
 }
 
-func (tx prefixTx) ForEach(span state.ByteRange, fn func(key, value []byte) error) error {
+func (tx prefixTx) ForEach(span state.ByteSpan, fn func(key, value []byte) error) error {
 	span2 := prefixSpan(span, []byte(tx.prefix))
 	return tx.inner.ForEach(span2, func(key, value []byte) error {
 		key2, err := removePrefix(key, []byte(tx.prefix))
@@ -64,7 +64,7 @@ func (tx prefixTx) getKey(x []byte) []byte {
 	return append([]byte(tx.prefix), x...)
 }
 
-func prefixSpan(x state.ByteRange, prefix []byte) state.ByteRange {
+func prefixSpan(x state.ByteSpan, prefix []byte) state.ByteSpan {
 	begin := append([]byte{}, prefix...)
 	begin = append(begin, x.Begin...)
 
@@ -72,7 +72,7 @@ func prefixSpan(x state.ByteRange, prefix []byte) state.ByteRange {
 	if x.End != nil {
 		end = append(end, x.End...)
 	}
-	return state.ByteRange{
+	return state.ByteSpan{
 		Begin: begin,
 		End:   end,
 	}

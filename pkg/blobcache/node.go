@@ -7,7 +7,6 @@ import (
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/inet256/inet256/pkg/inet256"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"lukechampine.com/blake3"
 
@@ -24,13 +23,12 @@ type PeerInfo struct {
 }
 
 type Params struct {
-	DB              bcdb.DB
-	Store           cadata.Store
-	PrivateKey      p2p.PrivateKey
-	Peers           []PeerInfo
-	INET256         inet256.Service
-	ExternalSources []Source
-	Logger          *logrus.Logger
+	DB         bcdb.DB
+	Store      cadata.Store
+	PrivateKey p2p.PrivateKey
+	Peers      []PeerInfo
+	INET256    inet256.Service
+	Logger     *logrus.Logger
 }
 
 func NewMemParams() Params {
@@ -44,9 +42,8 @@ type Node struct {
 	db      bcdb.DB
 	pinSets *pinSetStore
 
-	locker  *calock.Locker
-	store   Store
-	sources []Source
+	locker *calock.Locker
+	store  Store
 }
 
 func NewNode(params Params) *Node {
@@ -112,27 +109,6 @@ func (node *Node) Add(ctx context.Context, psh PinSetHandle, id cadata.ID) error
 		return err
 	} else if exists {
 		return node.pinSets.Pin(ctx, psID, id)
-	}
-	buf := make([]byte, MaxSize)
-	for _, source := range node.sources {
-		n, err := source.Get(ctx, id, buf)
-		if cadata.IsNotFound(err) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if err := node.pinSets.Pin(ctx, psID, id); err != nil {
-			return err
-		}
-		id2, err := node.store.Post(ctx, buf[:n])
-		if err != nil {
-			return err
-		}
-		if id != id2 {
-			return errors.Errorf("internal store is using a different hashing algorithm than the source")
-		}
-		return nil
 	}
 	return ErrDataNotFound
 }

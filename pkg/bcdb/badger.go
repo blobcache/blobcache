@@ -68,7 +68,7 @@ func (tx badgerTx) Delete(key []byte) error {
 	return tx.tx.Delete(key)
 }
 
-func (tx badgerTx) ForEach(span state.ByteRange, fn func(key, value []byte) error) error {
+func (tx badgerTx) ForEach(span state.ByteSpan, fn func(key, value []byte) error) error {
 	iter := tx.tx.NewIterator(badger.DefaultIteratorOptions)
 	defer iter.Close()
 	for iter.Seek(span.Begin); iter.Valid(); iter.Next() {

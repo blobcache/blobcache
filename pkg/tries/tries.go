@@ -16,7 +16,7 @@ var (
 	ErrCannotSplit    = errors.Errorf("cannot split, < 2 entries")
 )
 
-type Span = state.ByteRange
+type Span = state.ByteSpan
 
 type Root struct {
 	Ref      Ref

@@ -17,7 +17,7 @@ type Tx interface {
 	Put(key, value []byte) error
 	Get(key []byte) ([]byte, error)
 	Delete(key []byte) error
-	ForEach(br state.ByteRange, fn func(key, value []byte) error) error
+	ForEach(br state.ByteSpan, fn func(key, value []byte) error) error
 }
 
 // Increment increments and returns a 64 bit integer stored at k.

@@ -241,6 +241,10 @@ func (s *pinSetStore) GetRefCount(ctx context.Context, id cadata.ID) (count uint
 	return count, nil
 }
 
+func (s *pinSetStore) UnionSet() cadata.Set {
+	return unionSet{pss: s}
+}
+
 func (s *pinSetStore) updateInfo(tx bcdb.Tx, psID PinSetID, fn func(*PinSetInfo) (*PinSetInfo, error)) error {
 	key := s.metadataKey(psID)
 	value, err := tx.Get(key)
@@ -269,7 +273,7 @@ func (s *pinSetStore) forEachPin(tx bcdb.Tx, psID PinSetID, first []byte, fn fun
 	buf := [8]byte{}
 	binary.BigEndian.PutUint64(buf[:], uint64(psID))
 	prefix := append([]byte(pinPrefix), buf[:]...)
-	span := state.ByteRange{
+	span := state.ByteSpan{
 		Begin: append(prefix, first...),
 		End:   bcdb.PrefixEnd(prefix),
 	}
@@ -339,4 +343,52 @@ func (s *pinSetStore) rcGet(tx bcdb.Tx, id cadata.ID) (uint64, error) {
 		return 0, errors.Errorf("not a 64 bit integer")
 	}
 	return binary.BigEndian.Uint64(v), nil
+}
+
+type unionSet struct {
+	pss *pinSetStore
+}
+
+func (s unionSet) Add(ctx context.Context, id cadata.ID) error {
+	return errors.New("union set is read only")
+}
+
+func (s unionSet) Delete(ctx context.Context, id cadata.ID) error {
+	return errors.New("union set is read only")
+}
+
+func (s unionSet) Exists(ctx context.Context, id cadata.ID) (bool, error) {
+	var exists bool
+	if err := s.pss.db.View(ctx, func(tx bcdb.Tx) error {
+		n, err := s.pss.rcGet(tx, id)
+		if err != nil {
+			return err
+		}
+		exists = n > 0
+		return nil
+	}); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func (s unionSet) List(ctx context.Context, first []byte, ids []cadata.ID) (n int, _ error) {
+	span := state.ByteSpan{
+		Begin: append([]byte(refCountPrefix), first...),
+		End:   bcdb.PrefixEnd([]byte(refCountPrefix)),
+	}
+	err := s.pss.db.View(ctx, func(tx bcdb.Tx) error {
+		var i int
+		if err := tx.ForEach(span, func(k, _ []byte) error {
+			id := cadata.IDFromBytes(k)
+			ids[i] = id
+			i++
+			return nil
+		}); err != nil {
+			return err
+		}
+		n = i
+		return cadata.ErrEndOfList
+	})
+	return n, err
 }
