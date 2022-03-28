@@ -18,7 +18,7 @@ And the HTTP API [docs](./docs/01_Client_API.md).
 ### Web Of Trust Storage Network
 Blobcache is an experiment in creating a Web of Trust storage network, which is also economically aware.
 
-Blobcache is still in the early development phases, but many of the components have been prototyped and are available in this repository.
+The peer-to-peer components of Blobcache are still in the early development phases, but many of the components have been prototyped and are available in this repository.
 
 Blobcache depends on [INET256](https://github.com/inet256/inet256) for connections to peers.
 
