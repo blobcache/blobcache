@@ -1,5 +1,12 @@
 .PHONY: test testv protobuf drop-replace add-replace
 
+install:
+	go install ./cmd/blobcache
+
+build:
+	mkdir -p ./out
+	go build -o ./out/blobcache ./cmd/blobcache 
+
 test:
 	go test --race ./pkg/...
 

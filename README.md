@@ -1,16 +1,75 @@
 # Blobcache
+
+[![GoDoc](https://godoc.org/github.com/blobcache/blobcache?status.svg)](http://godoc.org/github.com/blobcache/blobcache)
+![Matrix](https://img.shields.io/matrix/blobcache:matrix.org?label=%23blobcache%3Amatrix.org&logo=matrix)
+[<img src="https://discord.com/assets/cb48d2a8d4991281d7a6a95d2f58195e.svg" width="80">](https://discord.gg/TWy6aVWJ7f)
+
+Blobcache is a content addressed data store, designed to be a replicated data layer for applications.
+
+For more information checkout a brief [Introduction](./docs/00_Intro.md).
+And the HTTP API [docs](./docs/01_Client_API.md).
+
+## Goals
+- [x] Define a [simple HTTP API](./docs/01_Client_API.md) for content-addressed storage suitable for use by multiple applications.
+- [x] Efficiently multiplex multiple logical content-addressed stores onto a single real store backed by the file system.
+- [ ] Store data with other Blobcache peers.
+- [ ] Store data with cloud object storage providers.
+
+### Web Of Trust Storage Network
 Blobcache is an experiment in creating a Web of Trust storage network, which is also economically aware.
 
 Blobcache is still in the early development phases, but many of the components have been prototyped and are available in this repository.
 
 Blobcache depends on [INET256](https://github.com/inet256/inet256) for connections to peers.
 
-To learn more, checkout the [docs](./docs/00_Intro.md)
-
-## Goals
-- Store data.  Blobcache ensures data is replicated on peers according to the configuration.
-- Create a server process that people are comfortable and confident running all the time, knowing it's not connecting to strangers or altruistically wasting bandwidth, power, or storage.
-
 ## Non-Goals
+- Create a blockchain or cryptocurrency.
+- Store data with untrusted peers.
+- Altruistic data storage and retrieval like BitTorrent or IPFS.
 - Merkle data structures. Blobcache only deals with blobs.
-- Create a blockchain.
+
+## Getting Started
+You should be able to install with
+```shell
+$ go install ./cmd/blobcache
+```
+
+or
+```shell
+go build -o ./put/the/binary/here/please ./cmd/blobcache 
+```
+
+And then if `${go env GOPATH}/bin` is on your path, you should be able to run the blobcache command with
+```shell
+$ blobcache 
+```
+
+### Creating a Private Key
+Blobcache requires a private key for each instance.
+This is used to uniquely identify the instance and for communicating securely with peers using [INET256](https://github.com/inet256/inet256)
+
+```shell
+$ blobcache keygen > blobcache_pk.pem
+```
+
+### Running the daemon
+The following commands create a directory for blobcache data and runs a daemon on localhost on the default port.  Change the name of the private-key to whereever your key is.
+```shell
+$ mkdir my-data
+$ blobcache run --private-key ./blobcache_pk.pem --data-dir my-data
+```
+
+Once the daemon is running, you should be all set to connect to it and start building your application on top of content-addressed storage.
+
+## Help, I need to store data larger than a single Blobcache blob
+Blobcache is not a filesystem or object store.  It only allows storing blobs up to a fixed maximum size (currently 2MB).
+It is more of a building block than a storage solution on it's own.
+ 
+Take a look at [glfs](https://github.com/blobcache/glfs), a Git-Like FileSystem which breaks apart large files into chunks which will fit into Blobcache.
+
+Also take a look at [GotFS](https://github.com/gotvc/got/tree/master/pkg/gotfs) which is a more complicated, but in many ways more efficient, alternative to glfs.
+
+## Community
+You can get in touch via either:
+- Our dedicated Matrix room `#blobcache:matrix.org`
+- The INET256 Discord, in the `#applications` channel.
