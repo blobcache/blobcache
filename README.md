@@ -34,14 +34,14 @@ You should be able to install with
 $ go install ./cmd/blobcache
 ```
 
-or
-```shell
-go build -o ./put/the/binary/here/please ./cmd/blobcache 
-```
-
 And then if `${go env GOPATH}/bin` is on your path, you should be able to run the blobcache command with
 ```shell
 $ blobcache 
+```
+
+or to put the executable somewhere specific
+```shell
+go build -o ./put/the/binary/here/please ./cmd/blobcache 
 ```
 
 ### Creating a Private Key
@@ -68,6 +68,10 @@ It is more of a building block than a storage solution on it's own.
 Take a look at [glfs](https://github.com/blobcache/glfs), a Git-Like FileSystem which breaks apart large files into chunks which will fit into Blobcache.
 
 Also take a look at [GotFS](https://github.com/gotvc/got/tree/master/pkg/gotfs) which is a more complicated, but in many ways more efficient, alternative to glfs.
+
+## Help, I need to store many small things efficiently in Blobcache
+Take a look at [GotKV](https://github.com/gotvc/got/tree/master/pkg/gotkv), an immutable key-value store on top of content-addressable storage.
+It's Blobcache compatible.
 
 ## Community
 You can get in touch via either:
