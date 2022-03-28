@@ -77,3 +77,10 @@ It's Blobcache compatible.
 You can get in touch via either:
 - Our dedicated Matrix room `#blobcache:matrix.org`
 - The INET256 Discord, in the `#applications` channel.
+
+## License
+The Blobcache implementation is licensed under GPLv3.
+
+All of the clients are licensed under Apache 2.0
+
+What this means is: if you improve Blobcache you have to make the improvements available, but if you are just using a client you can do whatever you want with it.
