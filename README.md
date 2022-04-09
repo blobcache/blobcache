@@ -7,10 +7,10 @@
 Blobcache is a content addressed data store, designed to be a replicated data layer for applications.
 
 For more information checkout a brief [Introduction](./docs/00_Intro.md).
-And the HTTP API [docs](./docs/01_Client_API.md).
+And the gRPC API [docs](./docs/01_Client_API.md).
 
 ## Goals
-- [x] Define a [simple HTTP API](./docs/01_Client_API.md) for content-addressed storage suitable for use by multiple applications.
+- [x] Define a [simple API](./docs/01_Client_API.md) for content-addressed storage suitable for use by multiple applications.
 - [x] Efficiently multiplex multiple logical content-addressed stores onto a single real store backed by the file system.
 - [ ] Store data with other Blobcache peers.
 - [ ] Store data with cloud object storage providers.

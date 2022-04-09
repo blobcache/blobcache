@@ -6,13 +6,13 @@ import (
 	"encoding/base64"
 
 	"github.com/blobcache/blobcache/pkg/bcpool"
-	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/brendoncarroll/go-state/cadata"
 	"golang.org/x/crypto/chacha20"
+	"lukechampine.com/blake3"
 )
 
 func Hash(x []byte) cadata.ID {
-	return stores.Hash(x)
+	return blake3.Sum256(x)
 }
 
 type KeyFunc func(ptextHash cadata.ID) DEK

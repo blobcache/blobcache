@@ -8,7 +8,8 @@ import (
 )
 
 func TestNode(t *testing.T) {
-	blobcachetest.TestService(t, func(t testing.TB) blobcache.Service {
-		return blobcache.NewNode(blobcache.NewMemParams())
+	blobcachetest.TestService(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
+		n := blobcache.NewNode(blobcache.NewMemParams())
+		return n, n.Root()
 	})
 }

@@ -20,7 +20,9 @@ var (
 func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(keygenCmd)
+	rootCmd.AddCommand(mkdirCmd)
 	rootCmd.AddCommand(createCmd)
+	rootCmd.AddCommand(lsCmd)
 }
 
 func Execute() error {
@@ -53,6 +55,7 @@ var keygenCmd = &cobra.Command{
 }
 
 func setupClient(cmd *cobra.Command, args []string) error {
-	client = bcclient.NewEnvClient()
-	return nil
+	var err error
+	client, err = bcclient.NewEnvClient()
+	return err
 }

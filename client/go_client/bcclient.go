@@ -3,7 +3,9 @@ package bcclient
 import (
 	"os"
 
-	"github.com/blobcache/blobcache/pkg/bchttp"
+	"github.com/blobcache/blobcache/pkg/bcgrpc"
+	"github.com/blobcache/blobcache/pkg/blobcache"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -12,23 +14,24 @@ const (
 	EnvBlobcacheAPI = "BLOBCACHE_API"
 	// DefaultEndpoint is the endpoint assumed if the environment variable
 	// defined by EnvBlobcacheAPI (BLOBCACHE_API) is not set.
-	DefaultEndpoint = "http://127.0.0.1:6025"
+	DefaultEndpoint = "127.0.0.1:6025"
 )
 
-// Client implements blobcache.Service
-// by connecting to a daemon over HTTP
-type Client = bchttp.Client
+type Client struct {
+	blobcache.Service
+}
 
 // NewClient creates a Client backed by the server at endpoint
-func NewClient(endpoint string) *Client {
-	return bchttp.NewClient(endpoint)
+func NewClient(endpoint string) (*Client, error) {
+	gc, err := grpc.Dial(endpoint, grpc.WithInsecure())
+	return &Client{bcgrpc.NewClient(bcgrpc.NewBlobcacheClient(gc))}, err
 }
 
 // NewEnvClient creates a new client from environment variables
-func NewEnvClient() *Client {
+func NewEnvClient() (*Client, error) {
 	value, ok := os.LookupEnv(EnvBlobcacheAPI)
 	if !ok {
 		value = DefaultEndpoint
 	}
-	return bchttp.NewClient(value)
+	return NewClient(value)
 }

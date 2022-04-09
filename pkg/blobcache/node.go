@@ -1,20 +1,27 @@
 package blobcache
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
-	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"strings"
 
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/inet256/inet256/pkg/inet256"
 	"github.com/sirupsen/logrus"
-	"lukechampine.com/blake3"
 
 	"github.com/blobcache/blobcache/pkg/bcdb"
 	"github.com/blobcache/blobcache/pkg/bcnet"
 	"github.com/blobcache/blobcache/pkg/blobcache/control"
+	"github.com/blobcache/blobcache/pkg/dirserv"
 	"github.com/blobcache/blobcache/pkg/stores"
+)
+
+const (
+	systemDirName = "__system"
 )
 
 var _ Service = &Node{}
@@ -49,28 +56,28 @@ type Node struct {
 	db      bcdb.DB
 	localID bcnet.PeerID
 
-	storeMux *storeMux    // manages all access to the local store
-	setMan   *setManager  // default set manager
-	psSetMan *setManager  // set manager for pinset blobs
-	pinSets  *pinSetStore // pinset metadata store
+	dirServ  *dirserv.DirServer
+	storeMux *storeMux   // manages all access to the local store
+	setMan   *setManager // default set manager
+	psSetMan *setManager // set manager for pinset blobs
 	ctrl     *control.Controller
 
 	log *logrus.Logger
 }
 
 func NewNode(params Params) *Node {
-	pinSetStore := newPinSetStore(bcdb.NewPrefixed(params.DB, "pinset-meta\x00"))
 	psSetMan := newSetManager(bcdb.NewPrefixed(params.DB, "pinset-sets\x00"))
 	setMan := newSetManager(bcdb.NewPrefixed(params.DB, "sets\x00"))
 	storeMux := newStoreMux(bcdb.NewPrefixed(params.DB, "stores\x00"), params.Primary)
+	dirServ := dirserv.New(bcdb.NewPrefixed(params.DB, "dirs\x00"))
 	n := &Node{
 		db:      params.DB,
 		localID: inet256.NewAddr(params.PrivateKey.Public()),
 
+		dirServ:  dirServ,
 		storeMux: storeMux,
 		setMan:   setMan,
 		psSetMan: psSetMan,
-		pinSets:  pinSetStore,
 		ctrl:     control.New(),
 		log:      params.Logger,
 	}
@@ -80,21 +87,21 @@ func NewNode(params Params) *Node {
 	})
 	n.ctrl.AttachSink("local", control.Sink{
 		Locus:   n.localID,
-		Desired: setMan.open("desired/local"),
+		Desired: n.getSystemSet([]string{"sink", "local"}),
 		// TODO
 		Notify: func(cadata.ID) {},
 		Flush:  func(context.Context, map[cadata.ID]struct{}) error { return nil },
 	})
 	for _, peer := range params.Peers {
-		sourceName := "peer-source/" + peer.ID.String()
+		sourceName := "peer-" + peer.ID.String()
 		n.ctrl.AttachSource(sourceName, control.Source{
-			Set:              setMan.open(sourceName),
+			Set:              n.getSystemSet([]string{"source", sourceName}),
 			ExpectedReplicas: 1,
 		})
-		sinkName := "peer-sink/" + peer.ID.String()
+		sinkName := "peer-" + peer.ID.String()
 		n.ctrl.AttachSink(sinkName, control.Sink{
 			Locus:   peer.ID,
-			Desired: setMan.open(sinkName),
+			Desired: n.getSystemSet([]string{"sink", sinkName}),
 			// TODO
 			Notify: func(cadata.ID) {},
 			Flush:  func(context.Context, map[cadata.ID]struct{}) error { return nil },
@@ -103,44 +110,79 @@ func NewNode(params Params) *Node {
 	return n
 }
 
-// CreatePinSet implementes Service
-func (n *Node) CreatePinSet(ctx context.Context, opts PinSetOptions) (*PinSetHandle, error) {
-	id, err := n.pinSets.Create(ctx, PinSetOptions{})
+// CreateDir implements Service
+func (n *Node) CreateDir(ctx context.Context, h Handle, name string) (*Handle, error) {
+	if err := n.validateModify(h, name); err != nil {
+		return nil, err
+	}
+	return n.dirServ.Create(ctx, h, name, []byte("DIR"))
+}
+
+// ListEntries
+func (n *Node) ListEntries(ctx context.Context, h Handle) ([]Entry, error) {
+	ents, err := n.dirServ.List(ctx, h)
 	if err != nil {
 		return nil, err
 	}
-	return &PinSetHandle{ID: *id}, nil
+	// filter systemDirName
+	if h.ID == dirserv.RootOID {
+		var ents2 []dirserv.Entry
+		for _, ent := range ents {
+			if ent.Name != systemDirName {
+				ents2 = append(ents2, ent)
+			}
+		}
+		ents = ents2
+	}
+	return ents, nil
+}
+
+// DeleteEntry implements Service
+func (n *Node) DeleteEntry(ctx context.Context, h Handle, name string) error {
+	if err := n.validateModify(h, name); err != nil {
+		return err
+	}
+	_, err := n.dirServ.Remove(ctx, h, name)
+	return err
+}
+
+// Open implements Service
+func (n *Node) Open(ctx context.Context, h Handle, p []string) (*Handle, error) {
+	if h.ID == dirserv.RootOID && len(p) > 0 && p[0] == systemDirName {
+		return nil, errors.New("cannot open " + systemDirName)
+	}
+	return n.dirServ.Open(ctx, h, p)
+}
+
+// CreatePinSet implements Service
+func (n *Node) CreatePinSet(ctx context.Context, h Handle, name string, opts PinSetOptions) (*Handle, error) {
+	if err := n.validateModify(h, name); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(struct{}{})
+	if err != nil {
+		return nil, err
+	}
+	return n.dirServ.Create(ctx, h, name, data)
 }
 
 // GetPinSet implements Service
-func (n *Node) GetPinSet(ctx context.Context, psh PinSetHandle) (*PinSet, error) {
-	psID, err := n.resolvePinSet(ctx, psh)
+func (n *Node) GetPinSet(ctx context.Context, psh Handle) (*PinSet, error) {
+	oid, data, err := n.dirServ.Get(ctx, psh, nil)
 	if err != nil {
 		return nil, err
 	}
-	_, err = n.pinSets.Get(ctx, psID)
-	if err != nil {
-		return nil, err
+	if oid == dirserv.NullOID {
+		return nil, errors.New("pinset not found")
 	}
-	return &PinSet{
-		Status: StatusOK,
-	}, nil
-}
-
-// DeletePinSet implements Service
-func (n *Node) DeletePinSet(ctx context.Context, psh PinSetHandle) error {
-	psID, err := n.resolvePinSet(ctx, psh)
-	if err != nil {
-		return err
+	if !bytes.Equal(data, []byte("{}")) {
+		return nil, errors.New("object is not a pinset")
 	}
-	if err := n.pinSets.Delete(ctx, psID); err != nil {
-		return err
-	}
-	return n.psSetMan.drop(ctx, psID.HexString())
+	return &PinSet{Status: StatusOK}, nil
 }
 
 // Add implements Service
-func (node *Node) Add(ctx context.Context, psh PinSetHandle, id cadata.ID) error {
+func (node *Node) Add(ctx context.Context, psh Handle, id cadata.ID) error {
 	psID, err := node.resolvePinSet(ctx, psh)
 	if err != nil {
 		return err
@@ -155,7 +197,7 @@ func (node *Node) Add(ctx context.Context, psh PinSetHandle, id cadata.ID) error
 	return ErrDataNotFound
 }
 
-func (n *Node) Delete(ctx context.Context, psh PinSetHandle, id cadata.ID) error {
+func (n *Node) Delete(ctx context.Context, psh Handle, id cadata.ID) error {
 	psID, err := n.resolvePinSet(ctx, psh)
 	if err != nil {
 		return err
@@ -168,7 +210,7 @@ func (n *Node) Delete(ctx context.Context, psh PinSetHandle, id cadata.ID) error
 	return nil
 }
 
-func (n *Node) Post(ctx context.Context, psh PinSetHandle, data []byte) (cadata.ID, error) {
+func (n *Node) Post(ctx context.Context, psh Handle, data []byte) (cadata.ID, error) {
 	psID, err := n.resolvePinSet(ctx, psh)
 	if err != nil {
 		return cadata.ID{}, err
@@ -189,7 +231,7 @@ func (n *Node) Post(ctx context.Context, psh PinSetHandle, data []byte) (cadata.
 	return id, nil
 }
 
-func (n *Node) Get(ctx context.Context, psh PinSetHandle, id cadata.ID, buf []byte) (int, error) {
+func (n *Node) Get(ctx context.Context, psh Handle, id cadata.ID, buf []byte) (int, error) {
 	psID, err := n.resolvePinSet(ctx, psh)
 	if err != nil {
 		return 0, err
@@ -205,7 +247,7 @@ func (n *Node) Get(ctx context.Context, psh PinSetHandle, id cadata.ID, buf []by
 	return store.Get(ctx, id, buf)
 }
 
-func (node *Node) List(ctx context.Context, psh PinSetHandle, prefix []byte, ids []cadata.ID) (n int, err error) {
+func (node *Node) List(ctx context.Context, psh Handle, prefix []byte, ids []cadata.ID) (n int, err error) {
 	psID, err := node.resolvePinSet(ctx, psh)
 	if err != nil {
 		return 0, err
@@ -214,7 +256,7 @@ func (node *Node) List(ctx context.Context, psh PinSetHandle, prefix []byte, ids
 	return set.List(ctx, prefix, ids)
 }
 
-func (n *Node) Exists(ctx context.Context, psh PinSetHandle, id cadata.ID) (bool, error) {
+func (n *Node) Exists(ctx context.Context, psh Handle, id cadata.ID) (bool, error) {
 	psID, err := n.resolvePinSet(ctx, psh)
 	if err != nil {
 		return false, err
@@ -223,7 +265,7 @@ func (n *Node) Exists(ctx context.Context, psh PinSetHandle, id cadata.ID) (bool
 	return cadata.Exists(ctx, set, id)
 }
 
-func (n *Node) WaitOK(ctx context.Context, psh PinSetHandle) error {
+func (n *Node) WaitOK(ctx context.Context, psh Handle) error {
 	_, err := n.resolvePinSet(ctx, psh)
 	if err != nil {
 		return err
@@ -235,26 +277,32 @@ func (n *Node) MaxSize() int {
 	return MaxSize
 }
 
-func (n *Node) resolvePinSet(ctx context.Context, psh PinSetHandle) (PinSetID, error) {
-	key := handleKey(psh)
-	logrus.Info("resolved handle ", key)
-	// TODO: lookup in db
-	return psh.ID, nil
+func (n *Node) Root() Handle {
+	return n.dirServ.Root()
 }
 
 func (n *Node) mainStore() cadata.Store {
-	return n.storeMux.open("main")
+	return n.storeMux.open(n.getSystemSet([]string{"local-stores", "main"}))
 }
 
-func (n *Node) getPSSet(psID PinSetID) cadata.Set {
-	return n.psSetMan.open(psID.HexString())
+func (n *Node) resolvePinSet(ctx context.Context, psh Handle) (dirserv.OID, error) {
+	return n.dirServ.Resolve(ctx, psh, nil)
 }
 
-func handleKey(psh PinSetHandle) (ret [16]byte) {
-	h := blake3.New(32, nil)
-	binary.Write(h, binary.BigEndian, psh.ID)
-	h.Write(psh.Secret[:])
-	sum := h.Sum(nil)
-	copy(ret[:], sum)
-	return ret
+func (n *Node) getSystemSet(p []string) cadata.Set {
+	return newSystemSet(n.dirServ, n.setMan, p)
+}
+
+func (n *Node) getPSSet(psID dirserv.OID) cadata.Set {
+	return n.psSetMan.open(psID)
+}
+
+func (n *Node) validateModify(h Handle, name string) error {
+	if strings.Contains(name, "/") {
+		return errors.New("name cannot contain '/' or null characters")
+	}
+	if h.ID == dirserv.RootOID && name == "__system" {
+		return errors.New("cannot modify " + name)
+	}
+	return nil
 }

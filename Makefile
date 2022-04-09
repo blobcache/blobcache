@@ -15,6 +15,7 @@ testv:
 
 protobuf:
 	cd ./pkg/tries && ./build.sh
+	cd ./pkg/bcgrpc && ./build.sh
 
 drop-replace:
 	go mod edit -dropreplace github.com/inet256/inet256

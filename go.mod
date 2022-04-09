@@ -1,12 +1,11 @@
 module github.com/blobcache/blobcache
 
-go 1.17
+go 1.18
 
 require (
 	github.com/brendoncarroll/go-p2p v0.0.0-20211024183131-c0c41d099b71
 	github.com/brendoncarroll/go-state v0.0.0-20220313164317-9be716fdbc4b
 	github.com/dgraph-io/badger/v2 v2.0.3
-	github.com/go-chi/chi v4.0.3+incompatible
 	github.com/golang/protobuf v1.5.2
 	github.com/hashicorp/golang-lru v0.5.1
 	github.com/inet256/inet256 v0.0.2
@@ -35,5 +34,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/net v0.0.0-20210716203947-853a461950ff // indirect
 	golang.org/x/sys v0.0.0-20210819135213-f52c844e1c1c // indirect
+	golang.org/x/text v0.3.6 // indirect
+	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )

@@ -25,8 +25,7 @@ func newStoreMux(db bcdb.DB, store cadata.Store) *storeMux {
 	}
 }
 
-func (sm *storeMux) open(name string) cadata.Store {
-	set := sm.sm.open(name).(*set)
+func (sm *storeMux) open(set cadata.Set) cadata.Store {
 	return &virtualStore{
 		sm:     sm.sm,
 		set:    set,
@@ -37,7 +36,7 @@ func (sm *storeMux) open(name string) cadata.Store {
 
 type virtualStore struct {
 	sm     *setManager
-	set    *set
+	set    cadata.Set
 	store  cadata.Store
 	locker *cadutil.Locker
 }

@@ -75,3 +75,38 @@ func PrefixEnd(prefix []byte) []byte {
 	}
 	return end
 }
+
+// DoRet1 is a convenience function for performing a transaction and returning 1 value
+func DoRet1[T any](ctx context.Context, db DB, isWrite bool, fn func(tx Tx) (T, error)) (T, error) {
+	var ret T
+	fn2 := func(tx Tx) error {
+		var err error
+		ret, err = fn(tx)
+		return err
+	}
+	var err error
+	if isWrite {
+		err = db.Update(ctx, fn2)
+	} else {
+		err = db.View(ctx, fn2)
+	}
+	return ret, err
+}
+
+// DoRet2 is a convenience function for performing a transaction and returning 2 values
+func DoRet2[A, B any](ctx context.Context, db DB, isWrite bool, fn func(tx Tx) (A, B, error)) (A, B, error) {
+	var ret1 A
+	var ret2 B
+	fn2 := func(tx Tx) error {
+		var err error
+		ret1, ret2, err = fn(tx)
+		return err
+	}
+	var err error
+	if isWrite {
+		err = db.Update(ctx, fn2)
+	} else {
+		err = db.View(ctx, fn2)
+	}
+	return ret1, ret2, err
+}
