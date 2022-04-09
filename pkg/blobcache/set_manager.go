@@ -7,14 +7,13 @@ import (
 	"fmt"
 
 	"github.com/blobcache/blobcache/pkg/bcdb"
+	"github.com/blobcache/blobcache/pkg/dirserv"
 	"github.com/brendoncarroll/go-state"
 	"github.com/brendoncarroll/go-state/cadata"
 )
 
 const (
-	setNamesPrefix     = "names\x00"
 	setItemsPrefix     = "items\x00"
-	setSeq             = "seq"
 	setRefCountsPrefix = "rc\x00"
 )
 
@@ -27,8 +26,8 @@ func newSetManager(db bcdb.DB) *setManager {
 	return &setManager{db: db}
 }
 
-func (sm *setManager) open(x string) cadata.Set {
-	return &set{db: sm.db, name: x}
+func (sm *setManager) open(id dirserv.OID) cadata.Set {
+	return &set{db: sm.db, i: uint64(id)}
 }
 
 func (sm *setManager) drop(ctx context.Context, name string) error {
@@ -52,22 +51,14 @@ func (sm *setManager) getRefCount(ctx context.Context, id cadata.ID) (count uint
 }
 
 type set struct {
-	db   bcdb.DB
-	name string
+	db bcdb.DB
+	i  uint64
 }
 
 func (s *set) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	var exists bool
 	if err := s.db.View(ctx, func(tx bcdb.Tx) error {
-		i, err := s.getIntID(tx, false)
-		if err != nil {
-			return err
-		}
-		if i == 0 {
-			exists = false
-			return nil
-		}
-		k := itemKeyFor(i, id)
+		k := itemKeyFor(s.i, id)
 		v, err := tx.Get(k)
 		exists = v != nil
 		return err
@@ -80,14 +71,7 @@ func (s *set) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 func (s *set) List(ctx context.Context, first []byte, ids []cadata.ID) (int, error) {
 	var n int
 	err := s.db.View(ctx, func(tx bcdb.Tx) error {
-		i, err := s.getIntID(tx, false)
-		if err != nil {
-			return err
-		}
-		if i == 0 {
-			return cadata.ErrEndOfList
-		}
-		span := itemSpanFor(i, first)
+		span := itemSpanFor(s.i, first)
 		n = 0
 		stopIter := errors.New("stop iteration")
 		if err := tx.ForEach(span, func(k, _ []byte) error {
@@ -114,29 +98,18 @@ func (s *set) List(ctx context.Context, first []byte, ids []cadata.ID) (int, err
 
 func (s *set) Add(ctx context.Context, id cadata.ID) error {
 	return s.db.Update(ctx, func(tx bcdb.Tx) error {
-		n, err := s.getIntID(tx, true)
-		if err != nil {
-			return err
-		}
-		k := itemKeyFor(n, id)
+		k := itemKeyFor(s.i, id)
 		if err := tx.Put(k, nil); err != nil {
 			return err
 		}
-		_, err = rcIncr(tx, id)
+		_, err := rcIncr(tx, id)
 		return err
 	})
 }
 
 func (s *set) Delete(ctx context.Context, id cadata.ID) error {
 	return s.db.Update(ctx, func(tx bcdb.Tx) error {
-		i, err := s.getIntID(tx, false)
-		if err != nil {
-			return err
-		}
-		if i == 0 {
-			return nil
-		}
-		k := itemKeyFor(i, id)
+		k := itemKeyFor(s.i, id)
 		v, err := tx.Get(k)
 		if err != nil {
 			return err
@@ -146,69 +119,21 @@ func (s *set) Delete(ctx context.Context, id cadata.ID) error {
 				return err
 			}
 		}
-		if err := tx.Delete(k); err != nil {
-			return err
-		}
-		return s.maybeDrop(tx, i)
+		return tx.Delete(k)
 	})
-}
-
-func (s *set) getIntID(tx bcdb.Tx, create bool) (uint64, error) {
-	nameKey := s.nameKey()
-	v, err := tx.Get(nameKey)
-	if err != nil {
-		return 0, err
-	}
-	if v != nil {
-		i, err := parseUint64(v)
-		if err != nil {
-			return 0, err
-		}
-		return i, nil
-	}
-	if !create {
-		return 0, nil
-	}
-	i, err := bcdb.Increment(tx, []byte(setSeq))
-	if err != nil {
-		return 0, err
-	}
-	if err := tx.Put(nameKey, uint64Bytes(i)); err != nil {
-		return 0, err
-	}
-	return i, nil
-}
-
-func (s *set) maybeDrop(tx bcdb.Tx, i uint64) error {
-	span := itemSpanFor(i, nil)
-	nonEmpty := false
-	if err := tx.ForEach(span, func(k, v []byte) error {
-		nonEmpty = true
-		return nil
-	}); err != nil {
-		return err
-	}
-	if !nonEmpty {
-		return tx.Delete(s.nameKey())
-	}
-	return nil
 }
 
 const setItemKeySize = len(setItemsPrefix) + 8 + cadata.IDSize
 
-func (s *set) nameKey() []byte {
-	return append([]byte(setNamesPrefix), []byte(s.name)...)
-}
-
-func itemKeyFor(n uint64, id cadata.ID) (ret []byte) {
+func itemKeyFor(setID uint64, id cadata.ID) (ret []byte) {
 	ret = append(ret, []byte(setItemsPrefix)...)
-	ret = append(ret, uint64Bytes(n)...)
+	ret = append(ret, uint64Bytes(setID)...)
 	ret = append(ret, id[:]...)
 	return ret
 }
 
-func itemSpanFor(n uint64, first []byte) state.ByteSpan {
-	prefix := append([]byte(setItemsPrefix), uint64Bytes(n)...)
+func itemSpanFor(setID uint64, first []byte) state.ByteSpan {
+	prefix := append([]byte(setItemsPrefix), uint64Bytes(setID)...)
 	span := state.ByteSpan{
 		Begin: append(prefix, first...),
 		End:   bcdb.PrefixEnd(prefix),

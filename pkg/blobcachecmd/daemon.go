@@ -2,12 +2,13 @@ package blobcachecmd
 
 import (
 	"context"
-	"net/http"
+	"net"
 
-	"github.com/blobcache/blobcache/pkg/bchttp"
+	"github.com/blobcache/blobcache/pkg/bcgrpc"
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 )
 
 type DaemonParams struct {
@@ -19,22 +20,21 @@ type DaemonParams struct {
 type Daemon struct {
 	params DaemonParams
 
-	node      *blobcache.Node
-	apiServer *bchttp.Server
-	log       *logrus.Logger
+	node *blobcache.Node
+	log  *logrus.Logger
 }
 
 func NewDaemon(params DaemonParams) *Daemon {
 	node := blobcache.NewNode(params.NodeParams)
 	return &Daemon{
-		params:    params,
-		node:      node,
-		apiServer: bchttp.NewServer(node, params.Logger),
-		log:       params.Logger,
+		params: params,
+		node:   node,
+		log:    params.Logger,
 	}
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
+	d.log.Infof("ROOT HANDLE: %s", d.node.Root().String())
 	group := errgroup.Group{}
 	group.Go(func() error {
 		return d.runAPI(ctx)
@@ -43,18 +43,21 @@ func (d *Daemon) Run(ctx context.Context) error {
 }
 
 func (d *Daemon) runAPI(ctx context.Context) error {
-	hs := &http.Server{
-		Addr:    d.params.APIAddr,
-		Handler: d.apiServer,
+	l, err := net.Listen("tcp", d.params.APIAddr)
+	if err != nil {
+		return err
 	}
+	gs := grpc.NewServer()
+	bcgrpc.RegisterBlobcacheServer(gs, bcgrpc.NewServer(d.node))
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		d.log.Infof("serving API on %s", hs.Addr)
-		return hs.ListenAndServe()
+		d.log.Infof("serving API on %v", l.Addr())
+		return gs.Serve(l)
 	})
 	eg.Go(func() error {
 		<-ctx.Done()
-		return ctx.Err()
+		gs.Stop()
+		return nil
 	})
 	return eg.Wait()
 }

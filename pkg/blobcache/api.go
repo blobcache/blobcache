@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/blobcache/blobcache/pkg/dirserv"
 	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/brendoncarroll/go-state/cadata"
 )
@@ -29,10 +30,9 @@ type PinSet struct {
 type PinSetOptions struct {
 }
 
-type PinSetHandle struct {
-	ID     PinSetID `json:"id"`
-	Secret [16]byte `json:"secret"`
-}
+type Handle = dirserv.Handle
+
+type Entry = dirserv.Entry
 
 type PinSetID uint64
 
@@ -47,28 +47,35 @@ var (
 
 // Service is the API exposed by either a blobcache client, or inmemory node.
 type Service interface {
+	// CreateDir creates a directory below handle
+	CreateDir(ctx context.Context, h Handle, name string) (*Handle, error)
+	// Open returns a handle to an object
+	Open(ctx context.Context, h Handle, p []string) (*Handle, error)
+	// ListEntries lists the entries in the directory which h points to.
+	ListEntries(ctx context.Context, h Handle) ([]Entry, error)
+	// DeleteEntry ensures that there is no entry at name
+	DeleteEntry(ctx context.Context, h Handle, name string) error
+
 	// CreatePinSet creates a PinSet with the provided options and returns a handle to it.
-	CreatePinSet(ctx context.Context, opts PinSetOptions) (*PinSetHandle, error)
-	// DeletePinSet deletes the PinSet referenced by the handle
-	DeletePinSet(ctx context.Context, pinset PinSetHandle) error
+	CreatePinSet(ctx context.Context, h Handle, name string, opts PinSetOptions) (*Handle, error)
 	// GetPinSet returns information about the PinSet
-	GetPinSet(ctx context.Context, pinset PinSetHandle) (*PinSet, error)
+	GetPinSet(ctx context.Context, h Handle) (*PinSet, error)
 
 	// Add adds data to the PinSet by ID.
-	Add(ctx context.Context, pinset PinSetHandle, id cadata.ID) error
+	Add(ctx context.Context, pinset Handle, id cadata.ID) error
 	// Delete removes data from the PinSet by ID.
-	Delete(ctx context.Context, pinset PinSetHandle, id cadata.ID) error
+	Delete(ctx context.Context, pinset Handle, id cadata.ID) error
 	// Post adds data to a PinSet and returns the ID.
-	Post(ctx context.Context, pinset PinSetHandle, data []byte) (cadata.ID, error)
+	Post(ctx context.Context, pinset Handle, data []byte) (cadata.ID, error)
 	// Get retrieves data from the PinSet and returns the ID.
-	Get(ctx context.Context, pinset PinSetHandle, id cadata.ID, buf []byte) (int, error)
+	Get(ctx context.Context, pinset Handle, id cadata.ID, buf []byte) (int, error)
 	// Exists returns whether the PinSet contains ID
-	Exists(ctx context.Context, pinset PinSetHandle, id cadata.ID) (bool, error)
+	Exists(ctx context.Context, pinset Handle, id cadata.ID) (bool, error)
 	// List lists the ids in the pinSet.
-	List(ctx context.Context, pinSet PinSetHandle, first []byte, ids []cadata.ID) (n int, err error)
+	List(ctx context.Context, pinSet Handle, first []byte, ids []cadata.ID) (n int, err error)
 	// WaitOK waits until the pinSet is status is OK.
 	// This means that all the blobs in the pinSet are correctly replicated according to the pinset's config.
-	WaitOK(ctx context.Context, pinSet PinSetHandle) error
+	WaitOK(ctx context.Context, pinSet Handle) error
 
 	// MaxSize returns the maximum blob size
 	MaxSize() int

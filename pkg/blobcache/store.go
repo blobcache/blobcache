@@ -8,11 +8,11 @@ import (
 
 type store struct {
 	bc     Service
-	pinSet PinSetHandle
+	pinSet Handle
 }
 
 // NewStore returns a cadata.Store
-func NewStore(bc Service, pinSet PinSetHandle) cadata.Store {
+func NewStore(bc Service, pinSet Handle) cadata.Store {
 	return &store{
 		bc:     bc,
 		pinSet: pinSet,

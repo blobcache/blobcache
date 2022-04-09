@@ -39,7 +39,7 @@ A data blob is considered to be contained in a PinSet if it has a pin of that se
 ## Use Cases
  - I want the data from my laptop to be backed up to my desktop.
  - I have a lot of extra storage capacity, which I want my family and friends to utilize.
- - I want to trade storage with one of my friends, so that we can both have more redundant backups.
+ - I want to trade storage with one of my friends, so that we can both have geographically diversified backups.
 
 # Table of Contents
 

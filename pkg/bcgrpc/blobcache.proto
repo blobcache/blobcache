@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package blobcache;
+
+option go_package = "github.com/blobcache/blobcache/pkg/bcgrpc";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+
+service Blobcache {
+    // Dir Methods
+
+    // CreateDir creates a directory at name under the parent.
+    rpc CreateDir(CreateDirReq) returns (HandleRes) {};
+    // Open resolves a path relative to a handle
+    rpc Open(OpenReq) returns (HandleRes) {};    
+    // DeleteEntry removes the entry with name from its parent.
+    rpc DeleteEntry(DeleteEntryReq) returns (google.protobuf.Empty) {};
+    // ListEntries lists the entries under a parent.
+    rpc ListEntries(ListEntriesReq) returns (stream Entry) {};
+
+    // PinSet methods
+
+    // CreatePinSet creates a PinSet at name under the parent.
+    rpc CreatePinSet(CreatePinSetReq) returns (HandleRes) {};
+    // GetPinSet returns information about a PinSet
+    rpc GetPinSet(GetPinSetReq) returns (PinSet) {};
+
+    // CA Store Methods
+
+    // Post uploads data and adds it to a PinSet.
+    rpc Post(PostReq) returns (google.protobuf.BytesValue) {};
+    // Get retrieves data from a PinSet and returns.
+    rpc Get(GetReq) returns (google.protobuf.BytesValue) {};
+    // Add adds data by ID to a PinSet.
+    rpc Add(AddReq) returns (google.protobuf.Empty) {};
+    // Delete removes data from a PinSet
+    rpc Delete(DeleteReq) returns (google.protobuf.Empty) {};
+    // List lists blobs by ID in a PinSet
+    rpc List(ListReq) returns (ListRes) {};
+    // WaitOK
+    rpc WaitOK(WaitReq) returns (google.protobuf.Empty) {};
+}
+
+message CreateDirReq {
+    string handle = 1;
+    string name = 2;
+}
+
+message CreatePinSetReq {
+    string handle = 1;
+    string name = 2;
+
+    uint32 replicas = 3;
+}
+
+message GetPinSetReq {
+    string handle = 1;
+}
+
+message PinSet {}
+
+message OpenReq {
+    string handle = 1;
+    repeated string path = 2;
+}
+
+message HandleRes {
+    string handle = 1;
+}
+
+message ListEntriesReq {
+    string handle = 1;
+}
+
+message DeleteEntryReq {
+    string handle = 1;
+    string name = 2;
+}
+
+message Entry {
+    string name = 1;
+    uint64 oid = 2;
+}
+
+message PostReq {
+    string handle = 1;
+    bytes data = 2;
+}
+
+message GetReq {
+    string handle = 1;
+    bytes id = 2;
+}
+
+message AddReq {
+    string handle = 1;
+    bytes id = 2;
+}
+
+message DeleteReq {
+    string handle = 1;
+    bytes id = 2;
+}
+
+message ListReq {
+    string handle = 1;
+    bytes first = 2;
+    uint32 limit = 3;
+}
+
+message ListRes {
+    repeated bytes ids = 1;
+    bool end = 2;
+}
+
+message WaitReq {
+    string handle = 1;
+}
