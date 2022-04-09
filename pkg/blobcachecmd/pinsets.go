@@ -3,6 +3,7 @@ package blobcachecmd
 import (
 	"bufio"
 	"fmt"
+	"strings"
 
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/blobcache/blobcache/pkg/dirserv"
@@ -72,5 +73,27 @@ var lsCmd = &cobra.Command{
 			fmt.Fprintf(w, fmtStr, ent.Name, ent.ID.String())
 		}
 		return w.Flush()
+	},
+}
+
+var openCmd = &cobra.Command{
+	Use:     "open",
+	Short:   "returns a handle to an object",
+	PreRunE: setupClient,
+	Args:    cobra.MinimumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		h, err := dirserv.ParseHandle([]byte(args[0]))
+		if err != nil {
+			return err
+		}
+		p := args[1]
+		parts := strings.Split(strings.Trim(p, "/"), "/")
+		h2, err := client.Open(ctx, *h, parts)
+		if err != nil {
+			return err
+		}
+		w := cmd.OutOrStdout()
+		_, err = w.Write([]byte(h2.String() + "\n"))
+		return err
 	},
 }

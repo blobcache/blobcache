@@ -41,7 +41,14 @@ $ blobcache
 
 or to put the executable somewhere specific
 ```shell
-go build -o ./put/the/binary/here/please ./cmd/blobcache 
+$ go build -o ./put/the/binary/here/please ./cmd/blobcache 
+```
+
+### Running a Node in Memory
+This is a good option if you just want to play around with the API, and don't want to persist any data, or connect to peers.
+
+```shell
+$ blobcache island
 ```
 
 ### Creating a Private Key

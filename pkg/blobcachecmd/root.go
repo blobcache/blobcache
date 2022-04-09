@@ -18,11 +18,18 @@ var (
 )
 
 func init() {
-	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(keygenCmd)
+
+	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(islandCmd)
+
 	rootCmd.AddCommand(mkdirCmd)
 	rootCmd.AddCommand(createCmd)
 	rootCmd.AddCommand(lsCmd)
+	rootCmd.AddCommand(openCmd)
+
+	rootCmd.AddCommand(postCmd)
+	rootCmd.AddCommand(getCmd)
 }
 
 func Execute() error {

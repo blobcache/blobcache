@@ -7,12 +7,12 @@ import (
 	"github.com/brendoncarroll/go-state/cadata"
 )
 
-type Getter interface {
+type ReadOnly interface {
 	cadata.Getter
-	cadata.Exister
+	cadata.Lister
 }
 
-type ReadChain []Getter
+type ReadChain []ReadOnly
 
 func (c ReadChain) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error) {
 	errs := []error{}
@@ -52,7 +52,7 @@ func (c ReadChain) List(ctx context.Context, prefix []byte, ids []cadata.ID) (n 
 func (c ReadChain) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	errs := []error{}
 	for _, s := range c {
-		exists, err := s.Exists(ctx, id)
+		exists, err := cadata.Exists(ctx, s, id)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -69,4 +69,8 @@ func (c ReadChain) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 
 func (c ReadChain) MaxSize() int {
 	return c[0].MaxSize()
+}
+
+func (c ReadChain) Hash(x []byte) cadata.ID {
+	return c[0].Hash(x)
 }

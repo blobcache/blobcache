@@ -3,41 +3,60 @@ package control
 import (
 	"context"
 	"sync"
+	"time"
 
+	"github.com/blobcache/blobcache/pkg/stores"
 	"github.com/brendoncarroll/go-state/cadata"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
 
 // Controller manages where to store blobs
 type Controller struct {
-	mu      sync.RWMutex
-	sources map[string]Source
-	sinks   map[string]Sink
+	log    *logrus.Logger
+	getSet func(name string) cadata.Set
 
+	mu           sync.RWMutex
+	planner      *Planner
+	sinks        map[string]Sink
 	sourceStates map[string]*sourceState
 	sinkStates   map[string]*sinkState
+
+	ctx context.Context
+	cf  context.CancelFunc
+	eg  errgroup.Group
 }
 
-func New() *Controller {
-	return &Controller{
-		sources:      make(map[string]Source),
+// New creates a new Controller
+// getSet will be called to create sets for tracking the desired blobs in each sink.
+func New(log *logrus.Logger, getSet func(name string) cadata.Set) *Controller {
+	c := &Controller{
+		log:    log,
+		getSet: getSet,
+
+		planner:      NewPlanner(log),
 		sinks:        make(map[string]Sink),
 		sourceStates: make(map[string]*sourceState),
 		sinkStates:   make(map[string]*sinkState),
 	}
+	return c
 }
 
 func (c *Controller) AttachSink(name string, sink Sink) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.planner.AttachSink(name, c.getSet(name), sink.Cost, func(id cadata.ID, isDelete bool) {
+		c.fromPlanner(name, id, isDelete)
+	})
 	c.sinks[name] = sink
-	c.sinkStates[name] = newSinkState()
+	c.sinkStates[name] = newSinkState(sink.Target)
+	c.startSinkLoop(name)
 }
 
 func (c *Controller) AttachSource(name string, source Source) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.sources[name] = source
+	c.planner.AttachSource(name, source)
 	c.sourceStates[name] = newSourceState()
 }
 
@@ -46,14 +65,19 @@ func (c *Controller) AttachSource(name string, source Source) {
 func (c *Controller) Refresh(ctx context.Context) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	for _, source := range c.sources {
-		if err := cadata.ForEach(ctx, source.Set, func(id cadata.ID) error {
-			return c.handleID(ctx, id)
-		}); err != nil {
-			return err
-		}
+	if err := c.planner.Refresh(ctx); err != nil {
+		return err
 	}
-	return nil
+	eg := errgroup.Group{}
+	for name, sink := range c.sinks {
+		name := name
+		sink := sink
+		eg.Go(func() error {
+			c.log.Infof("refreshing sink %s", name)
+			return sink.Target.Refresh(ctx, c.unionStore(), c.getSet(name))
+		})
+	}
+	return eg.Wait()
 }
 
 // Notify tells the controller than an ID has been added or deleted
@@ -63,22 +87,7 @@ func (c *Controller) Refresh(ctx context.Context) error {
 func (c *Controller) Notify(ctx context.Context, id cadata.ID) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.handleID(ctx, id)
-}
-
-func (c *Controller) handleID(ctx context.Context, id cadata.ID) error {
-	// first update all the desired sets
-	sinkNames := c.whereShould(ctx, id)
-	for _, sinkName := range sinkNames {
-		sink := c.sinks[sinkName]
-		sinkState := c.sinkStates[sinkName]
-		if err := sink.Desired.Add(ctx, id); err != nil {
-			return err
-		}
-		sinkState.addToPending(id)
-		sink.Notify(id)
-	}
-	return nil
+	return c.planner.SourceChange(ctx, id)
 }
 
 // Flush blocks until any blobs pending for source have been persisted by the appropriate sinks.
@@ -89,10 +98,7 @@ func (c *Controller) Flush(ctx context.Context, source string) error {
 	for _, sinkStates := range c.sinkStates {
 		sinkState := sinkStates
 		eg.Go(func() error {
-			sinkState.withPending(func(pending map[cadata.ID]struct{}) {
-
-			})
-			return nil
+			return sinkState.flush(ctx)
 		})
 	}
 	if err := eg.Wait(); err != nil {
@@ -101,43 +107,122 @@ func (c *Controller) Flush(ctx context.Context, source string) error {
 	return nil
 }
 
-func (c *Controller) whereShould(ctx context.Context, id cadata.ID) (ret []string) {
-	// TODO: eventually take sources into account
-	for _, source := range c.sources {
-		exists, err := source.Set.Exists(ctx, id)
-		if err != nil {
-			exists = true
-		}
-		if exists {
-			for name := range c.sinks {
-				ret = append(ret, name)
+func (c *Controller) Close() error {
+	for _, ss := range c.sinkStates {
+		close(ss.flushReqs)
+	}
+	return c.eg.Wait()
+}
+
+func (c *Controller) fromPlanner(name string, id cadata.ID, isDelete bool) {
+	// we will already have the read lock here
+	ss := c.sinkStates[name]
+	ss.addToPending(id, isDelete, time.Now())
+}
+
+func (c *Controller) startSinkLoop(name string) {
+	ss := c.sinkStates[name]
+	c.eg.Go(func() error {
+		for range ss.flushReqs {
+			if err := c.flushSink(ss); err != nil {
+				c.log.Errorf("error flushing sink %s: %v", name, err)
 			}
 		}
+		return nil
+	})
+}
+
+func (c *Controller) flushSink(ss *sinkState) error {
+	ctx, cf := context.WithCancel(context.Background())
+	defer cf()
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	src := c.unionStore()
+	ops := make([]Op, 0, len(ss.pending))
+	for id, isDelete := range ss.pending {
+		op := Op{ID: id}
+		if !isDelete {
+			op.Src = src
+		}
+		ops = append(ops, op)
 	}
+	if err := ss.target.Flush(ctx, ops); err != nil {
+		return err
+	}
+	close(ss.doneFlush)
+	ss.doneFlush = make(chan struct{})
 	return nil
 }
 
-type sinkState struct {
-	mu      sync.Mutex
-	pending map[cadata.ID]struct{}
+func (s *Controller) unionStore() ReadOnlyStore {
+	var ret stores.ReadChain
+	for _, sink := range s.sinks {
+		ret = append(ret, sink.Target.Actual())
+	}
+	// sort by cost of retrieval
+	return ret
 }
 
-func newSinkState() *sinkState {
+type sinkState struct {
+	target Target
+
+	flushReqs chan struct{}
+	mu        sync.Mutex
+	pending   map[cadata.ID]bool
+	oldest    time.Time
+	doneFlush chan struct{}
+}
+
+func newSinkState(target Target) *sinkState {
 	return &sinkState{
-		pending: make(map[cadata.ID]struct{}),
+		target: target,
+
+		flushReqs: make(chan struct{}, 1),
+		pending:   make(map[cadata.ID]bool),
+		doneFlush: make(chan struct{}),
 	}
 }
 
-func (ss *sinkState) addToPending(id cadata.ID) {
+func (ss *sinkState) flush(ctx context.Context) error {
 	ss.mu.Lock()
-	defer ss.mu.Unlock()
-	ss.pending[id] = struct{}{}
+	ch := ss.doneFlush
+	ss.mu.Unlock()
+	ss.enqueueFlush()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-ch:
+		return nil
+	}
 }
 
-func (ss *sinkState) withPending(fn func(map[cadata.ID]struct{})) {
+func (ss *sinkState) enqueueFlush() {
+	select {
+	case ss.flushReqs <- struct{}{}:
+	default:
+		// with a buffer of 1, there must already be one enqueued.
+	}
+}
+
+func (ss *sinkState) addToPending(id cadata.ID, isDelete bool, now time.Time) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	fn(ss.pending)
+	if len(ss.pending) == 0 {
+		ss.oldest = now
+	}
+	ss.pending[id] = isDelete
+}
+
+func (ss *sinkState) oldestDuration(now time.Time) time.Duration {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	return now.Sub(ss.oldest)
+}
+
+func (ss *sinkState) numPending() int {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	return len(ss.pending)
 }
 
 type sourceState struct {

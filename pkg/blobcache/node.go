@@ -6,7 +6,9 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-state/cadata"
@@ -31,15 +33,33 @@ type PeerInfo struct {
 	QuotaCount uint64
 }
 
+type StoreSpec struct {
+	Name       string
+	Cost       control.Cost
+	BatchSize  int
+	BatchDelay int
+	Target     control.Target
+}
+
 type Params struct {
-	DB      bcdb.DB
+	// DB is the database to use for Directories, PinSets and other metadata. (REQUIRED)
+	DB bcdb.DB
+	// Primary is the Primary store (REQUIRED)
 	Primary cadata.Store
-
-	INET256    inet256.Service
+	// PrivateKey is a private key used by the node for secure connections and for deriving a unique identifer. (REQUIRED)
 	PrivateKey p2p.PrivateKey
-	Peers      []PeerInfo
 
-	Logger   *logrus.Logger
+	// AuxStores are auxillary stores.
+	AuxStores []StoreSpec
+
+	// INET256 is the INET256 service to use. (REQUIRED if len(Peers) > 0 )
+	INET256 inet256.Service
+	// Peers contains information about other Blobcache nodes to connect to.
+	Peers []PeerInfo
+
+	Logger *logrus.Logger
+
+	// The maximum number of blobs to store in the Primary if any.
 	MaxCount int64
 }
 
@@ -66,6 +86,9 @@ type Node struct {
 }
 
 func NewNode(params Params) *Node {
+	if params.Logger == nil {
+		params.Logger = logrus.StandardLogger()
+	}
 	psSetMan := newSetManager(bcdb.NewPrefixed(params.DB, "pinset-sets\x00"))
 	setMan := newSetManager(bcdb.NewPrefixed(params.DB, "sets\x00"))
 	storeMux := newStoreMux(bcdb.NewPrefixed(params.DB, "stores\x00"), params.Primary)
@@ -78,20 +101,30 @@ func NewNode(params Params) *Node {
 		storeMux: storeMux,
 		setMan:   setMan,
 		psSetMan: psSetMan,
-		ctrl:     control.New(),
 		log:      params.Logger,
 	}
-	n.ctrl.AttachSource("local", control.Source{
+	n.ctrl = control.New(params.Logger, func(name string) cadata.Set {
+		return n.getSystemSet([]string{"sink", name})
+	})
+	n.ctrl.AttachSource("self", control.Source{
 		Set:              psSetMan.union(),
 		ExpectedReplicas: 2.0,
 	})
-	n.ctrl.AttachSink("local", control.Sink{
-		Locus:   n.localID,
-		Desired: n.getSystemSet([]string{"sink", "local"}),
-		// TODO
-		Notify: func(cadata.ID) {},
-		Flush:  func(context.Context, map[cadata.ID]struct{}) error { return nil },
+	n.ctrl.AttachSink("self-main", control.Sink{
+		Locus:     n.localID,
+		BatchSize: 0, // Disable batching
+		Target:    control.BasicTarget{Store: n.mainStore()},
 	})
+	// aux stores
+	for _, auxSpec := range params.AuxStores {
+		sinkName := "self-aux-" + auxSpec.Name
+		n.ctrl.AttachSink(sinkName, control.Sink{
+			Locus:     n.localID,
+			BatchSize: auxSpec.BatchSize,
+			Target:    auxSpec.Target,
+		})
+	}
+	// peers
 	for _, peer := range params.Peers {
 		sourceName := "peer-" + peer.ID.String()
 		n.ctrl.AttachSource(sourceName, control.Source{
@@ -100,13 +133,13 @@ func NewNode(params Params) *Node {
 		})
 		sinkName := "peer-" + peer.ID.String()
 		n.ctrl.AttachSink(sinkName, control.Sink{
-			Locus:   peer.ID,
-			Desired: n.getSystemSet([]string{"sink", sinkName}),
-			// TODO
-			Notify: func(cadata.ID) {},
-			Flush:  func(context.Context, map[cadata.ID]struct{}) error { return nil },
+			Locus:      peer.ID,
+			BatchSize:  50,
+			BatchDelay: 30 * time.Second,
+			Target:     control.BasicTarget{Store: cadata.NewVoid(Hash, MaxSize)},
 		})
 	}
+	go n.ctrl.Refresh(context.Background())
 	return n
 }
 
@@ -286,7 +319,14 @@ func (n *Node) mainStore() cadata.Store {
 }
 
 func (n *Node) resolvePinSet(ctx context.Context, psh Handle) (dirserv.OID, error) {
-	return n.dirServ.Resolve(ctx, psh, nil)
+	oid, data, err := n.dirServ.Get(ctx, psh, nil)
+	if err != nil {
+		return dirserv.NullOID, err
+	}
+	if !bytes.Equal(data, []byte("{}")) {
+		return dirserv.NullOID, fmt.Errorf("object at %v is not s PinSet", oid)
+	}
+	return oid, nil
 }
 
 func (n *Node) getSystemSet(p []string) cadata.Set {
@@ -295,6 +335,11 @@ func (n *Node) getSystemSet(p []string) cadata.Set {
 
 func (n *Node) getPSSet(psID dirserv.OID) cadata.Set {
 	return n.psSetMan.open(psID)
+}
+
+func (n *Node) peerActualStore(peerID bcnet.PeerID) cadata.Store {
+	// TODO
+	return cadata.NewVoid(Hash, MaxSize)
 }
 
 func (n *Node) validateModify(h Handle, name string) error {
