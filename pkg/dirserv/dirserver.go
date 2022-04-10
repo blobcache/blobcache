@@ -104,6 +104,7 @@ func (s *DirServer) lookup(tx bcdb.Tx, oid OID, name string) (OID, error) {
 }
 
 // openTx turns Handle => OID
+// open always returns a non-null OID or an error
 func (s *DirServer) open(tx bcdb.Tx, x Handle) (OID, error) {
 	if x == *s.rootHandle {
 		return RootOID, nil
@@ -140,6 +141,8 @@ func (s *DirServer) Get(ctx context.Context, x Handle, p Path) (OID, []byte, err
 	})
 }
 
+// Create a node in the directory tree, with optionally associated data.
+// Associating data with a node prevents creating children beneath it.
 func (s *DirServer) Create(ctx context.Context, x Handle, name string, data []byte) (*Handle, error) {
 	return bcdb.DoRet1(ctx, s.db, true, func(tx bcdb.Tx) (*Handle, error) {
 		parent, err := s.open(tx, x)
@@ -156,6 +159,13 @@ func (s *DirServer) Create(ctx context.Context, x Handle, name string, data []by
 
 // createTx creates a new child at name, under parent
 func (s *DirServer) create(tx bcdb.Tx, parent OID, name string, data []byte) (OID, error) {
+	v, err := tx.Get(makeObjectKey(parent))
+	if err != nil {
+		return NullOID, err
+	}
+	if len(v) > 0 {
+		return NullOID, fmt.Errorf("object has associated data, cannot create child. id=%v data=%q", parent, v)
+	}
 	childID, err := s.lookup(tx, parent, name)
 	if err != nil {
 		return NullOID, err
@@ -242,6 +252,7 @@ func (s *DirServer) remove(tx bcdb.Tx, oid OID, name string) (OID, error) {
 	return target, nil
 }
 
+// List returns the children in the directory referenced by x.
 func (s *DirServer) List(ctx context.Context, x Handle) ([]Entry, error) {
 	return bcdb.DoRet1(ctx, s.db, false, func(tx bcdb.Tx) ([]Entry, error) {
 		oid, err := s.open(tx, x)
@@ -274,6 +285,7 @@ func (s *DirServer) listTx(tx bcdb.Tx, x OID) ([]Entry, error) {
 	return ents, nil
 }
 
+// Root returns a handle to the root directory.
 func (s *DirServer) Root() Handle {
 	return *s.rootHandle
 }

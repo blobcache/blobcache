@@ -148,7 +148,7 @@ func (n *Node) CreateDir(ctx context.Context, h Handle, name string) (*Handle, e
 	if err := n.validateModify(h, name); err != nil {
 		return nil, err
 	}
-	return n.dirServ.Create(ctx, h, name, []byte("DIR"))
+	return n.dirServ.Create(ctx, h, name, nil)
 }
 
 // ListEntries
