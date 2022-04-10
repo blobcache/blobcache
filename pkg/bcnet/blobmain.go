@@ -38,8 +38,8 @@ type BlobRes struct {
 }
 
 type ListBlobReq struct {
-	First []byte `json:"first"`
-	Limit int    `json:"limit"`
+	First cadata.ID `json:"first"`
+	Limit int       `json:"limit"`
 }
 
 type ListBlobRes struct {
@@ -231,7 +231,7 @@ func (c *BlobMainClient) Exists(ctx context.Context, dst PeerID, ids []cadata.ID
 	return resp.Exists, nil
 }
 
-func (c *BlobMainClient) List(ctx context.Context, dst PeerID, first []byte, ids []cadata.ID) (int, error) {
+func (c *BlobMainClient) List(ctx context.Context, dst PeerID, first cadata.ID, ids []cadata.ID) (int, error) {
 	req := BlobReq{
 		List: &ListBlobReq{
 			First: first,
@@ -298,6 +298,6 @@ func (s blobSet) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return exists[0], nil
 }
 
-func (s blobSet) List(ctx context.Context, first []byte, ids []cadata.ID) (int, error) {
+func (s blobSet) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, error) {
 	return s.client.List(ctx, s.peer, first, ids)
 }

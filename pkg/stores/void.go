@@ -6,6 +6,8 @@ import (
 	"github.com/brendoncarroll/go-state/cadata"
 )
 
+var _ cadata.Store = Void{}
+
 type Void struct{}
 
 func (s Void) Post(ctx context.Context, data []byte) (cadata.ID, error) {
@@ -20,7 +22,7 @@ func (s Void) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return false, nil
 }
 
-func (s Void) List(ctx context.Context, prefix []byte, ids []cadata.ID) (int, error) {
+func (s Void) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, error) {
 	return 0, nil
 }
 

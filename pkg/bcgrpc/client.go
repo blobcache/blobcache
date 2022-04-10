@@ -119,8 +119,8 @@ func (c client) Exists(ctx context.Context, h blobcache.Handle, id cadata.ID) (b
 	return len(res.Ids) > 0 && cadata.IDFromBytes(res.Ids[0]) == id, nil
 }
 
-func (c client) List(ctx context.Context, h blobcache.Handle, first []byte, ids []cadata.ID) (int, error) {
-	res, err := c.c.List(ctx, &ListReq{Handle: h.String(), First: first, Limit: 1})
+func (c client) List(ctx context.Context, h blobcache.Handle, first cadata.ID, ids []cadata.ID) (int, error) {
+	res, err := c.c.List(ctx, &ListReq{Handle: h.String(), First: first[:], Limit: 1})
 	if err != nil {
 		return 0, err
 	}

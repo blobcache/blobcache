@@ -68,7 +68,7 @@ func (s *set) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return exists, nil
 }
 
-func (s *set) List(ctx context.Context, first []byte, ids []cadata.ID) (int, error) {
+func (s *set) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, error) {
 	var n int
 	err := s.db.View(ctx, func(tx bcdb.Tx) error {
 		span := itemSpanFor(s.i, first)
@@ -132,10 +132,10 @@ func itemKeyFor(setID uint64, id cadata.ID) (ret []byte) {
 	return ret
 }
 
-func itemSpanFor(setID uint64, first []byte) state.ByteSpan {
+func itemSpanFor(setID uint64, first cadata.ID) state.ByteSpan {
 	prefix := append([]byte(setItemsPrefix), uint64Bytes(setID)...)
 	span := state.ByteSpan{
-		Begin: append(prefix, first...),
+		Begin: append(prefix, first[:]...),
 		End:   bcdb.PrefixEnd(prefix),
 	}
 	return span
@@ -212,9 +212,9 @@ func (us unionSet) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return exists, nil
 }
 
-func (s unionSet) List(ctx context.Context, first []byte, ids []cadata.ID) (n int, _ error) {
+func (s unionSet) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (n int, _ error) {
 	span := state.ByteSpan{
-		Begin: append([]byte(setRefCountsPrefix), first...),
+		Begin: append([]byte(setRefCountsPrefix), first[:]...),
 		End:   bcdb.PrefixEnd([]byte(setRefCountsPrefix)),
 	}
 	err := s.db.View(ctx, func(tx bcdb.Tx) error {

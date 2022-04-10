@@ -67,7 +67,7 @@ func (p *Planner) RefreshSpan(ctx context.Context, span state.ByteSpan) error {
 	for name, source := range p.sources {
 		log := p.log.WithFields(logrus.Fields{"source": name, "span": span})
 		log.Info("replanning for source...")
-		if err := cadata.ForEachRange(ctx, source.Set, span, func(id cadata.ID) error {
+		if err := cadata.ForEachSpan(ctx, source.Set, span, func(id cadata.ID) error {
 			return p.handleAdd(ctx, id)
 		}); err != nil {
 			return err

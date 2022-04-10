@@ -162,7 +162,7 @@ func (s *server) List(ctx context.Context, req *ListReq) (*ListRes, error) {
 		limit = int(req.Limit)
 	}
 	ids := make([]cadata.ID, limit)
-	n, err := s.s.List(ctx, *h, req.First, ids)
+	n, err := s.s.List(ctx, *h, cadata.IDFromBytes(req.First), ids)
 	if err != nil && !errors.Is(err, cadata.ErrEndOfList) {
 		return nil, err
 	}

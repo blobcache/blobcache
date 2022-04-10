@@ -39,8 +39,8 @@ func (s *store) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return s.bc.Exists(ctx, s.pinSet, id)
 }
 
-func (s *store) List(ctx context.Context, first []byte, ids []cadata.ID) (n int, err error) {
-	return s.bc.List(ctx, s.pinSet, first, ids)
+func (s *store) List(ctx context.Context, id cadata.ID, ids []cadata.ID) (n int, err error) {
+	return s.bc.List(ctx, s.pinSet, id, ids)
 }
 
 func (s *store) Hash(x []byte) cadata.ID {
