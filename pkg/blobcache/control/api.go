@@ -98,7 +98,7 @@ func (t BasicTarget) Flush(ctx context.Context, ops []Op) error {
 
 func (t BasicTarget) Refresh(ctx context.Context, src ReadOnlyStore, desired ReadOnlySet) error {
 	dst := t.Store
-	return cadata.ForEach(ctx, dst, func(id cadata.ID) error {
+	return cadata.ForEach(ctx, dst, cadata.Span{}, func(id cadata.ID) error {
 		exists, err := desired.Exists(ctx, id)
 		if err != nil {
 			return err

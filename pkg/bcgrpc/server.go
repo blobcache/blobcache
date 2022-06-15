@@ -2,7 +2,6 @@ package bcgrpc
 
 import (
 	"context"
-	"errors"
 
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/blobcache/blobcache/pkg/dirserv"
@@ -162,17 +161,14 @@ func (s *server) List(ctx context.Context, req *ListReq) (*ListRes, error) {
 		limit = int(req.Limit)
 	}
 	ids := make([]cadata.ID, limit)
-	n, err := s.s.List(ctx, *h, cadata.IDFromBytes(req.First), ids)
-	if err != nil && !errors.Is(err, cadata.ErrEndOfList) {
+	span := cadata.Span{}.WithLowerIncl(cadata.IDFromBytes(req.First))
+	n, err := s.s.List(ctx, *h, span, ids)
+	if err != nil {
 		return nil, err
-	}
-	var end bool
-	if errors.Is(err, cadata.ErrEndOfList) {
-		end = true
 	}
 	ids2 := make([][]byte, n)
 	for i := range ids[:n] {
 		ids2[i] = ids[i][:]
 	}
-	return &ListRes{Ids: ids2, End: end}, nil
+	return &ListRes{Ids: ids2}, nil
 }

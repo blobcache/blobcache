@@ -22,7 +22,7 @@ func (s Void) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return false, nil
 }
 
-func (s Void) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, error) {
+func (s Void) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (int, error) {
 	return 0, nil
 }
 

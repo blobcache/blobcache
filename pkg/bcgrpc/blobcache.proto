@@ -111,7 +111,6 @@ message ListReq {
 
 message ListRes {
     repeated bytes ids = 1;
-    bool end = 2;
 }
 
 message WaitReq {

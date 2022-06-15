@@ -19,7 +19,9 @@ protobuf:
 
 drop-replace:
 	go mod edit -dropreplace github.com/inet256/inet256
+	go mod edit -dropreplace github.com/brendoncarroll/go-state
 
 add-replace:
 	go mod edit -replace github.com/inet256/inet256=../../inet256/inet256
+	go mod edit -replace github.com/brendoncarroll/go-state=../../brendoncarroll/go-state
 

@@ -66,12 +66,12 @@ type TreeServer struct {
 	srv TreeService
 }
 
-func (s *TreeServer) HandleAsk(ctx context.Context, resp []byte, msg p2p.Message) int {
+func (s *TreeServer) HandleAsk(ctx context.Context, resp []byte, msg p2p.Message[PeerID]) int {
 	var req TreeReq
 	if err := json.Unmarshal(msg.Payload, &req); err != nil {
 		return -1
 	}
-	res, err := s.handleAsk(ctx, msg.Src.(PeerID), &req)
+	res, err := s.handleAsk(ctx, msg.Src, &req)
 	if err != nil {
 		return -1
 	}
@@ -114,7 +114,7 @@ func (s *TreeServer) handleAsk(ctx context.Context, from PeerID, req *TreeReq) (
 }
 
 type TreeClient struct {
-	swarm p2p.SecureAskSwarm
+	swarm p2p.SecureAskSwarm[PeerID]
 }
 
 func (c *TreeClient) Post(ctx context.Context, dst PeerID, root tries.Root, maxCount int64) (*TreeInfo, error) {

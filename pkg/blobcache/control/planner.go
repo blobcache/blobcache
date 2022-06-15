@@ -3,7 +3,6 @@ package control
 import (
 	"context"
 
-	"github.com/brendoncarroll/go-state"
 	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/sirupsen/logrus"
 )
@@ -60,14 +59,14 @@ func (p *Planner) SinkChange(ctx context.Context, id cadata.ID) error {
 // Refresh causes the planner to reprocess all of the blobs
 // in the attached sources.
 func (p *Planner) Refresh(ctx context.Context) error {
-	return p.RefreshSpan(ctx, state.ByteSpan{})
+	return p.RefreshSpan(ctx, cadata.Span{})
 }
 
-func (p *Planner) RefreshSpan(ctx context.Context, span state.ByteSpan) error {
+func (p *Planner) RefreshSpan(ctx context.Context, span cadata.Span) error {
 	for name, source := range p.sources {
 		log := p.log.WithFields(logrus.Fields{"source": name, "span": span})
 		log.Info("replanning for source...")
-		if err := cadata.ForEachSpan(ctx, source.Set, span, func(id cadata.ID) error {
+		if err := cadata.ForEach(ctx, source.Set, span, func(id cadata.ID) error {
 			return p.handleAdd(ctx, id)
 		}); err != nil {
 			return err

@@ -33,13 +33,13 @@ func (c ReadChain) Get(ctx context.Context, id cadata.ID, buf []byte) (int, erro
 	return 0, cadata.ErrNotFound
 }
 
-func (c ReadChain) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (n int, err error) {
+func (c ReadChain) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (n int, err error) {
 	for _, s := range c {
 		if n == len(ids) {
 			return n, nil
 		}
 		if l, ok := s.(cadata.Lister); ok {
-			n2, err := l.List(ctx, first, ids[n:])
+			n2, err := l.List(ctx, span, ids[n:])
 			if err != nil {
 				return 0, err
 			}

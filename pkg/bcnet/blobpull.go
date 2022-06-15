@@ -13,10 +13,9 @@ type BlobPullServer struct {
 	open func(PeerID) cadata.Store
 }
 
-func (s *BlobPullServer) HandleAsk(ctx context.Context, resp []byte, req p2p.Message) int {
-	peer := req.Src.(PeerID)
+func (s *BlobPullServer) HandleAsk(ctx context.Context, resp []byte, req p2p.Message[PeerID]) int {
 	id := cadata.IDFromBytes(req.Payload)
-	n, err := s.open(peer).Get(ctx, id, resp)
+	n, err := s.open(req.Src).Get(ctx, id, resp)
 	if errors.Is(err, cadata.ErrNotFound) {
 		return copy(resp, id[:])
 	}
@@ -27,7 +26,7 @@ func (s *BlobPullServer) HandleAsk(ctx context.Context, resp []byte, req p2p.Mes
 }
 
 type BlobPullClient struct {
-	swarm p2p.SecureAskSwarm
+	swarm p2p.SecureAskSwarm[PeerID]
 }
 
 func (c BlobPullClient) Pull(ctx context.Context, dst PeerID, id cadata.ID, buf []byte) (int, error) {

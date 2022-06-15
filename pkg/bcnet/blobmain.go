@@ -43,7 +43,6 @@ type ListBlobReq struct {
 }
 
 type ListBlobRes struct {
-	End bool        `json:"end"`
 	IDs []cadata.ID `json:"ids"`
 }
 
@@ -52,13 +51,13 @@ type BlobMainServer struct {
 	pullClient *BlobPullClient
 }
 
-func (s *BlobMainServer) HandleAsk(ctx context.Context, resp []byte, msg p2p.Message) int {
+func (s *BlobMainServer) HandleAsk(ctx context.Context, resp []byte, msg p2p.Message[PeerID]) int {
 	var req BlobReq
 	var res BlobRes
 	if err := json.Unmarshal(msg.Payload, &req); err != nil {
 		return -1
 	}
-	peer := msg.Src.(PeerID)
+	peer := msg.Src
 	switch {
 	case req.Add != nil:
 		addRes, err := s.handleAdd(ctx, peer, req.Add)
@@ -172,21 +171,18 @@ func (s *BlobMainServer) handleExists(ctx context.Context, from PeerID, ids []ca
 func (s *BlobMainServer) handleList(ctx context.Context, from PeerID, req *ListBlobReq) (*ListBlobRes, error) {
 	store := s.open(from)
 	ids := make([]cadata.ID, req.Limit)
-	n, err := store.List(ctx, req.First, ids)
-	end := false
-	if errors.Is(err, cadata.ErrEndOfList) {
-		end = true
-	} else if err != nil {
+	span := cadata.Span{}.WithLowerIncl(req.First)
+	n, err := store.List(ctx, span, ids)
+	if err != nil {
 		return nil, err
 	}
 	return &ListBlobRes{
 		IDs: ids[:n],
-		End: end,
 	}, nil
 }
 
 type BlobMainClient struct {
-	swarm p2p.SecureAskSwarm
+	swarm p2p.SecureAskSwarm[PeerID]
 }
 
 func (c *BlobMainClient) Add(ctx context.Context, dst PeerID, ids []cadata.ID) ([]bool, error) {
@@ -231,10 +227,14 @@ func (c *BlobMainClient) Exists(ctx context.Context, dst PeerID, ids []cadata.ID
 	return resp.Exists, nil
 }
 
-func (c *BlobMainClient) List(ctx context.Context, dst PeerID, first cadata.ID, ids []cadata.ID) (int, error) {
+func (c *BlobMainClient) List(ctx context.Context, dst PeerID, span cadata.Span, ids []cadata.ID) (int, error) {
+	if _, ok := span.UpperBound(); ok {
+		return 0, errors.New("span with upper bound not supported")
+	}
+	begin := cadata.BeginFromSpan(span)
 	req := BlobReq{
 		List: &ListBlobReq{
-			First: first,
+			First: begin,
 			Limit: len(ids),
 		},
 	}
@@ -246,11 +246,7 @@ func (c *BlobMainClient) List(ctx context.Context, dst PeerID, first cadata.ID, 
 		return 0, errors.New("no list in response")
 	}
 	res := resp.List
-	var err error
-	if res.End {
-		err = cadata.ErrEndOfList
-	}
-	return copy(ids, res.IDs), err
+	return copy(ids, res.IDs), nil
 }
 
 func (c *BlobMainClient) askJSON(ctx context.Context, dst PeerID, resp *BlobRes, req *BlobReq) error {
@@ -298,6 +294,6 @@ func (s blobSet) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return exists[0], nil
 }
 
-func (s blobSet) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, error) {
-	return s.client.List(ctx, s.peer, first, ids)
+func (s blobSet) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (int, error) {
+	return s.client.List(ctx, s.peer, span, ids)
 }

@@ -72,7 +72,7 @@ type Service interface {
 	// Exists returns whether the PinSet contains ID
 	Exists(ctx context.Context, pinset Handle, id cadata.ID) (bool, error)
 	// List lists the ids in the pinSet.
-	List(ctx context.Context, pinSet Handle, id cadata.ID, ids []cadata.ID) (n int, err error)
+	List(ctx context.Context, pinSet Handle, span cadata.Span, ids []cadata.ID) (n int, err error)
 	// WaitOK waits until the pinSet is status is OK.
 	// This means that all the blobs in the pinSet are correctly replicated according to the pinset's config.
 	WaitOK(ctx context.Context, pinSet Handle) error

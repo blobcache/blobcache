@@ -22,25 +22,25 @@ const (
 )
 
 type Params struct {
-	Swarm       p2p.SecureAskSwarm
+	Swarm       p2p.SecureAskSwarm[PeerID]
 	OpenStore   func(PeerID) cadata.Store
 	TreeService TreeService
 	Logger      *logrus.Logger
 }
 
 type Service struct {
-	swarm p2p.SecureAskSwarm
-	mux   p2pmux.StringSecureAskMux
+	swarm p2p.SecureAskSwarm[PeerID]
+	mux   p2pmux.SecureAskMux[PeerID, string]
 
-	blobPullSwarm  p2p.SecureAskSwarm
+	blobPullSwarm  p2p.SecureAskSwarm[PeerID]
 	blobPullClient *BlobPullClient
 	blobPullServer *BlobPullServer
 
-	blobMainSwarm  p2p.SecureAskSwarm
+	blobMainSwarm  p2p.SecureAskSwarm[PeerID]
 	blobMainClient *BlobMainClient
 	blobMainServer *BlobMainServer
 
-	treeSwarm  p2p.SecureAskSwarm
+	treeSwarm  p2p.SecureAskSwarm[PeerID]
 	treeClient *TreeClient
 	treeServer *TreeServer
 
@@ -108,10 +108,10 @@ func (s Service) Trees() *TreeClient {
 }
 
 type AskHandler interface {
-	HandleAsk(ctx context.Context, res []byte, req p2p.Message) int
+	HandleAsk(ctx context.Context, res []byte, req p2p.Message[PeerID]) int
 }
 
-func Serve(ctx context.Context, asker p2p.Asker, h AskHandler) error {
+func Serve(ctx context.Context, asker p2p.Asker[PeerID], h AskHandler) error {
 	for {
 		if err := asker.ServeAsk(ctx, h.HandleAsk); err != nil {
 			return err
@@ -125,7 +125,7 @@ func Hash(x []byte) cadata.ID {
 
 type PeerID = inet256.ID
 
-func askJson(ctx context.Context, s p2p.Asker, dst PeerID, resp, req interface{}) error {
+func askJson(ctx context.Context, s p2p.Asker[PeerID], dst PeerID, resp, req interface{}) error {
 	reqData := marshal(req)
 	respData := make([]byte, MaxMessageSize)
 	n, err := s.Ask(ctx, respData, dst, p2p.IOVec{reqData})

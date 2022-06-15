@@ -280,13 +280,13 @@ func (n *Node) Get(ctx context.Context, psh Handle, id cadata.ID, buf []byte) (i
 	return store.Get(ctx, id, buf)
 }
 
-func (node *Node) List(ctx context.Context, psh Handle, first cadata.ID, ids []cadata.ID) (n int, err error) {
+func (node *Node) List(ctx context.Context, psh Handle, span cadata.Span, ids []cadata.ID) (n int, err error) {
 	psID, err := node.resolvePinSet(ctx, psh)
 	if err != nil {
 		return 0, err
 	}
 	set := node.getPSSet(psID)
-	return set.List(ctx, first, ids)
+	return set.List(ctx, span, ids)
 }
 
 func (n *Node) Exists(ctx context.Context, psh Handle, id cadata.ID) (bool, error) {

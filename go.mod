@@ -3,8 +3,8 @@ module github.com/blobcache/blobcache
 go 1.18
 
 require (
-	github.com/brendoncarroll/go-p2p v0.0.0-20211024183131-c0c41d099b71
-	github.com/brendoncarroll/go-state v0.0.0-20220410194844-15f19f6d3f33
+	github.com/brendoncarroll/go-p2p v0.0.0-20220608134508-6e8073047c73
+	github.com/brendoncarroll/go-state v0.0.0-20220615215505-3792232e51e7
 	github.com/dgraph-io/badger/v2 v2.0.3
 	github.com/golang/protobuf v1.5.2
 	github.com/hashicorp/golang-lru v0.5.1
@@ -13,7 +13,7 @@ require (
 	github.com/sirupsen/logrus v1.7.0
 	github.com/spf13/cobra v0.0.5
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	google.golang.org/grpc v1.33.2
 	google.golang.org/protobuf v1.26.0
@@ -32,10 +32,10 @@ require (
 	github.com/klauspost/cpuid v1.3.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/exp v0.0.0-20220407100705-7b9b53b0aca4 // indirect
-	golang.org/x/net v0.0.0-20210716203947-853a461950ff // indirect
+	golang.org/x/exp v0.0.0-20220518171630-0b5c67f07fdf // indirect
+	golang.org/x/net v0.0.0-20211015210444-4f30a5c0130f // indirect
 	golang.org/x/sys v0.0.0-20211019181941-9d821ace8654 // indirect
-	golang.org/x/text v0.3.6 // indirect
+	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )

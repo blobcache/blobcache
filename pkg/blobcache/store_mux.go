@@ -87,8 +87,8 @@ func (vs *virtualStore) Delete(ctx context.Context, id cadata.ID) error {
 	return vs.store.Delete(ctx, id)
 }
 
-func (vs *virtualStore) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, error) {
-	return vs.set.List(ctx, first, ids)
+func (vs *virtualStore) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (int, error) {
+	return vs.set.List(ctx, span, ids)
 }
 
 func (vs *virtualStore) Hash(x []byte) cadata.ID {

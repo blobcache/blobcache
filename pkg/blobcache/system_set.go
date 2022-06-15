@@ -60,10 +60,10 @@ func (ss *systemSet) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return ss.sm.open(oid).Exists(ctx, id)
 }
 
-func (ss *systemSet) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, error) {
+func (ss *systemSet) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (int, error) {
 	oid, err := ss.getOID(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return ss.sm.open(oid).List(ctx, first, ids)
+	return ss.sm.open(oid).List(ctx, span, ids)
 }

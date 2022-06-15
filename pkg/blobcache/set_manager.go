@@ -68,10 +68,10 @@ func (s *set) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return exists, nil
 }
 
-func (s *set) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, error) {
+func (s *set) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (int, error) {
 	var n int
 	err := s.db.View(ctx, func(tx bcdb.Tx) error {
-		span := itemSpanFor(s.i, first)
+		span := itemSpanFor(s.i, span)
 		n = 0
 		stopIter := errors.New("stop iteration")
 		if err := tx.ForEach(span, func(k, _ []byte) error {
@@ -91,7 +91,7 @@ func (s *set) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (int, 
 			}
 			return err
 		}
-		return cadata.ErrEndOfList
+		return nil
 	})
 	return n, err
 }
@@ -132,11 +132,20 @@ func itemKeyFor(setID uint64, id cadata.ID) (ret []byte) {
 	return ret
 }
 
-func itemSpanFor(setID uint64, first cadata.ID) state.ByteSpan {
+func itemSpanFor(setID uint64, x cadata.Span) state.ByteSpan {
 	prefix := append([]byte(setItemsPrefix), uint64Bytes(setID)...)
 	span := state.ByteSpan{
-		Begin: append(prefix, first[:]...),
+		Begin: prefix,
 		End:   bcdb.PrefixEnd(prefix),
+	}
+	if _, ok := x.LowerBound(); ok {
+		begin := cadata.BeginFromSpan(x)
+		span.Begin = append(span.Begin, begin[:]...)
+	}
+	if _, ok := x.UpperBound(); ok {
+		end, _ := cadata.EndFromSpan(x)
+		span.End = append([]byte{}, prefix...)
+		span.End = append(span.End, end[:]...)
 	}
 	return span
 }
@@ -212,14 +221,24 @@ func (us unionSet) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return exists, nil
 }
 
-func (s unionSet) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (n int, _ error) {
-	span := state.ByteSpan{
-		Begin: append([]byte(setRefCountsPrefix), first[:]...),
+func (s unionSet) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (n int, _ error) {
+	span2 := state.ByteSpan{
+		Begin: []byte(setRefCountsPrefix),
 		End:   bcdb.PrefixEnd([]byte(setRefCountsPrefix)),
+	}
+	if _, ok := span.LowerBound(); ok {
+		begin := cadata.BeginFromSpan(span)
+		span2.Begin = append(span2.Begin, begin[:]...)
+	}
+	if _, ok := span.UpperBound(); ok {
+		end, ok := cadata.EndFromSpan(span)
+		if ok {
+			span2.End = append([]byte(setRefCountsPrefix), end[:]...)
+		}
 	}
 	err := s.db.View(ctx, func(tx bcdb.Tx) error {
 		var i int
-		if err := tx.ForEach(span, func(k, _ []byte) error {
+		if err := tx.ForEach(span2, func(k, _ []byte) error {
 			id := cadata.IDFromBytes(k)
 			ids[i] = id
 			i++
@@ -228,7 +247,7 @@ func (s unionSet) List(ctx context.Context, first cadata.ID, ids []cadata.ID) (n
 			return err
 		}
 		n = i
-		return cadata.ErrEndOfList
+		return nil
 	})
 	return n, err
 }

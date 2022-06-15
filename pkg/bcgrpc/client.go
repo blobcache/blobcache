@@ -119,8 +119,9 @@ func (c client) Exists(ctx context.Context, h blobcache.Handle, id cadata.ID) (b
 	return len(res.Ids) > 0 && cadata.IDFromBytes(res.Ids[0]) == id, nil
 }
 
-func (c client) List(ctx context.Context, h blobcache.Handle, first cadata.ID, ids []cadata.ID) (int, error) {
-	res, err := c.c.List(ctx, &ListReq{Handle: h.String(), First: first[:], Limit: 1})
+func (c client) List(ctx context.Context, h blobcache.Handle, span cadata.Span, ids []cadata.ID) (int, error) {
+	begin := cadata.BeginFromSpan(span)
+	res, err := c.c.List(ctx, &ListReq{Handle: h.String(), First: begin[:], Limit: 1})
 	if err != nil {
 		return 0, err
 	}
@@ -130,12 +131,7 @@ func (c client) List(ctx context.Context, h blobcache.Handle, first cadata.ID, i
 	for i := range res.Ids {
 		ids[i] = cadata.IDFromBytes(res.Ids[i])
 	}
-	if res.End {
-		err = cadata.ErrEndOfList
-	} else {
-		err = nil
-	}
-	return len(res.Ids), err
+	return len(res.Ids), nil
 }
 
 func (c client) WaitOK(ctx context.Context, h blobcache.Handle) error {
