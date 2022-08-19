@@ -21,7 +21,7 @@ A few notes on notation.  API methods are described using `<method name> (args) 
 ## `CreateDir(h: Handle, name: string) -> Handle`
 Creates a new child directory at name under the parent directory referenced by h.
 
-## `ListEntries(h: Handle, name: string) -> []Entry`
+## `ListEntries(h: Handle) -> []Entry`
 Returns the entries under the directory referenced by h.
 
 ## `Open(h: Handle, path: []string) -> Handle`
@@ -36,7 +36,7 @@ If there is no entry DeleteEntry does not error.
 ## `CreatePinSet(h: Handle, name: string, opts: PinSetOptions) -> Handle`
 Creates a new PinSet.
 
-## `GetPinSet(h: Handle, name: string, pinset: Handle) -> PinSet`
+## `GetPinSet(h: Handle) -> PinSet`
 Returns information about a PinSet
 
 # Content-Addressed Store Operations
