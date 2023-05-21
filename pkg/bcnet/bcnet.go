@@ -22,25 +22,25 @@ const (
 )
 
 type Params struct {
-	Swarm       p2p.SecureAskSwarm[PeerID]
+	Swarm       p2p.SecureAskSwarm[PeerID, inet256.PublicKey]
 	OpenStore   func(PeerID) cadata.Store
 	TreeService TreeService
 	Logger      *logrus.Logger
 }
 
 type Service struct {
-	swarm p2p.SecureAskSwarm[PeerID]
-	mux   p2pmux.SecureAskMux[PeerID, string]
+	swarm p2p.SecureAskSwarm[PeerID, inet256.PublicKey]
+	mux   p2pmux.SecureAskMux[PeerID, string, inet256.PublicKey]
 
-	blobPullSwarm  p2p.SecureAskSwarm[PeerID]
+	blobPullSwarm  p2p.SecureAskSwarm[PeerID, inet256.PublicKey]
 	blobPullClient *BlobPullClient
 	blobPullServer *BlobPullServer
 
-	blobMainSwarm  p2p.SecureAskSwarm[PeerID]
+	blobMainSwarm  p2p.SecureAskSwarm[PeerID, inet256.PublicKey]
 	blobMainClient *BlobMainClient
 	blobMainServer *BlobMainServer
 
-	treeSwarm  p2p.SecureAskSwarm[PeerID]
+	treeSwarm  p2p.SecureAskSwarm[PeerID, inet256.PublicKey]
 	treeClient *TreeClient
 	treeServer *TreeServer
 
@@ -111,7 +111,7 @@ type AskHandler interface {
 	HandleAsk(ctx context.Context, res []byte, req p2p.Message[PeerID]) int
 }
 
-func Serve(ctx context.Context, asker p2p.Asker[PeerID], h AskHandler) error {
+func Serve(ctx context.Context, asker p2p.AskServer[PeerID], h AskHandler) error {
 	for {
 		if err := asker.ServeAsk(ctx, h.HandleAsk); err != nil {
 			return err

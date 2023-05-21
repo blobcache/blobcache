@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/inet256/inet256/pkg/inet256"
 	"github.com/sirupsen/logrus"
@@ -47,7 +46,7 @@ type Params struct {
 	// Primary is the Primary store (REQUIRED)
 	Primary cadata.Store
 	// PrivateKey is a private key used by the node for secure connections and for deriving a unique identifer. (REQUIRED)
-	PrivateKey p2p.PrivateKey
+	PrivateKey inet256.PrivateKey
 
 	// AuxStores are auxillary stores.
 	AuxStores []StoreSpec
@@ -64,7 +63,7 @@ type Params struct {
 }
 
 func NewMemParams() Params {
-	pk := ed25519.NewKeyFromSeed(make([]byte, 32))
+	pk, _ := inet256.PrivateKeyFromBuiltIn(ed25519.NewKeyFromSeed(make([]byte, 32)))
 	return Params{
 		DB:         bcdb.NewBadgerMemory(),
 		Primary:    stores.NewMem(),

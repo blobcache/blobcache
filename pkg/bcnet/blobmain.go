@@ -8,6 +8,7 @@ import (
 
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-state/cadata"
+	"github.com/inet256/inet256/pkg/inet256"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 )
@@ -182,7 +183,7 @@ func (s *BlobMainServer) handleList(ctx context.Context, from PeerID, req *ListB
 }
 
 type BlobMainClient struct {
-	swarm p2p.SecureAskSwarm[PeerID]
+	swarm p2p.SecureAskSwarm[PeerID, inet256.PublicKey]
 }
 
 func (c *BlobMainClient) Add(ctx context.Context, dst PeerID, ids []cadata.ID) ([]bool, error) {

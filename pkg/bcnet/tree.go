@@ -7,6 +7,7 @@ import (
 
 	"github.com/blobcache/blobcache/pkg/tries"
 	"github.com/brendoncarroll/go-p2p"
+	"github.com/inet256/inet256/pkg/inet256"
 )
 
 type TreeService interface {
@@ -114,7 +115,7 @@ func (s *TreeServer) handleAsk(ctx context.Context, from PeerID, req *TreeReq) (
 }
 
 type TreeClient struct {
-	swarm p2p.SecureAskSwarm[PeerID]
+	swarm p2p.SecureAskSwarm[PeerID, inet256.PublicKey]
 }
 
 func (c *TreeClient) Post(ctx context.Context, dst PeerID, root tries.Root, maxCount int64) (*TreeInfo, error) {

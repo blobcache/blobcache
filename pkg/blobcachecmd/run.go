@@ -88,7 +88,7 @@ func parsePeerInfos(xs []string) (ret []blobcache.PeerInfo, _ error) {
 		if len(parts) < 2 {
 			return nil, errors.Errorf("must specify quota in peer spec: %q", x)
 		}
-		id, err := inet256.ParseAddrB64([]byte(parts[0]))
+		id, err := inet256.ParseAddrBase64([]byte(parts[0]))
 		if err != nil {
 			return nil, err
 		}

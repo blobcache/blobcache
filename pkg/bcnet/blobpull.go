@@ -7,6 +7,7 @@ import (
 
 	"github.com/brendoncarroll/go-p2p"
 	"github.com/brendoncarroll/go-state/cadata"
+	"github.com/inet256/inet256/pkg/inet256"
 )
 
 type BlobPullServer struct {
@@ -26,7 +27,7 @@ func (s *BlobPullServer) HandleAsk(ctx context.Context, resp []byte, req p2p.Mes
 }
 
 type BlobPullClient struct {
-	swarm p2p.SecureAskSwarm[PeerID]
+	swarm p2p.SecureAskSwarm[PeerID, inet256.PublicKey]
 }
 
 func (c BlobPullClient) Pull(ctx context.Context, dst PeerID, id cadata.ID, buf []byte) (int, error) {

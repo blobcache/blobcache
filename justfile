@@ -1,4 +1,3 @@
-.PHONY: test testv protobuf drop-replace add-replace
 
 install:
 	go install ./cmd/blobcache
