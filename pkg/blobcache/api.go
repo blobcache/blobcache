@@ -5,9 +5,10 @@ import (
 	"errors"
 	"strconv"
 
+	"go.brendoncarroll.net/state/cadata"
+
 	"github.com/blobcache/blobcache/pkg/dirserv"
 	"github.com/blobcache/blobcache/pkg/stores"
-	"github.com/brendoncarroll/go-state/cadata"
 )
 
 // MaxSize is the maximum blob size
@@ -42,7 +43,6 @@ func (id PinSetID) HexString() string {
 
 var (
 	ErrPinSetNotFound = errors.New("pinset not found")
-	ErrDataNotFound   = cadata.ErrNotFound
 )
 
 // Service is the API exposed by either a blobcache client, or inmemory node.
@@ -86,4 +86,21 @@ type Store = cadata.Store
 type Source = interface {
 	cadata.Exister
 	cadata.Getter
+}
+
+type DAGOptions struct{}
+
+type DAGNodeInfo struct {
+	ID    cadata.ID
+	Size  uint
+	Needs []cadata.ID
+}
+
+type DAGService interface {
+	// CreateDAG creates a new DAG under name in the directory at dirH.
+	CreateDAG(ctx context.Context, dirH Handle, name string, opt DAGOptions) error
+	// PostDAGNode posts a node to the dag with references to other nodes identified by IDs at each offset within data.
+	PostDAGNode(ctx context.Context, dag Handle, data []byte, refOffsets []uint32) (cadata.ID, error)
+	// InspectDAGNode returns information about a DAG node.  The node itself can be retrieved with Get.
+	InspectDAGNode(ctx context.Context, dag Handle, id cadata.ID) (*DAGNodeInfo, error)
 }

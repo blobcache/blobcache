@@ -3,11 +3,10 @@ package bcnet
 import (
 	"bytes"
 	"context"
-	"errors"
 
-	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/inet256/inet256/pkg/inet256"
+	"go.brendoncarroll.net/p2p"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 type BlobPullServer struct {
@@ -17,7 +16,7 @@ type BlobPullServer struct {
 func (s *BlobPullServer) HandleAsk(ctx context.Context, resp []byte, req p2p.Message[PeerID]) int {
 	id := cadata.IDFromBytes(req.Payload)
 	n, err := s.open(req.Src).Get(ctx, id, resp)
-	if errors.Is(err, cadata.ErrNotFound) {
+	if cadata.IsNotFound(err) {
 		return copy(resp, id[:])
 	}
 	if err != nil {
@@ -36,7 +35,7 @@ func (c BlobPullClient) Pull(ctx context.Context, dst PeerID, id cadata.ID, buf 
 		return 0, err
 	}
 	if bytes.Equal(buf, id[:]) {
-		return 0, cadata.ErrNotFound
+		return 0, cadata.ErrNotFound{Key: id}
 	}
 	actual := Hash(buf[:n])
 	if actual != id {

@@ -11,13 +11,13 @@ import (
 	"github.com/blobcache/blobcache/pkg/bcdb"
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/blobcache/blobcache/pkg/stores"
-	"github.com/brendoncarroll/go-state/cadata"
-	"github.com/brendoncarroll/go-state/posixfs"
 	"github.com/inet256/inet256/pkg/inet256"
 	"github.com/inet256/inet256/pkg/serde"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/state/posixfs"
 )
 
 const (

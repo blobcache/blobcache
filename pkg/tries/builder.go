@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 type Builder struct {

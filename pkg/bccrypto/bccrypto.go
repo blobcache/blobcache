@@ -5,10 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 
-	"github.com/blobcache/blobcache/pkg/bcpool"
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/crypto/chacha20"
 	"lukechampine.com/blake3"
+
+	"github.com/blobcache/blobcache/pkg/bcpool"
 )
 
 func Hash(x []byte) cadata.ID {

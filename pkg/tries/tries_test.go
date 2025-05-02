@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 func TestPutGet(t *testing.T) {

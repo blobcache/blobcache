@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/brendoncarroll/go-state"
 	"github.com/pkg/errors"
+	"go.brendoncarroll.net/state"
 )
 
 type prefixed struct {

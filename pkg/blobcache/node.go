@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/inet256/inet256/pkg/inet256"
 	"github.com/sirupsen/logrus"
+	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/state/kv"
 
 	"github.com/blobcache/blobcache/pkg/bcdb"
 	"github.com/blobcache/blobcache/pkg/bcnet"
@@ -221,12 +222,12 @@ func (node *Node) Add(ctx context.Context, psh Handle, id cadata.ID) error {
 	}
 	store := node.mainStore()
 	set := node.getPSSet(psID)
-	if exists, err := cadata.Exists(ctx, store, id); err != nil {
+	if exists, err := kv.ExistsUsingList(ctx, store, id); err != nil {
 		return err
 	} else if exists {
 		return set.Add(ctx, id)
 	}
-	return ErrDataNotFound
+	return cadata.ErrNotFound{Key: id}
 }
 
 func (n *Node) Delete(ctx context.Context, psh Handle, id cadata.ID) error {
@@ -272,7 +273,7 @@ func (n *Node) Get(ctx context.Context, psh Handle, id cadata.ID, buf []byte) (i
 	if exists, err := set.Exists(ctx, id); err != nil {
 		return 0, err
 	} else if !exists {
-		return 0, cadata.ErrNotFound
+		return 0, cadata.ErrNotFound{Key: id}
 	}
 	store := n.mainStore()
 	// TODO: need to handle cases where the blob is not in the local store.
@@ -294,7 +295,7 @@ func (n *Node) Exists(ctx context.Context, psh Handle, id cadata.ID) (bool, erro
 		return false, err
 	}
 	set := n.getPSSet(psID)
-	return cadata.Exists(ctx, set, id)
+	return kv.ExistsUsingList(ctx, set, id)
 }
 
 func (n *Node) WaitOK(ctx context.Context, psh Handle) error {

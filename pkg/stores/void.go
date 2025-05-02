@@ -3,7 +3,7 @@ package stores
 import (
 	"context"
 
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 var _ cadata.Store = Void{}
@@ -15,7 +15,7 @@ func (s Void) Post(ctx context.Context, data []byte) (cadata.ID, error) {
 }
 
 func (s Void) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error) {
-	return 0, cadata.ErrNotFound
+	return 0, cadata.ErrNotFound{Key: id}
 }
 
 func (s Void) Exists(ctx context.Context, id cadata.ID) (bool, error) {

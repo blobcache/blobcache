@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/blobcache/blobcache/pkg/stores"
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/sirupsen/logrus"
+	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/sync/errgroup"
 )
 

@@ -1,9 +1,9 @@
 package stores
 
 import (
-	"github.com/brendoncarroll/go-state/cadata"
-	"github.com/brendoncarroll/go-state/cadata/fsstore"
-	"github.com/brendoncarroll/go-state/posixfs"
+	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/state/cadata/fsstore"
+	"go.brendoncarroll.net/state/posixfs"
 	"lukechampine.com/blake3"
 )
 

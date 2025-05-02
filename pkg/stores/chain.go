@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/state/kv"
 )
 
 type ReadOnly interface {
@@ -30,7 +31,7 @@ func (c ReadChain) Get(ctx context.Context, id cadata.ID, buf []byte) (int, erro
 	if len(errs) > 0 {
 		return 0, fmt.Errorf("multiple errors: %v", errs)
 	}
-	return 0, cadata.ErrNotFound
+	return 0, cadata.ErrNotFound{Key: id}
 }
 
 func (c ReadChain) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (n int, err error) {
@@ -52,7 +53,7 @@ func (c ReadChain) List(ctx context.Context, span cadata.Span, ids []cadata.ID) 
 func (c ReadChain) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	errs := []error{}
 	for _, s := range c {
-		exists, err := cadata.Exists(ctx, s, id)
+		exists, err := kv.ExistsUsingList(ctx, s, id)
 		if err != nil {
 			errs = append(errs, err)
 			continue

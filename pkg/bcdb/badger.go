@@ -3,9 +3,9 @@ package bcdb
 import (
 	"context"
 
-	"github.com/brendoncarroll/go-state"
 	"github.com/dgraph-io/badger/v2"
 	"github.com/dgraph-io/badger/v2/options"
+	"go.brendoncarroll.net/state"
 )
 
 type Badger struct {

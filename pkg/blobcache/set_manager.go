@@ -8,8 +8,8 @@ import (
 
 	"github.com/blobcache/blobcache/pkg/bcdb"
 	"github.com/blobcache/blobcache/pkg/dirserv"
-	"github.com/brendoncarroll/go-state"
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 const (

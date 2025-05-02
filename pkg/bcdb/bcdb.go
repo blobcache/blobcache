@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 
-	"github.com/brendoncarroll/go-state"
 	"github.com/pkg/errors"
+	"go.brendoncarroll.net/state"
 )
 
 type DB interface {

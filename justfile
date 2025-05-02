@@ -7,10 +7,10 @@ build:
 	go build -o ./out/blobcache ./cmd/blobcache 
 
 test:
-	go test --race ./pkg/...
+	go test ./pkg/...
 
 testv:
-	go test --race -count=1 -v ./pkg/...
+	go test -count=1 -v ./pkg/...
 
 protobuf:
 	cd ./pkg/tries && ./build.sh
@@ -18,9 +18,9 @@ protobuf:
 
 drop-replace:
 	go mod edit -dropreplace github.com/inet256/inet256
-	go mod edit -dropreplace github.com/brendoncarroll/go-state
+	go mod edit -dropreplace github.com/brendoncarroll/state
 
 add-replace:
 	go mod edit -replace github.com/inet256/inet256=../../inet256/inet256
-	go mod edit -replace github.com/brendoncarroll/go-state=../../brendoncarroll/go-state
+	go mod edit -replace github.com/brendoncarroll/state=../../brendoncarroll/state
 

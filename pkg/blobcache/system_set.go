@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/blobcache/blobcache/pkg/dirserv"
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 type systemSet struct {

@@ -3,8 +3,8 @@ package control
 import (
 	"context"
 
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/sirupsen/logrus"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 type sinkInfo struct {

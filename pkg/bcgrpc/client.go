@@ -8,7 +8,7 @@ import (
 
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/blobcache/blobcache/pkg/dirserv"
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 type client struct {

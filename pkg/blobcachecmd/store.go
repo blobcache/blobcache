@@ -4,8 +4,8 @@ import (
 	"io"
 
 	"github.com/blobcache/blobcache/pkg/dirserv"
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/spf13/cobra"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 var postCmd = &cobra.Command{

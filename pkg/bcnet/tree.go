@@ -6,8 +6,8 @@ import (
 	"errors"
 
 	"github.com/blobcache/blobcache/pkg/tries"
-	"github.com/brendoncarroll/go-p2p"
 	"github.com/inet256/inet256/pkg/inet256"
+	"go.brendoncarroll.net/p2p"
 )
 
 type TreeService interface {

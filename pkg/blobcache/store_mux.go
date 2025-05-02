@@ -5,7 +5,8 @@ import (
 
 	"github.com/blobcache/blobcache/pkg/bcdb"
 	"github.com/blobcache/blobcache/pkg/cadutil"
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/state/kv"
 )
 
 type storeMux struct {
@@ -50,7 +51,7 @@ func (vs *virtualStore) Get(ctx context.Context, id cadata.ID, buf []byte) (int,
 	if exists, err := vs.set.Exists(ctx, id); err != nil {
 		return 0, err
 	} else if !exists {
-		return 0, cadata.ErrNotFound
+		return 0, cadata.ErrNotFound{Key: id}
 	}
 	return vs.store.Get(ctx, id, buf)
 }
@@ -85,6 +86,10 @@ func (vs *virtualStore) Delete(ctx context.Context, id cadata.ID) error {
 		return nil
 	}
 	return vs.store.Delete(ctx, id)
+}
+
+func (vs *virtualStore) Exists(ctx context.Context, id cadata.ID) (bool, error) {
+	return kv.ExistsUsingList(ctx, vs, id)
 }
 
 func (vs *virtualStore) List(ctx context.Context, span cadata.Span, ids []cadata.ID) (int, error) {

@@ -5,8 +5,8 @@ import (
 
 	"github.com/blobcache/blobcache/pkg/blobcache"
 	"github.com/blobcache/blobcache/pkg/dirserv"
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/golang/protobuf/ptypes/empty"
+	"go.brendoncarroll.net/state/cadata"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 

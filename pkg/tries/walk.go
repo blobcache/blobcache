@@ -3,7 +3,8 @@ package tries
 import (
 	"context"
 
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/state/kv"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -60,7 +61,7 @@ func (o *Operator) Walk(ctx context.Context, s cadata.Store, root Root, w Walker
 func (o *Operator) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn func(*Entry) error) error {
 	return o.Walk(ctx, src, root, Walker{
 		ShouldWalk: func(root Root) bool {
-			exists, err := cadata.Exists(ctx, dst, root.Ref.ID)
+			exists, err := kv.ExistsUsingList(ctx, dst, root.Ref.ID)
 			if err != nil {
 				exists = false
 			}

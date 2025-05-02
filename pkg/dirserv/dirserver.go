@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/blobcache/blobcache/pkg/bcdb"
-	"github.com/brendoncarroll/go-state"
+	"go.brendoncarroll.net/state"
 	"lukechampine.com/blake3"
 )
 

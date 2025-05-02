@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/brendoncarroll/go-p2p"
-	"github.com/brendoncarroll/go-p2p/p/p2pmux"
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/inet256/inet256/pkg/inet256"
 	"github.com/sirupsen/logrus"
+	"go.brendoncarroll.net/p2p"
+	"go.brendoncarroll.net/p2p/p/p2pmux"
+	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/sync/errgroup"
 	"lukechampine.com/blake3"
 )

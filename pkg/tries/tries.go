@@ -3,9 +3,9 @@ package tries
 import (
 	"context"
 
-	"github.com/brendoncarroll/go-state"
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/pkg/errors"
+	"go.brendoncarroll.net/state"
+	"go.brendoncarroll.net/state/cadata"
 	"google.golang.org/protobuf/proto"
 )
 

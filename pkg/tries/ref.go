@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 
 	"github.com/blobcache/blobcache/pkg/bccrypto"
-	"github.com/brendoncarroll/go-state/cadata"
 	"github.com/pkg/errors"
+	"go.brendoncarroll.net/state/cadata"
 	"lukechampine.com/blake3"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/brendoncarroll/go-state/cadata"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 type ReadOnlyStore interface {

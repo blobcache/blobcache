@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/brendoncarroll/go-state/cadata"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
+	"go.brendoncarroll.net/state/cadata"
 )
 
 // getNode returns node at x.

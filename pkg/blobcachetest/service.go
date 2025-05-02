@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/blobcache/blobcache/pkg/blobcache"
-	"github.com/brendoncarroll/go-state/cadata"
-	"github.com/brendoncarroll/go-state/cadata/storetest"
 	"github.com/stretchr/testify/require"
+	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/state/cadata/storetest"
 )
 
 // Factory returns a fresh blobcache.Service for testing
