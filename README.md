@@ -5,28 +5,7 @@
 [<img src="https://discord.com/assets/cb48d2a8d4991281d7a6a95d2f58195e.svg" width="80">](https://discord.gg/TWy6aVWJ7f)
 
 Blobcache is a content addressed data store, designed to be a replicated data layer for applications.
-
-For more information checkout a brief [Introduction](./docs/00_Intro.md).
-And the gRPC API [docs](./docs/01_Client_API.md).
-
-## Goals
-- [x] Define a [simple API](./docs/01_Client_API.md) for content-addressed storage suitable for use by multiple applications.
-- [x] Efficiently multiplex multiple logical content-addressed stores onto a single real store backed by the file system.
-- [ ] Store data with other Blobcache peers.
-- [ ] Store data with cloud object storage providers.
-
-### Web Of Trust Storage Network
-Blobcache is an experiment in creating a Web of Trust storage network, which is also economically aware.
-
-The peer-to-peer components of Blobcache are still in the early development phases, but many of the components have been prototyped and are available in this repository.
-
-Blobcache depends on [INET256](https://github.com/inet256/inet256) for connections to peers.
-
-## Non-Goals
-- Create a blockchain or cryptocurrency.
-- Store data with untrusted peers.
-- Altruistic data storage and retrieval like BitTorrent or IPFS.
-- Merkle data structures. Blobcache only deals with blobs.
+If you can express your application state as a copy-on-write data structures, then Blobcache can handle syncing and replication for you.
 
 ## Getting Started
 You should be able to install with
@@ -48,22 +27,13 @@ $ go build -o ./put/the/binary/here/please ./cmd/blobcache
 This is a good option if you just want to play around with the API, and don't want to persist any data, or connect to peers.
 
 ```shell
-$ blobcache island
-```
-
-### Creating a Private Key
-Blobcache requires a private key for each instance.
-This is used to uniquely identify the instance and for communicating securely with peers using [INET256](https://github.com/inet256/inet256)
-
-```shell
-$ blobcache keygen > blobcache_pk.pem
+$ blobcache daemon-ephemeral
 ```
 
 ### Running the daemon
-The following commands create a directory for blobcache data and runs a daemon on localhost on the default port.  Change the name of the private-key to whereever your key is.
+The following command runs a daemon with state in the specified directory. 
 ```shell
-$ mkdir my-data
-$ blobcache run --private-key ./blobcache_pk.pem --data-dir my-data
+$ blobcache daemon --state $HOME/.local/blobcache
 ```
 
 Once the daemon is running, you should be all set to connect to it and start building your application on top of content-addressed storage.
