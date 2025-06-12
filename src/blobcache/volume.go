@@ -15,24 +15,40 @@ type Addr struct {
 	AddrPort netip.AddrPort `json:"addrport"`
 }
 
+// VolumeSpec is a specification for a volume.
 type VolumeSpec struct {
-	HashAlgo HashAlgo      `json:"hash_algo"`
-	Backend  VolumeBackend `json:"backend"`
+	HashAlgo HashAlgo              `json:"hash_algo"`
+	Backend  VolumeBackend[Handle] `json:"backend"`
 }
 
+func (v *VolumeSpec) Validate() (retErr error) {
+	if err := v.Backend.Validate(); err != nil {
+		retErr = errors.Join(retErr, err)
+	}
+	if err := v.HashAlgo.Validate(); err != nil {
+		retErr = errors.Join(retErr, err)
+	}
+	return retErr
+}
+
+// VolumeInfo is a volume info.
 type VolumeInfo struct {
-	ID       OID           `json:"id"`
-	HashAlgo HashAlgo      `json:"hash_algo"`
-	Backend  VolumeBackend `json:"backend"`
+	ID       OID                `json:"id"`
+	HashAlgo HashAlgo           `json:"hash_algo"`
+	Backend  VolumeBackend[OID] `json:"backend"`
 }
 
-type VolumeBackend struct {
-	Local  *VolumeBackend_Local  `json:"local,omitempty"`
-	Remote *VolumeBackend_Remote `json:"remote,omitempty"`
-	Git    *VolumeBackend_Git    `json:"git,omitempty"`
+// VolumeBackend is a specification for a volume backend.
+// If it is going into the API, the it will be a VolumeBackend[Handle].
+// If it is coming out of the API, the it will be a VolumeBackend[OID].
+type VolumeBackend[T handleOrOID] struct {
+	Local  *VolumeBackend_Local    `json:"local,omitempty"`
+	Remote *VolumeBackend_Remote   `json:"remote,omitempty"`
+	Git    *VolumeBackend_Git      `json:"git,omitempty"`
+	Vault  *VolumeBackend_Vault[T] `json:"vault,omitempty"`
 }
 
-func (v *VolumeBackend) Validate() (err error) {
+func (v *VolumeBackend[T]) Validate() (err error) {
 	var count int
 	if v.Local != nil {
 		count++
@@ -47,6 +63,23 @@ func (v *VolumeBackend) Validate() (err error) {
 	return err
 }
 
+// VolumeBackendToOID converts a VolumeBackend[Handle] to a VolumeBackend[OID].
+// It is used to convert the volume backend to the OID format when it is returned from the API.
+func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
+	ret = VolumeBackend[OID]{
+		Local:  x.Local,
+		Remote: x.Remote,
+		Git:    x.Git,
+	}
+	if x.Vault != nil {
+		ret.Vault = &VolumeBackend_Vault[OID]{
+			Inner:  x.Vault.Inner.OID,
+			Secret: x.Vault.Secret,
+		}
+	}
+	return ret
+}
+
 type VolumeBackend_Local struct{}
 
 type VolumeBackend_Remote struct {
@@ -56,4 +89,13 @@ type VolumeBackend_Remote struct {
 
 type VolumeBackend_Git struct {
 	URL string `json:"url"`
+}
+
+type VolumeBackend_Vault[T handleOrOID] struct {
+	Inner  T        `json:"inner"`
+	Secret [32]byte `json:"secret"`
+}
+
+type handleOrOID interface {
+	Handle | OID
 }

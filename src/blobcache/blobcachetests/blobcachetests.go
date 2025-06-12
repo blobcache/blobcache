@@ -1,4 +1,4 @@
-// package blobcachetests provides a test suite  for blobcache.Service.
+// package blobcachetests provides a test suite for blobcache.Service.
 package blobcachetests
 
 import (
@@ -94,7 +94,12 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 }
 
 func defaultVolumeSpec() blobcache.VolumeSpec {
-	return blobcache.VolumeSpec{HashAlgo: blobcache.HashAlgo_BLAKE3_256}
+	return blobcache.VolumeSpec{
+		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+		Backend: blobcache.VolumeBackend[blobcache.Handle]{
+			Local: &blobcache.VolumeBackend_Local{},
+		},
+	}
 }
 
 func post(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte) blobcache.CID {

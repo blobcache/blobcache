@@ -13,23 +13,25 @@ CREATE TABLE stores (
 CREATE TABLE store_blobs (
     store_id INTEGER NOT NULL REFERENCES stores(id),
     cid BLOB NOT NULL REFERENCES blobs(cid),
+    is_delete INTEGER NOT NULL DEFAULT FALSE,
     PRIMARY KEY (store_id, cid)
 ), WITHOUT ROWID, STRICT;
 
 CREATE TABLE objects (
-    oid BLOB PRIMARY KEY,
+    id BLOB PRIMARY KEY,
     created_at INTEGER NOT NULL
 ), WITHOUT ROWID, STRICT;
 
 CREATE TABLE handles (
     k BLOB PRIMARY KEY,
-    target BLOB NOT NULL REFERENCES objects(oid),
-    created_at INTEGER NOT NULL
+    target BLOB NOT NULL REFERENCES objects(id),
+    created_at INTEGER
 ), WITHOUT ROWID, STRICT;
 
 CREATE TABLE volumes (
-    id BLOB REFERENCES objects(oid) PRIMARY KEY,
-    root BLOB NOT NULL, 
+    id BLOB REFERENCES objects(id) PRIMARY KEY,
+    root BLOB NOT NULL,
+    spec BLOB NOT NULL,
     -- store_id is NOT NULL for local volumes
     store_id INTEGER REFERENCES stores(id)
 ), WITHOUT ROWID, STRICT;
@@ -37,8 +39,11 @@ CREATE TABLE volumes (
 -- txns are used to make changes to a volume
 -- The txn volume_id will reference a local volume
 CREATE TABLE txns (
-    id BLOB REFERENCES objects(oid) PRIMARY KEY,
-    volume_id BLOB REFERENCES local_volumes(oid),
+    id BLOB REFERENCES objects(id) PRIMARY KEY,
+    volume_id BLOB REFERENCES volumes(id),
     store_id INTEGER NOT NULL REFERENCES stores(id),
+    mutate INTEGER NOT NULL,
     created_at INTEGER NOT NULL
 ), WITHOUT ROWID, STRICT;
+
+CREATE INDEX idx_txn_volume ON txns (volume_id);

@@ -4,6 +4,7 @@ package blobcache
 import (
 	"context"
 	"crypto/rand"
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,14 @@ type HashFunc = cadata.HashFunc
 
 // HashAlgo is a cryptographic hash algorithm.
 type HashAlgo string
+
+func (h HashAlgo) Validate() error {
+	switch h {
+	case HashAlgo_BLAKE3_256, HashAlgo_BLAKE2b_256, HashAlgo_SHA2_256, HashAlgo_SHA3_256:
+		return nil
+	}
+	return fmt.Errorf("unknown hash algo: %q", h)
+}
 
 const (
 	HashAlgo_BLAKE3_256  HashAlgo = "blake3-256"
@@ -47,6 +56,28 @@ func ParseOID(s string) (OID, error) {
 
 func (o OID) String() string {
 	return strings.ToUpper(hex.EncodeToString(o[:]))
+}
+
+// Value implements the driver.Valuer interface.
+func (o OID) Value() (driver.Value, error) {
+	return o[:], nil
+}
+
+// Scan implements the sql.Scanner interface.
+func (o *OID) Scan(src interface{}) error {
+	if src == nil {
+		return fmt.Errorf("OID: cannot scan nil src")
+	}
+	// TODO: should we support string scanning?
+	switch src := src.(type) {
+	case []byte:
+		if len(src) != len(o) {
+			return fmt.Errorf("OID: cannot scan []byte of len %d", len(src))
+		}
+		copy(o[:], src)
+		return nil
+	}
+	return fmt.Errorf("OID: cannot scan %T", src)
 }
 
 // Conditions is a set of conditions to await.

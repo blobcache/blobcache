@@ -29,13 +29,8 @@ var daemonCmd = star.Command{
 		if err := bclocal.SetupDB(ctx, db); err != nil {
 			return err
 		}
-		pc, err := net.ListenUDP("udp", net.UDPAddrFromAddrPort(addrPortParam.Load(ctx)))
-		if err != nil {
-			return err
-		}
 		svc := bclocal.New(bclocal.Env{
-			DB:         db,
-			PacketConn: pc,
+			DB: db,
 		})
 		return svc.Run(ctx)
 	},
