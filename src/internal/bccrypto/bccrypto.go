@@ -5,10 +5,25 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 
+	"blobcache.io/blobcache/src/blobcache"
 	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/crypto/chacha20"
 	"lukechampine.com/blake3"
 )
+
+type Poster interface {
+	MaxSize() int
+	Post(ctx context.Context, cid *blobcache.CID, data []byte) (blobcache.CID, error)
+}
+
+type Getter interface {
+	GetF(ctx context.Context, dek DEK, id cadata.ID, fn func([]byte) error) error
+}
+
+type Store interface {
+	Poster
+	Getter
+}
 
 func Hash(x []byte) cadata.ID {
 	return blake3.Sum256(x)
@@ -48,11 +63,7 @@ func (dek *DEK) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-type Poster interface {
-	Post(ctx context.Context, data []byte) (cadata.ID, error)
-}
-
-func Post(ctx context.Context, s Poster, keyFunc KeyFunc, data []byte) (cadata.ID, *DEK, error) {
+func Post(ctx context.Context, s cadata.Poster, keyFunc KeyFunc, data []byte) (cadata.ID, *DEK, error) {
 	id := Hash(data)
 	dek := keyFunc(id)
 	ctext := make([]byte, len(data))

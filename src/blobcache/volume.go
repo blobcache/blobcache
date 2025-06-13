@@ -22,6 +22,7 @@ type VolumeSpec struct {
 	HashAlgo HashAlgo `json:"hash_algo"`
 	// MaxSize is the maximum size of a blob
 	MaxSize int64 `json:"max_size"`
+	Salted  bool  `json:"salted"`
 	// Backend is the implementation to use for the volume.
 	Backend VolumeBackend[Handle] `json:"backend"`
 }
@@ -32,6 +33,9 @@ func (v *VolumeSpec) Validate() (retErr error) {
 	}
 	if err := v.HashAlgo.Validate(); err != nil {
 		retErr = errors.Join(retErr, err)
+	}
+	if v.MaxSize <= 0 {
+		retErr = errors.Join(retErr, fmt.Errorf("max size must be positive"))
 	}
 	return retErr
 }

@@ -22,14 +22,6 @@ type Server struct {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
-	case r.URL.Path == "/volume/":
-		handleRequest(w, r, func(ctx context.Context, req CreateVolumeReq) (*CreateVolumeResp, error) {
-			vol, err := s.Service.CreateVolume(ctx, req.Spec)
-			if err != nil {
-				return nil, err
-			}
-			return &CreateVolumeResp{Handle: *vol}, nil
-		})
 	case r.URL.Path == "/Await":
 		handleRequest(w, r, func(ctx context.Context, req AwaitReq) (*AwaitResp, error) {
 			err := s.Service.Await(ctx, req.Conditions)
@@ -62,10 +54,55 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return &DropResp{}, nil
 		})
+	case strings.HasPrefix(r.URL.Path, "/volume/"):
+		s.handleVolume(w, r)
 	case strings.HasPrefix(r.URL.Path, "/tx/"):
 		s.handleTx(w, r)
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) handleVolume(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/volume/":
+		handleRequest(w, r, func(ctx context.Context, req CreateVolumeReq) (*CreateVolumeResp, error) {
+			vol, err := s.Service.CreateVolume(ctx, req.Spec)
+			if err != nil {
+				return nil, err
+			}
+			return &CreateVolumeResp{Handle: *vol}, nil
+		})
+		return
+	}
+	var volIDStr string
+	var method string
+	if _, err := fmt.Sscanf(r.URL.Path, "/volume/%32s.%s", &volIDStr, &method); err != nil {
+		http.Error(w, "could not parse path "+r.URL.Path, http.StatusBadRequest)
+		return
+	}
+	var h blobcache.Handle
+	if _, err := hex.Decode(h.OID[:], []byte(volIDStr)); err != nil {
+		http.Error(w, "could not decode volume id", http.StatusBadRequest)
+		return
+	}
+	secretStr := r.Header.Get("X-Secret")
+	if _, err := hex.Decode(h.Secret[:], []byte(secretStr)); err != nil {
+		http.Error(w, "could not decode secret", http.StatusBadRequest)
+		return
+	}
+	switch method {
+	case "Inspect":
+		info, err := s.Service.InspectVolume(r.Context(), h)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(info); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		return
 	}
 }
 
@@ -118,7 +155,12 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cid, err := s.Service.Post(r.Context(), h, data)
+		salt, err := getSaltFromRequest(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		cid, err := s.Service.Post(r.Context(), h, salt, data)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -132,7 +174,7 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		buf := make([]byte, 1<<21)
-		n, err := s.Service.Get(r.Context(), h, req.CID, buf)
+		n, err := s.Service.Get(r.Context(), h, req.CID, req.Salt, buf)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -188,4 +230,24 @@ func handleRequest[Req, Resp any](w http.ResponseWriter, r *http.Request, fn fun
 	if _, err := w.Write(respData); err != nil {
 		logctx.Warn(r.Context(), "writing http response", zap.Error(err))
 	}
+}
+
+func setSaltHeader(req *http.Request, salt *blobcache.CID) {
+	if salt == nil {
+		return
+	}
+	b64, _ := salt.MarshalBase64()
+	req.Header.Set("X-Salt", string(b64))
+}
+
+func getSaltFromRequest(r *http.Request) (*blobcache.CID, error) {
+	saltStr := r.Header.Get("X-Salt")
+	if saltStr == "" {
+		return nil, nil
+	}
+	cid, err := blobcache.ParseCID(saltStr)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse salt: %w", err)
+	}
+	return &cid, nil
 }

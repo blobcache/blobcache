@@ -35,6 +35,22 @@ func (c *Client) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (
 	return &resp.Handle, nil
 }
 
+func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
+	p := fmt.Sprintf("/volume/%s.Inspect", h.OID.String())
+	headers := map[string]string{
+		"X-Secret": hex.EncodeToString(h.Secret[:]),
+	}
+	body, err := c.do(ctx, "GET", p, headers, nil)
+	if err != nil {
+		return nil, err
+	}
+	var info blobcache.VolumeInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("unmarshaling response: %w", err)
+	}
+	return &info, nil
+}
+
 func (c *Client) Anchor(ctx context.Context, h blobcache.Handle) error {
 	req := AnchorReq{Target: h}
 	var resp AnchorResp
@@ -57,21 +73,6 @@ func (c *Client) Await(ctx context.Context, cond blobcache.Conditions) error {
 	req := AwaitReq{Conditions: cond}
 	var resp AwaitResp
 	return c.doJSON(ctx, "POST", "/Await", nil, req, &resp)
-}
-
-func (c *Client) StartSync(ctx context.Context, src blobcache.Handle, dst blobcache.Handle) error {
-	req := StartSyncReq{Src: src, Dst: dst}
-	var resp StartSyncResp
-	return c.doJSON(ctx, "POST", "/Sync", nil, req, &resp)
-}
-
-func (c *Client) CreateRule(ctx context.Context, rspec blobcache.RuleSpec) (*blobcache.Handle, error) {
-	req := CreateRuleReq{Spec: rspec}
-	var resp CreateRuleResp
-	if err := c.doJSON(ctx, "POST", "/rule", nil, req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
 }
 
 func (c *Client) BeginTx(ctx context.Context, vol blobcache.Handle, mutate bool) (*blobcache.Handle, error) {
@@ -105,29 +106,17 @@ func (c *Client) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) err
 	return nil
 }
 
-func (c *Client) Post(ctx context.Context, tx blobcache.Handle, data []byte) (blobcache.CID, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/tx/%s.Post", c.ep, tx.OID.String()), bytes.NewReader(data))
+func (c *Client) Post(ctx context.Context, tx blobcache.Handle, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+	headers := map[string]string{
+		"X-Secret": hex.EncodeToString(tx.Secret[:]),
+	}
+	if salt != nil {
+		headers["X-Salt"] = salt.String()
+	}
+	respBody, err := c.do(ctx, "POST", fmt.Sprintf("/tx/%s.Post", tx.OID.String()), headers, data)
 	if err != nil {
-		return blobcache.CID{}, fmt.Errorf("creating request: %w", err)
+		return blobcache.CID{}, err
 	}
-	httpReq.Header.Set("X-Secret", hex.EncodeToString(tx.Secret[:]))
-
-	httpResp, err := c.hc.Do(httpReq)
-	if err != nil {
-		return blobcache.CID{}, fmt.Errorf("sending request: %w", err)
-	}
-	defer httpResp.Body.Close()
-
-	if httpResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(httpResp.Body)
-		return blobcache.CID{}, fmt.Errorf("request failed with status %d: %s", httpResp.StatusCode, string(body))
-	}
-
-	respBody, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return blobcache.CID{}, fmt.Errorf("reading response: %w", err)
-	}
-
 	var cid blobcache.CID
 	if len(respBody) != len(cid) {
 		return blobcache.CID{}, fmt.Errorf("invalid CID length: got %d, want %d", len(respBody), len(cid))
@@ -151,7 +140,7 @@ func (c *Client) Delete(ctx context.Context, tx blobcache.Handle, cid blobcache.
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Delete", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
-func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, buf []byte) (int, error) {
+func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
 	req := GetReq{CID: cid}
 	reqBody, err := json.Marshal(req)
 	if err != nil {
@@ -181,6 +170,26 @@ func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID
 		return 0, fmt.Errorf("reading response: %w", err)
 	}
 	return n, nil
+}
+
+func (c *Client) do(ctx context.Context, method, path string, headers map[string]string, reqBody []byte) ([]byte, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, method, c.ep+path, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	for k, v := range headers {
+		httpReq.Header.Set(k, v)
+	}
+	httpResp, err := c.hc.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("sending request: %w", err)
+	}
+	defer httpResp.Body.Close()
+	if httpResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("request failed with status %d: %s", httpResp.StatusCode, string(body))
+	}
+	return io.ReadAll(httpResp.Body)
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, secret *[16]byte, req, resp interface{}) error {

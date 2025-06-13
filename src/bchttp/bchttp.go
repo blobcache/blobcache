@@ -63,7 +63,8 @@ type KeepAliveReq struct {
 type KeepAliveResp struct{}
 
 type GetReq struct {
-	CID blobcache.CID `json:"cid"`
+	CID  blobcache.CID  `json:"cid"`
+	Salt *blobcache.CID `json:"salt,omitempty"`
 }
 
 type AnchorReq struct {

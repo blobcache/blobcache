@@ -18,10 +18,22 @@ import (
 )
 
 // CID is a content identifier.
+// It is produced by hashing data.
+// CIDs can be used as salts.
+// CIDs are cannonically printed in an order-preserving base64 encoding, which distinguishes
+// them from OIDs which are printed as hex.
 type CID = cadata.ID
 
+func ParseCID(s string) (CID, error) {
+	var ret CID
+	if err := ret.UnmarshalBase64([]byte(s)); err != nil {
+		return CID{}, err
+	}
+	return ret, nil
+}
+
 // HashFunc is a cryptographic hash function.
-type HashFunc = cadata.HashFunc
+type HashFunc func(salt *CID, data []byte) CID
 
 // HashAlgo is a cryptographic hash algorithm.
 type HashAlgo string
@@ -37,20 +49,50 @@ func (h HashAlgo) Validate() error {
 func (h HashAlgo) HashFunc() HashFunc {
 	switch h {
 	case HashAlgo_SHA2_256:
-		return func(x []byte) CID {
+		return func(salt *CID, x []byte) CID {
+			if salt != nil {
+				panic("salt not supported for sha2-256")
+			}
 			return sha256.Sum256(x)
 		}
 	case HashAlgo_SHA3_256:
-		return func(x []byte) CID {
-			return sha3.Sum256(x)
+		return func(salt *CID, x []byte) CID {
+			if salt == nil {
+				return sha3.Sum256(x)
+			}
+			h := sha3.NewCSHAKE256(nil, salt[:])
+			h.Write(x)
+			var ret CID
+			if _, err := h.Read(ret[:]); err != nil {
+				panic(err)
+			}
+			return ret
 		}
 	case HashAlgo_BLAKE2b_256:
-		return func(x []byte) CID {
-			return blake2b.Sum256(x)
+		return func(salt *CID, x []byte) CID {
+			if salt == nil {
+				return blake2b.Sum256(x)
+			}
+			h, err := blake2b.New(32, salt[:])
+			if err != nil {
+				panic(err)
+			}
+			h.Write(x)
+			var ret CID
+			copy(ret[:], h.Sum(nil))
+			return ret
 		}
 	case HashAlgo_BLAKE3_256:
-		return func(x []byte) CID {
-			return blake3.Sum256(x)
+		return func(salt *CID, x []byte) CID {
+			if salt == nil {
+
+				return blake3.Sum256(x)
+			}
+			h := blake3.New(32, salt[:])
+			h.Write(x)
+			var ret CID
+			copy(ret[:], h.Sum(nil))
+			return ret
 		}
 	default:
 		panic(h)
@@ -119,6 +161,8 @@ type Service interface {
 	// This should only be called after a Volume has been successfully created
 	// and the handle has been saved.
 	Anchor(ctx context.Context, h Handle) error
+	// InspectVolume returns info about a Volume.
+	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
 	// Drop causes a handle to be released immediately.
 	// If all the handles to an object are dropped, the object is deleted.
 	Drop(ctx context.Context, h Handle) error
@@ -136,13 +180,13 @@ type Service interface {
 	// Load loads the volume root into dst
 	Load(ctx context.Context, tx Handle, dst *[]byte) error
 	// Post posts data to the volume
-	Post(ctx context.Context, tx Handle, data []byte) (CID, error)
+	Post(ctx context.Context, tx Handle, salt *CID, data []byte) (CID, error)
 	// Exists checks if a CID exists in the volume
 	Exists(ctx context.Context, tx Handle, cid CID) (bool, error)
 	// Delete deletes a CID from the volume
 	Delete(ctx context.Context, tx Handle, cid CID) error
 	// Get returns the data for a CID.
-	Get(ctx context.Context, tx Handle, cid CID, buf []byte) (int, error)
+	Get(ctx context.Context, tx Handle, cid CID, salt *CID, buf []byte) (int, error)
 }
 
 type Handle struct {

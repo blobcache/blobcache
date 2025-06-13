@@ -46,3 +46,10 @@ func (e ErrInvalidHandle) Error() string {
 func IsErrInvalidHandle(err error) bool {
 	return errors.As(err, &ErrInvalidHandle{})
 }
+
+// ErrCannotSalt is returned when a salt is provided to a volume that does not support salts.
+type ErrCannotSalt struct{}
+
+func (e ErrCannotSalt) Error() string {
+	return "cannot salt"
+}

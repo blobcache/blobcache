@@ -88,7 +88,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 
 		data := []byte{1, 2, 3}
 		require.False(t, exists(t, s, *txh, blake3.Sum256(data)), "should not exist before post")
-		cid := post(t, s, *txh, data)
+		cid := post(t, s, *txh, nil, data)
 		require.True(t, exists(t, s, *txh, cid), "should exist after post")
 	})
 	t.Run("PostGet", func(t *testing.T) {
@@ -97,19 +97,14 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		txh := beginTx(t, s, volh)
 
 		data1 := []byte("hello world")
-		cid := post(t, s, txh, data1)
-		data2 := get(t, s, txh, cid, 100)
+		cid := post(t, s, txh, nil, data1)
+		data2 := get(t, s, txh, cid, nil, 100)
 		require.Equal(t, data1, data2)
 	})
 }
 
 func defaultVolumeSpec() blobcache.VolumeSpec {
-	return blobcache.VolumeSpec{
-		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-		Backend: blobcache.VolumeBackend[blobcache.Handle]{
-			Local: &blobcache.VolumeBackend_Local{},
-		},
-	}
+	return blobcache.DefaultLocalSpec()
 }
 
 func createVolume(t testing.TB, s blobcache.Service) blobcache.Handle {
@@ -128,17 +123,17 @@ func beginTx(t testing.TB, s blobcache.Service, volh blobcache.Handle) blobcache
 	return *txh
 }
 
-func post(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte) blobcache.CID {
+func post(t testing.TB, s blobcache.Service, txh blobcache.Handle, salt *blobcache.CID, data []byte) blobcache.CID {
 	ctx := testutil.Context(t)
-	cid, err := s.Post(ctx, txh, data)
+	cid, err := s.Post(ctx, txh, salt, data)
 	require.NoError(t, err)
 	return cid
 }
 
-func get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, maxLen int) []byte {
+func get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, maxLen int) []byte {
 	ctx := testutil.Context(t)
 	buf := make([]byte, maxLen)
-	n, err := s.Get(ctx, txh, cid, buf)
+	n, err := s.Get(ctx, txh, cid, salt, buf)
 	require.NoError(t, err)
 	return buf[:n]
 }
@@ -156,6 +151,5 @@ func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, mutate boo
 	require.NoError(t, err)
 	data, err := f(tx)
 	require.NoError(t, err)
-	tx.Commit(ctx, data)
-	require.NoError(t, err)
+	require.NoError(t, tx.Commit(ctx, data))
 }

@@ -44,7 +44,7 @@ type volumeRow struct {
 
 func getVolume(tx *sqlx.Tx, volID blobcache.OID) (*volumeRow, error) {
 	var v volumeRow
-	if err := tx.Get(&v, "SELECT id, root, store_id, backend FROM volumes WHERE id = ?", volID); err != nil {
+	if err := tx.Get(&v, "SELECT id, root, store_id, hash_algo, max_size, backend FROM volumes WHERE id = ?", volID); err != nil {
 		return nil, err
 	}
 	return &v, nil
@@ -155,14 +155,16 @@ func dropTx(tx *sqlx.Tx, txid blobcache.OID) error {
 }
 
 type txRow struct {
-	ID      blobcache.OID `db:"id"`
-	VolID   blobcache.OID `db:"volume_id"`
-	StoreID int64         `db:"store_id"`
-	Mutate  bool          `db:"mutate"`
+	ID       blobcache.OID `db:"id"`
+	VolID    blobcache.OID `db:"volume_id"`
+	StoreID  int64         `db:"store_id"`
+	Mutate   bool          `db:"mutate"`
+	IsSalted bool          `db:"is_salted"`
 }
 
 func getTx(tx *sqlx.Tx, txid blobcache.OID) (*txRow, error) {
 	var t txRow
+	// TODO: add is_salted to the query
 	if err := tx.Get(&t, "SELECT id, volume_id, store_id, mutate FROM txns WHERE id = ?", txid); err != nil {
 		return nil, err
 	}
@@ -225,7 +227,10 @@ func (v *localVolumeTx) Delete(ctx context.Context, cid blobcache.CID) error {
 	})
 }
 
-func (v *localVolumeTx) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
+func (v *localVolumeTx) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+	if salt != nil && v.txRow.IsSalted {
+		return blobcache.CID{}, blobcache.ErrCannotSalt{}
+	}
 	cid, err := dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (*blobcache.CID, error) {
 		// TODO: get hf from volume spec
 		hf := func(data []byte) blobcache.CID {
@@ -246,7 +251,7 @@ func (v *localVolumeTx) Post(ctx context.Context, data []byte) (blobcache.CID, e
 	return *cid, nil
 }
 
-func (v *localVolumeTx) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error) {
+func (v *localVolumeTx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
 	return dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (int, error) {
 		volRow, err := getVolume(tx, v.txRow.VolID)
 		if err != nil {

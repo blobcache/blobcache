@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/bccrypto"
 	"blobcache.io/blobcache/src/internal/tries"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -60,16 +59,11 @@ func (v *Vault) Abort(ctx context.Context) error {
 	return v.inner.Abort(ctx)
 }
 
-func (v *Vault) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
-	cid, _, err := bccrypto.Post(ctx, v.inner, bccrypto.Convergent, data)
-	if err != nil {
-		return blobcache.CID{}, err
-	}
-	v.blobs[cid] = struct{}{}
-	return cid, nil
+func (v *Vault) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+	panic("not implemented")
 }
 
-func (v *Vault) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error) {
+func (v *Vault) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
 	return 0, nil
 }
 

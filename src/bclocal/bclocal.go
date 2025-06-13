@@ -152,9 +152,13 @@ func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) 
 	if err := vspec.Validate(); err != nil {
 		return nil, err
 	}
+	if vspec.Salted {
+		return nil, fmt.Errorf("salted volumes are not yet supported")
+	}
 	info := blobcache.VolumeInfo{
 		ID:       blobcache.NewOID(),
 		HashAlgo: vspec.HashAlgo,
+		MaxSize:  vspec.MaxSize,
 		Backend:  blobcache.VolumeBackendToOID(vspec.Backend),
 	}
 	volid, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.OID, error) {
@@ -169,6 +173,34 @@ func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) 
 	}
 	handle := s.createEphemeralHandle(*volid, time.Now().Add(DefaultVolumeTTL), vol, nil)
 	return &handle, nil
+}
+
+func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
+	vol, err := s.resolveVol(ctx, h)
+	if err != nil {
+		return nil, err
+	}
+	switch vol := vol.(type) {
+	case *localVolume:
+		volRow, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*volumeRow, error) {
+			return getVolume(tx, vol.id)
+		})
+		if err != nil {
+			return nil, err
+		}
+		var backend blobcache.VolumeBackend[blobcache.OID]
+		if err := json.Unmarshal(volRow.Backend, &backend); err != nil {
+			return nil, err
+		}
+		return &blobcache.VolumeInfo{
+			ID:       volRow.ID,
+			HashAlgo: blobcache.HashAlgo(volRow.HashAlgo),
+			MaxSize:  volRow.MaxSize,
+			Backend:  backend,
+		}, nil
+	default:
+		return nil, fmt.Errorf("cannot inspect volume of type %T", vol)
+	}
 }
 
 // Anchor causes a handle to persist indefinitely.
@@ -257,12 +289,12 @@ func (s *Service) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) e
 	return txn.Load(ctx, dst)
 }
 
-func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte) (blobcache.CID, error) {
+func (s *Service) Post(ctx context.Context, txh blobcache.Handle, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
 	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	return txn.Post(ctx, data)
+	return txn.Post(ctx, salt, data)
 }
 
 func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cid blobcache.CID) (bool, error) {
@@ -273,12 +305,12 @@ func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cid blobcach
 	return txn.Exists(ctx, cid)
 }
 
-func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, buf []byte) (int, error) {
+func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
 	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return 0, err
 	}
-	return txn.Get(ctx, cid, buf)
+	return txn.Get(ctx, cid, salt, buf)
 }
 
 func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cid blobcache.CID) error {
