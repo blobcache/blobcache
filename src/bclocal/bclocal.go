@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"net"
 	"slices"
 	"sync"
 	"time"
@@ -26,7 +27,8 @@ const (
 var _ blobcache.Service = &Service{}
 
 type Env struct {
-	DB *sqlx.DB
+	DB         *sqlx.DB
+	PacketConn net.PacketConn
 }
 
 // Service implements a blobcache.Service.

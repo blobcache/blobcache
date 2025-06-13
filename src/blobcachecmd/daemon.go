@@ -20,7 +20,7 @@ var daemonCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon",
 	},
-	Flags: []star.IParam{stateDirParam, addrPortParam, serveAPIParam},
+	Flags: []star.IParam{stateDirParam, serveAPIParam, listenParam},
 	F: func(ctx star.Context) error {
 		stateDir := stateDirParam.Load(ctx)
 		dbPath := filepath.Join(stateDir, "blobcache.db")
@@ -43,15 +43,18 @@ var daemonEphemeralCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon without persistent state",
 	},
-	Flags: []star.IParam{serveAPIParam},
+	Flags: []star.IParam{serveAPIParam, listenParam},
 	F: func(ctx star.Context) error {
 		db := dbutil.OpenMemory()
 		if err := bclocal.SetupDB(ctx, db); err != nil {
 			return err
 		}
+		pc := listenParam.Load(ctx)
 		svc := bclocal.New(bclocal.Env{
-			DB: db,
+			DB:         db,
+			PacketConn: pc,
 		})
+
 		apiLis := serveAPIParam.Load(ctx)
 		defer apiLis.Close()
 		logctx.Info(ctx, "serving API", zap.String("net", apiLis.Addr().Network()), zap.String("addr", apiLis.Addr().String()))
@@ -66,17 +69,6 @@ var stateDirParam = star.Param[string]{
 	Parse: star.ParseString,
 }
 
-var addrPortParam = star.Param[netip.AddrPort]{
-	Name: "addr",
-	Parse: func(s string) (netip.AddrPort, error) {
-		addr, err := netip.ParseAddr(s)
-		if err != nil {
-			return netip.AddrPort{}, err
-		}
-		return netip.AddrPortFrom(addr, 8080), nil
-	},
-}
-
 var serveAPIParam = star.Param[net.Listener]{
 	Name: "serve-api",
 	Parse: func(s string) (net.Listener, error) {
@@ -85,5 +77,21 @@ var serveAPIParam = star.Param[net.Listener]{
 			return nil, fmt.Errorf("invalid address: %s", s)
 		}
 		return net.Listen(parts[0], parts[1])
+	},
+}
+
+var listenParam = star.Param[net.PacketConn]{
+	Name:    "listen",
+	Default: star.Ptr(""),
+	Parse: func(s string) (net.PacketConn, error) {
+		if s == "" {
+			return nil, nil
+		}
+		ap, err := netip.ParseAddrPort(s)
+		if err != nil {
+			return nil, err
+		}
+		udpAddr := net.UDPAddrFromAddrPort(ap)
+		return net.ListenUDP("udp", udpAddr)
 	},
 }
