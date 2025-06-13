@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/binary"
 
-	"github.com/blobcache/blobcache/pkg/bccrypto"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state/cadata"
 	"lukechampine.com/blake3"
+
+	"blobcache.io/blobcache/src/internal/bccrypto"
 )
 
 type Ref struct {

@@ -91,6 +91,16 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		cid := post(t, s, *txh, data)
 		require.True(t, exists(t, s, *txh, cid), "should exist after post")
 	})
+	t.Run("PostGet", func(t *testing.T) {
+		s := mk(t)
+		volh := createVolume(t, s)
+		txh := beginTx(t, s, volh)
+
+		data1 := []byte("hello world")
+		cid := post(t, s, txh, data1)
+		data2 := get(t, s, txh, cid, 100)
+		require.Equal(t, data1, data2)
+	})
 }
 
 func defaultVolumeSpec() blobcache.VolumeSpec {
@@ -102,6 +112,22 @@ func defaultVolumeSpec() blobcache.VolumeSpec {
 	}
 }
 
+func createVolume(t testing.TB, s blobcache.Service) blobcache.Handle {
+	ctx := testutil.Context(t)
+	volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+	require.NoError(t, err)
+	require.NotNil(t, volh)
+	return *volh
+}
+
+func beginTx(t testing.TB, s blobcache.Service, volh blobcache.Handle) blobcache.Handle {
+	ctx := testutil.Context(t)
+	txh, err := s.BeginTx(ctx, volh, true)
+	require.NoError(t, err)
+	require.NotNil(t, txh)
+	return *txh
+}
+
 func post(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte) blobcache.CID {
 	ctx := testutil.Context(t)
 	cid, err := s.Post(ctx, txh, data)
@@ -109,9 +135,27 @@ func post(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte) 
 	return cid
 }
 
+func get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, maxLen int) []byte {
+	ctx := testutil.Context(t)
+	buf := make([]byte, maxLen)
+	n, err := s.Get(ctx, txh, cid, buf)
+	require.NoError(t, err)
+	return buf[:n]
+}
+
 func exists(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID) bool {
 	ctx := testutil.Context(t)
 	yes, err := s.Exists(ctx, txh, cid)
 	require.NoError(t, err)
 	return yes
+}
+
+func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, mutate bool, f func(tx *blobcache.Tx) ([]byte, error)) {
+	ctx := testutil.Context(t)
+	tx, err := blobcache.BeginTx(ctx, s, volh, mutate)
+	require.NoError(t, err)
+	data, err := f(tx)
+	require.NoError(t, err)
+	tx.Commit(ctx, data)
+	require.NoError(t, err)
 }

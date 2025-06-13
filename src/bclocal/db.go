@@ -47,64 +47,6 @@ func dropObject(tx *sqlx.Tx, oid blobcache.OID) error {
 	return nil
 }
 
-// createTx creates a new transaction object in the database.
-func createTx(tx *sqlx.Tx, volID blobcache.OID, mutate bool) (*blobcache.OID, error) {
-	// if mutate is true then we need to create a new store
-	// otherwise use the store from the volume
-	var storeID StoreID
-	if mutate {
-		var err error
-		storeID, err = createStore(tx)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		if err := tx.Get(&storeID, "SELECT store_id FROM volumes WHERE id = ?", volID); err != nil {
-			return nil, err
-		}
-	}
-	txid := blobcache.NewOID()
-	_, err := tx.Exec("INSERT INTO txns (id, volume_id, store_id, mutate, created_at) VALUES (?, ?, ?, ?, ?)", txid, volID, storeID, mutate, time.Now().Unix())
-	if err != nil {
-		return nil, err
-	}
-	return &txid, nil
-}
-
-// dropTx drops the transaction's store, and deletes the transaction.
-// no pending changes are applied.
-func dropTx(tx *sqlx.Tx, txid blobcache.OID) error {
-	// drop the tx store
-	var storeID StoreID
-	if err := tx.Get(&storeID, "SELECT store_id FROM txns WHERE id = ?", txid); err != nil {
-		return err
-	}
-	if err := dropStore(tx, storeID); err != nil {
-		return err
-	}
-	// Delete the transaction
-	_, err := tx.Exec("DELETE FROM txns WHERE id = ?", txid)
-	if err != nil {
-		return err
-	}
-	return dropObject(tx, txid)
-}
-
-type txRow struct {
-	ID      blobcache.OID `db:"id"`
-	VolID   blobcache.OID `db:"volume_id"`
-	StoreID int64         `db:"store_id"`
-	Mutate  bool          `db:"mutate"`
-}
-
-func getTx(tx *sqlx.Tx, txid blobcache.OID) (*txRow, error) {
-	var t txRow
-	if err := tx.Get(&t, "SELECT id, volume_id, store_id, mutate FROM txns WHERE id = ?", txid); err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
 // insertHandle inserts a handle into the database.
 func insertHandle(tx *sqlx.Tx, handle blobcache.Handle, expiresAt *time.Time) error {
 	var expiresAt2 sql.NullInt64

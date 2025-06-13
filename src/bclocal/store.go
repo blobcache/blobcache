@@ -99,8 +99,10 @@ func storesContainsBlob(tx *sqlx.Tx, storeIDs []StoreID, cid blobcache.CID) (boo
 func readBlob(tx *sqlx.Tx, storeIDs []StoreID, cid blobcache.CID, buf []byte) (int, error) {
 	var data []byte
 	query, args, err := sqlx.In(`
-		SELECT data FROM blobs WHERE cid = ? AND store_id IN (?)
-	`, cid, storeIDs)
+		SELECT data FROM blobs
+		JOIN store_blobs ON blobs.cid = store_blobs.cid
+		WHERE store_blobs.store_id IN (?) AND store_blobs.cid = ?
+	`, storeIDs, cid)
 	if err != nil {
 		return 0, err
 	}

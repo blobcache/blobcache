@@ -48,7 +48,11 @@ func (dek *DEK) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-func Post(ctx context.Context, s cadata.Poster, keyFunc KeyFunc, data []byte) (cadata.ID, *DEK, error) {
+type Poster interface {
+	Post(ctx context.Context, data []byte) (cadata.ID, error)
+}
+
+func Post(ctx context.Context, s Poster, keyFunc KeyFunc, data []byte) (cadata.ID, *DEK, error) {
 	id := Hash(data)
 	dek := keyFunc(id)
 	ctext := make([]byte, len(data))

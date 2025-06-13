@@ -2,7 +2,7 @@
 CREATE TABLE blobs (
     cid BLOB PRIMARY KEY,
     salt BLOB,
-    data BLOB,
+    data BLOB NOT NULL,
     rc INTEGER NOT NULL DEFAULT 0
 ), WITHOUT ROWID, STRICT;
 
@@ -31,7 +31,9 @@ CREATE TABLE handles (
 CREATE TABLE volumes (
     id BLOB REFERENCES objects(id) PRIMARY KEY,
     root BLOB NOT NULL,
-    spec BLOB NOT NULL,
+    max_size INTEGER NOT NULL,
+    hash_algo TEXT NOT NULL,
+    backend BLOB NOT NULL,
     -- store_id is NOT NULL for local volumes
     store_id INTEGER REFERENCES stores(id)
 ), WITHOUT ROWID, STRICT;

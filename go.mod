@@ -3,7 +3,7 @@ module blobcache.io/blobcache
 go 1.24
 
 require (
-	github.com/blobcache/blobcache v0.0.0-20250502210412-243dfb86125e
+	blobcache.io/glfs v0.0.0-20250323202827-2452859b076a
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/golang/protobuf v1.5.4
 	github.com/hashicorp/golang-lru v1.0.2
@@ -18,7 +18,7 @@ require (
 	golang.org/x/crypto v0.37.0
 	golang.org/x/sync v0.14.0
 	google.golang.org/protobuf v1.35.1
-	lukechampine.com/blake3 v1.1.5
+	lukechampine.com/blake3 v1.2.1
 	modernc.org/sqlite v1.38.0
 )
 
@@ -37,9 +37,10 @@ require (
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
-	github.com/klauspost/cpuid v1.3.1 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect

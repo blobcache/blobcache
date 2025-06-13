@@ -4,8 +4,7 @@ package bclocal
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"sync"
@@ -13,8 +12,8 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/volumes"
 	"github.com/jmoiron/sqlx"
-	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/sync/errgroup"
 	"lukechampine.com/blake3"
 )
@@ -78,46 +77,75 @@ func (s *Service) cleanupHandlesLoop(ctx context.Context) {
 
 type handle struct {
 	expiresAt time.Time // zero value means no expiration
+
+	// vol will be set if the handle is for a volume.
+	vol volumes.Volume[[]byte]
+	// txn will be set if the handle is for a transaction.
+	txn volumes.Tx[[]byte]
 }
 
 // createEphemeralHandle creates a handle that expires at the given time.
 // it will be stored in memory and not in the database.
-func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Time) blobcache.Handle {
+func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Time, vol volumes.Volume[[]byte], txn volumes.Tx[[]byte]) blobcache.Handle {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	secret := [16]byte{}
 	rand.Read(secret[:])
-	s.handles[handleKey(blobcache.Handle{OID: target, Secret: secret})] = handle{expiresAt: expiresAt}
-	return blobcache.Handle{OID: target, Secret: secret}
+	ret := blobcache.Handle{OID: target, Secret: secret}
+	s.handles[handleKey(ret)] = handle{
+		expiresAt: expiresAt,
+
+		vol: vol,
+		txn: txn,
+	}
+	return ret
 }
 
-func (s *Service) resolveVol(h blobcache.Handle) (blobcache.OID, error) {
+func (s *Service) resolveVol(ctx context.Context, h blobcache.Handle) (volumes.Volume[[]byte], error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	k := handleKey(h)
-	if _, exists := s.handles[k]; exists {
-		return h.OID, nil
+	if h, exists := s.handles[k]; exists {
+		return h.vol, nil
 	}
 	// if the handle is anchored, then it will be in the database.
-	var oid blobcache.OID
-	if err := s.db.Get(&oid, `SELECT id FROM volumes
-		JOIN handles ON volumes.id = handles.target
-		WHERE handles.id = ?
-	`, k); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return blobcache.OID{}, blobcache.ErrNotFound{Type: "volume", ID: h.OID}
-		}
-		return blobcache.OID{}, err
+	volRow, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*volumeRow, error) {
+		return getVolume(tx, h.OID)
+	})
+	if err != nil {
+		return nil, err
 	}
-	return oid, nil
+	var backend blobcache.VolumeBackend[blobcache.OID]
+	if err := json.Unmarshal(volRow.Backend, &backend); err != nil {
+		return nil, err
+	}
+	return s.makeVolume(volRow.ID, backend)
 }
 
-func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (blobcache.OID, error) {
-	// transactions are not stored in the database, so we only have to check the handles map.
-	if _, exists := s.handles[handleKey(txh)]; !exists {
-		return blobcache.OID{}, blobcache.ErrInvalidHandle{Handle: txh}
+// resolveTx looks up the transaction handle from memory.
+// If the handle is valid it will load a new transaction.
+func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (volumes.Tx[[]byte], error) {
+	if touch {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 	} else {
-		if touch {
-			s.handles[handleKey(txh)] = handle{expiresAt: time.Now().Add(DefaultTxTTL)}
-		}
-		return txh.OID, nil
+		s.mu.RLock()
+		defer s.mu.RUnlock()
 	}
+	// transactions are not stored in the database, so we only have to check the handles map.
+	h, exists := s.handles[handleKey(txh)]
+	if !exists {
+		return nil, blobcache.ErrInvalidHandle{Handle: txh}
+	}
+	if h.txn == nil {
+		return nil, fmt.Errorf("handle is valid, but not for a transaction")
+	}
+	if touch {
+		h := s.handles[handleKey(txh)]
+		h.expiresAt = time.Now().Add(DefaultTxTTL)
+		s.handles[handleKey(txh)] = h
+	}
+	return h.txn, nil
 }
 
 func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
@@ -135,20 +163,25 @@ func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) 
 	if err != nil {
 		return nil, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	handle := s.createEphemeralHandle(*volid, time.Now().Add(DefaultVolumeTTL))
+	vol, err := s.makeVolume(*volid, info.Backend)
+	if err != nil {
+		return nil, err
+	}
+	handle := s.createEphemeralHandle(*volid, time.Now().Add(DefaultVolumeTTL), vol, nil)
 	return &handle, nil
 }
 
 // Anchor causes a handle to persist indefinitely.
 func (s *Service) Anchor(ctx context.Context, h blobcache.Handle) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.handles, handleKey(h))
-	return dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
+	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
 		return insertHandle(tx, h, nil)
-	})
+	}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	delete(s.handles, handleKey(h))
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *Service) Drop(ctx context.Context, h blobcache.Handle) error {
@@ -171,63 +204,29 @@ func (s *Service) CreateRule(ctx context.Context, rspec blobcache.RuleSpec) (*bl
 }
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, mutate bool) (*blobcache.Handle, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	volID, err := s.resolveVol(volh)
+	vol, err := s.resolveVol(ctx, volh)
 	if err != nil {
 		return nil, err
 	}
-	// loop until there is no active tx on the volume.
-	var oid *blobcache.OID
-	tick := time.NewTicker(100 * time.Millisecond)
-	defer tick.Stop()
-	for oid == nil {
-		var err error
-		if oid, err = dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.OID, error) {
-			if mutate {
-				if yes, err := volumeHasActiveTx(tx, volID); err != nil {
-					return nil, err
-				} else if yes {
-					return nil, nil
-				}
-			}
-			return createTx(tx, volID, mutate)
-		}); err != nil {
-			return nil, err
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-tick.C:
-		}
+	txn, err := vol.BeginTx(ctx, mutate)
+	if err != nil {
+		return nil, err
 	}
-	h := s.createEphemeralHandle(*oid, time.Now().Add(DefaultTxTTL))
+
+	txid := blobcache.NewOID()
+	if ltxn, ok := txn.(*localVolumeTx); ok {
+		txid = ltxn.txid
+	}
+	h := s.createEphemeralHandle(txid, time.Now().Add(DefaultTxTTL), nil, txn)
 	return &h, nil
 }
 
 func (s *Service) Commit(ctx context.Context, txh blobcache.Handle, root []byte) error {
-	txid, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return err
 	}
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		var err error
-		txRow, err := getTx(tx, txid)
-		if err != nil {
-			return err
-		}
-		volRow, err := getVolume(tx, txRow.VolID)
-		if err != nil {
-			return err
-		}
-		if err := mergeStores(tx, volRow.StoreID, []StoreID{txRow.StoreID}); err != nil {
-			return err
-		}
-		if err := setVolumeRoot(tx, volRow.ID, root); err != nil {
-			return err
-		}
-		return dropTx(tx, txh.OID)
-	}); err != nil {
+	if err := txn.Commit(ctx, root); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -237,127 +236,57 @@ func (s *Service) Commit(ctx context.Context, txh blobcache.Handle, root []byte)
 }
 
 func (s *Service) Abort(ctx context.Context, txh blobcache.Handle) error {
-	txid, err := s.resolveTx(txh, false)
+	txn, err := s.resolveTx(txh, false)
 	if err != nil {
 		return err
 	}
-	return dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		return dropTx(tx, txid)
-	})
+	if err := txn.Abort(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.handles, handleKey(txh))
+	return nil
 }
 
 func (s *Service) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) error {
-	txid, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return err
 	}
-	return dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		txRow, err := getTx(tx, txid)
-		if err != nil {
-			return err
-		}
-		return getVolumeRoot(tx, txRow.VolID, dst)
-	})
+	return txn.Load(ctx, dst)
 }
 
 func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte) (blobcache.CID, error) {
-	txid, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	var cid blobcache.CID
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		// TODO: get hf from volume spec
-		hf := func(data []byte) blobcache.CID {
-			return blobcache.CID(blake3.Sum256(data))
-		}
-		cid = hf(data)
-		txRow, err := getTx(tx, txid)
-		if err != nil {
-			return err
-		}
-		if err := ensureBlob(tx, cid, nil, data); err != nil {
-			return err
-		}
-		if err := addBlob(tx, txRow.StoreID, cid); err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
-		return blobcache.CID{}, err
-	}
-	return cid, nil
+	return txn.Post(ctx, data)
 }
 
 func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cid blobcache.CID) (bool, error) {
-	txid, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true)
 	if err != nil {
-		return true, nil
-	}
-	var exists bool
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		txRow, err := getTx(tx, txid)
-		if err != nil {
-			return err
-		}
-		volRow, err := getVolume(tx, txRow.VolID)
-		if err != nil {
-			return err
-		}
-		exists, err = storesContainsBlob(tx, []StoreID{txRow.StoreID, volRow.StoreID}, cid)
-		if err != nil {
-			return err
-		}
-		// if the blob exists, then we need to add it to the tx store.
-		if exists {
-			if err := addBlob(tx, txRow.StoreID, cid); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
 		return false, err
 	}
-	return exists, nil
+	return txn.Exists(ctx, cid)
 }
 
 func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, buf []byte) (int, error) {
-	txid, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return 0, err
 	}
-	var n int
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		txRow, err := getTx(tx, txid)
-		if err != nil {
-			return err
-		}
-		volRow, err := getVolume(tx, txRow.VolID)
-		if err != nil {
-			return err
-		}
-		if n, err = readBlob(tx, []StoreID{txRow.StoreID, volRow.StoreID}, cid, buf); err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
-		return 0, err
-	}
-	return n, nil
+	return txn.Get(ctx, cid, buf)
 }
 
 func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cid blobcache.CID) error {
-	txid, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return err
 	}
-	return dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		txRow, err := getTx(tx, txid)
-		if err != nil {
-			return err
-		}
-		return deleteBlob(tx, txRow.StoreID, cid)
-	})
+	return txn.Delete(ctx, cid)
 }
 
 func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
@@ -372,17 +301,24 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return nil
 }
 
-func getHashFunc(hashFunc blobcache.HashAlgo) cadata.HashFunc {
-	switch hashFunc {
-	case blobcache.HashAlgo_BLAKE3_256:
-		return func(data []byte) blobcache.CID {
-			return blobcache.CID(blake3.Sum256(data))
-		}
-	default:
-		panic(fmt.Sprintf("unknown hash algo: %v", hashFunc))
-	}
-}
-
 func handleKey(h blobcache.Handle) [32]byte {
 	return blake3.Sum256(slices.Concat(h.OID[:], h.Secret[:]))
+}
+
+// makeVolume constructs an in-memory volume object from a backend.
+func (s *Service) makeVolume(oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume[[]byte], error) {
+	switch {
+	case backend.Local != nil:
+		return &localVolume{db: s.db, id: oid}, nil
+	case backend.Remote != nil:
+		fallthrough
+	case backend.Git != nil:
+		fallthrough
+
+	// higher order volumes
+	case backend.Vault != nil:
+		panic("not implemented")
+	default:
+		return nil, fmt.Errorf("empty backend")
+	}
 }

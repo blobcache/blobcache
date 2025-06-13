@@ -8,17 +8,22 @@ import (
 	"go.inet256.org/inet256/pkg/inet256"
 )
 
+// PeerID uniquely identifies a peer by hash of the public key.
 type PeerID inet256.ID
 
 type Addr struct {
-	Peer     PeerID         `json:"peer"`
-	AddrPort netip.AddrPort `json:"addrport"`
+	Peer   PeerID         `json:"peer"`
+	IPPort netip.AddrPort `json:"ip_port"`
 }
 
 // VolumeSpec is a specification for a volume.
 type VolumeSpec struct {
-	HashAlgo HashAlgo              `json:"hash_algo"`
-	Backend  VolumeBackend[Handle] `json:"backend"`
+	// HashAlgo is the hash algorithm to use for the volume.
+	HashAlgo HashAlgo `json:"hash_algo"`
+	// MaxSize is the maximum size of a blob
+	MaxSize int64 `json:"max_size"`
+	// Backend is the implementation to use for the volume.
+	Backend VolumeBackend[Handle] `json:"backend"`
 }
 
 func (v *VolumeSpec) Validate() (retErr error) {
@@ -35,6 +40,7 @@ func (v *VolumeSpec) Validate() (retErr error) {
 type VolumeInfo struct {
 	ID       OID                `json:"id"`
 	HashAlgo HashAlgo           `json:"hash_algo"`
+	MaxSize  int64              `json:"max_size"`
 	Backend  VolumeBackend[OID] `json:"backend"`
 }
 
@@ -98,4 +104,15 @@ type VolumeBackend_Vault[T handleOrOID] struct {
 
 type handleOrOID interface {
 	Handle | OID
+}
+
+// DefaultLocalSpec provides sensible defaults for a local volume.
+func DefaultLocalSpec() VolumeSpec {
+	return VolumeSpec{
+		HashAlgo: HashAlgo_BLAKE3_256,
+		MaxSize:  1 << 21,
+		Backend: VolumeBackend[Handle]{
+			Local: &VolumeBackend_Local{},
+		},
+	}
 }

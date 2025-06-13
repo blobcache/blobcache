@@ -4,6 +4,8 @@ package blobcache
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/sha3"
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +13,8 @@ import (
 	"strings"
 
 	"go.brendoncarroll.net/state/cadata"
+	"golang.org/x/crypto/blake2b"
+	"lukechampine.com/blake3"
 )
 
 // CID is a content identifier.
@@ -28,6 +32,29 @@ func (h HashAlgo) Validate() error {
 		return nil
 	}
 	return fmt.Errorf("unknown hash algo: %q", h)
+}
+
+func (h HashAlgo) HashFunc() HashFunc {
+	switch h {
+	case HashAlgo_SHA2_256:
+		return func(x []byte) CID {
+			return sha256.Sum256(x)
+		}
+	case HashAlgo_SHA3_256:
+		return func(x []byte) CID {
+			return sha3.Sum256(x)
+		}
+	case HashAlgo_BLAKE2b_256:
+		return func(x []byte) CID {
+			return blake2b.Sum256(x)
+		}
+	case HashAlgo_BLAKE3_256:
+		return func(x []byte) CID {
+			return blake3.Sum256(x)
+		}
+	default:
+		panic(h)
+	}
 }
 
 const (
@@ -100,15 +127,8 @@ type Service interface {
 	// Await waits for a set of conditions to be met.
 	Await(ctx context.Context, cond Conditions) error
 
-	// StartSync begins syncing from src to dst.
-	// Await can be called to wait for the 2 volumes to become equal.
-	StartSync(ctx context.Context, src Handle, dst Handle) error
-
-	// CreateRule creates a new rule.
-	CreateRule(ctx context.Context, rspec RuleSpec) (*Handle, error)
-
-	// BeginTx begins a new transaction.
-	BeginTx(ctx context.Context, base Handle, mutate bool) (*Handle, error)
+	// BeginTx begins a new transaction, on a Volume.
+	BeginTx(ctx context.Context, volh Handle, mutate bool) (*Handle, error)
 	// Commit commits a transaction.
 	Commit(ctx context.Context, tx Handle, root []byte) error
 	// Abort aborts a transaction.
