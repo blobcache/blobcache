@@ -5,12 +5,14 @@ import (
 	"io/fs"
 	"slices"
 	"strings"
+
+	"blobcache.io/blobcache/src/bclocal/internal/migrations"
 )
 
 //go:embed *.sql
 var migfs embed.FS
 
-func ListMigrations() []string {
+func ListMigrations() []migrations.Migration {
 	migs, err := loadMigrations()
 	if err != nil {
 		panic(err)
@@ -18,7 +20,7 @@ func ListMigrations() []string {
 	return migs
 }
 
-func loadMigrations() ([]string, error) {
+func loadMigrations() ([]migrations.Migration, error) {
 	ents, err := migfs.ReadDir(".")
 	if err != nil {
 		return nil, err
@@ -26,13 +28,17 @@ func loadMigrations() ([]string, error) {
 	slices.SortFunc(ents, func(a, b fs.DirEntry) int {
 		return strings.Compare(a.Name(), b.Name())
 	})
-	var ret []string
-	for _, ent := range ents {
+	var ret []migrations.Migration
+	for i, ent := range ents {
 		data, err := migfs.ReadFile(ent.Name())
 		if err != nil {
 			return nil, err
 		}
-		ret = append(ret, string(data))
+		ret = append(ret, migrations.Migration{
+			RowID:   int64(i + 1),
+			Name:    ent.Name(),
+			SQLText: string(data),
+		})
 	}
 	return ret, nil
 }

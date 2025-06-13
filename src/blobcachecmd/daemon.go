@@ -17,6 +17,9 @@ import (
 )
 
 var daemonCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "runs the blobcache daemon",
+	},
 	Flags: []star.IParam{stateDirParam, addrPortParam, serveAPIParam},
 	F: func(ctx star.Context) error {
 		stateDir := stateDirParam.Load(ctx)
@@ -38,7 +41,7 @@ var daemonCmd = star.Command{
 
 var daemonEphemeralCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "run a daemon without persistent state",
+		Short: "runs the blobcache daemon without persistent state",
 	},
 	Flags: []star.IParam{serveAPIParam},
 	F: func(ctx star.Context) error {

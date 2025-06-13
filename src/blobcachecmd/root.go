@@ -1,6 +1,11 @@
 package blobcachecmd
 
 import (
+	"path/filepath"
+
+	"blobcache.io/blobcache/src/bclocal"
+	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/dbutil"
 	"go.brendoncarroll.net/star"
 )
 
@@ -14,5 +19,33 @@ var rootCmd = star.NewDir(
 	}, map[star.Symbol]star.Command{
 		"daemon":           daemonCmd,
 		"daemon-ephemeral": daemonEphemeralCmd,
+		"mkvol":            mkVolCmd,
 	},
 )
+
+var mkVolCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "create a new volume",
+	},
+	Flags: []star.IParam{stateDirParam},
+	F: func(c star.Context) error {
+		db, err := dbutil.OpenDB(filepath.Join(stateDirParam.Load(c), "blobcache.db"))
+		if err != nil {
+			return err
+		}
+		if err := bclocal.SetupDB(c, db); err != nil {
+			return err
+		}
+		s := bclocal.New(bclocal.Env{DB: db})
+		volh, err := s.CreateVolume(c, blobcache.DefaultLocalSpec())
+		if err != nil {
+			return err
+		}
+		if err := s.Anchor(c, *volh); err != nil {
+			return err
+		}
+		c.Printf("Volume successfully created.\n\n")
+		c.Printf("HANDLE: %v\n", volh)
+		return nil
+	},
+}

@@ -3,22 +3,21 @@ package bclocal
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"blobcache.io/blobcache/src/bclocal/internal/dbmig"
+	"blobcache.io/blobcache/src/bclocal/internal/migrations"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/dbutil"
 	"github.com/jmoiron/sqlx"
 )
 
+// SetupDB idempotently applies all migrations to the database.
 func SetupDB(ctx context.Context, db *sqlx.DB) error {
 	migs := dbmig.ListMigrations()
-	for _, mig := range migs {
-		if _, err := db.ExecContext(ctx, mig); err != nil {
-			return fmt.Errorf("failed to apply migration %s: %w", mig, err)
-		}
-	}
-	return nil
+	return dbutil.DoTx(ctx, db, func(tx *sqlx.Tx) error {
+		return migrations.EnsureAll(tx, migs)
+	})
 }
 
 func createObject(tx *sqlx.Tx) (*blobcache.OID, error) {
