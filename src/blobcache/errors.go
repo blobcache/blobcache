@@ -53,3 +53,12 @@ type ErrCannotSalt struct{}
 func (e ErrCannotSalt) Error() string {
 	return "cannot salt"
 }
+
+type ErrNoEntry struct {
+	Namespace OID
+	Name      string
+}
+
+func (e ErrNoEntry) Error() string {
+	return fmt.Sprintf("no entry %q in namespace %v", e.Name, e.Namespace)
+}

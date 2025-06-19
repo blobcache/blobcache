@@ -4,19 +4,28 @@ import (
 	"bytes"
 	"context"
 
-	"go.brendoncarroll.net/state/cadata"
+	"blobcache.io/blobcache/src/blobcache"
 )
+
+type writeStore interface {
+	Post(ctx context.Context, data []byte) (blobcache.CID, error)
+	Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error)
+	Delete(ctx context.Context, cid blobcache.CID) error
+	Exists(ctx context.Context, cid blobcache.CID) (bool, error)
+	MaxSize() int
+	Hash(data []byte) blobcache.CID
+}
 
 type Builder struct {
 	op        *Operator
-	s         cadata.Store
+	s         writeStore
 	batchSize int
 
 	root *Root
 	ents []*Entry
 }
 
-func (o *Operator) NewBuilder(s cadata.Store, batchSize int) *Builder {
+func (o *Operator) NewBuilder(s writeStore, batchSize int) *Builder {
 	return &Builder{
 		op:        o,
 		s:         s,
@@ -42,7 +51,7 @@ func (b *Builder) flush(ctx context.Context) error {
 	var root *Root
 	var err error
 	if b.root == nil {
-		root, err = b.op.New(ctx, b.s, b.ents)
+		root, err = b.op.PostSlice(ctx, b.s, b.ents)
 	} else {
 		root, err = b.op.PutBatch(ctx, b.s, *b.root, b.ents)
 	}

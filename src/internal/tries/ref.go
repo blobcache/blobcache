@@ -40,13 +40,13 @@ func parseRef(x []byte) (*Ref, error) {
 
 func (o *Operator) post(ctx context.Context, s cadata.Poster, ptext []byte) (*Ref, error) {
 	l := len(ptext)
-	id, dek, err := bccrypto.Post(ctx, s, bccrypto.Convergent, ptext)
+	ref, err := o.crypto.Post(ctx, s, ptext)
 	if err != nil {
 		return nil, err
 	}
 	return &Ref{
-		ID:     id,
-		DEK:    dek,
+		ID:     ref.CID,
+		DEK:    &ref.DEK,
 		Length: uint32(l),
 	}, nil
 }
@@ -58,9 +58,12 @@ func (o *Operator) getF(ctx context.Context, s cadata.Getter, ref Ref, fn func([
 		return fn(v.([]byte))
 	}
 	// TODO: populate cache
-	l := ref.Length
-	return bccrypto.GetF(ctx, s, *ref.DEK, ref.ID, func(data []byte) error {
-		o.cache.ContainsOrAdd(key, append([]byte{}, data...))
-		return fn(data[:l])
-	})
+	buf := make([]byte, ref.Length)
+	ref2 := bccrypto.Ref{CID: ref.ID, DEK: *ref.DEK}
+	n, err := o.crypto.Get(ctx, s, ref2, buf)
+	if err != nil {
+		return err
+	}
+	o.cache.ContainsOrAdd(key, buf[:])
+	return fn(buf[:n])
 }

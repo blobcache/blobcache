@@ -16,7 +16,7 @@ func TestPutGet(t *testing.T) {
 	op := NewOperator()
 	const N = 1000
 
-	x, err := op.New(ctx, s, nil)
+	x, err := op.PostSlice(ctx, s, nil)
 	require.NoError(t, err)
 	// put
 	for i := 0; i < N; i++ {

@@ -4,28 +4,31 @@ import (
 	"bytes"
 	"context"
 
+	"blobcache.io/blobcache/src/internal/bccrypto"
 	lru "github.com/hashicorp/golang-lru"
 	"go.brendoncarroll.net/state/cadata"
 )
 
 type Operator struct {
-	cache *lru.Cache
+	cache  *lru.Cache
+	crypto *bccrypto.Worker
 }
 
 func NewOperator() *Operator {
 	cache, _ := lru.New(16)
 	return &Operator{
-		cache: cache,
+		cache:  cache,
+		crypto: bccrypto.NewWorker(nil),
 	}
 }
 
-// New returns a new instance containing ents
-func (o *Operator) New(ctx context.Context, s cadata.Store, ents []*Entry) (*Root, error) {
+// PostSlice returns a new instance containing ents
+func (o *Operator) PostSlice(ctx context.Context, s cadata.Poster, ents []*Entry) (*Root, error) {
 	return o.postNode(ctx, s, ents)
 }
 
 // Get retrieves a value at key if it exists, otherwise ErrNotExist is returned
-func (o *Operator) Get(ctx context.Context, s cadata.Store, root Root, key []byte) ([]byte, error) {
+func (o *Operator) Get(ctx context.Context, s cadata.Getter, root Root, key []byte) ([]byte, error) {
 	if !bytes.HasPrefix(key, root.Prefix) {
 		return nil, ErrNotExist
 	}
@@ -65,7 +68,7 @@ func (o *Operator) Put(ctx context.Context, s cadata.Store, root Root, key, valu
 
 // PutBatch performs a batch of put operations on ents atomically, returning a new instance
 // reflecting the changes.
-func (o *Operator) PutBatch(ctx context.Context, s cadata.Store, root Root, ents []*Entry) (*Root, error) {
+func (o *Operator) PutBatch(ctx context.Context, s writeStore, root Root, ents []*Entry) (*Root, error) {
 	if root.IsParent {
 		e, children, err := o.getParent(ctx, s, root, true)
 		if err != nil {

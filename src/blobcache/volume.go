@@ -9,11 +9,17 @@ import (
 )
 
 // PeerID uniquely identifies a peer by hash of the public key.
-type PeerID inet256.ID
+type PeerID = inet256.ID
 
-type Addr struct {
+// Endpoint is somewhere that a blobcache node can be found.
+// The Zero endpoint means the node is not available on the network.
+type Endpoint struct {
 	Peer   PeerID         `json:"peer"`
 	IPPort netip.AddrPort `json:"ip_port"`
+}
+
+func (e Endpoint) IsZero() bool {
+	return e.Peer.IsZero() && e.IPPort == netip.AddrPort{}
 }
 
 // VolumeSpec is a specification for a volume.
@@ -52,10 +58,11 @@ type VolumeInfo struct {
 // If it is going into the API, the it will be a VolumeBackend[Handle].
 // If it is coming out of the API, the it will be a VolumeBackend[OID].
 type VolumeBackend[T handleOrOID] struct {
-	Local  *VolumeBackend_Local    `json:"local,omitempty"`
-	Remote *VolumeBackend_Remote   `json:"remote,omitempty"`
-	Git    *VolumeBackend_Git      `json:"git,omitempty"`
-	Vault  *VolumeBackend_Vault[T] `json:"vault,omitempty"`
+	Local    *VolumeBackend_Local       `json:"local,omitempty"`
+	Remote   *VolumeBackend_Remote      `json:"remote,omitempty"`
+	Git      *VolumeBackend_Git         `json:"git,omitempty"`
+	RootAEAD *VolumeBackend_RootAEAD[T] `json:"root_aead,omitempty"`
+	Vault    *VolumeBackend_Vault[T]    `json:"vault,omitempty"`
 }
 
 func (v *VolumeBackend[T]) Validate() (err error) {
@@ -63,6 +70,20 @@ func (v *VolumeBackend[T]) Validate() (err error) {
 	if v.Local != nil {
 		count++
 	}
+	if v.Remote != nil {
+		count++
+	}
+	if v.Git != nil {
+		count++
+	}
+	if v.RootAEAD != nil {
+		err = errors.Join(err, v.RootAEAD.Validate())
+		count++
+	}
+	if v.Vault != nil {
+		count++
+	}
+
 	switch count {
 	case 0:
 		err = errors.Join(err, fmt.Errorf("no volume backend specified"))
@@ -93,12 +114,28 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 type VolumeBackend_Local struct{}
 
 type VolumeBackend_Remote struct {
-	Addr Addr `json:"addr"`
-	ID   OID  `json:"id"`
+	Endpoint Endpoint `json:"endpoint"`
+	ID       OID      `json:"id"`
 }
 
 type VolumeBackend_Git struct {
 	URL string `json:"url"`
+}
+
+// VolumeBackend_RootAEAD is a volume backend that uses a root AEAD to encrypt the volume's root.
+// The volume's blobs are not encrypted.  The inner volume will have the same blobs as this volume,
+// they will have different roots.
+type VolumeBackend_RootAEAD[T handleOrOID] struct {
+	Inner  T        `json:"inner"`
+	Algo   AEADAlgo `json:"algo"`
+	Secret [32]byte `json:"secret"`
+}
+
+func (v *VolumeBackend_RootAEAD[T]) Validate() error {
+	if err := v.Algo.Validate(); err != nil {
+		return err
+	}
+	return nil
 }
 
 type VolumeBackend_Vault[T handleOrOID] struct {
@@ -119,4 +156,19 @@ func DefaultLocalSpec() VolumeSpec {
 			Local: &VolumeBackend_Local{},
 		},
 	}
+}
+
+type AEADAlgo string
+
+const (
+	AEAD_CHACHA20POLY1305 AEADAlgo = "chacha20poly1305"
+)
+
+func (a AEADAlgo) Validate() error {
+	switch a {
+	case AEAD_CHACHA20POLY1305:
+	default:
+		return fmt.Errorf("unknown aead algo: %s", a)
+	}
+	return nil
 }

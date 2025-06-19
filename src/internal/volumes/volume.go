@@ -7,7 +7,9 @@ import (
 )
 
 type Volume[Root any] interface {
-	BeginTx(ctx context.Context, mutate bool) (Tx[Root], error)
+	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx[Root], error)
+	// Await blocks until the volume root changes away from prev to something else.
+	Await(ctx context.Context, prev []byte, next *[]byte) error
 }
 
 // Tx is a consistent view of a volume, during a transaction.

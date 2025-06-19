@@ -6,8 +6,8 @@ import (
 )
 
 // BeginTx begins a new transaction and returns the Tx type.
-func BeginTx(ctx context.Context, s Service, volH Handle, mutate bool) (*Tx, error) {
-	txh, err := s.BeginTx(ctx, volH, mutate)
+func BeginTx(ctx context.Context, s Service, volH Handle, txp TxParams) (*Tx, error) {
+	txh, err := s.BeginTx(ctx, volH, txp)
 	if err != nil {
 		return nil, err
 	}
@@ -94,8 +94,8 @@ func (tx *Tx) MaxSize() int {
 }
 
 // BeginTxSalt is the salted variant of BeginTx.
-func BeginTxSalt(ctx context.Context, s Service, volH Handle, mutate bool) (*TxSalt, error) {
-	txh, err := s.BeginTx(ctx, volH, mutate)
+func BeginTxSalt(ctx context.Context, s Service, volH Handle, txp TxParams) (*TxSalt, error) {
+	txh, err := s.BeginTx(ctx, volH, txp)
 	if err != nil {
 		return nil, err
 	}

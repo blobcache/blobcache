@@ -3,11 +3,13 @@ package bclocal
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +30,7 @@ var _ blobcache.Service = &Service{}
 
 type Env struct {
 	DB         *sqlx.DB
+	PrivateKey ed25519.PrivateKey
 	PacketConn net.PacketConn
 }
 
@@ -38,14 +41,14 @@ type Service struct {
 
 	mu sync.RWMutex
 	// handles stores ephemeral handles.
-	// Anchored handles are stored in the database.
 	handles map[[32]byte]handle
 }
 
 func New(env Env) *Service {
 	return &Service{
-		env:     env,
-		db:      env.DB,
+		env: env,
+		db:  env.DB,
+
 		handles: make(map[[32]byte]handle),
 	}
 }
@@ -103,25 +106,35 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 	return ret
 }
 
-func (s *Service) resolveVol(ctx context.Context, h blobcache.Handle) (volumes.Volume[[]byte], error) {
+func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (volumes.Volume[[]byte], error) {
+	if h.OID != (blobcache.OID{}) {
+		// TODO: for now root is the only valid namespace.
+		return nil, fmt.Errorf("volume is not a namespace")
+	}
+	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
+		return ensureRootVolume(tx)
+	}); err != nil {
+		return nil, err
+	}
+	vol, err := s.resolveVol(h)
+	if err != nil {
+		return nil, err
+	}
+	return vol, nil
+}
+
+func (s *Service) resolveVol(h blobcache.Handle) (volumes.Volume[[]byte], error) {
+	if h.OID == (blobcache.OID{}) {
+		// this is the root namespace, so we can just return the root volume.
+		return &localVolume{db: s.db, id: h.OID}, nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	k := handleKey(h)
 	if h, exists := s.handles[k]; exists {
 		return h.vol, nil
 	}
-	// if the handle is anchored, then it will be in the database.
-	volRow, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*volumeRow, error) {
-		return getVolume(tx, h.OID)
-	})
-	if err != nil {
-		return nil, err
-	}
-	var backend blobcache.VolumeBackend[blobcache.OID]
-	if err := json.Unmarshal(volRow.Backend, &backend); err != nil {
-		return nil, err
-	}
-	return s.makeVolume(volRow.ID, backend)
+	return nil, blobcache.ErrInvalidHandle{Handle: h}
 }
 
 // resolveTx looks up the transaction handle from memory.
@@ -150,9 +163,87 @@ func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (volumes.Tx[[]byte
 	return h.txn, nil
 }
 
+func (s *Service) Endpoint(_ context.Context) (blobcache.Endpoint, error) {
+	return blobcache.Endpoint{}, nil
+}
+
+func (s *Service) Drop(ctx context.Context, h blobcache.Handle) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.handles, handleKey(h))
+	return nil
+}
+
+func (s *Service) Open(ctx context.Context, base blobcache.Handle, name string) (*blobcache.Handle, error) {
+	vol, err := s.resolveNS(ctx, base)
+	if err != nil {
+		return nil, err
+	}
+	ents, err := nsLoad(ctx, vol)
+	if err != nil {
+		return nil, err
+	}
+	if idx, found := slices.BinarySearchFunc(ents, name, func(e blobcache.Entry, name string) int {
+		return strings.Compare(e.Name, name)
+	}); found {
+		handle := s.createEphemeralHandle(ents[idx].Target, time.Now().Add(DefaultVolumeTTL), vol, nil)
+		return &handle, nil
+	} else {
+		return nil, blobcache.ErrNoEntry{Namespace: base.OID, Name: name}
+	}
+}
+
+func (s *Service) PutEntry(ctx context.Context, ns blobcache.Handle, name string, target blobcache.Handle) error {
+	nsVol, err := s.resolveNS(ctx, ns)
+	if err != nil {
+		return err
+	}
+	return nsModify(ctx, nsVol, func(ents []blobcache.Entry) ([]blobcache.Entry, error) {
+		// remove the entry if it already exists
+		ents = slices.DeleteFunc(ents, func(e blobcache.Entry) bool {
+			return e.Name == name
+		})
+		// add the new entry
+		ents = append(ents, blobcache.Entry{Name: name, Target: target.OID})
+		return ents, nil
+	})
+}
+
+func (s *Service) DeleteEntry(ctx context.Context, ns blobcache.Handle, name string) error {
+	nsVol, err := s.resolveNS(ctx, ns)
+	if err != nil {
+		return err
+	}
+	return nsModify(ctx, nsVol, func(ents []blobcache.Entry) ([]blobcache.Entry, error) {
+		ents = slices.DeleteFunc(ents, func(e blobcache.Entry) bool {
+			return e.Name == name
+		})
+		return ents, nil
+	})
+}
+
+func (s *Service) ListNames(ctx context.Context, ns blobcache.Handle) ([]string, error) {
+	nsVol, err := s.resolveNS(ctx, ns)
+	if err != nil {
+		return nil, err
+	}
+	ents, err := nsLoad(ctx, nsVol)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([]string, 0, len(ents))
+	for _, e := range ents {
+		ret = append(ret, e.Name)
+	}
+	return ret, nil
+}
+
 func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	if err := vspec.Validate(); err != nil {
 		return nil, err
+	}
+	if vspec.Backend.Remote != nil {
+		return nil, fmt.Errorf("cannot create remote volumes, use Open")
 	}
 	if vspec.Salted {
 		return nil, fmt.Errorf("salted volumes are not yet supported")
@@ -178,7 +269,7 @@ func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) 
 }
 
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
-	vol, err := s.resolveVol(ctx, h)
+	vol, err := s.resolveVol(h)
 	if err != nil {
 		return nil, err
 	}
@@ -205,26 +296,6 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 	}
 }
 
-// Anchor causes a handle to persist indefinitely.
-func (s *Service) Anchor(ctx context.Context, h blobcache.Handle) error {
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		return insertHandle(tx, h, nil)
-	}); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	delete(s.handles, handleKey(h))
-	s.mu.Unlock()
-	return nil
-}
-
-func (s *Service) Drop(ctx context.Context, h blobcache.Handle) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.handles, handleKey(h))
-	return nil
-}
-
 func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
 	panic("not implemented")
 }
@@ -237,12 +308,12 @@ func (s *Service) CreateRule(ctx context.Context, rspec blobcache.RuleSpec) (*bl
 	panic("not implemented")
 }
 
-func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, mutate bool) (*blobcache.Handle, error) {
-	vol, err := s.resolveVol(ctx, volh)
+func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {
+	vol, err := s.resolveVol(volh)
 	if err != nil {
 		return nil, err
 	}
-	txn, err := vol.BeginTx(ctx, mutate)
+	txn, err := vol.BeginTx(ctx, txspec)
 	if err != nil {
 		return nil, err
 	}

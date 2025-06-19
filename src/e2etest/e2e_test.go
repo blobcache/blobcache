@@ -35,7 +35,7 @@ func TestGLFS(t *testing.T) {
 		return jsonMarshal(ref), nil
 	})
 
-	tx, err := blobcache.BeginTx(ctx, svc, *volh, false)
+	tx, err := blobcache.BeginTx(ctx, svc, *volh, blobcache.TxParams{})
 	require.NoError(t, err)
 	var root []byte
 	require.NoError(t, tx.Load(ctx, &root))

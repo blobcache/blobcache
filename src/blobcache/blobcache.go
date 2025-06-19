@@ -38,6 +38,13 @@ type HashFunc func(salt *CID, data []byte) CID
 // HashAlgo is a cryptographic hash algorithm.
 type HashAlgo string
 
+const (
+	HashAlgo_BLAKE3_256  HashAlgo = "blake3-256"
+	HashAlgo_BLAKE2b_256 HashAlgo = "blake2b-256"
+	HashAlgo_SHA2_256    HashAlgo = "sha2-256"
+	HashAlgo_SHA3_256    HashAlgo = "sha3-256"
+)
+
 func (h HashAlgo) Validate() error {
 	switch h {
 	case HashAlgo_BLAKE3_256, HashAlgo_BLAKE2b_256, HashAlgo_SHA2_256, HashAlgo_SHA3_256:
@@ -99,15 +106,13 @@ func (h HashAlgo) HashFunc() HashFunc {
 	}
 }
 
-const (
-	HashAlgo_BLAKE3_256  HashAlgo = "blake3-256"
-	HashAlgo_BLAKE2b_256 HashAlgo = "blake2b-256"
-	HashAlgo_SHA2_256    HashAlgo = "sha2-256"
-	HashAlgo_SHA3_256    HashAlgo = "sha3-256"
-)
-
 // OID is an object identifier.
 type OID [16]byte
+
+// RootHandle returns the root OID.
+func RootHandle() Handle {
+	return Handle{OID: OID{}}
+}
 
 func NewOID() (ret OID) {
 	rand.Read(ret[:])
@@ -151,28 +156,73 @@ func (o *OID) Scan(src interface{}) error {
 
 // Conditions is a set of conditions to await.
 type Conditions struct {
-	AllEqual []Handle `json:"all_equal,omitempty"`
+	AllEqual []Handle  `json:"all_equal,omitempty"`
+	NOTEqual *NOTEqual `json:"not,omitempty"`
+}
+
+type NOTEqual struct {
+	Volume Handle
+	Value  []byte
+}
+
+// TxParams are parameters for a transaction.
+// The zero value is a read-only transaction.
+type TxParams struct {
+	Mutate bool
+}
+
+// Entry is an entry in a namespace.
+type Entry struct {
+	Name   string
+	Target OID
+
+	Volume *VolumeInfo `json:"volume,omitempty"`
 }
 
 type Service interface {
-	// CreateVolume creates a new volume.
-	CreateVolume(ctx context.Context, vspec VolumeSpec) (*Handle, error)
-	// Anchor causes a handle to be kept alive indefinitely.
-	// This should only be called after a Volume has been successfully created
-	// and the handle has been saved.
-	Anchor(ctx context.Context, h Handle) error
-	// InspectVolume returns info about a Volume.
-	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
+	// Endpoint returns the endpoint of the service.
+	Endpoint(ctx context.Context) (Endpoint, error)
+
+	////
+	// Handle methods.
+	////
+
 	// Drop causes a handle to be released immediately.
 	// If all the handles to an object are dropped, the object is deleted.
 	Drop(ctx context.Context, h Handle) error
-	// KeepAlive keeps a handle alive.
+	// KeepAlive extends the TTL for some handles.
 	KeepAlive(ctx context.Context, hs []Handle) error
 	// Await waits for a set of conditions to be met.
 	Await(ctx context.Context, cond Conditions) error
 
+	////
+	// Namespace methods.
+	////
+
+	// Open returns a handle to a volume.
+	Open(ctx context.Context, ns Handle, name string) (*Handle, error)
+	// PutEntry adds an entry to a namespace
+	PutEntry(ctx context.Context, ns Handle, name string, target Handle) error
+	// DeleteEntry deletes an entry from a namespace
+	DeleteEntry(ctx context.Context, ns Handle, name string) error
+	// ListNames lists the names in a namespace.
+	ListNames(ctx context.Context, ns Handle) ([]string, error)
+
+	////
+	// Volume methods.
+	////
+
+	// CreateVolume creates a new volume.
+	CreateVolume(ctx context.Context, vspec VolumeSpec) (*Handle, error)
+	// InspectVolume returns info about a Volume.
+	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
 	// BeginTx begins a new transaction, on a Volume.
-	BeginTx(ctx context.Context, volh Handle, mutate bool) (*Handle, error)
+	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
+
+	////
+	// Transactions methods.
+	////
+
 	// Commit commits a transaction.
 	Commit(ctx context.Context, tx Handle, root []byte) error
 	// Abort aborts a transaction.

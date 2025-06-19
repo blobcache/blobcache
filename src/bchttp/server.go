@@ -22,6 +22,46 @@ type Server struct {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.URL.Path == "/Open":
+		handleRequest(w, r, func(ctx context.Context, req OpenReq) (*OpenResp, error) {
+			handle, err := s.Service.Open(ctx, blobcache.RootHandle(), req.Name)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenResp{Handle: *handle}, nil
+		})
+	case r.URL.Path == "/PutEntry":
+		handleRequest(w, r, func(ctx context.Context, req PutEntryReq) (*PutEntryResp, error) {
+			err := s.Service.PutEntry(ctx, req.Namespace, req.Name, req.Target)
+			if err != nil {
+				return nil, err
+			}
+			return &PutEntryResp{}, nil
+		})
+	case r.URL.Path == "/DeleteEntry":
+		handleRequest(w, r, func(ctx context.Context, req DeleteEntryReq) (*DeleteEntryResp, error) {
+			err := s.Service.DeleteEntry(ctx, req.Namespace, req.Name)
+			if err != nil {
+				return nil, err
+			}
+			return &DeleteEntryResp{}, nil
+		})
+	case r.URL.Path == "/ListNames":
+		handleRequest(w, r, func(ctx context.Context, req ListNamesReq) (*ListNamesResp, error) {
+			names, err := s.Service.ListNames(ctx, req.Target)
+			if err != nil {
+				return nil, err
+			}
+			return &ListNamesResp{Names: names}, nil
+		})
+	case r.URL.Path == "/Endpoint":
+		handleRequest(w, r, func(ctx context.Context, req EndpointReq) (*EndpointResp, error) {
+			ep, err := s.Service.Endpoint(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return &EndpointResp{Endpoint: ep}, nil
+		})
 	case r.URL.Path == "/Await":
 		handleRequest(w, r, func(ctx context.Context, req AwaitReq) (*AwaitResp, error) {
 			err := s.Service.Await(ctx, req.Conditions)
@@ -37,14 +77,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 			return &KeepAliveResp{}, nil
-		})
-	case r.URL.Path == "/Anchor":
-		handleRequest(w, r, func(ctx context.Context, req AnchorReq) (*AnchorResp, error) {
-			err := s.Service.Anchor(ctx, req.Target)
-			if err != nil {
-				return nil, err
-			}
-			return &AnchorResp{}, nil
 		})
 	case r.URL.Path == "/Drop":
 		handleRequest(w, r, func(ctx context.Context, req DropReq) (*DropResp, error) {
@@ -109,7 +141,7 @@ func (s *Server) handleVolume(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/tx/" {
 		handleRequest(w, r, func(ctx context.Context, req BeginTxReq) (*BeginTxResp, error) {
-			txh, err := s.Service.BeginTx(ctx, req.Volume, req.Mutate)
+			txh, err := s.Service.BeginTx(ctx, req.Volume, req.Params)
 			if err != nil {
 				return nil, err
 			}

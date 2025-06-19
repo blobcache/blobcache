@@ -3,6 +3,44 @@ package bchttp
 
 import "blobcache.io/blobcache/src/blobcache"
 
+type EndpointReq struct{}
+
+type EndpointResp struct {
+	Endpoint blobcache.Endpoint `json:"endpoint"`
+}
+
+type OpenReq struct {
+	Namespace blobcache.Handle `json:"namespace"`
+	Name      string           `json:"name"`
+}
+
+type OpenResp struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type PutEntryReq struct {
+	Namespace blobcache.Handle `json:"namespace"`
+	Name      string           `json:"name"`
+	Target    blobcache.Handle
+}
+
+type PutEntryResp struct{}
+
+type DeleteEntryReq struct {
+	Namespace blobcache.Handle `json:"namespace"`
+	Name      string           `json:"name"`
+}
+
+type DeleteEntryResp struct{}
+
+type ListNamesReq struct {
+	Target blobcache.Handle `json:"target"`
+}
+
+type ListNamesResp struct {
+	Names []string `json:"names"`
+}
+
 type CreateVolumeReq struct {
 	Spec blobcache.VolumeSpec `json:"spec"`
 }
@@ -18,8 +56,8 @@ type AwaitReq struct {
 type AwaitResp struct{}
 
 type BeginTxReq struct {
-	Volume blobcache.Handle `json:"volume"`
-	Mutate bool             `json:"mutate"`
+	Volume blobcache.Handle   `json:"volume"`
+	Params blobcache.TxParams `json:"params"`
 }
 
 type BeginTxResp struct {

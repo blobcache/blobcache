@@ -28,6 +28,7 @@ var mkVolCmd = star.Command{
 		Short: "create a new volume",
 	},
 	Flags: []star.IParam{stateDirParam},
+	Pos:   []star.IParam{nameParam},
 	F: func(c star.Context) error {
 		db, err := dbutil.OpenDB(filepath.Join(stateDirParam.Load(c), "blobcache.db"))
 		if err != nil {
@@ -41,11 +42,16 @@ var mkVolCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		if err := s.Anchor(c, *volh); err != nil {
+		if err := s.PutEntry(c, *volh, nameParam.Load(c), *volh); err != nil {
 			return err
 		}
 		c.Printf("Volume successfully created.\n\n")
 		c.Printf("HANDLE: %v\n", volh)
 		return nil
 	},
+}
+
+var nameParam = star.Param[string]{
+	Name:  "name",
+	Parse: star.ParseString,
 }

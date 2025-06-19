@@ -13,7 +13,7 @@ import (
 
 // getNode returns node at x.
 // all the entries will be in compressed form.
-func (o *Operator) getNode(ctx context.Context, s cadata.Store, x Root, expandKeys bool) ([]*Entry, error) {
+func (o *Operator) getNode(ctx context.Context, s cadata.Getter, x Root, expandKeys bool) ([]*Entry, error) {
 	n := &Node{}
 	if err := o.getF(ctx, s, x.Ref, func(data []byte) error {
 		return proto.Unmarshal(data, n)
@@ -35,7 +35,7 @@ func (o *Operator) getNode(ctx context.Context, s cadata.Store, x Root, expandKe
 	return ys, nil
 }
 
-func (o *Operator) getParent(ctx context.Context, s cadata.Store, x Root, expandKeys bool) (*Entry, *[256]Root, error) {
+func (o *Operator) getParent(ctx context.Context, s cadata.Getter, x Root, expandKeys bool) (*Entry, *[256]Root, error) {
 	ents, err := o.getNode(ctx, s, x, false)
 	if err != nil {
 		return nil, nil, err
@@ -63,7 +63,7 @@ func (o *Operator) getParent(ctx context.Context, s cadata.Store, x Root, expand
 }
 
 // postNode creates a new node with ents, ents will be split if necessary
-func (o *Operator) postNode(ctx context.Context, s cadata.Store, ents []*Entry) (*Root, error) {
+func (o *Operator) postNode(ctx context.Context, s cadata.Poster, ents []*Entry) (*Root, error) {
 	r, err := o.postLeaf(ctx, s, ents)
 	if !errors.Is(err, cadata.ErrTooLarge) {
 		return r, err
@@ -75,7 +75,7 @@ func (o *Operator) postNode(ctx context.Context, s cadata.Store, ents []*Entry) 
 	return o.postParent(ctx, s, roots, e)
 }
 
-func (o *Operator) postLeaf(ctx context.Context, s cadata.Store, ents []*Entry) (*Root, error) {
+func (o *Operator) postLeaf(ctx context.Context, s cadata.Poster, ents []*Entry) (*Root, error) {
 	sortEntries(ents)
 	ents = dedup(ents)
 	prefix, ents := compressEntries(ents)
@@ -98,7 +98,7 @@ func (o *Operator) postLeaf(ctx context.Context, s cadata.Store, ents []*Entry) 
 	}, nil
 }
 
-func (o *Operator) postParent(ctx context.Context, s cadata.Store, children []Root, ent *Entry) (*Root, error) {
+func (o *Operator) postParent(ctx context.Context, s cadata.Poster, children []Root, ent *Entry) (*Root, error) {
 	var count uint64
 	ents := make([]*Entry, 0, 257)
 	if ent != nil {
@@ -119,7 +119,7 @@ func (o *Operator) postParent(ctx context.Context, s cadata.Store, children []Ro
 	return r, nil
 }
 
-func (o *Operator) split(ctx context.Context, s cadata.Store, ents []*Entry) (*Entry, []Root, error) {
+func (o *Operator) split(ctx context.Context, s cadata.Poster, ents []*Entry) (*Entry, []Root, error) {
 	if len(ents) < 2 {
 		return nil, nil, ErrCannotSplit
 	}

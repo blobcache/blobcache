@@ -22,12 +22,6 @@ CREATE TABLE objects (
     created_at INTEGER NOT NULL
 ), WITHOUT ROWID, STRICT;
 
-CREATE TABLE handles (
-    k BLOB PRIMARY KEY,
-    target BLOB NOT NULL REFERENCES objects(id),
-    created_at INTEGER
-), WITHOUT ROWID, STRICT;
-
 CREATE TABLE volumes (
     id BLOB REFERENCES objects(id) PRIMARY KEY,
     root BLOB NOT NULL,
@@ -37,6 +31,14 @@ CREATE TABLE volumes (
     -- store_id is NOT NULL for local volumes
     store_id INTEGER REFERENCES stores(id)
 ), WITHOUT ROWID, STRICT;
+
+CREATE TABLE volumes_volumes (
+    from_id BLOB NOT NULL REFERENCES volumes(id),
+    to_id BLOB NOT NULL REFERENCES volumes(id),
+    PRIMARY KEY (from_id, to_id)
+), WITHOUT ROWID, STRICT;
+
+CREATE INDEX idx_volumes_volumes_reverse ON volumes_volumes (to_id);
 
 -- txns are used to make changes to a volume
 -- The txn volume_id will reference a local volume

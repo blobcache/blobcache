@@ -2,6 +2,7 @@
 package blobcachetests
 
 import (
+	"fmt"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -12,6 +13,12 @@ import (
 
 // ServiceAPI tests an implementation of blobcache.Service.
 func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
+	t.Run("Endpoint", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s := mk(t)
+		_, err := s.Endpoint(ctx)
+		require.NoError(t, err)
+	})
 	t.Run("CreateVolume", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s := mk(t)
@@ -26,7 +33,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		txh, err := s.BeginTx(ctx, *volh, false)
+		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: false})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		buf := []byte{1, 2, 3} // arbitrary data
@@ -34,19 +41,79 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.Equal(t, 0, len(buf))
 	})
-	t.Run("Anchor", func(t *testing.T) {
+	t.Run("Namespace", func(t *testing.T) {
+		NamespaceAPI(t, mk)
+	})
+	t.Run("Tx", func(t *testing.T) {
+		TxAPI(t, mk)
+	})
+}
+
+func NamespaceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
+	t.Run("PutEntryOpen", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s := mk(t)
 		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		err = s.Anchor(ctx, *volh)
+		err = s.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh)
 		require.NoError(t, err)
 		err = s.Drop(ctx, *volh)
 		require.NoError(t, err)
+
+		volh2, err := s.Open(ctx, blobcache.RootHandle(), "test-name")
+		require.NoError(t, err)
+		require.Equal(t, volh.OID, volh2.OID)
 	})
-	t.Run("Tx", func(t *testing.T) {
-		TxAPI(t, mk)
+	t.Run("ListEmpty", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s := mk(t)
+		names, err := s.ListNames(ctx, blobcache.RootHandle())
+		require.NoError(t, err)
+		require.Equal(t, []string{}, names)
+	})
+	t.Run("ListPutList", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s := mk(t)
+		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		require.NoError(t, err)
+		require.NotNil(t, volh)
+		for i := 0; i < 10; i++ {
+			err = s.PutEntry(ctx, blobcache.RootHandle(), fmt.Sprintf("test-name-%d", i), *volh)
+			require.NoError(t, err)
+		}
+		names, err := s.ListNames(ctx, blobcache.RootHandle())
+		require.NoError(t, err)
+		for i := 0; i < 10; i++ {
+			require.Contains(t, names, fmt.Sprintf("test-name-%d", i))
+		}
+	})
+	t.Run("PutDelete", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s := mk(t)
+		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		require.NoError(t, err)
+		require.NotNil(t, volh)
+		err = s.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh)
+		require.NoError(t, err)
+		names, err := s.ListNames(ctx, blobcache.RootHandle())
+		require.NoError(t, err)
+		require.Contains(t, names, "test-name")
+		err = s.DeleteEntry(ctx, blobcache.RootHandle(), "test-name")
+		require.NoError(t, err)
+		names, err = s.ListNames(ctx, blobcache.RootHandle())
+		require.NoError(t, err)
+		require.Equal(t, []string{}, names)
+	})
+	t.Run("DeleteNonExistent", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s := mk(t)
+		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		require.NoError(t, err)
+		require.NotNil(t, volh)
+		// Delets are idempotent, should not get an error.
+		err = s.DeleteEntry(ctx, blobcache.RootHandle(), "test-name")
+		require.NoError(t, err)
 	})
 }
 
@@ -57,7 +124,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		txh, err := s.BeginTx(ctx, *volh, false)
+		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: false})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		err = s.Abort(ctx, *txh)
@@ -69,7 +136,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		txh, err := s.BeginTx(ctx, *volh, true)
+		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: true})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		err = s.Commit(ctx, *txh, []byte{1, 2, 3})
@@ -82,7 +149,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		txh, err := s.BeginTx(ctx, *volh, true)
+		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: true})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 
@@ -117,7 +184,7 @@ func createVolume(t testing.TB, s blobcache.Service) blobcache.Handle {
 
 func beginTx(t testing.TB, s blobcache.Service, volh blobcache.Handle) blobcache.Handle {
 	ctx := testutil.Context(t)
-	txh, err := s.BeginTx(ctx, volh, true)
+	txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: true})
 	require.NoError(t, err)
 	require.NotNil(t, txh)
 	return *txh
@@ -147,7 +214,7 @@ func exists(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcac
 
 func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, mutate bool, f func(tx *blobcache.Tx) ([]byte, error)) {
 	ctx := testutil.Context(t)
-	tx, err := blobcache.BeginTx(ctx, s, volh, mutate)
+	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{Mutate: mutate})
 	require.NoError(t, err)
 	data, err := f(tx)
 	require.NoError(t, err)

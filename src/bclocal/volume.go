@@ -2,6 +2,7 @@ package bclocal
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"time"
 
@@ -25,12 +26,53 @@ func createVolume(tx *sqlx.Tx, info blobcache.VolumeInfo) (*blobcache.OID, error
 	if err != nil {
 		return nil, err
 	}
-	_, err = tx.Exec(`INSERT INTO volumes (id, root, backend, hash_algo, max_size, store_id)
-	    VALUES (?, ?, ?, ?, ?, ?)`, oid, []byte{}, backendJSON, info.HashAlgo, info.MaxSize, storeID)
-	if err != nil {
+	row := volumeRow{
+		ID:       *oid,
+		Root:     []byte{},
+		StoreID:  storeID,
+		HashAlgo: string(info.HashAlgo),
+		MaxSize:  info.MaxSize,
+		Backend:  backendJSON,
+	}
+	if err := insertVolume(tx, row); err != nil {
 		return nil, err
 	}
 	return oid, nil
+}
+
+// ensureRootVolume creates the root volume if it does not exist.
+func ensureRootVolume(tx *sqlx.Tx) error {
+	rootOID := blobcache.OID{}
+	if _, err := getVolume(tx, rootOID); err == nil {
+		return nil
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+	if err := insertObject(tx, rootOID, time.Now()); err != nil {
+		return err
+	}
+	storeID, err := createStore(tx)
+	if err != nil {
+		return err
+	}
+	row := volumeRow{
+		ID:       rootOID,
+		Root:     []byte{},
+		StoreID:  storeID,
+		HashAlgo: string(blobcache.HashAlgo_BLAKE3_256),
+		MaxSize:  1 << 22,
+		Backend:  []byte("local"),
+	}
+	return insertVolume(tx, row)
+}
+
+func insertVolume(tx *sqlx.Tx, row volumeRow) error {
+	_, err := tx.Exec(`INSERT INTO volumes (id, root, backend, hash_algo, max_size, store_id)
+	    VALUES (?, ?, ?, ?, ?, ?)`, row.ID, row.Root, row.Backend, row.HashAlgo, row.MaxSize, row.StoreID)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type volumeRow struct {
@@ -60,6 +102,9 @@ func getVolumeRoot(tx *sqlx.Tx, volID blobcache.OID, dst *[]byte) error {
 
 // setVolumeRoot sets the root of a local volume.
 func setVolumeRoot(tx *sqlx.Tx, volID blobcache.OID, root []byte) error {
+	if root == nil {
+		root = []byte{}
+	}
 	_, err := tx.Exec("UPDATE volumes SET root = ? WHERE id = ?", root, volID)
 	return err
 }
@@ -80,7 +125,11 @@ type localVolume struct {
 	id blobcache.OID
 }
 
-func (v *localVolume) BeginTx(ctx context.Context, mutate bool) (volumes.Tx[[]byte], error) {
+func (v *localVolume) Await(ctx context.Context, prev []byte, next *[]byte) error {
+	panic("not implemented")
+}
+
+func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx[[]byte], error) {
 	// loop until there is no active tx on the volume.
 	var oid *blobcache.OID
 	tick := time.NewTicker(100 * time.Millisecond)
@@ -88,14 +137,14 @@ func (v *localVolume) BeginTx(ctx context.Context, mutate bool) (volumes.Tx[[]by
 	for {
 		var err error
 		if oid, err = dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (*blobcache.OID, error) {
-			if mutate {
+			if spec.Mutate {
 				if yes, err := volumeHasActiveTx(tx, v.id); err != nil {
 					return nil, err
 				} else if yes {
 					return nil, nil
 				}
 			}
-			return createTx(tx, v.id, mutate)
+			return createTx(tx, v.id, spec.Mutate)
 		}); err != nil {
 			return nil, err
 		}

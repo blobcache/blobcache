@@ -26,6 +26,51 @@ func NewClient(hc *http.Client, ep string) *Client {
 	return &Client{hc: hc, ep: ep}
 }
 
+func (c *Client) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
+	var req EndpointReq
+	var resp EndpointResp
+	if err := c.doJSON(ctx, "POST", "/Endpoint", nil, req, &resp); err != nil {
+		return blobcache.Endpoint{}, err
+	}
+	return resp.Endpoint, nil
+}
+
+func (c *Client) Open(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Handle, error) {
+	req := OpenReq{Namespace: ns, Name: name}
+	var resp OpenResp
+	if err := c.doJSON(ctx, "POST", "/Open", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
+func (c *Client) PutEntry(ctx context.Context, ns blobcache.Handle, name string, target blobcache.Handle) error {
+	req := PutEntryReq{Namespace: ns, Name: name, Target: target}
+	var resp PutEntryResp
+	if err := c.doJSON(ctx, "POST", "/PutEntry", nil, req, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Client) DeleteEntry(ctx context.Context, ns blobcache.Handle, name string) error {
+	req := DeleteEntryReq{Namespace: ns, Name: name}
+	var resp DeleteEntryResp
+	if err := c.doJSON(ctx, "POST", "/DeleteEntry", nil, req, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Client) ListNames(ctx context.Context, ns blobcache.Handle) ([]string, error) {
+	req := ListNamesReq{Target: ns}
+	var resp ListNamesResp
+	if err := c.doJSON(ctx, "POST", "/ListNames", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Names, nil
+}
+
 func (c *Client) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	req := CreateVolumeReq{Spec: vspec}
 	var resp CreateVolumeResp
@@ -51,12 +96,6 @@ func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobca
 	return &info, nil
 }
 
-func (c *Client) Anchor(ctx context.Context, h blobcache.Handle) error {
-	req := AnchorReq{Target: h}
-	var resp AnchorResp
-	return c.doJSON(ctx, "POST", "/Anchor", &h.Secret, req, &resp)
-}
-
 func (c *Client) Drop(ctx context.Context, h blobcache.Handle) error {
 	req := DropReq{Target: h}
 	var resp DropResp
@@ -75,8 +114,8 @@ func (c *Client) Await(ctx context.Context, cond blobcache.Conditions) error {
 	return c.doJSON(ctx, "POST", "/Await", nil, req, &resp)
 }
 
-func (c *Client) BeginTx(ctx context.Context, vol blobcache.Handle, mutate bool) (*blobcache.Handle, error) {
-	req := BeginTxReq{Volume: vol, Mutate: mutate}
+func (c *Client) BeginTx(ctx context.Context, vol blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
+	req := BeginTxReq{Volume: vol, Params: txp}
 	var resp BeginTxResp
 	if err := c.doJSON(ctx, "POST", "/tx/", &vol.Secret, req, &resp); err != nil {
 		return nil, err
