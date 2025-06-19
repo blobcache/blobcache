@@ -3,18 +3,44 @@ package bcnet
 import "blobcache.io/blobcache/src/blobcache"
 
 type OpenReq struct {
-	Target blobcache.OID `json:"target"`
+	Namespace blobcache.Handle `json:"namespace"`
+	Name      string           `json:"name"`
 }
 
 type OpenResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
-type AnchorReq struct {
+type PutEntryReq struct {
+	Namespace blobcache.Handle `json:"namespace"`
+	Name      string           `json:"name"`
+	Target    blobcache.Handle
+}
+
+type PutEntryResp struct{}
+
+type DeleteEntryReq struct {
+	Namespace blobcache.Handle `json:"namespace"`
+	Name      string           `json:"name"`
+}
+
+type DeleteEntryResp struct{}
+
+type ListNamesReq struct {
+	Target blobcache.Handle `json:"target"`
+}
+
+type ListNamesResp struct {
+	Names []string `json:"names"`
+}
+
+type InspectHandleReq struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
-type AnchorResp struct{}
+type InspectHandleResp struct {
+	Info blobcache.HandleInfo `json:"info"`
+}
 
 type DropReq struct {
 	Handle blobcache.Handle `json:"handle"`

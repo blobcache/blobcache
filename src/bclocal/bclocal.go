@@ -17,6 +17,7 @@ import (
 	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"github.com/jmoiron/sqlx"
+	"go.brendoncarroll.net/tai64"
 	"golang.org/x/sync/errgroup"
 	"lukechampine.com/blake3"
 )
@@ -172,6 +173,20 @@ func (s *Service) Drop(ctx context.Context, h blobcache.Handle) error {
 	defer s.mu.Unlock()
 	delete(s.handles, handleKey(h))
 	return nil
+}
+
+func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	hstate, exists := s.handles[handleKey(h)]
+	if !exists {
+		return nil, blobcache.ErrInvalidHandle{Handle: h}
+	}
+	return &blobcache.HandleInfo{
+		OID:       h.OID,
+		CreatedAt: tai64.Now(), // TODO: store creation time.
+		ExpiresAt: tai64.FromGoTime(hstate.expiresAt),
+	}, nil
 }
 
 func (s *Service) Open(ctx context.Context, base blobcache.Handle, name string) (*blobcache.Handle, error) {

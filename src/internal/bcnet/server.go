@@ -25,7 +25,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	switch req.Header().Code() {
 	case MT_OPEN:
 		handleJSON(req, resp, func(req *OpenReq) (*OpenResp, error) {
-			h, err := svc.Open(ctx, req.Target)
+			h, err := svc.Open(ctx, req.Namespace, req.Name)
 			if err != nil {
 				return nil, err
 			}

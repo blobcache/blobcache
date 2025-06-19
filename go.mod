@@ -16,6 +16,7 @@ require (
 	go.brendoncarroll.net/star v0.0.0-20250117202537-11ada0ca27bd
 	go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901
 	go.brendoncarroll.net/stdctx v0.0.0-20241118190518-40d09f4d11e7
+	go.brendoncarroll.net/tai64 v0.0.0-20241118171318-6e12d283d5e4
 	go.inet256.org/inet256 v0.0.8-0.20250106023139-eb36ad7a3f3f
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.38.0

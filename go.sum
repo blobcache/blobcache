@@ -127,6 +127,8 @@ go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901 h1:EEzKLl/9qvDlm2
 go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901/go.mod h1:mLgp/r9TXnMuaQqr9tzS7iS5H6Z97EuQH/Z7hfWeCtM=
 go.brendoncarroll.net/stdctx v0.0.0-20241118190518-40d09f4d11e7 h1:Fj7e7nplSTGghtILY5QdTAh8chXwkKjjiLJvmbcgddY=
 go.brendoncarroll.net/stdctx v0.0.0-20241118190518-40d09f4d11e7/go.mod h1:YbaFU91phL0COvkZiVxb7ecv2xAYTZ5DNjZhMPsWvTo=
+go.brendoncarroll.net/tai64 v0.0.0-20241118171318-6e12d283d5e4 h1:Ydymf5QEZYCWlJlEmD3YkgKeTK+IYup6dHZd4RThHHw=
+go.brendoncarroll.net/tai64 v0.0.0-20241118171318-6e12d283d5e4/go.mod h1:6UyXOp+n048sH0HBRv4eUfJK/2c03FktUFCXK0VvEfU=
 go.inet256.org/inet256 v0.0.8-0.20250106023139-eb36ad7a3f3f h1:3ZB3NOdZcqwmnIew4/dR6UN09uNZ3advcnDcnXqrWXw=
 go.inet256.org/inet256 v0.0.8-0.20250106023139-eb36ad7a3f3f/go.mod h1:s3uFkr1m74QPaiAGkr/+S7k6hw+HJMh0PhbcK/VpPYA=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=

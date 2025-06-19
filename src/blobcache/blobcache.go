@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/tai64"
 	"golang.org/x/crypto/blake2b"
 	"lukechampine.com/blake3"
 )
@@ -192,6 +193,7 @@ type Service interface {
 	Drop(ctx context.Context, h Handle) error
 	// KeepAlive extends the TTL for some handles.
 	KeepAlive(ctx context.Context, hs []Handle) error
+	InspectHandle(ctx context.Context, h Handle) (*HandleInfo, error)
 	// Await waits for a set of conditions to be met.
 	Await(ctx context.Context, cond Conditions) error
 
@@ -280,6 +282,14 @@ func (h *Handle) UnmarshalJSON(data []byte) error {
 
 func (h Handle) String() string {
 	return h.OID.String() + "." + hex.EncodeToString(h.Secret[:])
+}
+
+// HandleInfo is information about a handle, *NOT* the object it points to.
+type HandleInfo struct {
+	OID OID `json:"oid"`
+
+	CreatedAt tai64.TAI64N `json:"created_at"`
+	ExpiresAt tai64.TAI64N `json:"expires_at"`
 }
 
 type RuleSpec struct {
