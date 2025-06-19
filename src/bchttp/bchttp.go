@@ -20,6 +20,8 @@ type (
 type (
 	OpenReq         = bcnet.OpenReq
 	OpenResp        = bcnet.OpenResp
+	GetEntryReq     = bcnet.GetEntryReq
+	GetEntryResp    = bcnet.GetEntryResp
 	PutEntryReq     = bcnet.PutEntryReq
 	PutEntryResp    = bcnet.PutEntryResp
 	DeleteEntryReq  = bcnet.DeleteEntryReq

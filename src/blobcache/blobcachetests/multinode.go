@@ -13,11 +13,13 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		ctx := testutil.Context(t)
 		svcs := mk(t, 2)
 		s1, s2 := svcs[0], svcs[1]
+		// create a volume on the first node
 		_, err := s1.CreateVolume(ctx, defaultVolumeSpec())
 		require.NoError(t, err)
 		s1Ep, err := s1.Endpoint(ctx)
 		require.NoError(t, err)
 
+		// createing a remote volume from the second node should turn into a call to Open on the first node
 		volh, err := s2.CreateVolume(ctx, remoteVolumeSpec(s1Ep))
 		require.NoError(t, err)
 

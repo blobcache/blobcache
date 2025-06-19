@@ -11,6 +11,15 @@ type OpenResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
+type GetEntryReq struct {
+	Namespace blobcache.Handle `json:"namespace"`
+	Name      string           `json:"name"`
+}
+
+type GetEntryResp struct {
+	Entry blobcache.Entry `json:"entry"`
+}
+
 type PutEntryReq struct {
 	Namespace blobcache.Handle `json:"namespace"`
 	Name      string           `json:"name"`

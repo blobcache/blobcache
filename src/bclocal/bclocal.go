@@ -3,6 +3,7 @@ package bclocal
 
 import (
 	"context"
+	"crypto/cipher"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -14,10 +15,12 @@ import (
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"github.com/jmoiron/sqlx"
 	"go.brendoncarroll.net/tai64"
+	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/sync/errgroup"
 	"lukechampine.com/blake3"
 )
@@ -33,12 +36,14 @@ type Env struct {
 	DB         *sqlx.DB
 	PrivateKey ed25519.PrivateKey
 	PacketConn net.PacketConn
+	ACL        ACL
 }
 
 // Service implements a blobcache.Service.
 type Service struct {
-	env Env
-	db  *sqlx.DB
+	env  Env
+	db   *sqlx.DB
+	node *bcnet.Node
 
 	mu sync.RWMutex
 	// handles stores ephemeral handles.
@@ -46,9 +51,14 @@ type Service struct {
 }
 
 func New(env Env) *Service {
+	var node *bcnet.Node
+	if env.PacketConn != nil {
+		node = bcnet.New(env.PrivateKey, env.PacketConn)
+	}
 	return &Service{
-		env: env,
-		db:  env.DB,
+		env:  env,
+		db:   env.DB,
+		node: node,
 
 		handles: make(map[[32]byte]handle),
 	}
@@ -82,7 +92,10 @@ func (s *Service) cleanupHandlesLoop(ctx context.Context) {
 }
 
 type handle struct {
+	target    blobcache.OID
+	createdAt time.Time
 	expiresAt time.Time // zero value means no expiration
+	rights    blobcache.Rights
 
 	// vol will be set if the handle is for a volume.
 	vol volumes.Volume[[]byte]
@@ -99,6 +112,7 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 	rand.Read(secret[:])
 	ret := blobcache.Handle{OID: target, Secret: secret}
 	s.handles[handleKey(ret)] = handle{
+		createdAt: time.Now(),
 		expiresAt: expiresAt,
 
 		vol: vol,
@@ -107,6 +121,16 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 	return ret
 }
 
+func (s *Service) resolveHandle(x blobcache.Handle) (handle, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	k := handleKey(x)
+	if hs, exists := s.handles[k]; exists {
+		return hs, nil
+	} else {
+		return handle{}, blobcache.ErrInvalidHandle{Handle: x}
+	}
+}
 func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (volumes.Volume[[]byte], error) {
 	if h.OID != (blobcache.OID{}) {
 		// TODO: for now root is the only valid namespace.
@@ -165,6 +189,9 @@ func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (volumes.Tx[[]byte
 }
 
 func (s *Service) Endpoint(_ context.Context) (blobcache.Endpoint, error) {
+	if s.node != nil {
+		return s.node.LocalEndpoint(), nil
+	}
 	return blobcache.Endpoint{}, nil
 }
 
@@ -201,15 +228,43 @@ func (s *Service) Open(ctx context.Context, base blobcache.Handle, name string) 
 	if idx, found := slices.BinarySearchFunc(ents, name, func(e blobcache.Entry, name string) int {
 		return strings.Compare(e.Name, name)
 	}); found {
-		handle := s.createEphemeralHandle(ents[idx].Target, time.Now().Add(DefaultVolumeTTL), vol, nil)
+		ent := ents[idx]
+		if ent.Volume == nil {
+			return nil, fmt.Errorf("cannot open non-volume at %s", name)
+		}
+		vol, err := s.makeVolume(ctx, ent.Target, ent.Volume.Backend)
+		if err != nil {
+			return nil, err
+		}
+		handle := s.createEphemeralHandle(ent.Target, time.Now().Add(DefaultVolumeTTL), vol, nil)
 		return &handle, nil
 	} else {
 		return nil, blobcache.ErrNoEntry{Namespace: base.OID, Name: name}
 	}
 }
 
+func (s *Service) GetEntry(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Entry, error) {
+	nsVol, err := s.resolveNS(ctx, ns)
+	if err != nil {
+		return nil, err
+	}
+	ents, err := nsLoad(ctx, nsVol)
+	if err != nil {
+		return nil, err
+	}
+	if e := findEntry(ents, name); e != nil {
+		return e, nil
+	} else {
+		return nil, blobcache.ErrNoEntry{Namespace: ns.OID, Name: name}
+	}
+}
+
 func (s *Service) PutEntry(ctx context.Context, ns blobcache.Handle, name string, target blobcache.Handle) error {
 	nsVol, err := s.resolveNS(ctx, ns)
+	if err != nil {
+		return err
+	}
+	volInfo, err := s.InspectVolume(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -219,7 +274,11 @@ func (s *Service) PutEntry(ctx context.Context, ns blobcache.Handle, name string
 			return e.Name == name
 		})
 		// add the new entry
-		ents = append(ents, blobcache.Entry{Name: name, Target: target.OID})
+		ents = append(ents, blobcache.Entry{
+			Name:   name,
+			Target: target.OID,
+			Volume: volInfo,
+		})
 		return ents, nil
 	})
 }
@@ -275,7 +334,7 @@ func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) 
 	if err != nil {
 		return nil, err
 	}
-	vol, err := s.makeVolume(*volid, info.Backend)
+	vol, err := s.makeVolume(ctx, *volid, info.Backend)
 	if err != nil {
 		return nil, err
 	}
@@ -426,18 +485,39 @@ func handleKey(h blobcache.Handle) [32]byte {
 }
 
 // makeVolume constructs an in-memory volume object from a backend.
-func (s *Service) makeVolume(oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume[[]byte], error) {
+func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume[[]byte], error) {
+	if err := backend.Validate(); err != nil {
+		return nil, err
+	}
 	switch {
 	case backend.Local != nil:
 		return &localVolume{db: s.db, id: oid}, nil
 	case backend.Remote != nil:
-		fallthrough
+		return bcnet.OpenVolume(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Name)
 	case backend.Git != nil:
-		fallthrough
+		return nil, fmt.Errorf("git volumes are not yet supported")
 
 	// higher order volumes
+	case backend.RootAEAD != nil:
+		var inner volumes.Volume[[]byte] // TODO: need to look for volumes by OID.
+
+		var cipher cipher.AEAD
+		switch backend.RootAEAD.Algo {
+		case blobcache.AEAD_CHACHA20POLY1305:
+			var err error
+			cipher, err = chacha20poly1305.New(backend.RootAEAD.Secret[:])
+			if err != nil {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("unknown AEAD algorithm: %s", backend.RootAEAD.Algo)
+		}
+		return &volumes.RootAEAD{
+			AEAD:  cipher,
+			Inner: inner,
+		}, nil
 	case backend.Vault != nil:
-		panic("not implemented")
+		return nil, fmt.Errorf("Vault volumes are not yet supported")
 	default:
 		return nil, fmt.Errorf("empty backend")
 	}

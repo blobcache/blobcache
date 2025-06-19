@@ -63,7 +63,7 @@ func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 }
 
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx[[]byte], error) {
-	resp, err := doJSON[BeginTxReq, BeginTxResp](ctx, v.n, v.ep, MT_BEGIN_TX, BeginTxReq{
+	resp, err := doJSON[BeginTxReq, BeginTxResp](ctx, v.n, v.ep, MT_VOLUME_BEGIN_TX, BeginTxReq{
 		Volume:   v.handleMapper.Downwards(v.h),
 		TxParams: spec,
 	})
@@ -167,4 +167,15 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, name string) (volumes.Volume[[]byte], error) {
+	resp, err := doJSON[OpenReq, OpenResp](ctx, n, ep, MT_NAMESPACE_OPEN, OpenReq{
+		Namespace: blobcache.RootHandle(),
+		Name:      name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return NewVolume(n, ep, resp.Handle, HandleMapping{}), nil
 }

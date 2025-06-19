@@ -8,12 +8,10 @@ import (
 	"crypto/sha3"
 	"database/sql/driver"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"go.brendoncarroll.net/state/cadata"
-	"go.brendoncarroll.net/tai64"
 	"golang.org/x/crypto/blake2b"
 	"lukechampine.com/blake3"
 )
@@ -172,14 +170,6 @@ type TxParams struct {
 	Mutate bool
 }
 
-// Entry is an entry in a namespace.
-type Entry struct {
-	Name   string
-	Target OID
-
-	Volume *VolumeInfo `json:"volume,omitempty"`
-}
-
 type Service interface {
 	// Endpoint returns the endpoint of the service.
 	Endpoint(ctx context.Context) (Endpoint, error)
@@ -193,9 +183,8 @@ type Service interface {
 	Drop(ctx context.Context, h Handle) error
 	// KeepAlive extends the TTL for some handles.
 	KeepAlive(ctx context.Context, hs []Handle) error
+	// InspectHandle returns info about a handle.
 	InspectHandle(ctx context.Context, h Handle) (*HandleInfo, error)
-	// Await waits for a set of conditions to be met.
-	Await(ctx context.Context, cond Conditions) error
 
 	////
 	// Namespace methods.
@@ -207,6 +196,8 @@ type Service interface {
 	PutEntry(ctx context.Context, ns Handle, name string, target Handle) error
 	// DeleteEntry deletes an entry from a namespace
 	DeleteEntry(ctx context.Context, ns Handle, name string) error
+	// GetEntry returns an entry from a namespace.
+	GetEntry(ctx context.Context, ns Handle, name string) (*Entry, error)
 	// ListNames lists the names in a namespace.
 	ListNames(ctx context.Context, ns Handle) ([]string, error)
 
@@ -218,6 +209,8 @@ type Service interface {
 	CreateVolume(ctx context.Context, vspec VolumeSpec) (*Handle, error)
 	// InspectVolume returns info about a Volume.
 	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
+	// Await waits for a set of conditions to be met.
+	Await(ctx context.Context, cond Conditions) error
 	// BeginTx begins a new transaction, on a Volume.
 	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
 
@@ -239,57 +232,6 @@ type Service interface {
 	Delete(ctx context.Context, tx Handle, cid CID) error
 	// Get returns the data for a CID.
 	Get(ctx context.Context, tx Handle, cid CID, salt *CID, buf []byte) (int, error)
-}
-
-type Handle struct {
-	OID    OID
-	Secret [16]byte
-}
-
-func ParseHandle(s string) (Handle, error) {
-	parts := strings.Split(s, ".")
-	if len(parts) != 2 {
-		return Handle{}, fmt.Errorf("invalid handle: %s", s)
-	}
-	var ret Handle
-	oid, err := ParseOID(parts[0])
-	if err != nil {
-		return Handle{}, err
-	}
-	ret.OID = oid
-	if _, err := hex.Decode(ret.Secret[:], []byte(parts[1])); err != nil {
-		return Handle{}, err
-	}
-	return ret, nil
-}
-
-func (h Handle) MarshalJSON() ([]byte, error) {
-	return json.Marshal(h.String())
-}
-
-func (h *Handle) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	newH, err := ParseHandle(s)
-	if err != nil {
-		return err
-	}
-	*h = newH
-	return nil
-}
-
-func (h Handle) String() string {
-	return h.OID.String() + "." + hex.EncodeToString(h.Secret[:])
-}
-
-// HandleInfo is information about a handle, *NOT* the object it points to.
-type HandleInfo struct {
-	OID OID `json:"oid"`
-
-	CreatedAt tai64.TAI64N `json:"created_at"`
-	ExpiresAt tai64.TAI64N `json:"expires_at"`
 }
 
 type RuleSpec struct {

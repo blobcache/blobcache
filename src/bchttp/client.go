@@ -53,6 +53,15 @@ func (c *Client) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobca
 	return &resp.Info, nil
 }
 
+func (c *Client) GetEntry(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Entry, error) {
+	req := GetEntryReq{Namespace: ns, Name: name}
+	var resp GetEntryResp
+	if err := c.doJSON(ctx, "POST", "/GetEntry", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Entry, nil
+}
+
 func (c *Client) PutEntry(ctx context.Context, ns blobcache.Handle, name string, target blobcache.Handle) error {
 	req := PutEntryReq{Namespace: ns, Name: name, Target: target}
 	var resp PutEntryResp

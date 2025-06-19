@@ -23,7 +23,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	}
 
 	switch req.Header().Code() {
-	case MT_OPEN:
+	case MT_NAMESPACE_OPEN:
 		handleJSON(req, resp, func(req *OpenReq) (*OpenResp, error) {
 			h, err := svc.Open(ctx, req.Namespace, req.Name)
 			if err != nil {
@@ -31,14 +31,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &OpenResp{Handle: *h}, nil
 		})
-	case MT_DROP:
+	case MT_HANDLE_DROP:
 		handleJSON(req, resp, func(req *DropReq) (*DropResp, error) {
 			if err := svc.Drop(ctx, req.Handle); err != nil {
 				return nil, err
 			}
 			return &DropResp{}, nil
 		})
-	case MT_KEEP_ALIVE:
+	case MT_HANDLE_KEEP_ALIVE:
 		handleJSON(req, resp, func(req *KeepAliveReq) (*KeepAliveResp, error) {
 			if err := svc.KeepAlive(ctx, req.Handles); err != nil {
 				return nil, err
@@ -54,7 +54,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &InspectVolumeResp{Info: info}, nil
 		})
 
-	case MT_BEGIN_TX:
+	case MT_VOLUME_BEGIN_TX:
 		handleJSON(req, resp, func(req *BeginTxReq) (*BeginTxResp, error) {
 			h, err := svc.BeginTx(ctx, req.Volume, req.TxParams)
 			if err != nil {

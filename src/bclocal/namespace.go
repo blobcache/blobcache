@@ -14,6 +14,18 @@ import (
 	"blobcache.io/blobcache/src/internal/volumes"
 )
 
+// findEntry finds an entry in a namespace.
+// It returns nil if the entry is not found.
+func findEntry(ents []blobcache.Entry, name string) *blobcache.Entry {
+	idx, found := slices.BinarySearchFunc(ents, name, func(e blobcache.Entry, name string) int {
+		return strings.Compare(e.Name, name)
+	})
+	if !found {
+		return nil
+	}
+	return &ents[idx]
+}
+
 func nsLoad(ctx context.Context, vol volumes.Volume[[]byte]) ([]blobcache.Entry, error) {
 	tx, err := vol.BeginTx(ctx, blobcache.TxParams{})
 	if err != nil {
