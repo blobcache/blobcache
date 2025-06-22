@@ -66,6 +66,15 @@ func New(env Env) *Service {
 
 func (s *Service) Run(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
+	if s.node != nil {
+		eg.Go(func() error {
+			return s.node.Serve(ctx, bcnet.Server{
+				Access: func(peer blobcache.PeerID) blobcache.Service {
+					return &PeerView{Peer: peer, Service: s}
+				},
+			})
+		})
+	}
 	eg.Go(func() error {
 		s.cleanupHandlesLoop(ctx)
 		return nil
@@ -112,8 +121,10 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 	rand.Read(secret[:])
 	ret := blobcache.Handle{OID: target, Secret: secret}
 	s.handles[handleKey(ret)] = handle{
+		target:    target,
 		createdAt: time.Now(),
 		expiresAt: expiresAt,
+		rights:    0, // TODO: set rights.
 
 		vol: vol,
 		txn: txn,
@@ -121,16 +132,6 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 	return ret
 }
 
-func (s *Service) resolveHandle(x blobcache.Handle) (handle, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	k := handleKey(x)
-	if hs, exists := s.handles[k]; exists {
-		return hs, nil
-	} else {
-		return handle{}, blobcache.ErrInvalidHandle{Handle: x}
-	}
-}
 func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (volumes.Volume[[]byte], error) {
 	if h.OID != (blobcache.OID{}) {
 		// TODO: for now root is the only valid namespace.
@@ -316,9 +317,6 @@ func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) 
 	if err := vspec.Validate(); err != nil {
 		return nil, err
 	}
-	if vspec.Backend.Remote != nil {
-		return nil, fmt.Errorf("cannot create remote volumes, use Open")
-	}
 	if vspec.Salted {
 		return nil, fmt.Errorf("salted volumes are not yet supported")
 	}
@@ -496,29 +494,31 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 		return bcnet.OpenVolume(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Name)
 	case backend.Git != nil:
 		return nil, fmt.Errorf("git volumes are not yet supported")
-
-	// higher order volumes
 	case backend.RootAEAD != nil:
-		var inner volumes.Volume[[]byte] // TODO: need to look for volumes by OID.
-
-		var cipher cipher.AEAD
-		switch backend.RootAEAD.Algo {
-		case blobcache.AEAD_CHACHA20POLY1305:
-			var err error
-			cipher, err = chacha20poly1305.New(backend.RootAEAD.Secret[:])
-			if err != nil {
-				return nil, err
-			}
-		default:
-			return nil, fmt.Errorf("unknown AEAD algorithm: %s", backend.RootAEAD.Algo)
-		}
-		return &volumes.RootAEAD{
-			AEAD:  cipher,
-			Inner: inner,
-		}, nil
+		return s.makeRootAEAD(ctx, *backend.RootAEAD)
 	case backend.Vault != nil:
 		return nil, fmt.Errorf("Vault volumes are not yet supported")
 	default:
 		return nil, fmt.Errorf("empty backend")
 	}
+}
+
+func (s *Service) makeRootAEAD(ctx context.Context, backend blobcache.VolumeBackend_RootAEAD[blobcache.OID]) (*volumes.RootAEAD, error) {
+	var inner volumes.Volume[[]byte] // TODO: need to look for volumes by OID.
+
+	var cipher cipher.AEAD
+	switch backend.Algo {
+	case blobcache.AEAD_CHACHA20POLY1305:
+		var err error
+		cipher, err = chacha20poly1305.New(backend.Secret[:])
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unknown AEAD algorithm: %s", backend.Algo)
+	}
+	return &volumes.RootAEAD{
+		AEAD:  cipher,
+		Inner: inner,
+	}, nil
 }

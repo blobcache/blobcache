@@ -162,6 +162,9 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 	if err := node.Ask(ctx, remote, reqMsg, &respMsg); err != nil {
 		return nil, err
 	}
+	if respMsg.Header().Code() == MT_ERROR {
+		return nil, ParseWireError(respMsg.Body())
+	}
 	var resp Resp
 	if err := json.Unmarshal(respMsg.Body(), &resp); err != nil {
 		return nil, err

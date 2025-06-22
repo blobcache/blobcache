@@ -46,7 +46,7 @@ const HeaderLen = 1 + 4
 
 type MessageHeader [HeaderLen]byte
 
-func (h MessageHeader) SetCode(code MessageType) {
+func (h *MessageHeader) SetCode(code MessageType) {
 	h[0] = byte(code)
 }
 
@@ -58,7 +58,7 @@ func (h MessageHeader) BodyLen() int {
 	return int(binary.BigEndian.Uint32(h[1:]))
 }
 
-func (h MessageHeader) SetBodyLen(bodyLen int) {
+func (h *MessageHeader) SetBodyLen(bodyLen int) {
 	binary.BigEndian.PutUint32(h[1:], uint32(bodyLen))
 }
 
@@ -67,14 +67,17 @@ type Message struct {
 }
 
 func (m *Message) Header() MessageHeader {
+	m.buf = extendToLen(m.buf, HeaderLen)
 	return MessageHeader(m.buf[:HeaderLen])
 }
 
 func (m *Message) setHeader(header MessageHeader) {
+	m.buf = extendToLen(m.buf, HeaderLen)
 	m.buf = append(m.buf[:0], header[:]...)
 }
 
 func (m *Message) SetCode(code MessageType) {
+	m.buf = extendToLen(m.buf, HeaderLen)
 	h := m.Header()
 	h.SetCode(code)
 	m.setHeader(h)
@@ -84,7 +87,7 @@ func (m *Message) SetBody(body []byte) {
 	h := m.Header()
 	h.SetBodyLen(len(body))
 	m.setHeader(h)
-	m.buf = append(m.buf[:0], body...)
+	m.buf = append(m.buf[:HeaderLen], body...)
 }
 
 func (m *Message) Body() []byte {
@@ -97,13 +100,15 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (m *Message) ReadFrom(r io.Reader) (int64, error) {
+	m.buf = m.buf[:0]
 	var header MessageHeader
 	if _, err := io.ReadFull(r, header[:]); err != nil {
 		return 0, err
 	}
+	m.buf = append(m.buf, header[:]...)
 	bodyLen := header.BodyLen()
-	m.buf = append(m.buf[:0], make([]byte, bodyLen)...)
-	if _, err := io.ReadFull(r, m.buf[len(m.buf)-bodyLen:]); err != nil {
+	m.buf = extendToLen(m.buf, len(m.buf)+bodyLen)
+	if _, err := io.ReadFull(r, m.buf[HeaderLen:]); err != nil {
 		return 0, err
 	}
 	return int64(len(m.buf)), nil
@@ -138,18 +143,30 @@ func ParseWireError(x []byte) error {
 }
 
 func MarshalWireError(err error) []byte {
+	var werr WireError
 	switch x := err.(type) {
 	case *blobcache.ErrInvalidHandle:
-		return jsonMarshal(x)
+		werr.InvalidHandle = x
+	case *blobcache.ErrNotFound:
+		werr.NotFound = x
 	default:
-		return []byte(err.Error())
+		estr := x.Error()
+		werr.Unknown = &estr
 	}
+	return jsonMarshal(werr)
 }
 
 func jsonMarshal(x any) []byte {
 	buf, err := json.Marshal(x)
 	if err != nil {
 		panic(err)
+	}
+	return buf
+}
+
+func extendToLen(buf []byte, n int) []byte {
+	if len(buf) < n {
+		buf = append(buf, make([]byte, n-len(buf))...)
 	}
 	return buf
 }

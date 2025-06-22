@@ -40,6 +40,7 @@ func New(privateKey ed25519.PrivateKey, pc net.PacketConn) *Node {
 		tp:         tp,
 		pc:         pc,
 		privateKey: privateKey,
+		conns:      make(map[blobcache.Endpoint]quic.Connection),
 		fromDial:   make(chan quic.Connection),
 	}
 }
@@ -118,7 +119,7 @@ func (n *Node) Serve(ctx context.Context, srv Server) error {
 	}()
 
 	// handle connections from listening
-	lis, err := n.tp.Listen(&tls.Config{}, &quic.Config{})
+	lis, err := n.tp.Listen(n.makeListenTlsConfig(), n.makeQuicConfig())
 	if err != nil {
 		return err
 	}
@@ -128,8 +129,13 @@ func (n *Node) Serve(ctx context.Context, srv Server) error {
 		if err != nil {
 			return err
 		}
+		peerID, err := peerIDFromTLSState(conn.ConnectionState().TLS)
+		if err != nil {
+			conn.CloseWithError(1, "invalid peer id")
+			continue
+		}
 		ep := blobcache.Endpoint{
-			Peer:   n.LocalID(),
+			Peer:   *peerID,
 			IPPort: ipPortFromConn(conn),
 		}
 		n.maybeSpawnHandler(ctx, ep, conn, srv.serve)
@@ -146,7 +152,6 @@ func (n *Node) maybeSpawnHandler(ctx context.Context, ep blobcache.Endpoint, con
 	} else {
 		conn.CloseWithError(1, "found existing connection")
 	}
-
 }
 
 // attemptAddConn gets the lock and adds the connection to the map if it is not already present.

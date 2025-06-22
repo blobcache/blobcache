@@ -5,7 +5,7 @@
 [<img src="https://discord.com/assets/cb48d2a8d4991281d7a6a95d2f58195e.svg" width="80">](https://discord.gg/TWy6aVWJ7f)
 
 Blobcache is a content addressed data store, designed to be a replicated data layer for applications.
-If you can express your application state as a copy-on-write data structures, then Blobcache can handle syncing and replication for you.
+If you can express your application state as a copy-on-write data structure, then Blobcache can handle syncing and replication for you.
 
 ## Getting Started
 You should be able to install with
