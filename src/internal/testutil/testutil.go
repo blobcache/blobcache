@@ -20,3 +20,14 @@ func Listen(t testing.TB) net.Listener {
 	})
 	return lis
 }
+
+func PacketConn(t testing.TB) net.PacketConn {
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		conn.Close()
+	})
+	return conn
+}

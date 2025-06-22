@@ -1,45 +1,36 @@
 // Package bchttp implements a Blobcache service over HTTP.
 package bchttp
 
-import "blobcache.io/blobcache/src/blobcache"
+import (
+	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/bcnet"
+)
 
-type EndpointReq struct{}
+// Handle messages.
+type (
+	InspectHandleReq  = bcnet.InspectHandleReq
+	InspectHandleResp = bcnet.InspectHandleResp
+	DropReq           = bcnet.DropReq
+	DropResp          = bcnet.DropResp
+	KeepAliveReq      = bcnet.KeepAliveReq
+	KeepAliveResp     = bcnet.KeepAliveResp
+)
 
-type EndpointResp struct {
-	Endpoint blobcache.Endpoint `json:"endpoint"`
-}
+// Namespace messages.
+type (
+	OpenReq         = bcnet.OpenReq
+	OpenResp        = bcnet.OpenResp
+	GetEntryReq     = bcnet.GetEntryReq
+	GetEntryResp    = bcnet.GetEntryResp
+	PutEntryReq     = bcnet.PutEntryReq
+	PutEntryResp    = bcnet.PutEntryResp
+	DeleteEntryReq  = bcnet.DeleteEntryReq
+	DeleteEntryResp = bcnet.DeleteEntryResp
+	ListNamesReq    = bcnet.ListNamesReq
+	ListNamesResp   = bcnet.ListNamesResp
+)
 
-type OpenReq struct {
-	Namespace blobcache.Handle `json:"namespace"`
-	Name      string           `json:"name"`
-}
-
-type OpenResp struct {
-	Handle blobcache.Handle `json:"handle"`
-}
-
-type PutEntryReq struct {
-	Namespace blobcache.Handle `json:"namespace"`
-	Name      string           `json:"name"`
-	Target    blobcache.Handle
-}
-
-type PutEntryResp struct{}
-
-type DeleteEntryReq struct {
-	Namespace blobcache.Handle `json:"namespace"`
-	Name      string           `json:"name"`
-}
-
-type DeleteEntryResp struct{}
-
-type ListNamesReq struct {
-	Target blobcache.Handle `json:"target"`
-}
-
-type ListNamesResp struct {
-	Names []string `json:"names"`
-}
+// Volume messages.
 
 type CreateVolumeReq struct {
 	Spec blobcache.VolumeSpec `json:"spec"`
@@ -63,6 +54,8 @@ type BeginTxReq struct {
 type BeginTxResp struct {
 	Tx blobcache.Handle `json:"handle"`
 }
+
+// Tx messages.
 
 type CommitReq struct {
 	Root []byte `json:"root"`
@@ -94,40 +87,15 @@ type DeleteReq struct {
 
 type DeleteResp struct{}
 
-type KeepAliveReq struct {
-	Targets []blobcache.Handle `json:"target"`
-}
-
-type KeepAliveResp struct{}
-
 type GetReq struct {
 	CID  blobcache.CID  `json:"cid"`
 	Salt *blobcache.CID `json:"salt,omitempty"`
 }
 
-type AnchorReq struct {
-	Target blobcache.Handle `json:"target"`
-}
+// Miscellaneous messages.
 
-type AnchorResp struct{}
+type EndpointReq struct{}
 
-type DropReq struct {
-	Target blobcache.Handle `json:"target"`
-}
-
-type DropResp struct{}
-
-type StartSyncReq struct {
-	Src blobcache.Handle `json:"src"`
-	Dst blobcache.Handle `json:"dst"`
-}
-
-type StartSyncResp struct{}
-
-type CreateRuleReq struct {
-	Spec blobcache.RuleSpec `json:"spec"`
-}
-
-type CreateRuleResp struct {
-	Handle blobcache.Handle `json:"handle"`
+type EndpointResp struct {
+	Endpoint blobcache.Endpoint `json:"endpoint"`
 }

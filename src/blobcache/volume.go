@@ -115,7 +115,7 @@ type VolumeBackend_Local struct{}
 
 type VolumeBackend_Remote struct {
 	Endpoint Endpoint `json:"endpoint"`
-	ID       OID      `json:"id"`
+	Name     string   `json:"name"`
 }
 
 type VolumeBackend_Git struct {

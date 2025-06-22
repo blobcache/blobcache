@@ -44,6 +44,24 @@ func (c *Client) Open(ctx context.Context, ns blobcache.Handle, name string) (*b
 	return &resp.Handle, nil
 }
 
+func (c *Client) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
+	req := InspectHandleReq{Handle: h}
+	var resp InspectHandleResp
+	if err := c.doJSON(ctx, "POST", "/InspectHandle", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Info, nil
+}
+
+func (c *Client) GetEntry(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Entry, error) {
+	req := GetEntryReq{Namespace: ns, Name: name}
+	var resp GetEntryResp
+	if err := c.doJSON(ctx, "POST", "/GetEntry", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Entry, nil
+}
+
 func (c *Client) PutEntry(ctx context.Context, ns blobcache.Handle, name string, target blobcache.Handle) error {
 	req := PutEntryReq{Namespace: ns, Name: name, Target: target}
 	var resp PutEntryResp
@@ -97,13 +115,13 @@ func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobca
 }
 
 func (c *Client) Drop(ctx context.Context, h blobcache.Handle) error {
-	req := DropReq{Target: h}
+	req := DropReq{Handle: h}
 	var resp DropResp
 	return c.doJSON(ctx, "POST", "/Drop", &h.Secret, req, &resp)
 }
 
 func (c *Client) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
-	req := KeepAliveReq{Targets: hs}
+	req := KeepAliveReq{Handles: hs}
 	var resp KeepAliveResp
 	return c.doJSON(ctx, "POST", "/KeepAlive", nil, req, &resp)
 }

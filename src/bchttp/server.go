@@ -72,7 +72,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/KeepAlive":
 		handleRequest(w, r, func(ctx context.Context, req KeepAliveReq) (*KeepAliveResp, error) {
-			err := s.Service.KeepAlive(ctx, req.Targets)
+			err := s.Service.KeepAlive(ctx, req.Handles)
 			if err != nil {
 				return nil, err
 			}
@@ -80,7 +80,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/Drop":
 		handleRequest(w, r, func(ctx context.Context, req DropReq) (*DropResp, error) {
-			err := s.Service.Drop(ctx, req.Target)
+			err := s.Service.Drop(ctx, req.Handle)
 			if err != nil {
 				return nil, err
 			}
