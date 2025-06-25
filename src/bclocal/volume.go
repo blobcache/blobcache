@@ -172,9 +172,10 @@ func createTx(tx *sqlx.Tx, volID blobcache.OID, mutate bool) (*blobcache.OID, er
 			return nil, err
 		}
 	} else {
-		if err := tx.Get(&storeID, "SELECT store_id FROM volumes WHERE id = ?", volID); err != nil {
-			return nil, err
-		}
+
+	}
+	if err := tx.Get(&storeID, "SELECT store_id FROM volumes WHERE id = ?", volID); err != nil {
+		return nil, err
 	}
 	txid := blobcache.NewOID()
 	_, err := tx.Exec("INSERT INTO txns (id, volume_id, store_id, mutate, created_at) VALUES (?, ?, ?, ?, ?)", txid, volID, storeID, mutate, time.Now().Unix())
@@ -207,6 +208,7 @@ type txRow struct {
 	ID       blobcache.OID `db:"id"`
 	VolID    blobcache.OID `db:"volume_id"`
 	StoreID  int64         `db:"store_id"`
+	StoreVer int           `db:"store_ver"`
 	Mutate   bool          `db:"mutate"`
 	IsSalted bool          `db:"is_salted"`
 }
@@ -272,7 +274,7 @@ func (v *localVolumeTx) Load(ctx context.Context, dst *[]byte) error {
 
 func (v *localVolumeTx) Delete(ctx context.Context, cid blobcache.CID) error {
 	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
-		return deleteBlob(tx, v.txRow.StoreID, cid)
+		return deleteBlob(tx, v.txRow.StoreID, v.txRow., cid)
 	})
 }
 
@@ -334,8 +336,7 @@ func (v *localVolumeTx) Exists(ctx context.Context, cid blobcache.CID) (bool, er
 }
 
 func (v *localVolumeTx) MaxSize() int {
-	// TODO: change max size.
-	return 1 << 21
+	return int(v.txRow.MaxSize)
 }
 
 func (v *localVolumeTx) Hash(data []byte) blobcache.CID {

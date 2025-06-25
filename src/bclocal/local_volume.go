@@ -8,9 +8,17 @@ import (
 	"go.brendoncarroll.net/state/cadata"
 )
 
-type StoreID = int64
+type (
+	LocalVolumeID = int64
+	LocalVersion  = int
+)
 
-func createStore(tx *sqlx.Tx) (StoreID, error) {
+type StoreTx struct {
+	Store   StoreID
+	Version StoreVersion
+}
+
+func createLocalVolume(tx *sqlx.Tx) (StoreID, error) {
 	res, err := tx.Exec("INSERT INTO stores DEFAULT VALUES")
 	if err != nil {
 		return 0, err
@@ -49,23 +57,32 @@ func ensureBlob(tx *sqlx.Tx, cid blobcache.CID, salt *blobcache.CID, data []byte
 	return nil
 }
 
+func getStoreVersion(tx *sqlx.Tx, storeID StoreID) (StoreVersion, error) {
+	var ver int
+	if err := tx.Get(&ver, `SELECT last_txn FROM stores WHERE id = ?`, storeID); err != nil {
+		return 0, err
+	}
+	return StoreVersion(ver), nil
+}
+
 // addBlob adds a blob to a store, and increments its refcount if it was not already in the store.
 // The blob must already exist in the blobs table.
-func addBlob(tx *sqlx.Tx, storeID StoreID, cid blobcache.CID) error {
+func addBlob(tx *sqlx.Tx, storeID StoreID, ver StoreVersion, cid blobcache.CID) error {
 	// if the blob did not exist in this store, increment its refcount.
-	if _, err := tx.Exec(`UPDATE blobs SET rc = rc + 1 WHERE cid = ? AND NOT EXISTS (
-		SELECT 1 FROM store_blobs WHERE store_id = ? AND cid = ?
+	if _, err := tx.Exec(`UPDATE blobs SET rc = rc + 1
+		WHERE cid = ? AND NOT EXISTS (
+			SELECT 1 FROM store_blobs WHERE store_id = ? AND cid = ? AND ver = ?
 	)`, cid, storeID, cid); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`INSERT INTO store_blobs (store_id, cid) VALUES (?, ?) ON CONFLICT DO NOTHING`, storeID, cid); err != nil {
+	if _, err := tx.Exec(`INSERT INTO store_blobs (store_id, cid, ver) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, storeID, cid, ver); err != nil {
 		return err
 	}
 	return nil
 }
 
 // deleteBlob delets a blob from a store.
-func deleteBlob(tx *sqlx.Tx, storeID StoreID, cid blobcache.CID) error {
+func deleteBlob(tx *sqlx.Tx, storeID StoreID, ver StoreVersion, cid blobcache.CID) error {
 	if _, err := tx.Exec(`INSERT INTO store_blobs (store_id, cid, is_delete) VALUES (?, ?, ?)`, storeID, cid, true); err != nil {
 		return err
 	}

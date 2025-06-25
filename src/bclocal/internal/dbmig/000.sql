@@ -6,15 +6,19 @@ CREATE TABLE blobs (
     rc INTEGER NOT NULL DEFAULT 0
 ), WITHOUT ROWID, STRICT;
 
-CREATE TABLE stores (
-    id INTEGER PRIMARY KEY AUTOINCREMENT
+CREATE TABLE local_volumes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    root BLOB NOT NULL
 ), STRICT;
 
-CREATE TABLE store_blobs (
-    store_id INTEGER NOT NULL REFERENCES stores(id),
+CREATE TABLE local_volume_blobs (
+    id INTEGER NOT NULL REFERENCES local_volumes(id),
     cid BLOB NOT NULL REFERENCES blobs(cid),
-    is_delete INTEGER NOT NULL DEFAULT FALSE,
-    PRIMARY KEY (store_id, cid)
+    txn_id INTEGER NOT NULL,
+    PRIMARY KEY (vol_id, cid, txn_id),
+
+    is_delete INTEGER NOT NULL DEFAULT FALSE
 ), WITHOUT ROWID, STRICT;
 
 CREATE TABLE objects (
@@ -24,12 +28,13 @@ CREATE TABLE objects (
 
 CREATE TABLE volumes (
     id BLOB REFERENCES objects(id) PRIMARY KEY,
-    root BLOB NOT NULL,
+
     max_size INTEGER NOT NULL,
-    hash_algo TEXT NOT NULL,
+    hash_algo VARCHAR(16) NOT NULL,
+    sch VARCHAR(16) NOT NULL,
     backend BLOB NOT NULL,
-    -- store_id is NOT NULL for local volumes
-    store_id INTEGER REFERENCES stores(id)
+    -- local_id is NOT NULL for local volumes
+    local_id INTEGER REFERENCES local_volumes(id),
 ), WITHOUT ROWID, STRICT;
 
 CREATE TABLE volumes_volumes (
@@ -46,6 +51,7 @@ CREATE TABLE txns (
     id BLOB REFERENCES objects(id) PRIMARY KEY,
     volume_id BLOB REFERENCES volumes(id),
     store_id INTEGER NOT NULL REFERENCES stores(id),
+    ver INTEGER NOT NULL,
     mutate INTEGER NOT NULL,
     created_at INTEGER NOT NULL
 ), WITHOUT ROWID, STRICT;
