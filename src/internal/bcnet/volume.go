@@ -172,10 +172,9 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 	return &resp, nil
 }
 
-func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, name string) (volumes.Volume[[]byte], error) {
-	resp, err := doJSON[OpenReq, OpenResp](ctx, n, ep, MT_NAMESPACE_OPEN, OpenReq{
-		Namespace: blobcache.RootHandle(),
-		Name:      name,
+func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, id blobcache.OID) (volumes.Volume[[]byte], error) {
+	resp, err := doJSON[OpenReq, OpenResp](ctx, n, ep, MT_OPEN, OpenReq{
+		OID: id,
 	})
 	if err != nil {
 		return nil, err

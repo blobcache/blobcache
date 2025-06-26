@@ -3,11 +3,19 @@ package bcnet
 import "blobcache.io/blobcache/src/blobcache"
 
 type OpenReq struct {
+	OID blobcache.OID `json:"target"`
+}
+
+type OpenResp struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type OpenAtReq struct {
 	Namespace blobcache.Handle `json:"namespace"`
 	Name      string           `json:"name"`
 }
 
-type OpenResp struct {
+type OpenAtResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 

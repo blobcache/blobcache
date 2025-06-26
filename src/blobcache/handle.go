@@ -81,6 +81,8 @@ const (
 	Rights_Namespace_Delete
 )
 
+const Rights_ALL = ^Rights(0)
+
 func (r Rights) String() string {
 	parts := []string{}
 	rs := map[Rights]string{

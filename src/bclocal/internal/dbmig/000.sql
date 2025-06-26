@@ -27,6 +27,7 @@ CREATE TABLE volumes (
     root BLOB NOT NULL,
     max_size INTEGER NOT NULL,
     hash_algo TEXT NOT NULL,
+    sch TEXT NOT NULL,
     backend BLOB NOT NULL,
     -- store_id is NOT NULL for local volumes
     store_id INTEGER REFERENCES stores(id)

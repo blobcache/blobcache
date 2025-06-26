@@ -24,6 +24,7 @@ func (e Endpoint) IsZero() bool {
 
 // VolumeSpec is a specification for a volume.
 type VolumeSpec struct {
+	Schema SchemaName `json:"schema"`
 	// HashAlgo is the hash algorithm to use for the volume.
 	HashAlgo HashAlgo `json:"hash_algo"`
 	// MaxSize is the maximum size of a blob
@@ -49,6 +50,7 @@ func (v *VolumeSpec) Validate() (retErr error) {
 // VolumeInfo is a volume info.
 type VolumeInfo struct {
 	ID       OID                `json:"id"`
+	Schema   SchemaName         `json:"schema"`
 	HashAlgo HashAlgo           `json:"hash_algo"`
 	MaxSize  int64              `json:"max_size"`
 	Backend  VolumeBackend[OID] `json:"backend"`
@@ -102,6 +104,13 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 		Remote: x.Remote,
 		Git:    x.Git,
 	}
+	if x.RootAEAD != nil {
+		ret.RootAEAD = &VolumeBackend_RootAEAD[OID]{
+			Inner:  x.RootAEAD.Inner.OID,
+			Algo:   x.RootAEAD.Algo,
+			Secret: x.RootAEAD.Secret,
+		}
+	}
 	if x.Vault != nil {
 		ret.Vault = &VolumeBackend_Vault[OID]{
 			Inner:  x.Vault.Inner.OID,
@@ -115,7 +124,7 @@ type VolumeBackend_Local struct{}
 
 type VolumeBackend_Remote struct {
 	Endpoint Endpoint `json:"endpoint"`
-	Name     string   `json:"name"`
+	Volume   OID      `json:"volume"`
 }
 
 type VolumeBackend_Git struct {

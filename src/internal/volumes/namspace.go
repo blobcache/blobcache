@@ -13,6 +13,50 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
+type Namespace struct {
+	Volume Volume[[]byte]
+}
+
+func (ns *Namespace) GetEntry(ctx context.Context, name string) (*blobcache.Entry, error) {
+	nsVol, err := ns.Volume.BeginTx(ctx, blobcache.TxParams{})
+	if err != nil {
+		return nil, err
+	}
+	defer nsVol.Abort(ctx)
+	nstx := NamespaceTx{Tx: nsVol}
+	return nstx.GetEntry(ctx, name)
+}
+
+func (ns *Namespace) PutEntry(ctx context.Context, x blobcache.Entry) error {
+	tx, err := ns.Volume.BeginTx(ctx, blobcache.TxParams{})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	nstx := NamespaceTx{Tx: tx}
+	return nstx.PutEntry(ctx, x)
+}
+
+func (ns *Namespace) ListEntries(ctx context.Context) ([]blobcache.Entry, error) {
+	tx, err := ns.Volume.BeginTx(ctx, blobcache.TxParams{})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Abort(ctx)
+	nstx := NamespaceTx{Tx: tx}
+	return nstx.ListEntries(ctx)
+}
+
+func (ns *Namespace) DeleteEntry(ctx context.Context, name string) error {
+	tx, err := ns.Volume.BeginTx(ctx, blobcache.TxParams{})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	nstx := NamespaceTx{Tx: tx}
+	return nstx.DeleteEntry(ctx, name)
+}
+
 // NamespaceTx wraps a Tx to provide a namespace view.
 type NamespaceTx struct {
 	Tx Tx[[]byte]
@@ -138,7 +182,8 @@ func decodeNamespace(buf []byte) ([]blobcache.Entry, error) {
 	return ents, nil
 }
 
-func allReferences(ents []blobcache.Entry) iter.Seq[blobcache.OID] {
+// AllOIDs returns an iterator over all the object IDs referenced by the entries.
+func AllOIDs(ents []blobcache.Entry) iter.Seq[blobcache.OID] {
 	return func(yield func(blobcache.OID) bool) {
 		for _, ent := range ents {
 			if !yield(ent.Target) {

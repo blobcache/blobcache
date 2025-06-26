@@ -14,6 +14,7 @@ import (
 	"go.brendoncarroll.net/star"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 var daemonCmd = star.Command{
@@ -21,21 +22,33 @@ var daemonCmd = star.Command{
 		Short: "runs the blobcache daemon",
 	},
 	Flags: []star.IParam{stateDirParam, serveAPIParam, listenParam},
-	F: func(ctx star.Context) error {
-		stateDir := stateDirParam.Load(ctx)
+	F: func(c star.Context) error {
+		stateDir := stateDirParam.Load(c)
 		dbPath := filepath.Join(stateDir, "blobcache.db")
 		db, err := dbutil.OpenDB(dbPath)
 		if err != nil {
 			return err
 		}
 		defer db.Close()
-		if err := bclocal.SetupDB(ctx, db); err != nil {
+		if err := bclocal.SetupDB(c, db); err != nil {
 			return err
 		}
 		svc := bclocal.New(bclocal.Env{
 			DB: db,
 		})
-		return svc.Run(ctx)
+
+		eg, ctx := errgroup.WithContext(c)
+		eg.Go(func() error {
+			serveAPI := serveAPIParam.Load(c)
+			return http.Serve(serveAPI, &bchttp.Server{
+				Service: svc,
+			})
+		})
+		eg.Go(func() error {
+			// run the local service in the background
+			return svc.Run(ctx)
+		})
+		return eg.Wait()
 	},
 }
 

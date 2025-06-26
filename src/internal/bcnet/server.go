@@ -23,9 +23,9 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	}
 
 	switch req.Header().Code() {
-	case MT_NAMESPACE_OPEN:
+	case MT_OPEN:
 		handleJSON(req, resp, func(req *OpenReq) (*OpenResp, error) {
-			h, err := svc.Open(ctx, req.Namespace, req.Name)
+			h, err := svc.Open(ctx, req.OID)
 			if err != nil {
 				return nil, err
 			}
@@ -45,6 +45,24 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &KeepAliveResp{}, nil
 		})
+
+	case MT_NAMESPACE_OPEN_AT:
+		handleJSON(req, resp, func(req *OpenAtReq) (*OpenAtResp, error) {
+			h, err := svc.OpenAt(ctx, req.Namespace, req.Name)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenAtResp{Handle: *h}, nil
+		})
+	case MT_NAMESPACE_GET_ENTRY:
+		handleJSON(req, resp, func(req *GetEntryReq) (*GetEntryResp, error) {
+			entry, err := svc.GetEntry(ctx, req.Namespace, req.Name)
+			if err != nil {
+				return nil, err
+			}
+			return &GetEntryResp{Entry: *entry}, nil
+		})
+
 	case MT_VOLUME_INSPECT:
 		handleJSON(req, resp, func(req *InspectVolumeReq) (*InspectVolumeResp, error) {
 			info, err := svc.InspectVolume(ctx, req.Volume)
@@ -53,7 +71,6 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &InspectVolumeResp{Info: info}, nil
 		})
-
 	case MT_VOLUME_BEGIN_TX:
 		handleJSON(req, resp, func(req *BeginTxReq) (*BeginTxResp, error) {
 			h, err := svc.BeginTx(ctx, req.Volume, req.TxParams)
@@ -62,6 +79,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &BeginTxResp{Handle: *h}, nil
 		})
+
 	case MT_TX_COMMIT:
 		handleJSON(req, resp, func(req *CommitReq) (*CommitResp, error) {
 			if err := svc.Commit(ctx, req.Tx, req.Root); err != nil {

@@ -24,11 +24,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/Open":
 		handleRequest(w, r, func(ctx context.Context, req OpenReq) (*OpenResp, error) {
-			handle, err := s.Service.Open(ctx, blobcache.RootHandle(), req.Name)
+			handle, err := s.Service.Open(ctx, req.OID)
 			if err != nil {
 				return nil, err
 			}
 			return &OpenResp{Handle: *handle}, nil
+		})
+	case r.URL.Path == "/OpenAt":
+		handleRequest(w, r, func(ctx context.Context, req OpenAtReq) (*OpenAtResp, error) {
+			handle, err := s.Service.OpenAt(ctx, blobcache.RootHandle(), req.Name)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenAtResp{Handle: *handle}, nil
 		})
 	case r.URL.Path == "/PutEntry":
 		handleRequest(w, r, func(ctx context.Context, req PutEntryReq) (*PutEntryResp, error) {

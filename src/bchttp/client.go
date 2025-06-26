@@ -35,10 +35,19 @@ func (c *Client) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
 	return resp.Endpoint, nil
 }
 
-func (c *Client) Open(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Handle, error) {
-	req := OpenReq{Namespace: ns, Name: name}
+func (c *Client) Open(ctx context.Context, x blobcache.OID) (*blobcache.Handle, error) {
+	req := OpenReq{OID: x}
 	var resp OpenResp
 	if err := c.doJSON(ctx, "POST", "/Open", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
+func (c *Client) OpenAt(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Handle, error) {
+	req := OpenAtReq{Namespace: ns, Name: name}
+	var resp OpenAtResp
+	if err := c.doJSON(ctx, "POST", "/OpenAt", nil, req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil

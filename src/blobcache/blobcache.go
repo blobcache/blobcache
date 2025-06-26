@@ -105,6 +105,20 @@ func (h HashAlgo) HashFunc() HashFunc {
 	}
 }
 
+type SchemaName string
+
+const (
+	SchemaName_Namespace SchemaName = "blobcache/namespace"
+)
+
+func (s SchemaName) Validate() error {
+	switch s {
+	case SchemaName_Namespace:
+		return nil
+	}
+	return fmt.Errorf("unknown schema: %q", s)
+}
+
 // OID is an object identifier.
 type OID [16]byte
 
@@ -172,6 +186,7 @@ type TxParams struct {
 
 type Service interface {
 	// Endpoint returns the endpoint of the service.
+	// If the endpoint is the zero value, the service is not listening for peers.
 	Endpoint(ctx context.Context) (Endpoint, error)
 
 	////
@@ -185,13 +200,15 @@ type Service interface {
 	KeepAlive(ctx context.Context, hs []Handle) error
 	// InspectHandle returns info about a handle.
 	InspectHandle(ctx context.Context, h Handle) (*HandleInfo, error)
+	// Open returns a handle to an object by it's ID.
+	Open(ctx context.Context, x OID) (*Handle, error)
 
 	////
 	// Namespace methods.
 	////
 
-	// Open returns a handle to a volume.
-	Open(ctx context.Context, ns Handle, name string) (*Handle, error)
+	// OpenAt returns a handle to a volume.
+	OpenAt(ctx context.Context, ns Handle, name string) (*Handle, error)
 	// PutEntry adds an entry to a namespace
 	PutEntry(ctx context.Context, ns Handle, name string, target Handle) error
 	// DeleteEntry deletes an entry from a namespace
@@ -232,22 +249,4 @@ type Service interface {
 	Delete(ctx context.Context, tx Handle, cid CID) error
 	// Get returns the data for a CID.
 	Get(ctx context.Context, tx Handle, cid CID, salt *CID, buf []byte) (int, error)
-}
-
-type RuleSpec struct {
-	Inputs  []Handle
-	Outputs []Handle
-	Op      Op
-}
-
-type RuleInfo struct {
-	ID      OID
-	Inputs  []OID
-	Outputs []OID
-	Op      Op
-}
-
-type Op struct {
-	Sync  *struct{} `json:"push,omitempty"`
-	Merge *struct{} `json:"merge,omitempty"`
 }
