@@ -41,6 +41,27 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.Equal(t, 0, len(buf))
 	})
+	t.Run("RootAEAD", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s := mk(t)
+		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		require.NoError(t, err)
+		volh2, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
+			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+			MaxSize:  1 << 21,
+			Backend: blobcache.VolumeBackend[blobcache.Handle]{
+				RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
+					Inner:  *volh,
+					Algo:   blobcache.AEAD_CHACHA20POLY1305,
+					Secret: [32]byte{},
+				},
+			},
+		})
+		require.NoError(t, err)
+		require.NoError(t, s.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh2))
+		_, err = s.OpenAt(ctx, blobcache.RootHandle(), "test-name")
+		require.NoError(t, err)
+	})
 	t.Run("Namespace", func(t *testing.T) {
 		NamespaceAPI(t, mk)
 	})
@@ -61,7 +82,7 @@ func NamespaceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		err = s.Drop(ctx, *volh)
 		require.NoError(t, err)
 
-		volh2, err := s.Open(ctx, blobcache.RootHandle(), "test-name")
+		volh2, err := s.OpenAt(ctx, blobcache.RootHandle(), "test-name")
 		require.NoError(t, err)
 		require.Equal(t, volh.OID, volh2.OID)
 	})

@@ -22,7 +22,18 @@ func (s *Service) Access(peer blobcache.PeerID) blobcache.Service {
 	}
 }
 
-func (pv *PeerView) Open(ctx context.Context, namespace blobcache.Handle, name string) (*blobcache.Handle, error) {
+func (pv *PeerView) Open(ctx context.Context, x blobcache.OID) (*blobcache.Handle, error) {
+	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
+		return nil, ErrNotAllowed{
+			Peer:   pv.Peer,
+			Action: "Open",
+			Target: x,
+		}
+	}
+	return pv.Service.Open(ctx, x)
+}
+
+func (pv *PeerView) OpenAt(ctx context.Context, namespace blobcache.Handle, name string) (*blobcache.Handle, error) {
 	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
 		return nil, ErrNotAllowed{
 			Peer:   pv.Peer,
@@ -30,7 +41,7 @@ func (pv *PeerView) Open(ctx context.Context, namespace blobcache.Handle, name s
 			Target: namespace.OID,
 		}
 	}
-	return pv.Service.Open(ctx, namespace, name)
+	return pv.Service.OpenAt(ctx, namespace, name)
 }
 
 func (pv *PeerView) PutEntry(ctx context.Context, namespace blobcache.Handle, name string, value blobcache.Handle) error {

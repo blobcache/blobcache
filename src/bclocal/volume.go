@@ -55,20 +55,27 @@ func ensureRootVolume(tx *sqlx.Tx) error {
 	if err != nil {
 		return err
 	}
+	backendJSON, err := json.Marshal(blobcache.VolumeBackend[blobcache.OID]{
+		Local: &blobcache.VolumeBackend_Local{},
+	})
+	if err != nil {
+		return err
+	}
 	row := volumeRow{
 		ID:       rootOID,
 		Root:     []byte{},
 		StoreID:  storeID,
 		HashAlgo: string(blobcache.HashAlgo_BLAKE3_256),
 		MaxSize:  1 << 22,
-		Backend:  []byte("local"),
+		Backend:  backendJSON,
+		Schema:   string(blobcache.SchemaName_Namespace),
 	}
 	return insertVolume(tx, row)
 }
 
 func insertVolume(tx *sqlx.Tx, row volumeRow) error {
-	_, err := tx.Exec(`INSERT INTO volumes (id, root, backend, hash_algo, max_size, store_id)
-	    VALUES (?, ?, ?, ?, ?, ?)`, row.ID, row.Root, row.Backend, row.HashAlgo, row.MaxSize, row.StoreID)
+	_, err := tx.Exec(`INSERT INTO volumes (id, root, backend, hash_algo, max_size, store_id, sch)
+	    VALUES (?, ?, ?, ?, ?, ?, ?)`, row.ID, row.Root, row.Backend, row.HashAlgo, row.MaxSize, row.StoreID, row.Schema)
 	if err != nil {
 		return err
 	}
@@ -79,6 +86,7 @@ type volumeRow struct {
 	ID       blobcache.OID   `db:"id"`
 	Root     []byte          `db:"root"`
 	StoreID  StoreID         `db:"store_id"`
+	Schema   string          `db:"sch"`
 	HashAlgo string          `db:"hash_algo"`
 	MaxSize  int64           `db:"max_size"`
 	Backend  json.RawMessage `db:"backend"`

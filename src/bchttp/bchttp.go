@@ -14,12 +14,14 @@ type (
 	DropResp          = bcnet.DropResp
 	KeepAliveReq      = bcnet.KeepAliveReq
 	KeepAliveResp     = bcnet.KeepAliveResp
+	OpenReq           = bcnet.OpenReq
+	OpenResp          = bcnet.OpenResp
 )
 
 // Namespace messages.
 type (
-	OpenReq         = bcnet.OpenReq
-	OpenResp        = bcnet.OpenResp
+	OpenAtReq       = bcnet.OpenAtReq
+	OpenAtResp      = bcnet.OpenAtResp
 	GetEntryReq     = bcnet.GetEntryReq
 	GetEntryResp    = bcnet.GetEntryResp
 	PutEntryReq     = bcnet.PutEntryReq

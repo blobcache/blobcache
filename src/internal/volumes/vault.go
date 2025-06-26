@@ -13,7 +13,15 @@ import (
 var _ Volume[[]byte] = &Vault{}
 
 type Vault struct {
-	inner Volume[[]byte]
+	inner  Volume[[]byte]
+	secret [32]byte
+}
+
+func NewVault(inner Volume[[]byte], secret [32]byte) *Vault {
+	return &Vault{
+		inner:  inner,
+		secret: secret,
+	}
 }
 
 func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (Tx[[]byte], error) {
