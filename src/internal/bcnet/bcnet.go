@@ -102,11 +102,19 @@ func (n *Node) Serve(ctx context.Context, srv Server) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// handle connections from listening
+	lis, err := n.tp.Listen(n.makeListenTlsConfig(), n.makeQuicConfig())
+	if err != nil {
+		return err
+	}
+	defer lis.Close()
+
 	// handle connections from dialing
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
+				lis.Close()
 				return
 			case conn := <-n.fromDial:
 				ep := blobcache.Endpoint{
@@ -118,12 +126,6 @@ func (n *Node) Serve(ctx context.Context, srv Server) error {
 		}
 	}()
 
-	// handle connections from listening
-	lis, err := n.tp.Listen(n.makeListenTlsConfig(), n.makeQuicConfig())
-	if err != nil {
-		return err
-	}
-	defer lis.Close()
 	for {
 		conn, err := lis.Accept(ctx)
 		if err != nil {

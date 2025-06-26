@@ -5,50 +5,28 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"path/filepath"
 	"strings"
 
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
+	"blobcache.io/blobcache/src/internal/blobcached"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"go.brendoncarroll.net/exp/maybe"
 	"go.brendoncarroll.net/star"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 )
 
 var daemonCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon",
 	},
-	Flags: []star.IParam{stateDirParam, serveAPIParam, listenParam},
+	Flags: []star.AnyParam{stateDirParam, serveAPIParam, listenParam},
 	F: func(c star.Context) error {
 		stateDir := stateDirParam.Load(c)
-		dbPath := filepath.Join(stateDir, "blobcache.db")
-		db, err := dbutil.OpenDB(dbPath)
-		if err != nil {
-			return err
-		}
-		defer db.Close()
-		if err := bclocal.SetupDB(c, db); err != nil {
-			return err
-		}
-		svc := bclocal.New(bclocal.Env{
-			DB: db,
-		})
-
-		eg, ctx := errgroup.WithContext(c)
-		eg.Go(func() error {
-			serveAPI := serveAPIParam.Load(c)
-			return http.Serve(serveAPI, &bchttp.Server{
-				Service: svc,
-			})
-		})
-		eg.Go(func() error {
-			// run the local service in the background
-			return svc.Run(ctx)
-		})
-		return eg.Wait()
+		serveAPI := serveAPIParam.Load(c)
+		lis, _ := listenParam.LoadOpt(c)
+		return blobcached.Run(c, stateDir, lis.X, serveAPI)
 	},
 }
 
@@ -56,7 +34,7 @@ var daemonEphemeralCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon without persistent state",
 	},
-	Flags: []star.IParam{serveAPIParam, listenParam},
+	Flags: []star.AnyParam{serveAPIParam, listenParam},
 	F: func(ctx star.Context) error {
 		db := dbutil.OpenMemory()
 		if err := bclocal.SetupDB(ctx, db); err != nil {
@@ -65,7 +43,7 @@ var daemonEphemeralCmd = star.Command{
 		pc := listenParam.Load(ctx)
 		svc := bclocal.New(bclocal.Env{
 			DB:         db,
-			PacketConn: pc,
+			PacketConn: pc.X,
 		})
 
 		apiLis := serveAPIParam.Load(ctx)
@@ -83,7 +61,8 @@ var stateDirParam = star.Param[string]{
 }
 
 var serveAPIParam = star.Param[net.Listener]{
-	Name: "serve-api",
+	Name:    "serve-api",
+	Default: star.Ptr(""),
 	Parse: func(s string) (net.Listener, error) {
 		parts := strings.Split(s, "://")
 		if len(parts) != 2 {
@@ -93,18 +72,22 @@ var serveAPIParam = star.Param[net.Listener]{
 	},
 }
 
-var listenParam = star.Param[net.PacketConn]{
+var listenParam = star.Param[maybe.Maybe[net.PacketConn]]{
 	Name:    "listen",
 	Default: star.Ptr(""),
-	Parse: func(s string) (net.PacketConn, error) {
+	Parse: func(s string) (maybe.Maybe[net.PacketConn], error) {
 		if s == "" {
-			return nil, nil
+			return maybe.Nothing[net.PacketConn](), nil
 		}
 		ap, err := netip.ParseAddrPort(s)
 		if err != nil {
-			return nil, err
+			return maybe.Nothing[net.PacketConn](), err
 		}
 		udpAddr := net.UDPAddrFromAddrPort(ap)
-		return net.ListenUDP("udp", udpAddr)
+		conn, err := net.ListenUDP("udp", udpAddr)
+		if err != nil {
+			return maybe.Nothing[net.PacketConn](), err
+		}
+		return maybe.Just[net.PacketConn](conn), nil
 	},
 }

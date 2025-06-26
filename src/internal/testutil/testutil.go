@@ -4,10 +4,16 @@ import (
 	"context"
 	"net"
 	"testing"
+
+	"go.brendoncarroll.net/stdctx/logctx"
+	"go.uber.org/zap"
 )
 
 func Context(t testing.TB) context.Context {
-	return context.TODO()
+	ctx := context.Background()
+	lg, _ := zap.NewDevelopment()
+	ctx = logctx.NewContext(ctx, lg)
+	return ctx
 }
 
 func Listen(t testing.TB) net.Listener {

@@ -121,8 +121,8 @@ go.brendoncarroll.net/exp v0.0.0-20250112210235-9d4b62bdbd02 h1:/TwV78/8VahB/+D1
 go.brendoncarroll.net/exp v0.0.0-20250112210235-9d4b62bdbd02/go.mod h1:7C3uhanAQUJFF9w9m4Zeif5gDoh1eJlgQ3/aJfuJo9A=
 go.brendoncarroll.net/p2p v0.0.0-20241118201502-2abd1a6f58e7 h1:OdTUjSViUQ1Q0XmoT2OSaQr1vqnhoSqLulvTaTZrPVY=
 go.brendoncarroll.net/p2p v0.0.0-20241118201502-2abd1a6f58e7/go.mod h1:b0MYiwcKuEAUbvV5z3e843rTFnsaX5IthIiyxeMUtUg=
-go.brendoncarroll.net/star v0.0.0-20250117202537-11ada0ca27bd h1:+5TsyjCx4wZaVraWvaW9Qieka507pC9x3ePfDJnUt44=
-go.brendoncarroll.net/star v0.0.0-20250117202537-11ada0ca27bd/go.mod h1:2OxTqeTvQQdSeziKkxsXjRD0SUFzkyL5Cq7bHbZw9eE=
+go.brendoncarroll.net/star v0.0.0-20250626200209-0e64b3995d80 h1:Gkx2NOaNYzHYdjrxw52qPXKLUsNmxRdIkW5uVVlp4fw=
+go.brendoncarroll.net/star v0.0.0-20250626200209-0e64b3995d80/go.mod h1:2OxTqeTvQQdSeziKkxsXjRD0SUFzkyL5Cq7bHbZw9eE=
 go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901 h1:EEzKLl/9qvDlm20k/eSaFV56omRdPKgS5uf2H//OB7A=
 go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901/go.mod h1:mLgp/r9TXnMuaQqr9tzS7iS5H6Z97EuQH/Z7hfWeCtM=
 go.brendoncarroll.net/stdctx v0.0.0-20241118190518-40d09f4d11e7 h1:Fj7e7nplSTGghtILY5QdTAh8chXwkKjjiLJvmbcgddY=

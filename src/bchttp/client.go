@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"blobcache.io/blobcache/src/blobcache"
 )
@@ -20,6 +21,9 @@ type Client struct {
 }
 
 func NewClient(hc *http.Client, ep string) *Client {
+	if !strings.HasPrefix(ep, "http://") {
+		panic("ep must not start with http://")
+	}
 	if hc == nil {
 		hc = http.DefaultClient
 	}

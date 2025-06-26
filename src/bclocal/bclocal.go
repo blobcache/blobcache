@@ -96,6 +96,7 @@ func (s *Service) cleanupHandlesLoop(ctx context.Context) {
 		s.mu.Unlock()
 		select {
 		case <-ctx.Done():
+			return
 		case <-tick.C:
 		}
 	}

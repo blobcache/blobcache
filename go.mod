@@ -13,7 +13,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	go.brendoncarroll.net/exp v0.0.0-20250112210235-9d4b62bdbd02
 	go.brendoncarroll.net/p2p v0.0.0-20241118201502-2abd1a6f58e7
-	go.brendoncarroll.net/star v0.0.0-20250117202537-11ada0ca27bd
+	go.brendoncarroll.net/star v0.0.0-20250626200209-0e64b3995d80
 	go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901
 	go.brendoncarroll.net/stdctx v0.0.0-20241118190518-40d09f4d11e7
 	go.brendoncarroll.net/tai64 v0.0.0-20241118171318-6e12d283d5e4
