@@ -320,7 +320,9 @@ func (p *Policy) AllMemberships() iter.Seq[Membership] {
 func (p *Policy) AllGrants() iter.Seq[Grant] {
 	return func(yield func(Grant) bool) {
 		for _, g := range p.grants {
-			yield(g)
+			if !yield(g) {
+				return
+			}
 		}
 	}
 }
@@ -328,7 +330,9 @@ func (p *Policy) AllGrants() iter.Seq[Grant] {
 func (p *Policy) AllGroups() iter.Seq[string] {
 	return func(yield func(string) bool) {
 		for group := range p.groups {
-			yield(group)
+			if !yield(group) {
+				return
+			}
 		}
 	}
 }
