@@ -1,12 +1,12 @@
 package bclocal
 
 import (
-	"crypto/ed25519"
 	"path/filepath"
 	"testing"
 
 	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/testutil"
+	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/stretchr/testify/require"
 )
 

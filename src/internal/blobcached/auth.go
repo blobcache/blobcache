@@ -13,7 +13,7 @@ import (
 	"slices"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"go.inet256.org/inet256/pkg/inet256"
+	"go.inet256.org/inet256/src/inet256"
 )
 
 const (

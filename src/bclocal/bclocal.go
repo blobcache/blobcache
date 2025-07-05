@@ -4,7 +4,6 @@ package bclocal
 import (
 	"context"
 	"crypto/cipher"
-	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
 	"net"
@@ -17,6 +16,7 @@ import (
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/volumes"
+	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/jmoiron/sqlx"
 	"go.brendoncarroll.net/tai64"
 	"golang.org/x/crypto/chacha20poly1305"

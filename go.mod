@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	blobcache.io/glfs v0.0.0-20250323202827-2452859b076a
+	github.com/cloudflare/circl v1.6.1
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/golang/protobuf v1.5.4
 	github.com/hashicorp/golang-lru v1.0.2
@@ -17,7 +18,7 @@ require (
 	go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901
 	go.brendoncarroll.net/stdctx v0.0.0-20241118190518-40d09f4d11e7
 	go.brendoncarroll.net/tai64 v0.0.0-20241118171318-6e12d283d5e4
-	go.inet256.org/inet256 v0.0.8-0.20250106023139-eb36ad7a3f3f
+	go.inet256.org/inet256 v0.0.8
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.38.0
 	golang.org/x/sync v0.14.0
@@ -30,7 +31,6 @@ require (
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
-	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

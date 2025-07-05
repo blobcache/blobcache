@@ -2,7 +2,6 @@ package blobcached
 
 import (
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"net"
 	"net/http"
@@ -14,9 +13,9 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"github.com/cloudflare/circl/sign/ed25519"
 	"go.brendoncarroll.net/stdctx/logctx"
-	"go.inet256.org/inet256/pkg/inet256"
-	"go.inet256.org/inet256/pkg/serde"
+	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -41,7 +40,7 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 		if err != nil {
 			return err
 		}
-		privateKey = privKey.BuiltIn().(ed25519.PrivateKey)
+		privateKey = privKey.(ed25519.PrivateKey)
 	}
 	svc := bclocal.New(bclocal.Env{
 		PacketConn: pc,
@@ -82,7 +81,7 @@ func LoadPrivateKey(p string) (inet256.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return serde.ParsePrivateKey(buf)
+	return inet256.ParsePrivateKey(buf)
 }
 
 func AwaitHealthy(ctx context.Context, svc blobcache.Service) error {

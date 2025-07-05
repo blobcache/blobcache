@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 
-	"go.inet256.org/inet256/pkg/inet256"
+	"go.inet256.org/inet256/src/inet256"
 )
 
 // PeerID uniquely identifies a peer by hash of the public key.

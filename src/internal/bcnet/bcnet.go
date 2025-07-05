@@ -2,7 +2,7 @@ package bcnet
 
 import (
 	"context"
-	"crypto/ed25519"
+	goed25519 "crypto/ed25519"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -11,11 +11,12 @@ import (
 	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/quic-go/quic-go"
 	"go.brendoncarroll.net/exp/singleflight"
 	"go.brendoncarroll.net/p2p/s/swarmutil"
 	"go.brendoncarroll.net/stdctx/logctx"
-	"go.inet256.org/inet256/pkg/inet256"
+	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -46,7 +47,7 @@ func New(privateKey ed25519.PrivateKey, pc net.PacketConn) *Node {
 }
 
 func (n *Node) LocalID() blobcache.PeerID {
-	return PeerIDFromPublicKey(n.privateKey.Public().(ed25519.PublicKey))
+	return inet256.NewID(n.privateKey.Public().(ed25519.PublicKey))
 }
 
 func (n *Node) LocalAddr() netip.AddrPort {
@@ -289,7 +290,8 @@ func (qt *Node) makeListenTlsConfig() *tls.Config {
 }
 
 func (n *Node) makeTlsConfig() *tls.Config {
-	cert := swarmutil.GenerateSelfSigned(n.privateKey)
+	privateKey := goed25519.PrivateKey(n.privateKey)
+	cert := swarmutil.GenerateSelfSigned(privateKey)
 	localID := n.LocalID()
 	return &tls.Config{
 		Certificates:       []tls.Certificate{cert},
@@ -309,8 +311,8 @@ func peerIDFromTLSState(tlsState tls.ConnectionState) (*blobcache.PeerID, error)
 	}
 	cert := tlsState.PeerCertificates[0]
 	switch pubKey := cert.PublicKey.(type) {
-	case ed25519.PublicKey:
-		peerID := PeerIDFromPublicKey(pubKey)
+	case goed25519.PublicKey:
+		peerID := inet256.NewID(ed25519.PublicKey(pubKey))
 		return &peerID, nil
 	default:
 		return nil, fmt.Errorf("unsupported key type: %T", cert.PublicKey)
@@ -320,12 +322,4 @@ func peerIDFromTLSState(tlsState tls.ConnectionState) (*blobcache.PeerID, error)
 func ipPortFromConn(x quic.Connection) netip.AddrPort {
 	udpAddr := x.RemoteAddr().(*net.UDPAddr)
 	return udpAddr.AddrPort()
-}
-
-func PeerIDFromPublicKey(pubKey ed25519.PublicKey) blobcache.PeerID {
-	pubKey2, err := inet256.PublicKeyFromBuiltIn(pubKey)
-	if err != nil {
-		panic(err)
-	}
-	return inet256.NewAddr(pubKey2)
 }
