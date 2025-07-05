@@ -62,3 +62,15 @@ type ErrNoEntry struct {
 func (e ErrNoEntry) Error() string {
 	return fmt.Sprintf("no entry %q in namespace %v", e.Name, e.Namespace)
 }
+
+// ErrBadData is returned when the data does not match the expected CID.
+type ErrBadData struct {
+	Salt     *CID
+	Expected CID
+	Actual   CID
+	Len      int
+}
+
+func (e ErrBadData) Error() string {
+	return fmt.Sprintf("bad data: salt=%v, expected %s, actual %s, len=%d", e.Salt, e.Expected, e.Actual, e.Len)
+}

@@ -14,7 +14,7 @@ import (
 )
 
 type Namespace struct {
-	Volume Volume[[]byte]
+	Volume Volume
 }
 
 func (ns *Namespace) GetEntry(ctx context.Context, name string) (*blobcache.Entry, error) {
@@ -59,7 +59,7 @@ func (ns *Namespace) DeleteEntry(ctx context.Context, name string) error {
 
 // NamespaceTx wraps a Tx to provide a namespace view.
 type NamespaceTx struct {
-	Tx Tx[[]byte]
+	Tx Tx
 }
 
 func (ns *NamespaceTx) loadEntries(ctx context.Context) ([]blobcache.Entry, error) {

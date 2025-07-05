@@ -22,7 +22,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	t.Run("CreateVolume", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s := mk(t)
-		h, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		h, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, h)
 	})
@@ -30,7 +30,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		// Check that an initial volume is empty.
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: false})
@@ -44,7 +44,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	t.Run("RootAEAD", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		volh2, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
 			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
@@ -65,16 +65,62 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	t.Run("Namespace", func(t *testing.T) {
 		NamespaceAPI(t, mk)
 	})
-	t.Run("Tx", func(t *testing.T) {
-		TxAPI(t, mk)
+
+	// Run Tx test suit on local volume.
+	t.Run("Local/Tx", func(t *testing.T) {
+		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
+			ctx := testutil.Context(t)
+			s := mk(t)
+			volh, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
+				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+				MaxSize:  1 << 21,
+				Backend: blobcache.VolumeBackend[blobcache.Handle]{
+					Local: &blobcache.VolumeBackend_Local{},
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, volh)
+			return s, *volh
+		})
+	})
+	t.Run("RootAEAD/Tx", func(t *testing.T) {
+		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
+			ctx := testutil.Context(t)
+			s := mk(t)
+			volh1, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
+				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+				MaxSize:  1 << 21,
+				Backend: blobcache.VolumeBackend[blobcache.Handle]{
+					Local: &blobcache.VolumeBackend_Local{},
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, volh1)
+
+			volh, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
+				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+				MaxSize:  1 << 21,
+				Backend: blobcache.VolumeBackend[blobcache.Handle]{
+					RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
+						Inner:  *volh1,
+						Algo:   blobcache.AEAD_CHACHA20POLY1305,
+						Secret: [32]byte{},
+					},
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, volh)
+			return s, *volh
+		})
 	})
 }
 
 func NamespaceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	t.Run("PutEntryOpen", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		err = s.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh)
@@ -87,6 +133,7 @@ func NamespaceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.Equal(t, volh.OID, volh2.OID)
 	})
 	t.Run("ListEmpty", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
 		names, err := s.ListNames(ctx, blobcache.RootHandle())
@@ -94,9 +141,10 @@ func NamespaceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.Equal(t, []string{}, names)
 	})
 	t.Run("ListPutList", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		for i := 0; i < 10; i++ {
@@ -110,9 +158,10 @@ func NamespaceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		}
 	})
 	t.Run("PutDelete", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		err = s.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh)
@@ -127,9 +176,10 @@ func NamespaceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.Equal(t, []string{}, names)
 	})
 	t.Run("DeleteNonExistent", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
+		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		// Delets are idempotent, should not get an error.
@@ -138,14 +188,12 @@ func NamespaceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	})
 }
 
-func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
+func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Handle)) {
 	t.Run("TxAbortNoOp", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
-		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
-		require.NoError(t, err)
-		require.NotNil(t, volh)
-		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: false})
+		s, volh := mk(t)
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: false})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		err = s.Abort(ctx, *txh)
@@ -153,11 +201,8 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	})
 	t.Run("TxCommit", func(t *testing.T) {
 		ctx := testutil.Context(t)
-		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
-		require.NoError(t, err)
-		require.NotNil(t, volh)
-		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: true})
+		s, volh := mk(t)
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: true})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		err = s.Commit(ctx, *txh, []byte{1, 2, 3})
@@ -166,78 +211,23 @@ func TxAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	})
 	t.Run("PostExists", func(t *testing.T) {
 		ctx := testutil.Context(t)
-		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
-		require.NoError(t, err)
-		require.NotNil(t, volh)
-		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: true})
+		s, volh := mk(t)
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: true})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 
 		data := []byte{1, 2, 3}
-		require.False(t, exists(t, s, *txh, blake3.Sum256(data)), "should not exist before post")
-		cid := post(t, s, *txh, nil, data)
-		require.True(t, exists(t, s, *txh, cid), "should exist after post")
+		require.False(t, Exists(t, s, *txh, blake3.Sum256(data)), "should not exist before post")
+		cid := Post(t, s, *txh, nil, data)
+		require.True(t, Exists(t, s, *txh, cid), "should exist after post")
 	})
 	t.Run("PostGet", func(t *testing.T) {
-		s := mk(t)
-		volh := createVolume(t, s)
-		txh := beginTx(t, s, volh)
+		s, volh := mk(t)
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
 
 		data1 := []byte("hello world")
-		cid := post(t, s, txh, nil, data1)
-		data2 := get(t, s, txh, cid, nil, 100)
+		cid := Post(t, s, txh, nil, data1)
+		data2 := Get(t, s, txh, cid, nil, 100)
 		require.Equal(t, data1, data2)
 	})
-}
-
-func defaultVolumeSpec() blobcache.VolumeSpec {
-	return blobcache.DefaultLocalSpec()
-}
-
-func createVolume(t testing.TB, s blobcache.Service) blobcache.Handle {
-	ctx := testutil.Context(t)
-	volh, err := s.CreateVolume(ctx, defaultVolumeSpec())
-	require.NoError(t, err)
-	require.NotNil(t, volh)
-	return *volh
-}
-
-func beginTx(t testing.TB, s blobcache.Service, volh blobcache.Handle) blobcache.Handle {
-	ctx := testutil.Context(t)
-	txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: true})
-	require.NoError(t, err)
-	require.NotNil(t, txh)
-	return *txh
-}
-
-func post(t testing.TB, s blobcache.Service, txh blobcache.Handle, salt *blobcache.CID, data []byte) blobcache.CID {
-	ctx := testutil.Context(t)
-	cid, err := s.Post(ctx, txh, salt, data)
-	require.NoError(t, err)
-	return cid
-}
-
-func get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, maxLen int) []byte {
-	ctx := testutil.Context(t)
-	buf := make([]byte, maxLen)
-	n, err := s.Get(ctx, txh, cid, salt, buf)
-	require.NoError(t, err)
-	return buf[:n]
-}
-
-func exists(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID) bool {
-	ctx := testutil.Context(t)
-	yes, err := s.Exists(ctx, txh, cid)
-	require.NoError(t, err)
-	return yes
-}
-
-func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, mutate bool, f func(tx *blobcache.Tx) ([]byte, error)) {
-	ctx := testutil.Context(t)
-	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{Mutate: mutate})
-	require.NoError(t, err)
-	data, err := f(tx)
-	require.NoError(t, err)
-	require.NoError(t, tx.Commit(ctx, data))
 }

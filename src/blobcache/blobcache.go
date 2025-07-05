@@ -23,6 +23,9 @@ import (
 // them from OIDs which are printed as hex.
 type CID = cadata.ID
 
+// CIDBytes is the number of bytes in a CID.
+const CIDBytes = cadata.IDSize
+
 func ParseCID(s string) (CID, error) {
 	var ret CID
 	if err := ret.UnmarshalBase64([]byte(s)); err != nil {
@@ -249,4 +252,19 @@ type Service interface {
 	Delete(ctx context.Context, tx Handle, cid CID) error
 	// Get returns the data for a CID.
 	Get(ctx context.Context, tx Handle, cid CID, salt *CID, buf []byte) (int, error)
+}
+
+// CheckBlob checks that the data matches the expected CID.
+// If there is a problem, it returns an ErrBadData.
+func CheckBlob(hf HashFunc, salt, cid *CID, data []byte) error {
+	actualCID := hf(salt, data)
+	if *cid != actualCID {
+		return ErrBadData{
+			Salt:     salt,
+			Expected: *cid,
+			Actual:   actualCID,
+			Len:      len(data),
+		}
+	}
+	return nil
 }

@@ -49,10 +49,11 @@ var mkVolCmd = star.Command{
 	Flags: []star.AnyParam{stateDirParam},
 	Pos:   []star.AnyParam{nameParam},
 	F: func(c star.Context) error {
-		s, err := openLocal(c)
+		s, close, err := openLocal(c)
 		if err != nil {
 			return err
 		}
+		defer close()
 		volh, err := s.CreateVolume(c, blobcache.DefaultLocalSpec())
 		if err != nil {
 			return err
@@ -72,10 +73,11 @@ var lsCmd = star.Command{
 	},
 	Flags: []star.AnyParam{stateDirParam},
 	F: func(c star.Context) error {
-		s, err := openLocal(c)
+		s, close, err := openLocal(c)
 		if err != nil {
 			return err
 		}
+		defer close()
 		names, err := s.ListNames(c, blobcache.RootHandle())
 		if err != nil {
 			return err
@@ -92,15 +94,18 @@ var nameParam = star.Param[string]{
 	Parse: star.ParseString,
 }
 
-func openLocal(c star.Context) (*bclocal.Service, error) {
+func openLocal(c star.Context) (*bclocal.Service, func(), error) {
 	db, err := dbutil.OpenDB(filepath.Join(stateDirParam.Load(c), "blobcache.db"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := bclocal.SetupDB(c, db); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return bclocal.New(bclocal.Env{DB: db}), nil
+	close := func() {
+		db.Close()
+	}
+	return bclocal.New(bclocal.Env{DB: db}), close, nil
 }
 
 func RunTest(t testing.TB, env map[string]string, calledAs string, args []string, stdin *bufio.Reader, stdout *bufio.Writer, stderr *bufio.Writer) {

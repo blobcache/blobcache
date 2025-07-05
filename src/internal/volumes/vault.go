@@ -10,21 +10,21 @@ import (
 	"go.brendoncarroll.net/state/cadata"
 )
 
-var _ Volume[[]byte] = &Vault{}
+var _ Volume = &Vault{}
 
 type Vault struct {
-	inner  Volume[[]byte]
+	inner  Volume
 	secret [32]byte
 }
 
-func NewVault(inner Volume[[]byte], secret [32]byte) *Vault {
+func NewVault(inner Volume, secret [32]byte) *Vault {
 	return &Vault{
 		inner:  inner,
 		secret: secret,
 	}
 }
 
-func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (Tx[[]byte], error) {
+func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (Tx, error) {
 	inner, err := v.inner.BeginTx(ctx, params)
 	if err != nil {
 		return nil, err
@@ -36,17 +36,17 @@ func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return v.inner.Await(ctx, prev, next)
 }
 
-var _ Tx[[]byte] = &VaultTx{}
+var _ Tx = &VaultTx{}
 
 type VaultTx struct {
-	inner  Tx[[]byte]
+	inner  Tx
 	crypto *bccrypto.Worker
 	tries  *tries.Operator
 
 	blobs map[blobcache.CID]bccrypto.Ref
 }
 
-func newVaultTx(inner Tx[[]byte]) *VaultTx {
+func newVaultTx(inner Tx) *VaultTx {
 	trieOp := tries.NewOperator()
 	return &VaultTx{
 		inner:  inner,
@@ -95,7 +95,7 @@ func (v *VaultTx) Post(ctx context.Context, salt *blobcache.CID, data []byte) (b
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	ptextCID := v.inner.Hash(data)
+	ptextCID := v.inner.Hash(salt, data)
 	v.blobs[ptextCID] = ref
 	return ptextCID, nil
 }
@@ -141,13 +141,13 @@ func (v *VaultTx) MaxSize() int {
 	return v.inner.MaxSize()
 }
 
-func (v *VaultTx) Hash(data []byte) blobcache.CID {
-	return v.inner.Hash(data)
+func (v *VaultTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+	return v.inner.Hash(salt, data)
 }
 
 // This is an adapter to a store, since we added salts to the API.
 type unsaltedStore struct {
-	inner Tx[[]byte]
+	inner Tx
 }
 
 func (v unsaltedStore) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
@@ -171,5 +171,5 @@ func (v unsaltedStore) MaxSize() int {
 }
 
 func (v unsaltedStore) Hash(data []byte) blobcache.CID {
-	return v.inner.Hash(data)
+	return v.inner.Hash(nil, data)
 }

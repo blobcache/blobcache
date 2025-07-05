@@ -126,7 +126,26 @@ func volumeHasActiveTx(tx *sqlx.Tx, volID blobcache.OID) (bool, error) {
 	return exists, nil
 }
 
-var _ volumes.Volume[[]byte] = &localVolume{}
+func inspectVolume(tx *sqlx.Tx, volID blobcache.OID) (*blobcache.VolumeInfo, error) {
+	volRow, err := getVolume(tx, volID)
+	if err != nil {
+		return nil, err
+	}
+	var backend blobcache.VolumeBackend[blobcache.OID]
+	if err := json.Unmarshal(volRow.Backend, &backend); err != nil {
+		return nil, err
+	}
+	volInfo := blobcache.VolumeInfo{
+		ID:       volID,
+		Schema:   blobcache.SchemaName(volRow.Schema),
+		HashAlgo: blobcache.HashAlgo(volRow.HashAlgo),
+		MaxSize:  volRow.MaxSize,
+		Backend:  backend,
+	}
+	return &volInfo, nil
+}
+
+var _ volumes.Volume = &localVolume{}
 
 type localVolume struct {
 	db *sqlx.DB
@@ -137,11 +156,12 @@ func (v *localVolume) Await(ctx context.Context, prev []byte, next *[]byte) erro
 	panic("not implemented")
 }
 
-func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx[[]byte], error) {
+func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
 	// loop until there is no active tx on the volume.
 	var oid *blobcache.OID
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
+	var volInfo *blobcache.VolumeInfo
 	for {
 		var err error
 		if oid, err = dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (*blobcache.OID, error) {
@@ -151,6 +171,10 @@ func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (vol
 				} else if yes {
 					return nil, nil
 				}
+			}
+			volInfo, err = inspectVolume(tx, v.id)
+			if err != nil {
+				return nil, err
 			}
 			return createTx(tx, v.id, spec.Mutate)
 		}); err != nil {
@@ -165,7 +189,7 @@ func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (vol
 		case <-tick.C:
 		}
 	}
-	return newLocalVolumeTx(ctx, v.db, *oid)
+	return newLocalVolumeTx(ctx, v.db, *oid, volInfo)
 }
 
 // createTx creates a new transaction object in the database.
@@ -228,26 +252,27 @@ func getTx(tx *sqlx.Tx, txid blobcache.OID) (*txRow, error) {
 	return &t, nil
 }
 
-var _ volumes.Tx[[]byte] = &localVolumeTx{}
+var _ volumes.Tx = &localVolumeTx{}
 
 // localVolumeTx is a transaction on a local volume.
 type localVolumeTx struct {
-	db   *sqlx.DB
-	txid blobcache.OID
+	db      *sqlx.DB
+	txid    blobcache.OID
+	volInfo *blobcache.VolumeInfo
 
 	txRow txRow
 }
 
 // newLocalVolumeTx creates a localVolumeTx.
 // It does not change the database state.
-func newLocalVolumeTx(ctx context.Context, db *sqlx.DB, txid blobcache.OID) (*localVolumeTx, error) {
+func newLocalVolumeTx(ctx context.Context, db *sqlx.DB, txid blobcache.OID, volInfo *blobcache.VolumeInfo) (*localVolumeTx, error) {
 	txRow, err := dbutil.DoTx1(ctx, db, func(tx *sqlx.Tx) (*txRow, error) {
 		return getTx(tx, txid)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &localVolumeTx{db: db, txid: txid, txRow: *txRow}, nil
+	return &localVolumeTx{db: db, txid: txid, txRow: *txRow, volInfo: volInfo}, nil
 }
 
 func (v *localVolumeTx) Commit(ctx context.Context, root []byte) error {
@@ -342,12 +367,12 @@ func (v *localVolumeTx) Exists(ctx context.Context, cid blobcache.CID) (bool, er
 }
 
 func (v *localVolumeTx) MaxSize() int {
-	// TODO: change max size.
-	return 1 << 21
+	return int(v.volInfo.MaxSize)
 }
 
-func (v *localVolumeTx) Hash(data []byte) blobcache.CID {
-	return blobcache.CID(blake3.Sum256(data))
+func (v *localVolumeTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+	hf := v.volInfo.HashAlgo.HashFunc()
+	return hf(salt, data)
 }
 
 func (v *localVolumeTx) Info() blobcache.VolumeInfo {

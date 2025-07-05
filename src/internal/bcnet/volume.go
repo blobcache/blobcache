@@ -3,14 +3,15 @@ package bcnet
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/volumes"
 )
 
 var (
-	_ volumes.Volume[[]byte] = (*Volume)(nil)
-	_ volumes.Tx[[]byte]     = (*Tx)(nil)
+	_ volumes.Volume = (*Volume)(nil)
+	_ volumes.Tx     = (*Tx)(nil)
 )
 
 type HandleMapping struct {
@@ -62,7 +63,7 @@ func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return nil
 }
 
-func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx[[]byte], error) {
+func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
 	resp, err := doJSON[BeginTxReq, BeginTxResp](ctx, v.n, v.ep, MT_VOLUME_BEGIN_TX, BeginTxReq{
 		Volume:   v.handleMapper.Downwards(v.h),
 		TxParams: spec,
@@ -79,9 +80,10 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 
 // Tx is a transaction on a remote volume.
 type Tx struct {
-	n  *Node
-	ep blobcache.Endpoint
-	h  blobcache.Handle
+	n       *Node
+	ep      blobcache.Endpoint
+	h       blobcache.Handle
+	volInfo *blobcache.VolumeInfo
 }
 
 func (tx *Tx) Commit(ctx context.Context, root []byte) error {
@@ -113,11 +115,76 @@ func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
 }
 
 func (tx *Tx) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
-	return blobcache.CID{}, nil
+	var body []byte
+	body = append(body, tx.h.OID[:]...)
+	body = append(body, tx.h.Secret[:]...)
+	reqMsg := Message{}
+	if salt != nil {
+		// if there is a salt, write that befor the data.  The salt size is known.
+		reqMsg.SetCode(MT_TX_POST_SALT)
+		body = append(body, salt[:]...)
+	} else {
+		// just write the data.
+		reqMsg.SetCode(MT_TX_POST)
+	}
+	body = append(body, data[:]...)
+	reqMsg.SetBody(body)
+
+	// do request/response
+	var respMsg Message
+	if err := tx.n.Ask(ctx, tx.ep, reqMsg, &respMsg); err != nil {
+		return blobcache.CID{}, err
+	}
+
+	if respMsg.Header().Code() == MT_ERROR {
+		return blobcache.CID{}, ParseWireError(respMsg.Body())
+	}
+	if respMsg.Header().Code() != MT_OK {
+		return blobcache.CID{}, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
+	}
+
+	// request is ok at this point.
+	respBody := respMsg.Body()
+	if len(respBody) != blobcache.CIDBytes {
+		return blobcache.CID{}, fmt.Errorf("invalid response body length: %d", len(respBody))
+	}
+	var theirCID blobcache.CID
+	copy(theirCID[:], respBody)
+	ourCID := tx.Hash(salt, data)
+	if theirCID != ourCID {
+		return blobcache.CID{}, fmt.Errorf("hash mismatch: ourCID=%s, theirCID=%s", ourCID, theirCID)
+	}
+	return theirCID, nil
 }
 
 func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
-	return 0, nil
+	var body []byte
+	body = append(body, tx.h.OID[:]...)
+	body = append(body, tx.h.Secret[:]...)
+	body = append(body, cid[:]...)
+	var reqMsg Message
+	reqMsg.SetCode(MT_TX_GET)
+	reqMsg.SetBody(body)
+
+	var respMsg Message
+	if err := tx.n.Ask(ctx, tx.ep, reqMsg, &respMsg); err != nil {
+		return 0, err
+	}
+	if respMsg.Header().Code() == MT_ERROR {
+		return 0, ParseWireError(respMsg.Body())
+	}
+	if respMsg.Header().Code() != MT_OK {
+		return 0, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
+	}
+	respBody := respMsg.Body()
+	if err := blobcache.CheckBlob(tx.Hash, salt, &cid, respBody); err != nil {
+		return 0, err
+	}
+	if len(respMsg.Body()) > len(buf) {
+		return 0, fmt.Errorf("buffer too short")
+	}
+	copy(buf, respMsg.Body())
+	return len(respMsg.Body()), nil
 }
 
 func (tx *Tx) Delete(ctx context.Context, cid blobcache.CID) error {
@@ -143,11 +210,12 @@ func (tx *Tx) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
 }
 
 func (tx *Tx) MaxSize() int {
-	return 0
+	return int(tx.volInfo.MaxSize)
 }
 
-func (tx *Tx) Hash(data []byte) blobcache.CID {
-	return blobcache.CID{}
+func (tx *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+	hf := tx.volInfo.HashAlgo.HashFunc()
+	return hf(salt, data)
 }
 
 func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.Endpoint, code MessageType, req Req) (*Resp, error) {
@@ -165,6 +233,9 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 	if respMsg.Header().Code() == MT_ERROR {
 		return nil, ParseWireError(respMsg.Body())
 	}
+	if respMsg.Header().Code() != MT_OK {
+		return nil, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
+	}
 	var resp Resp
 	if err := json.Unmarshal(respMsg.Body(), &resp); err != nil {
 		return nil, err
@@ -172,7 +243,7 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 	return &resp, nil
 }
 
-func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, id blobcache.OID) (volumes.Volume[[]byte], error) {
+func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, id blobcache.OID) (volumes.Volume, error) {
 	resp, err := doJSON[OpenReq, OpenResp](ctx, n, ep, MT_OPEN, OpenReq{
 		OID: id,
 	})

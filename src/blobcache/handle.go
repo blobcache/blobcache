@@ -52,6 +52,22 @@ func (h Handle) String() string {
 	return h.OID.String() + "." + hex.EncodeToString(h.Secret[:])
 }
 
+func (h *Handle) UnmarshalBinary(data []byte) error {
+	if len(data) != 32 {
+		return fmt.Errorf("invalid handle length: %d", len(data))
+	}
+	copy(h.OID[:], data[:32])
+	copy(h.Secret[:], data[32:])
+	return nil
+}
+
+func (h Handle) MarshalBinary() ([]byte, error) {
+	buf := make([]byte, 32)
+	copy(buf[:32], h.OID[:])
+	copy(buf[32:], h.Secret[:])
+	return buf, nil
+}
+
 // HandleInfo is information about a handle, *NOT* the object it points to.
 type HandleInfo struct {
 	OID OID `json:"oid"`

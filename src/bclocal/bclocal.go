@@ -46,7 +46,7 @@ type Service struct {
 
 	mu      sync.RWMutex
 	volumes map[blobcache.OID]volume
-	txns    map[blobcache.OID]volumes.Tx[[]byte]
+	txns    map[blobcache.OID]volumes.Tx
 	// handles stores ephemeral handles.
 	handles map[[32]byte]handle
 }
@@ -102,7 +102,7 @@ func (s *Service) cleanupHandlesLoop(ctx context.Context) {
 	}
 }
 
-func (s *Service) rootVolume() volumes.Volume[[]byte] {
+func (s *Service) rootVolume() volumes.Volume {
 	return &localVolume{db: s.db, id: blobcache.OID{}}
 }
 
@@ -147,7 +147,7 @@ func (s *Service) mountAllVolumes(ctx context.Context, ns volumes.Namespace) err
 
 type volume struct {
 	info    blobcache.VolumeInfo
-	backend volumes.Volume[[]byte]
+	backend volumes.Volume
 }
 
 type handle struct {
@@ -191,7 +191,7 @@ func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (*volumes.N
 	return &volumes.Namespace{Volume: vol}, blobcache.Rights_ALL, nil
 }
 
-func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume[[]byte], blobcache.Rights, error) {
+func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.Rights, error) {
 	if x.OID == (blobcache.OID{}) {
 		// this is the root namespace, so we can just return the root volume.
 		return &localVolume{db: s.db, id: x.OID}, 0, nil
@@ -211,7 +211,7 @@ func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume[[]byte], blobca
 
 // resolveTx looks up the transaction handle from memory.
 // If the handle is valid it will load a new transaction.
-func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (volumes.Tx[[]byte], error) {
+func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (volumes.Tx, error) {
 	if touch {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -419,7 +419,7 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blo
 	}
 	s.mu.Lock()
 	if s.txns == nil {
-		s.txns = make(map[blobcache.OID]volumes.Tx[[]byte])
+		s.txns = make(map[blobcache.OID]volumes.Tx)
 	}
 	s.txns[txid] = txn
 	s.mu.Unlock()
@@ -512,7 +512,7 @@ func handleKey(h blobcache.Handle) [32]byte {
 }
 
 // makeVolume constructs an in-memory volume object from a backend.
-func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume[[]byte], error) {
+func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume, error) {
 	if err := backend.Validate(); err != nil {
 		return nil, err
 	}
@@ -532,7 +532,7 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	}
 }
 
-func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (volumes.Volume[[]byte], error) {
+func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (volumes.Volume, error) {
 	return nil, fmt.Errorf("git volumes are not yet supported")
 }
 

@@ -13,30 +13,35 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/ed25519"
+	"github.com/jmoiron/sqlx"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
+var pki = inet256.PKI{
+	Default: inet256.SignAlgo_Ed25519,
+	Schemes: map[string]sign.Scheme{
+		inet256.SignAlgo_Ed25519: inet256.SignScheme_Ed25519(),
+	},
+}
+
 // Run runs the blobcache daemon, until the context is cancelled.
 // If the context is cancelled, Run returns nil.  Run returns an error if it returns for any other reason.
 func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.Listener) error {
-	dbPath := filepath.Join(stateDir, "blobcache.db")
-	db, err := dbutil.OpenDB(dbPath)
+	d := Daemon{StateDir: stateDir}
+	db, err := d.GetDB()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	if err := bclocal.SetupDB(ctx, db); err != nil {
-		return err
-	}
-	// if we have been given a PacketConn, then we also need a private key.
+
 	var privateKey ed25519.PrivateKey
 	if pc != nil {
-		privateKeyPath := filepath.Join(stateDir, "private_key.pem")
-		privKey, err := LoadPrivateKey(privateKeyPath)
+		privKey, err := d.EnsurePrivateKey()
 		if err != nil {
 			return err
 		}
@@ -76,12 +81,59 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 	}
 }
 
+type Daemon struct {
+	StateDir string
+}
+
+// GetDB opens the database file, runs any migrations, and returns the database.
+func (d *Daemon) GetDB() (*sqlx.DB, error) {
+	dbPath := filepath.Join(d.StateDir, "blobcache.db")
+	db, err := dbutil.OpenDB(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	if err := bclocal.SetupDB(context.Background(), db); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+// EnsurePrivateKey generates a private key if it doesn't exist, and returns it.
+func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
+	p := filepath.Join(d.StateDir, "private_key.inet256")
+	privKey, err := LoadPrivateKey(p)
+	if !os.IsNotExist(err) {
+		return privKey, nil
+	}
+	_, privKey, err = pki.GenerateKey()
+	if err != nil {
+		return nil, err
+	}
+	if err := SavePrivateKey(p, privKey); err != nil {
+		return nil, err
+	}
+	return privKey, nil
+}
+
+func (d *Daemon) GetPolicy() (*Policy, error) {
+	return LoadPolicy(d.StateDir)
+}
+
 func LoadPrivateKey(p string) (inet256.PrivateKey, error) {
 	buf, err := os.ReadFile(p)
 	if err != nil {
 		return nil, err
 	}
-	return inet256.ParsePrivateKey(buf)
+	return pki.ParsePrivateKey(buf)
+}
+
+func SavePrivateKey(p string, privKey inet256.PrivateKey) error {
+	buf, err := pki.MarshalPrivateKey(nil, privKey)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, buf, 0600)
 }
 
 func AwaitHealthy(ctx context.Context, svc blobcache.Service) error {

@@ -77,7 +77,11 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err != nil {
 				return nil, err
 			}
-			return &BeginTxResp{Handle: *h}, nil
+			info, err := svc.InspectVolume(ctx, req.Volume)
+			if err != nil {
+				return nil, err
+			}
+			return &BeginTxResp{Handle: *h, VolumeInfo: *info}, nil
 		})
 
 	case MT_TX_COMMIT:
@@ -121,9 +125,74 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &DeleteResp{}, nil
 		})
+	case MT_TX_POST:
+		h, body, err := readHandle(req.Body())
+		if err != nil {
+			resp.SetError(err)
+			return
+		}
+		cid, err := svc.Post(ctx, *h, nil, body)
+		if err != nil {
+			resp.SetError(err)
+			return
+		}
+		resp.SetCode(MT_OK)
+		resp.SetBody(cid[:])
+	case MT_TX_POST_SALT:
+		h, body, err := readHandle(req.Body())
+		if err != nil {
+			resp.SetError(err)
+			return
+		}
+		cid, err := svc.Post(ctx, *h, nil, body)
+		if err != nil {
+			resp.SetError(err)
+			return
+		}
+		resp.SetCode(MT_OK)
+		resp.SetBody(cid[:])
+	case MT_TX_GET:
+		h, body, err := readHandle(req.Body())
+		if err != nil {
+			resp.SetError(err)
+			return
+		}
+		if len(body) != blobcache.CIDBytes {
+			resp.SetError(fmt.Errorf("invalid request body length: %d", len(body)))
+			return
+		}
+		var cid blobcache.CID
+		copy(cid[:], body)
+
+		info, err := svc.InspectVolume(ctx, *h)
+		if err != nil {
+			resp.SetError(err)
+			return
+		}
+		buf := make([]byte, info.MaxSize)
+		n, err := svc.Get(ctx, *h, cid, nil, buf)
+		if err != nil {
+			resp.SetError(err)
+			return
+		}
+		resp.SetCode(MT_OK)
+		resp.SetBody(buf[:n])
 	default:
 		resp.SetError(fmt.Errorf("unknown message type: %v", req.Header().Code()))
 	}
+}
+
+func readHandle(body []byte) (*blobcache.Handle, []byte, error) {
+	const handleSize = 32
+	if len(body) < handleSize {
+		return nil, nil, fmt.Errorf("invalid request body length: %d", len(body))
+	}
+	var h blobcache.Handle
+	if err := h.UnmarshalBinary(body[:handleSize]); err != nil {
+		return nil, nil, err
+	}
+	body = body[handleSize:]
+	return &h, body, nil
 }
 
 func handleJSON[Req, Resp any](req *Message, resp *Message, fn func(Req) (*Resp, error)) {
@@ -142,5 +211,6 @@ func handleJSON[Req, Resp any](req *Message, resp *Message, fn func(Req) (*Resp,
 		resp.SetError(err)
 		return
 	}
+	resp.SetCode(MT_OK)
 	resp.SetBody(data)
 }

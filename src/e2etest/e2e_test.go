@@ -25,7 +25,7 @@ func TestGLFS(t *testing.T) {
 	volh, err := svc.CreateVolume(ctx, blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 
-	blobcachetests.Modify(t, svc, *volh, true, func(tx *blobcache.Tx) ([]byte, error) {
+	blobcachetests.Modify(t, svc, *volh, func(tx *blobcache.Tx) ([]byte, error) {
 		ref, err := glfs.PostBlob(ctx, tx, strings.NewReader("hello"))
 		require.NoError(t, err)
 		ref, err = glfs.PostTreeSlice(ctx, tx, []glfs.TreeEntry{

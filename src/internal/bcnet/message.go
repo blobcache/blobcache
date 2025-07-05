@@ -14,8 +14,11 @@ type MessageType uint8
 const (
 	MT_UNKNOWN MessageType = iota
 
+	// MT_OK is the success response to a request.
+	MT_OK
+
+	// MT_PING is a request to ping the remote peer.
 	MT_PING
-	MT_PONG
 
 	MT_HANDLE_INSPECT
 	MT_HANDLE_DROP
@@ -36,9 +39,15 @@ const (
 	MT_TX_ABORT
 	MT_TX_LOAD
 	MT_TX_POST
+	MT_TX_POST_SALT
 	MT_TX_GET
 	MT_TX_EXISTS
 	MT_TX_DELETE
+
+	// MT_LAYER2_TELL is used for volume implementations to communicate with other volumes.
+	MT_LAYER2_TELL
+	// MT_LAYER2_ASK is used for volume implementations to communicate with other volumes.
+	MT_LAYER2_ASK
 
 	MT_ERROR = 255
 )

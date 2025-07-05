@@ -9,17 +9,17 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-var _ Volume[[]byte] = &RootAEAD{}
+var _ Volume = &RootAEAD{}
 
 // RootAEAD is a volume that encrypts the root with an AEAD.
 // The blobs are left unchanged.
 // This is useful for schemas that already encrypt the blobs that they store.
 type RootAEAD struct {
-	Inner Volume[[]byte]
+	Inner Volume
 	AEAD  cipher.AEAD
 }
 
-func NewChaCha20Poly1305(inner Volume[[]byte], secret *[32]byte) *RootAEAD {
+func NewChaCha20Poly1305(inner Volume, secret *[32]byte) *RootAEAD {
 	aead, err := chacha20poly1305.New(secret[:])
 	if err != nil {
 		panic(err)
@@ -27,7 +27,7 @@ func NewChaCha20Poly1305(inner Volume[[]byte], secret *[32]byte) *RootAEAD {
 	return &RootAEAD{AEAD: aead, Inner: inner}
 }
 
-func (v *RootAEAD) BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx[[]byte], error) {
+func (v *RootAEAD) BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error) {
 	inner, err := v.Inner.BeginTx(ctx, spec)
 	if err != nil {
 		return nil, err
@@ -39,11 +39,11 @@ func (v *RootAEAD) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return v.Inner.Await(ctx, prev, next)
 }
 
-var _ Tx[[]byte] = &RootAEADTx{}
+var _ Tx = &RootAEADTx{}
 
 type RootAEADTx struct {
 	aead  cipher.AEAD
-	inner Tx[[]byte]
+	inner Tx
 }
 
 func (tx *RootAEADTx) Commit(ctx context.Context, ptext []byte) error {
@@ -94,6 +94,6 @@ func (tx *RootAEADTx) MaxSize() int {
 	return tx.inner.MaxSize()
 }
 
-func (tx *RootAEADTx) Hash(data []byte) blobcache.CID {
-	return tx.inner.Hash(data)
+func (tx *RootAEADTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+	return tx.inner.Hash(salt, data)
 }

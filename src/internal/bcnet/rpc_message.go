@@ -91,7 +91,10 @@ type BeginTxReq struct {
 }
 
 type BeginTxResp struct {
+	// Handle is the handle for the transaction.
 	Handle blobcache.Handle `json:"handle"`
+	// VolumeInfo is the volume info for the transaction.
+	VolumeInfo blobcache.VolumeInfo `json:"volume_info"`
 }
 
 type CommitReq struct {
