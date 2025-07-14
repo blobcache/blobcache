@@ -72,7 +72,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/Await":
 		handleRequest(w, r, func(ctx context.Context, req AwaitReq) (*AwaitResp, error) {
-			err := s.Service.Await(ctx, req.Conditions)
+			err := s.Service.Await(ctx, req.Cond)
 			if err != nil {
 				return nil, err
 			}

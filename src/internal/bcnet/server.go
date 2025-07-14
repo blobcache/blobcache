@@ -73,7 +73,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		})
 	case MT_VOLUME_BEGIN_TX:
 		handleJSON(req, resp, func(req *BeginTxReq) (*BeginTxResp, error) {
-			h, err := svc.BeginTx(ctx, req.Volume, req.TxParams)
+			h, err := svc.BeginTx(ctx, req.Volume, req.Params)
 			if err != nil {
 				return nil, err
 			}
@@ -81,7 +81,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err != nil {
 				return nil, err
 			}
-			return &BeginTxResp{Handle: *h, VolumeInfo: *info}, nil
+			return &BeginTxResp{Tx: *h, VolumeInfo: *info}, nil
 		})
 
 	case MT_TX_COMMIT:

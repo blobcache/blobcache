@@ -65,8 +65,8 @@ func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
 	resp, err := doJSON[BeginTxReq, BeginTxResp](ctx, v.n, v.ep, MT_VOLUME_BEGIN_TX, BeginTxReq{
-		Volume:   v.handleMapper.Downwards(v.h),
-		TxParams: spec,
+		Volume: v.handleMapper.Downwards(v.h),
+		Params: spec,
 	})
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 	return &Tx{
 		n:  v.n,
 		ep: v.ep,
-		h:  v.handleMapper.Upwards(resp.Handle),
+		h:  v.handleMapper.Upwards(resp.Tx),
 	}, nil
 }
 

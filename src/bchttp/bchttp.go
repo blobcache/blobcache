@@ -34,6 +34,11 @@ type (
 
 // Volume messages.
 
+type (
+	AwaitReq  = bcnet.AwaitReq
+	AwaitResp = bcnet.AwaitResp
+)
+
 type CreateVolumeReq struct {
 	Spec blobcache.VolumeSpec `json:"spec"`
 }
@@ -41,12 +46,6 @@ type CreateVolumeReq struct {
 type CreateVolumeResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
-
-type AwaitReq struct {
-	Conditions blobcache.Conditions `json:"conditions"`
-}
-
-type AwaitResp struct{}
 
 type BeginTxReq struct {
 	Volume blobcache.Handle   `json:"volume"`

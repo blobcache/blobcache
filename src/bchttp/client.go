@@ -140,7 +140,7 @@ func (c *Client) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 }
 
 func (c *Client) Await(ctx context.Context, cond blobcache.Conditions) error {
-	req := AwaitReq{Conditions: cond}
+	req := AwaitReq{Cond: cond}
 	var resp AwaitResp
 	return c.doJSON(ctx, "POST", "/Await", nil, req, &resp)
 }

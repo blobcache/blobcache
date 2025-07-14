@@ -86,13 +86,13 @@ type AwaitReq struct {
 type AwaitResp struct{}
 
 type BeginTxReq struct {
-	Volume   blobcache.Handle   `json:"volume"`
-	TxParams blobcache.TxParams `json:"tx_params"`
+	Volume blobcache.Handle   `json:"volume"`
+	Params blobcache.TxParams `json:"params"`
 }
 
 type BeginTxResp struct {
-	// Handle is the handle for the transaction.
-	Handle blobcache.Handle `json:"handle"`
+	// Tx is the handle for the transaction.
+	Tx blobcache.Handle `json:"tx"`
 	// VolumeInfo is the volume info for the transaction.
 	VolumeInfo blobcache.VolumeInfo `json:"volume_info"`
 }
