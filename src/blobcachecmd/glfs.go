@@ -53,7 +53,7 @@ var glfsInitCmd = star.Command{
 		if len(root) > 0 {
 			return fmt.Errorf("there is already something in this volume")
 		}
-		ag := glfs.NewAgent()
+		ag := glfs.NewMachine()
 		ref, err := ag.PostTreeSlice(ctx, tx, nil)
 		if err != nil {
 			return err
@@ -93,7 +93,7 @@ var glfsLookCmd = star.Command{
 		if err := json.Unmarshal(root, &ref); err != nil {
 			return err
 		}
-		glfsAg := glfs.NewAgent()
+		glfsAg := glfs.NewMachine()
 		ref2, err := glfsAg.GetAtPath(ctx, tx, ref, srcPathParam.Load(c))
 		if err != nil {
 			return err
@@ -132,7 +132,7 @@ var glfsImportCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		return modifyGLFS(ctx, svc, *volh, func(ag *glfs.Agent, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) (*glfs.Ref, error) {
+		return modifyGLFS(ctx, svc, *volh, func(ag *glfs.Machine, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) (*glfs.Ref, error) {
 			imp := glfsport.Importer{
 				Store: dst,
 				Dir:   srcPathParam.Load(c),
@@ -174,7 +174,7 @@ var glfsGetFileCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		return viewGLFS(ctx, svc, *volh, func(ag *glfs.Agent, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) error {
+		return viewGLFS(ctx, svc, *volh, func(ag *glfs.Machine, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) error {
 			ref, err := ag.GetAtPath(ctx, src, root, srcPathParam.Load(c))
 			if err != nil {
 				return err
@@ -208,13 +208,13 @@ var volumeNameParam = star.Param[string]{
 	Parse: star.ParseString,
 }
 
-func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, fn func(ag *glfs.Agent, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) error) error {
+func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, fn func(ag *glfs.Machine, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) error) error {
 	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{})
 	if err != nil {
 		return err
 	}
 	defer tx.Abort(ctx)
-	ag := glfs.NewAgent()
+	ag := glfs.NewMachine()
 	var rootData []byte
 	if err := tx.Load(ctx, &rootData); err != nil {
 		return err
@@ -226,7 +226,7 @@ func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f
 	return fn(ag, tx, tx, root)
 }
 
-func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f func(ag *glfs.Agent, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) (*glfs.Ref, error)) error {
+func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f func(ag *glfs.Machine, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) (*glfs.Ref, error)) error {
 	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{
 		Mutate: true,
 	})
@@ -234,7 +234,7 @@ func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle,
 		return err
 	}
 	defer tx.Abort(ctx)
-	ag := glfs.NewAgent()
+	ag := glfs.NewMachine()
 	// load and parse root
 	var rootData []byte
 	if err := tx.Load(ctx, &rootData); err != nil {

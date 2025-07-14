@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"blobcache.io/blobcache/src/bclocal/internal/dbmig"
-	"blobcache.io/blobcache/src/bclocal/internal/migrations"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/migrations"
 	"github.com/jmoiron/sqlx"
 )
 

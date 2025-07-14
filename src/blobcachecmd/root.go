@@ -39,6 +39,8 @@ var rootCmd = star.NewDir(
 
 		"grant":  grantCmd,
 		"revoke": revokeCmd,
+
+		"fuse-mount": fuseMountCmd,
 	},
 )
 

@@ -21,7 +21,7 @@ func EnsureAll(tx *sqlx.Tx, migrations []Migration) error {
 	}
 	for i, mig := range migrations {
 		if i+1 != int(mig.RowID) {
-			return fmt.Errorf("migration %s has rowid %d, expected %d", mig.Name, mig.RowID, i)
+			return fmt.Errorf("migration %s has rowid %d, expected %d", mig.Name, mig.RowID, i+1)
 		}
 		if err := ensure(tx, mig); err != nil {
 			return err

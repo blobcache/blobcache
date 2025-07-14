@@ -3,10 +3,11 @@ module blobcache.io/blobcache
 go 1.24
 
 require (
-	blobcache.io/glfs v0.0.0-20250323202827-2452859b076a
+	blobcache.io/glfs v0.0.0-20250706163801-7fe8f5eb8ba4
 	github.com/cloudflare/circl v1.6.1
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/golang/protobuf v1.5.4
+	github.com/hanwen/go-fuse/v2 v2.8.0
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/pkg/errors v0.9.1

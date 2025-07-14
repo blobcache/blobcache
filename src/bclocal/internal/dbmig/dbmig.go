@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"blobcache.io/blobcache/src/bclocal/internal/migrations"
+	"blobcache.io/blobcache/src/internal/migrations"
 )
 
 //go:embed *.sql
