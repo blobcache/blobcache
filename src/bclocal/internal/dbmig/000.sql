@@ -34,10 +34,12 @@ CREATE TABLE local_txns (
 -- local_volumes stores state for a local volume.
 CREATE TABLE local_volumes(
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-    oid BLOB REFERENCES objects(id),
+    oid BLOB REFERENCES volumes(id),
     -- base is the transaction id, below which all transactions are visible.
     base INTEGER NOT NULL DEFAULT 0
 ), STRICT;
+
+CREATE INDEX idx_local_volumes_oid ON local_volumes (oid);
 
 CREATE TABLE objects (
     id BLOB PRIMARY KEY,

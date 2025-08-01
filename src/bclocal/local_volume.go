@@ -212,7 +212,7 @@ var _ volumes.Tx = &localVolumeTx{}
 type localVolumeTx struct {
 	db          *sqlx.DB
 	localTxnRow localTxnRow
-	volInfo     *blobcache.VolumeInfo
+	volInfo     blobcache.VolumeInfo
 }
 
 // newLocalVolumeTx creates a localVolumeTx.
@@ -228,7 +228,7 @@ func newLocalVolumeTx(ctx context.Context, db *sqlx.DB, txid LocalTxnID, volInfo
 	return &localVolumeTx{
 		db:          db,
 		localTxnRow: *txRow,
-		volInfo:     volInfo,
+		volInfo:     *volInfo,
 	}, nil
 }
 
@@ -312,5 +312,5 @@ func (v *localVolumeTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 }
 
 func (v *localVolumeTx) Info() blobcache.VolumeInfo {
-	return *v.volInfo
+	return v.volInfo
 }
