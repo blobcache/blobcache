@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/cipher"
 	"crypto/rand"
+	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"golang.org/x/crypto/chacha20poly1305"
@@ -20,7 +21,7 @@ type RootAEAD struct {
 }
 
 func NewChaCha20Poly1305(inner Volume, secret *[32]byte) *RootAEAD {
-	aead, err := chacha20poly1305.New(secret[:])
+	aead, err := chacha20poly1305.NewX(secret[:])
 	if err != nil {
 		panic(err)
 	}
@@ -47,12 +48,11 @@ type RootAEADTx struct {
 }
 
 func (tx *RootAEADTx) Commit(ctx context.Context, ptext []byte) error {
-	ctext := make([]byte, tx.aead.NonceSize()+tx.aead.Overhead())
-	nonce := ctext[:tx.aead.NonceSize()]
+	nonce := make([]byte, tx.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		panic(err)
 	}
-	ctext = tx.aead.Seal(ctext, nonce, ptext, nil)
+	ctext := tx.aead.Seal(nonce, nonce, ptext, nil)
 	return tx.inner.Commit(ctx, ctext)
 }
 
@@ -64,9 +64,17 @@ func (tx *RootAEADTx) Load(ctx context.Context, dst *[]byte) error {
 	if err := tx.inner.Load(ctx, dst); err != nil {
 		return err
 	}
+	// as a special case if the plaintext is empty, then we return nil.
+	if len(*dst) == 0 {
+		*dst = (*dst)[:0]
+		return nil
+	}
+	if len(*dst) < tx.aead.NonceSize() {
+		return fmt.Errorf("too small to contain 24 byte nonce: %d", len(*dst))
+	}
 	nonce := (*dst)[:tx.aead.NonceSize()]
 	ctext := (*dst)[tx.aead.NonceSize():]
-	plaintext, err := tx.aead.Open(ctext[:0], nonce, ctext, nil)
+	plaintext, err := tx.aead.Open(ctext[:0], nonce[:], ctext, nil)
 	if err != nil {
 		return err
 	}

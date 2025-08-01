@@ -21,7 +21,7 @@ func ensureBlob(tx *sqlx.Tx, cid blobcache.CID, salt *blobcache.CID, data []byte
 }
 
 // addBlob adds a blob to a transaction.  If the blob did not exist, then it is added.
-// If it was previously marked deleted in the transaction, then it is unmarked.
+// If it was previously marked deleted in the transaction, then it is added, and is_deleted is set to false.
 func addBlob(tx *sqlx.Tx, volID LocalVolumeID, txid LocalTxnID, cid blobcache.CID) error {
 	// if the blob did not exist in this store, increment its refcount.
 	if _, err := tx.Exec(`UPDATE blobs SET rc = rc + 1 WHERE cid = ? AND NOT EXISTS (

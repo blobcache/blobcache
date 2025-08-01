@@ -58,3 +58,23 @@ func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx 
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit(ctx, data))
 }
+
+func Load(t testing.TB, s blobcache.Service, txh blobcache.Handle) []byte {
+	ctx := testutil.Context(t)
+	buf := []byte{}
+	require.NoError(t, s.Load(ctx, txh, &buf))
+	if buf == nil {
+		buf = []byte{}
+	}
+	return buf
+}
+
+func Commit(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte) {
+	ctx := testutil.Context(t)
+	require.NoError(t, s.Commit(ctx, txh, data))
+}
+
+func Abort(t testing.TB, s blobcache.Service, txh blobcache.Handle) {
+	ctx := testutil.Context(t)
+	require.NoError(t, s.Abort(ctx, txh))
+}

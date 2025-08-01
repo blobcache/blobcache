@@ -3,7 +3,6 @@ package bclocal
 import (
 	"context"
 	"database/sql"
-	"log"
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -102,27 +101,28 @@ func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (vol
 	var ltxid *LocalTxnID
 	for {
 		var err error
-		if ltxid, err = dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (*LocalTxnID, error) {
+		if err = dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
 			volRow, err := getLocalVolumeByOID(tx, v.oid)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if spec.Mutate {
 				if yes, err := volumeHasMutatingTx(tx, volRow.RowID); err != nil {
-					return nil, err
+					return err
 				} else if yes {
-					return nil, nil
+					return nil
 				}
 			}
 			volInfo, err = inspectVolume(tx, v.oid)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			ltxid, err := createLocalTxn(tx, volRow.RowID, spec.Mutate)
+			ltxid2, err := createLocalTxn(tx, volRow.RowID, spec.Mutate)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			return &ltxid, nil
+			ltxid = &ltxid2
+			return nil
 		}); err != nil {
 			return nil, err
 		}
@@ -180,7 +180,6 @@ func txnLoadRoot(tx *sqlx.Tx, volID LocalVolumeID, baseTxid, txid LocalTxnID, ds
 	`, volID, txid, baseTxid); err != nil {
 		return err
 	}
-	log.Println("txnLoadRoot", volID, baseTxid, txid, string(*dst))
 	return nil
 }
 
@@ -189,7 +188,6 @@ func txnSetRoot(tx *sqlx.Tx, volID LocalVolumeID, txid LocalTxnID, root []byte) 
 	if root == nil {
 		root = []byte{}
 	}
-	log.Println("txnSetRoot", volID, txid, string(root))
 	if _, err := tx.Exec(`INSERT INTO local_vol_roots (vol_id, txn_id, root) VALUES (?, ?, ?)`, volID, txid, root); err != nil {
 		return err
 	}
