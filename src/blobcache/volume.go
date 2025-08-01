@@ -54,6 +54,7 @@ type VolumeInfo struct {
 	HashAlgo HashAlgo           `json:"hash_algo"`
 	MaxSize  int64              `json:"max_size"`
 	Backend  VolumeBackend[OID] `json:"backend"`
+	Salted   bool               `json:"salted"`
 }
 
 // VolumeBackend is a specification for a volume backend.
