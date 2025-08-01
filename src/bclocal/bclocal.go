@@ -103,7 +103,7 @@ func (s *Service) cleanupHandlesLoop(ctx context.Context) {
 }
 
 func (s *Service) rootVolume() volumes.Volume {
-	return &localVolume{db: s.db, id: blobcache.OID{}}
+	return &localVolume{db: s.db, oid: blobcache.OID{}}
 }
 
 // mountVolume ensures the volume is available.
@@ -194,7 +194,7 @@ func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (*volumes.N
 func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.Rights, error) {
 	if x.OID == (blobcache.OID{}) {
 		// this is the root namespace, so we can just return the root volume.
-		return &localVolume{db: s.db, id: x.OID}, 0, nil
+		return &localVolume{db: s.db, oid: x.OID}, 0, nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -413,17 +413,14 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blo
 		return nil, err
 	}
 
-	txid := blobcache.NewOID()
-	if ltxn, ok := txn.(*localVolumeTx); ok {
-		txid = ltxn.txid
-	}
+	txoid := blobcache.NewOID()
 	s.mu.Lock()
 	if s.txns == nil {
 		s.txns = make(map[blobcache.OID]volumes.Tx)
 	}
-	s.txns[txid] = txn
+	s.txns[txoid] = txn
 	s.mu.Unlock()
-	h := s.createEphemeralHandle(txid, time.Now().Add(DefaultTxTTL))
+	h := s.createEphemeralHandle(txoid, time.Now().Add(DefaultTxTTL))
 	return &h, nil
 }
 
@@ -507,6 +504,7 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return nil
 }
 
+// handleKey computes a map key from a handle.
 func handleKey(h blobcache.Handle) [32]byte {
 	return blake3.Sum256(slices.Concat(h.OID[:], h.Secret[:]))
 }
@@ -518,7 +516,7 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	}
 	switch {
 	case backend.Local != nil:
-		return &localVolume{db: s.db, id: oid}, nil
+		return s.makeLocal(ctx, oid)
 	case backend.Remote != nil:
 		return bcnet.OpenVolume(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Volume)
 	case backend.Git != nil:
@@ -530,6 +528,10 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	default:
 		return nil, fmt.Errorf("empty backend")
 	}
+}
+
+func (s *Service) makeLocal(_ context.Context, oid blobcache.OID) (volumes.Volume, error) {
+	return &localVolume{db: s.db, oid: oid}, nil
 }
 
 func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (volumes.Volume, error) {

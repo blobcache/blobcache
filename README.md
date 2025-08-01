@@ -1,11 +1,9 @@
 # Blobcache
 
 [![GoDoc](https://godoc.org/github.com/blobcache/blobcache?status.svg)](http://godoc.org/github.com/blobcache/blobcache)
-![Matrix](https://img.shields.io/matrix/blobcache:matrix.org?label=%23blobcache%3Amatrix.org&logo=matrix)
 [<img src="https://discord.com/assets/cb48d2a8d4991281d7a6a95d2f58195e.svg" width="80">](https://discord.gg/TWy6aVWJ7f)
 
-Blobcache is a content addressed data store, designed to be a replicated data layer for applications.
-If you can express your application state as a copy-on-write data structure, then Blobcache can handle syncing and replication for you.
+Blobcache allows any device to expose storage over the network as a content-addressed store.
 
 ## Getting Started
 You should be able to install with

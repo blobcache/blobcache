@@ -230,4 +230,47 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		data2 := Get(t, s, txh, cid, nil, 100)
 		require.Equal(t, data1, data2)
 	})
+	t.Run("1WriterNReaders", func(t *testing.T) {
+		s, volh := mk(t)
+
+		wtxh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		buf := Load(t, s, wtxh)
+		require.Equal(t, []byte{}, buf)
+
+		// Open 10 readers.
+		rtxhs := make([]blobcache.Handle, 10)
+		for i := range rtxhs {
+			rtxhs[i] = BeginTx(t, s, volh, blobcache.TxParams{Mutate: false})
+			defer Abort(t, s, rtxhs[i])
+		}
+		// commit the write transaction.
+		root2 := []byte{1, 2, 3}
+		Commit(t, s, wtxh, root2)
+
+		// all of the readers should still see the empty blob.
+		for _, rtxh := range rtxhs {
+			buf := Load(t, s, rtxh)
+			require.Equal(t, buf, []byte{})
+		}
+
+		// this reader should see the new root.
+		rtxh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		defer Abort(t, s, rtxh)
+		buf2 := Load(t, s, rtxh)
+		require.Equal(t, buf2, root2)
+	})
+	t.Run("WriteN", func(t *testing.T) {
+		s, volh := mk(t)
+		const N = 10
+		for i := 0; i < N; i++ {
+			func() {
+				wtxh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+				Commit(t, s, wtxh, []byte{byte(i)})
+			}()
+		}
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: false})
+		defer Abort(t, s, txh)
+		buf := Load(t, s, txh)
+		require.Equal(t, []byte{9}, buf)
+	})
 }

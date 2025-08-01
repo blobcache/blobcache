@@ -18,6 +18,10 @@ func TestSetupDB(t *testing.T) {
 	}
 }
 
+func TestNewService(t *testing.T) {
+	NewTestService(t)
+}
+
 func TestAPI(t *testing.T) {
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
 		svc := NewTestService(t)

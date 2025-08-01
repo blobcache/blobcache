@@ -9,6 +9,7 @@ import (
 type Volume interface {
 	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error)
 	// Await blocks until the volume root changes away from prev to something else.
+	// The next state is written to next.
 	Await(ctx context.Context, prev []byte, next *[]byte) error
 }
 
