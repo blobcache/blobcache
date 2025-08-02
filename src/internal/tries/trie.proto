@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package blobcache.tries;
 
-option go_package = "github.com/blobcache/blobcache/pkg/tries";
+option go_package = "blobcache.io/blobcache/src/internal/tries";
 
 message Entry {
     bytes key = 1;

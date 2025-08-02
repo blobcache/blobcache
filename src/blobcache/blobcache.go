@@ -1,4 +1,3 @@
-// Package blobcache is a temporary standin for the Blobcache API at github.com/blobcache/blobcache
 package blobcache
 
 import (

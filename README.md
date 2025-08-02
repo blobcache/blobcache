@@ -1,6 +1,6 @@
 # Blobcache
 
-[![GoDoc](https://godoc.org/github.com/blobcache/blobcache?status.svg)](http://godoc.org/github.com/blobcache/blobcache)
+[![GoDoc](https://godoc.org/blobcache.io/blobcache?status.svg)](http://godoc.org/blobcache.io/blobcache)
 [<img src="https://discord.com/assets/cb48d2a8d4991281d7a6a95d2f58195e.svg" width="80">](https://discord.gg/TWy6aVWJ7f)
 
 Blobcache allows any device to expose storage over the network as a content-addressed store.
