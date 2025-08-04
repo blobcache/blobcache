@@ -15,6 +15,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/simplens"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/jmoiron/sqlx"
@@ -154,7 +155,7 @@ type handle struct {
 	target    blobcache.OID
 	createdAt time.Time
 	expiresAt time.Time // zero value means no expiration
-	rights    blobcache.Rights
+	rights    blobcache.ActionSet
 }
 
 // createEphemeralHandle creates a handle that expires at the given time.
@@ -174,7 +175,7 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 	return ret
 }
 
-func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (*volumes.Namespace, blobcache.Rights, error) {
+func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (volumes.Namespace, blobcache.ActionSet, error) {
 	if h.OID != (blobcache.OID{}) {
 		// TODO: for now root is the only valid namespace.
 		return nil, 0, fmt.Errorf("volume is not a namespace")
@@ -188,10 +189,10 @@ func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (*volumes.N
 	if err != nil {
 		return nil, 0, err
 	}
-	return &volumes.Namespace{Volume: vol}, blobcache.Rights_ALL, nil
+	return &simplens.Namespace{Volume: vol}, blobcache.Action_ALL, nil
 }
 
-func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.Rights, error) {
+func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.ActionSet, error) {
 	if x.OID == (blobcache.OID{}) {
 		// this is the root namespace, so we can just return the root volume.
 		return &localVolume{db: s.db, oid: x.OID}, 0, nil
@@ -206,7 +207,7 @@ func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.Righ
 	if !exists {
 		return nil, 0, fmt.Errorf("handle does not refer to volume")
 	}
-	return vol.backend, blobcache.Rights_ALL, nil
+	return vol.backend, blobcache.Action_ALL, nil
 }
 
 // resolveTx looks up the transaction handle from memory.
@@ -278,7 +279,7 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 }
 
 func (s *Service) Open(ctx context.Context, x blobcache.OID) (*blobcache.Handle, error) {
-	if err := s.mountAllVolumes(ctx, volumes.Namespace{Volume: s.rootVolume()}); err != nil {
+	if err := s.mountAllVolumes(ctx, &simplens.Namespace{Volume: s.rootVolume()}); err != nil {
 		return nil, err
 	}
 	s.mu.RLock()

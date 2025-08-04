@@ -76,47 +76,47 @@ type HandleInfo struct {
 	ExpiresAt tai64.TAI64N `json:"expires_at"`
 }
 
-// Rights is a bitmask of the actions that can be performed using a handle.
-type Rights uint64
+// ActionSet is a bitmask of the actions that can be performed using a handle.
+type ActionSet uint64
 
 const (
-	Rights_Inspect = (1 << iota)
+	Action_Inspect = (1 << iota)
 
-	Rights_Tx_Load
-	Rights_Tx_Post
-	Rights_Tx_Get
-	Rights_Tx_Exists
-	Rights_Tx_Delete
+	Action_Tx_Load
+	Action_Tx_Post
+	Action_Tx_Get
+	Action_Tx_Exists
+	Action_Tx_Delete
 
-	Rights_Volume_BeginTx
-	Rights_Volume_Await
+	Action_Volume_BeginTx
+	Action_Volume_Await
 
-	Rights_Namespace_Open
-	Rights_Namespace_List
-	Rights_Namespace_Put
-	Rights_Namespace_Delete
+	Action_Namespace_Open
+	Action_Namespace_List
+	Action_Namespace_Put
+	Action_Namespace_Delete
 )
 
-const Rights_ALL = ^Rights(0)
+const Action_ALL = ^ActionSet(0)
 
-func (r Rights) String() string {
+func (r ActionSet) String() string {
 	parts := []string{}
-	rs := map[Rights]string{
-		Rights_Inspect: "INSPECT",
+	rs := map[ActionSet]string{
+		Action_Inspect: "INSPECT",
 
-		Rights_Tx_Load:   "LOAD",
-		Rights_Tx_Post:   "POST",
-		Rights_Tx_Get:    "GET",
-		Rights_Tx_Exists: "EXISTS",
-		Rights_Tx_Delete: "DELETE",
+		Action_Tx_Load:   "LOAD",
+		Action_Tx_Post:   "POST",
+		Action_Tx_Get:    "GET",
+		Action_Tx_Exists: "EXISTS",
+		Action_Tx_Delete: "DELETE",
 
-		Rights_Volume_BeginTx: "BEGIN_TX",
-		Rights_Volume_Await:   "AWAIT",
+		Action_Volume_BeginTx: "BEGIN_TX",
+		Action_Volume_Await:   "AWAIT",
 
-		Rights_Namespace_Open:   "OPEN",
-		Rights_Namespace_List:   "LIST",
-		Rights_Namespace_Put:    "PUT",
-		Rights_Namespace_Delete: "DELETE",
+		Action_Namespace_Open:   "OPEN",
+		Action_Namespace_List:   "LIST",
+		Action_Namespace_Put:    "PUT",
+		Action_Namespace_Delete: "DELETE",
 	}
 	for r2, str := range rs {
 		if r&r2 != 0 {
@@ -128,9 +128,9 @@ func (r Rights) String() string {
 
 // Entry is an entry in a namespace.
 type Entry struct {
-	Name   string `json:"name"`
-	Target OID    `json:"target"`
-	Rights Rights `json:"rights"`
+	Name   string    `json:"name"`
+	Target OID       `json:"target"`
+	Rights ActionSet `json:"rights"`
 
 	Volume *VolumeInfo `json:"volume,omitempty"`
 }
