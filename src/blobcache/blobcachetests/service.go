@@ -193,11 +193,16 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
-		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: false})
-		require.NoError(t, err)
-		require.NotNil(t, txh)
-		err = s.Abort(ctx, *txh)
-		require.NoError(t, err)
+		for _, p := range []blobcache.TxParams{
+			{Mutate: false},
+			{Mutate: true},
+		} {
+			txh, err := s.BeginTx(ctx, volh, p)
+			require.NoError(t, err)
+			require.NotNil(t, txh)
+			err = s.Abort(ctx, *txh)
+			require.NoError(t, err)
+		}
 	})
 	t.Run("TxCommit", func(t *testing.T) {
 		ctx := testutil.Context(t)
@@ -208,6 +213,15 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		err = s.Commit(ctx, *txh, []byte{1, 2, 3})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
+	})
+	t.Run("TxCommitReadOnly", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s, volh := mk(t)
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: false})
+		require.NoError(t, err)
+		require.NotNil(t, txh)
+		err = s.Commit(ctx, *txh, []byte{1, 2, 3})
+		require.Error(t, err)
 	})
 	t.Run("PostExists", func(t *testing.T) {
 		ctx := testutil.Context(t)
@@ -257,7 +271,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		rtxh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
 		defer Abort(t, s, rtxh)
 		buf2 := Load(t, s, rtxh)
-		require.Equal(t, buf2, root2)
+		require.Equal(t, root2, buf2)
 	})
 	t.Run("WriteN", func(t *testing.T) {
 		s, volh := mk(t)

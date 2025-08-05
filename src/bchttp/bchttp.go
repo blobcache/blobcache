@@ -58,6 +58,14 @@ type BeginTxResp struct {
 
 // Tx messages.
 
+type InspectTxReq struct {
+	Tx blobcache.Handle `json:"tx"`
+}
+
+type InspectTxResp struct {
+	Info blobcache.TxInfo `json:"info"`
+}
+
 type CommitReq struct {
 	Root []byte `json:"root"`
 }

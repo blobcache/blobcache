@@ -33,7 +33,7 @@ func (v *RootAEAD) BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, er
 	if err != nil {
 		return nil, err
 	}
-	return &RootAEADTx{aead: v.AEAD, inner: inner}, nil
+	return &RootAEADTx{aead: v.AEAD, inner: inner, vol: v}, nil
 }
 
 func (v *RootAEAD) Await(ctx context.Context, prev []byte, next *[]byte) error {
@@ -45,6 +45,11 @@ var _ Tx = &RootAEADTx{}
 type RootAEADTx struct {
 	aead  cipher.AEAD
 	inner Tx
+	vol   Volume
+}
+
+func (tx *RootAEADTx) Volume() Volume {
+	return tx.vol
 }
 
 func (tx *RootAEADTx) Commit(ctx context.Context, ptext []byte) error {

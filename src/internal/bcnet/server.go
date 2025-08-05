@@ -29,7 +29,11 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err != nil {
 				return nil, err
 			}
-			return &OpenResp{Handle: *h}, nil
+			info, err := svc.InspectVolume(ctx, *h)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenResp{Handle: *h, Info: *info}, nil
 		})
 	case MT_HANDLE_DROP:
 		handleJSON(req, resp, func(req *DropReq) (*DropResp, error) {
@@ -53,6 +57,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 				return nil, err
 			}
 			return &OpenAtResp{Handle: *h}, nil
+		})
+	case MT_NAMESPACE_LIST_NAMES:
+		handleJSON(req, resp, func(req *ListNamesReq) (*ListNamesResp, error) {
+			names, err := svc.ListNames(ctx, req.Namespace)
+			if err != nil {
+				return nil, err
+			}
+			return &ListNamesResp{Names: names}, nil
 		})
 	case MT_NAMESPACE_GET_ENTRY:
 		handleJSON(req, resp, func(req *GetEntryReq) (*GetEntryResp, error) {
@@ -164,7 +176,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		var cid blobcache.CID
 		copy(cid[:], body)
 
-		info, err := svc.InspectVolume(ctx, *h)
+		info, err := svc.InspectTx(ctx, *h)
 		if err != nil {
 			resp.SetError(err)
 			return

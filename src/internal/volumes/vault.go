@@ -29,7 +29,7 @@ func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (Tx, err
 	if err != nil {
 		return nil, err
 	}
-	return newVaultTx(inner), nil
+	return newVaultTx(v, inner), nil
 }
 
 func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
@@ -39,6 +39,7 @@ func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 var _ Tx = &VaultTx{}
 
 type VaultTx struct {
+	vol    *Vault
 	inner  Tx
 	crypto *bccrypto.Worker
 	tries  *tries.Operator
@@ -46,9 +47,10 @@ type VaultTx struct {
 	blobs map[blobcache.CID]bccrypto.Ref
 }
 
-func newVaultTx(inner Tx) *VaultTx {
+func newVaultTx(vol *Vault, inner Tx) *VaultTx {
 	trieOp := tries.NewOperator()
 	return &VaultTx{
+		vol:    vol,
 		inner:  inner,
 		crypto: bccrypto.NewWorker(nil),
 		tries:  trieOp,
@@ -57,8 +59,8 @@ func newVaultTx(inner Tx) *VaultTx {
 	}
 }
 
-func (v *VaultTx) ID() blobcache.OID {
-	return blobcache.OID{}
+func (tx *VaultTx) Volume() Volume {
+	return tx.vol
 }
 
 func (v *VaultTx) Load(ctx context.Context, dst *[]byte) error {

@@ -56,8 +56,8 @@ func (h *Handle) UnmarshalBinary(data []byte) error {
 	if len(data) != 32 {
 		return fmt.Errorf("invalid handle length: %d", len(data))
 	}
-	copy(h.OID[:], data[:32])
-	copy(h.Secret[:], data[32:])
+	copy(h.OID[:], data[:16])
+	copy(h.Secret[:], data[16:])
 	return nil
 }
 

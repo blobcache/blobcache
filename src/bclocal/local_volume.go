@@ -232,7 +232,17 @@ func newLocalVolumeTx(ctx context.Context, db *sqlx.DB, txid LocalTxnID, volInfo
 	}, nil
 }
 
+func (v *localVolumeTx) Volume() volumes.Volume {
+	return &localVolume{
+		db:  v.db,
+		oid: v.volInfo.ID,
+	}
+}
+
 func (v *localVolumeTx) Commit(ctx context.Context, root []byte) error {
+	if !v.localTxnRow.Mutate {
+		return blobcache.ErrTxReadOnly{}
+	}
 	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
 		return txnCommit(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, root)
 	})

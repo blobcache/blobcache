@@ -7,7 +7,8 @@ type OpenReq struct {
 }
 
 type OpenResp struct {
-	Handle blobcache.Handle `json:"handle"`
+	Handle blobcache.Handle     `json:"handle"`
+	Info   blobcache.VolumeInfo `json:"info"`
 }
 
 type OpenAtReq struct {
@@ -44,7 +45,7 @@ type DeleteEntryReq struct {
 type DeleteEntryResp struct{}
 
 type ListNamesReq struct {
-	Target blobcache.Handle `json:"target"`
+	Namespace blobcache.Handle `json:"namespace"`
 }
 
 type ListNamesResp struct {
@@ -95,6 +96,14 @@ type BeginTxResp struct {
 	Tx blobcache.Handle `json:"tx"`
 	// VolumeInfo is the volume info for the transaction.
 	VolumeInfo blobcache.VolumeInfo `json:"volume_info"`
+}
+
+type InspectTxReq struct {
+	Tx blobcache.Handle `json:"tx"`
+}
+
+type InspectTxResp struct {
+	Info blobcache.TxInfo `json:"info"`
 }
 
 type CommitReq struct {

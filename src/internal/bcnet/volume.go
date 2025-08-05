@@ -14,35 +14,20 @@ var (
 	_ volumes.Tx     = (*Tx)(nil)
 )
 
-type HandleMapping struct {
-	Upwards   func(blobcache.Handle) blobcache.Handle
-	Downwards func(blobcache.Handle) blobcache.Handle
-}
-
-func (hm HandleMapping) IsZero() bool {
-	return hm.Upwards == nil && hm.Downwards == nil
-}
-
 // Volume is a remote volume.
 type Volume struct {
-	n            *Node
-	ep           blobcache.Endpoint
-	h            blobcache.Handle
-	handleMapper HandleMapping
+	n    *Node
+	ep   blobcache.Endpoint
+	h    blobcache.Handle
+	info *blobcache.VolumeInfo
 }
 
-func NewVolume(n *Node, ep blobcache.Endpoint, h blobcache.Handle, handleMapper HandleMapping) *Volume {
-	if handleMapper.IsZero() {
-		handleMapper = HandleMapping{
-			Upwards:   func(h blobcache.Handle) blobcache.Handle { return h },
-			Downwards: func(h blobcache.Handle) blobcache.Handle { return h },
-		}
-	}
+func NewVolume(n *Node, ep blobcache.Endpoint, h blobcache.Handle, info *blobcache.VolumeInfo) *Volume {
 	return &Volume{
-		n:            n,
-		ep:           ep,
-		h:            h,
-		handleMapper: handleMapper,
+		n:    n,
+		ep:   ep,
+		h:    h,
+		info: info,
 	}
 }
 
@@ -65,16 +50,17 @@ func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
 	resp, err := doJSON[BeginTxReq, BeginTxResp](ctx, v.n, v.ep, MT_VOLUME_BEGIN_TX, BeginTxReq{
-		Volume: v.handleMapper.Downwards(v.h),
+		Volume: v.h,
 		Params: spec,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &Tx{
-		n:  v.n,
-		ep: v.ep,
-		h:  v.handleMapper.Upwards(resp.Tx),
+		n:       v.n,
+		ep:      v.ep,
+		h:       resp.Tx,
+		volInfo: v.info,
 	}, nil
 }
 
@@ -84,6 +70,15 @@ type Tx struct {
 	ep      blobcache.Endpoint
 	h       blobcache.Handle
 	volInfo *blobcache.VolumeInfo
+}
+
+func (tx *Tx) Volume() volumes.Volume {
+	return &Volume{
+		n:    tx.n,
+		ep:   tx.ep,
+		h:    tx.h,
+		info: tx.volInfo,
+	}
 }
 
 func (tx *Tx) Commit(ctx context.Context, root []byte) error {
@@ -105,12 +100,13 @@ func (tx *Tx) Abort(ctx context.Context) error {
 }
 
 func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
-	_, err := doJSON[LoadReq, LoadResp](ctx, tx.n, tx.ep, MT_TX_LOAD, LoadReq{
+	resp, err := doJSON[LoadReq, LoadResp](ctx, tx.n, tx.ep, MT_TX_LOAD, LoadReq{
 		Tx: tx.h,
 	})
 	if err != nil {
 		return err
 	}
+	*dst = append((*dst)[:0], resp.Root...)
 	return nil
 }
 
@@ -250,5 +246,5 @@ func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, id blobcach
 	if err != nil {
 		return nil, err
 	}
-	return NewVolume(n, ep, resp.Handle, HandleMapping{}), nil
+	return NewVolume(n, ep, resp.Handle, &resp.Info), nil
 }

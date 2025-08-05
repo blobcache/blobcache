@@ -26,6 +26,8 @@ type Tx interface {
 	Exists(ctx context.Context, cid blobcache.CID) (bool, error)
 	MaxSize() int
 	Hash(salt *blobcache.CID, data []byte) blobcache.CID
+	// Volume should return the volume that this tx is operating on.
+	Volume() Volume
 }
 
 type TypedVolume[Root any] interface {

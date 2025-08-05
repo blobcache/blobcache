@@ -29,7 +29,6 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		require.NoError(t, s2.Abort(ctx, *tx))
 	})
 	t.Run("Remote/Tx", func(t *testing.T) {
-		t.SkipNow()
 		ctx := testutil.Context(t)
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			svcs := mk(t, 2)
@@ -37,7 +36,9 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 			vol1 := CreateVolume(t, s1, defaultLocalSpec())
 			ep, err := s1.Endpoint(ctx)
 			require.NoError(t, err)
+			t.Log("creating remote volume", ep, vol1.OID)
 			vol2 := CreateVolume(t, s2, remoteVolumeSpec(ep, vol1.OID))
+			t.Log("setup remote volume, handing over to TxAPI test")
 			return s2, vol2
 		})
 	})
@@ -47,6 +48,7 @@ func remoteVolumeSpec(ep blobcache.Endpoint, volid blobcache.OID) blobcache.Volu
 	return blobcache.VolumeSpec{
 		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 		MaxSize:  1 << 20,
+		Salted:   false,
 		Backend: blobcache.VolumeBackend[blobcache.Handle]{
 			Remote: &blobcache.VolumeBackend_Remote{
 				Endpoint: ep,

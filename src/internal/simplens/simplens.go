@@ -30,7 +30,7 @@ func (ns Namespace) GetEntry(ctx context.Context, name string) (*blobcache.Entry
 }
 
 func (ns Namespace) PutEntry(ctx context.Context, x blobcache.Entry) error {
-	tx, err := ns.Volume.BeginTx(ctx, blobcache.TxParams{})
+	tx, err := ns.Volume.BeginTx(ctx, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (ns Namespace) ListEntries(ctx context.Context) ([]blobcache.Entry, error) 
 }
 
 func (ns Namespace) DeleteEntry(ctx context.Context, name string) error {
-	tx, err := ns.Volume.BeginTx(ctx, blobcache.TxParams{})
+	tx, err := ns.Volume.BeginTx(ctx, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return err
 	}

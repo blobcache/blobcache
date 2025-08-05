@@ -186,6 +186,13 @@ type TxParams struct {
 	Mutate bool
 }
 
+type TxInfo struct {
+	ID       OID
+	Volume   OID
+	MaxSize  int64
+	HashAlgo HashAlgo
+}
+
 type Service interface {
 	// Endpoint returns the endpoint of the service.
 	// If the endpoint is the zero value, the service is not listening for peers.
@@ -237,6 +244,7 @@ type Service interface {
 	// Transactions methods.
 	////
 
+	InspectTx(ctx context.Context, tx Handle) (*TxInfo, error)
 	// Commit commits a transaction.
 	Commit(ctx context.Context, tx Handle, root []byte) error
 	// Abort aborts a transaction.

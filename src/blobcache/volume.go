@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strings"
 
 	"go.inet256.org/inet256/src/inet256"
 )
@@ -16,6 +17,10 @@ type PeerID = inet256.ID
 type Endpoint struct {
 	Peer   PeerID         `json:"peer"`
 	IPPort netip.AddrPort `json:"ip_port"`
+}
+
+func (e Endpoint) String() string {
+	return fmt.Sprintf("%v@%v", e.Peer, e.IPPort)
 }
 
 func (e Endpoint) IsZero() bool {
@@ -66,6 +71,33 @@ type VolumeBackend[T handleOrOID] struct {
 	Git      *VolumeBackend_Git         `json:"git,omitempty"`
 	RootAEAD *VolumeBackend_RootAEAD[T] `json:"root_aead,omitempty"`
 	Vault    *VolumeBackend_Vault[T]    `json:"vault,omitempty"`
+}
+
+func (v VolumeBackend[T]) String() string {
+	sb := strings.Builder{}
+	sb.WriteString("VolumeBackend{")
+	if v.Local != nil {
+		sb.WriteString("local")
+	}
+	if v.Remote != nil {
+		sb.WriteString("remote:")
+		sb.WriteString(v.Remote.Endpoint.String())
+		sb.WriteString(" ")
+		sb.WriteString(v.Remote.Volume.String())
+	}
+	if v.Git != nil {
+		sb.WriteString("git")
+	}
+	if v.RootAEAD != nil {
+		sb.WriteString("root_aead:")
+		sb.WriteString(fmt.Sprintf("%v", v.RootAEAD.Inner))
+	}
+	if v.Vault != nil {
+		sb.WriteString("vault:")
+		sb.WriteString(fmt.Sprintf("%v", v.Vault.Inner))
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 func (v *VolumeBackend[T]) Validate() (err error) {

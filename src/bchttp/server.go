@@ -56,7 +56,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/ListNames":
 		handleRequest(w, r, func(ctx context.Context, req ListNamesReq) (*ListNamesResp, error) {
-			names, err := s.Service.ListNames(ctx, req.Target)
+			names, err := s.Service.ListNames(ctx, req.Namespace)
 			if err != nil {
 				return nil, err
 			}
@@ -174,6 +174,14 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch method {
+	case "Inspect":
+		handleRequest(w, r, func(ctx context.Context, req InspectTxReq) (*InspectTxResp, error) {
+			info, err := s.Service.InspectTx(ctx, h)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectTxResp{Info: *info}, nil
+		})
 	case "Commit":
 		handleRequest(w, r, func(ctx context.Context, req CommitReq) (*CommitResp, error) {
 			if err := s.Service.Commit(ctx, h, req.Root); err != nil {

@@ -119,7 +119,6 @@ func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobc
 	if err != nil {
 		return err
 	}
-
 	s.mu.Lock()
 	if s.volumes == nil {
 		s.volumes = make(map[blobcache.OID]volume)
@@ -133,6 +132,11 @@ func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobc
 }
 
 func (s *Service) mountAllVolumes(ctx context.Context, ns volumes.Namespace) error {
+	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
+		return ensureRootVolume(tx)
+	}); err != nil {
+		return err
+	}
 	ents, err := ns.ListEntries(ctx)
 	if err != nil {
 		return err
@@ -423,6 +427,31 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blo
 	s.mu.Unlock()
 	h := s.createEphemeralHandle(txoid, time.Now().Add(DefaultTxTTL))
 	return &h, nil
+}
+
+func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcache.TxInfo, error) {
+	txn, err := s.resolveTx(txh, false)
+	if err != nil {
+		return nil, err
+	}
+	vol := txn.Volume()
+	switch vol := vol.(type) {
+	case *localVolume:
+		s.mu.RLock()
+		volInfo, exists := s.volumes[vol.oid]
+		s.mu.RUnlock()
+		if !exists {
+			return nil, fmt.Errorf("volume not found")
+		}
+		return &blobcache.TxInfo{
+			ID:       txh.OID,
+			Volume:   volInfo.info.ID,
+			MaxSize:  volInfo.info.MaxSize,
+			HashAlgo: volInfo.info.HashAlgo,
+		}, nil
+	default:
+		return nil, fmt.Errorf("InspectTx not implemented for volume type:%T", vol)
+	}
 }
 
 func (s *Service) Commit(ctx context.Context, txh blobcache.Handle, root []byte) error {

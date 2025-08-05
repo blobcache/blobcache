@@ -94,7 +94,7 @@ func (c *Client) DeleteEntry(ctx context.Context, ns blobcache.Handle, name stri
 }
 
 func (c *Client) ListNames(ctx context.Context, ns blobcache.Handle) ([]string, error) {
-	req := ListNamesReq{Target: ns}
+	req := ListNamesReq{Namespace: ns}
 	var resp ListNamesResp
 	if err := c.doJSON(ctx, "POST", "/ListNames", nil, req, &resp); err != nil {
 		return nil, err
@@ -152,6 +152,15 @@ func (c *Client) BeginTx(ctx context.Context, vol blobcache.Handle, txp blobcach
 		return nil, err
 	}
 	return &resp.Tx, nil
+}
+
+func (c *Client) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache.TxInfo, error) {
+	req := InspectTxReq{Tx: tx}
+	var resp InspectTxResp
+	if err := c.doJSON(ctx, "POST", "/tx/", &tx.Secret, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Info, nil
 }
 
 func (c *Client) Commit(ctx context.Context, tx blobcache.Handle, root []byte) error {
