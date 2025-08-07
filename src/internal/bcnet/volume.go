@@ -31,6 +31,14 @@ func NewVolume(n *Node, ep blobcache.Endpoint, h blobcache.Handle, info *blobcac
 	}
 }
 
+func (v *Volume) Endpoint() blobcache.Endpoint {
+	return v.ep
+}
+
+func (v *Volume) Handle() blobcache.Handle {
+	return v.h
+}
+
 func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	_, err := doJSON[AwaitReq, AwaitResp](ctx, v.n, v.ep, MT_VOLUME_AWAIT, AwaitReq{
 		Cond: blobcache.Conditions{},
@@ -244,7 +252,21 @@ func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, id blobcach
 		OID: id,
 	})
 	if err != nil {
+		panic(err)
 		return nil, err
 	}
 	return NewVolume(n, ep, resp.Handle, &resp.Info), nil
+}
+
+// CreateVolumeAt creates a new volume in a namespace on a remote node.
+func CreateVolumeAt(ctx context.Context, n *Node, ep blobcache.Endpoint, ns blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	resp, err := doJSON[CreateVolumeAtReq, CreateVolumeAtResp](ctx, n, ep, MT_NAMESPACE_CREATE_AT, CreateVolumeAtReq{
+		Namespace: ns,
+		Name:      name,
+		Spec:      spec,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
 }

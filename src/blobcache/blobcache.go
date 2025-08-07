@@ -226,12 +226,19 @@ type Service interface {
 	GetEntry(ctx context.Context, ns Handle, name string) (*Entry, error)
 	// ListNames lists the names in a namespace.
 	ListNames(ctx context.Context, ns Handle) ([]string, error)
+	// CreateVolumeAt creates a new Volume in a namespace.
+	// CreateVolumeAt is an atomic equivalent to CreateVolume then PutEntry.
+	// CreateVolumeAt always creates a Volume on the same Node as the namespace.
+	CreateVolumeAt(ctx context.Context, ns Handle, name string, spec VolumeSpec) (*Handle, error)
 
 	////
 	// Volume methods.
 	////
 
 	// CreateVolume creates a new volume.
+	// CreateVolume always creates a Volume on the local Node.
+	// CreateVolume returns a handle to the Volume.  If no other references to the Volume
+	// have been created by the time the handle expires, the Volume will be deleted.
 	CreateVolume(ctx context.Context, vspec VolumeSpec) (*Handle, error)
 	// InspectVolume returns info about a Volume.
 	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
@@ -243,7 +250,7 @@ type Service interface {
 	////
 	// Transactions methods.
 	////
-
+	// InspectTx returns info about a transaction.
 	InspectTx(ctx context.Context, tx Handle) (*TxInfo, error)
 	// Commit commits a transaction.
 	Commit(ctx context.Context, tx Handle, root []byte) error

@@ -20,16 +20,18 @@ type (
 
 // Namespace messages.
 type (
-	OpenAtReq       = bcnet.OpenAtReq
-	OpenAtResp      = bcnet.OpenAtResp
-	GetEntryReq     = bcnet.GetEntryReq
-	GetEntryResp    = bcnet.GetEntryResp
-	PutEntryReq     = bcnet.PutEntryReq
-	PutEntryResp    = bcnet.PutEntryResp
-	DeleteEntryReq  = bcnet.DeleteEntryReq
-	DeleteEntryResp = bcnet.DeleteEntryResp
-	ListNamesReq    = bcnet.ListNamesReq
-	ListNamesResp   = bcnet.ListNamesResp
+	OpenAtReq          = bcnet.OpenAtReq
+	OpenAtResp         = bcnet.OpenAtResp
+	GetEntryReq        = bcnet.GetEntryReq
+	GetEntryResp       = bcnet.GetEntryResp
+	PutEntryReq        = bcnet.PutEntryReq
+	PutEntryResp       = bcnet.PutEntryResp
+	DeleteEntryReq     = bcnet.DeleteEntryReq
+	DeleteEntryResp    = bcnet.DeleteEntryResp
+	ListNamesReq       = bcnet.ListNamesReq
+	ListNamesResp      = bcnet.ListNamesResp
+	CreateVolumeAtReq  = bcnet.CreateVolumeAtReq
+	CreateVolumeAtResp = bcnet.CreateVolumeAtResp
 )
 
 // Volume messages.

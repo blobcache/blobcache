@@ -88,8 +88,15 @@ func (pv *PeerView) ListNames(ctx context.Context, namespace blobcache.Handle) (
 	return pv.Service.ListNames(ctx, namespace)
 }
 
-func (pv *PeerView) CreateVolume(ctx context.Context, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	return nil, fmt.Errorf("this host does not allow remote peers to create volumes")
+func (pv *PeerView) CreateVolumeAt(ctx context.Context, ns blobcache.Handle, name string, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
+		return nil, ErrNotAllowed{
+			Peer:   pv.Peer,
+			Action: "CreateVolumeAt",
+			Target: ns.OID,
+		}
+	}
+	return pv.Service.CreateVolumeAt(ctx, ns, name, vspec)
 }
 
 type ACL struct {
