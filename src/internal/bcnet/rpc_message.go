@@ -52,6 +52,16 @@ type ListNamesResp struct {
 	Names []string `json:"names"`
 }
 
+type CreateVolumeAtReq struct {
+	Namespace blobcache.Handle     `json:"namespace"`
+	Name      string               `json:"name"`
+	Spec      blobcache.VolumeSpec `json:"spec"`
+}
+
+type CreateVolumeAtResp struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
 type InspectHandleReq struct {
 	Handle blobcache.Handle `json:"handle"`
 }
@@ -77,7 +87,7 @@ type InspectVolumeReq struct {
 }
 
 type InspectVolumeResp struct {
-	Info *blobcache.VolumeInfo `json:"info"`
+	Info blobcache.VolumeInfo `json:"info"`
 }
 
 type AwaitReq struct {

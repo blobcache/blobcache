@@ -137,6 +137,9 @@ func (s *Service) mountAllVolumes(ctx context.Context, ns volumes.Namespace) err
 	}); err != nil {
 		return err
 	}
+	if err := s.mountVolume(ctx, blobcache.OID{}, rootVolumeInfo()); err != nil {
+		return err
+	}
 	ents, err := ns.ListEntries(ctx)
 	if err != nil {
 		return err
@@ -286,11 +289,13 @@ func (s *Service) Open(ctx context.Context, x blobcache.OID) (*blobcache.Handle,
 	if err := s.mountAllVolumes(ctx, &simplens.Namespace{Volume: s.rootVolume()}); err != nil {
 		return nil, err
 	}
-	s.mu.RLock()
-	_, exists := s.volumes[x]
-	s.mu.RUnlock()
-	if !exists {
-		return nil, fmt.Errorf("volume not found: %v", x)
+	if x != (blobcache.OID{}) {
+		s.mu.RLock()
+		_, exists := s.volumes[x]
+		s.mu.RUnlock()
+		if !exists {
+			return nil, blobcache.ErrNotFound{Type: "Volume", ID: x}
+		}
 	}
 	handle := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
 	return &handle, nil
@@ -339,6 +344,9 @@ func (s *Service) PutEntry(ctx context.Context, ns blobcache.Handle, name string
 	if err != nil {
 		return err
 	}
+	// TODO: after calling PutEntry, we need to ensure add an edge to the volumes_volumes table.
+	// from the namespace volume to the target volume.
+	// We only need to do this for local namespaces.
 	return nsVol.PutEntry(ctx, blobcache.Entry{
 		Name:   name,
 		Target: target.OID,
@@ -351,6 +359,8 @@ func (s *Service) DeleteEntry(ctx context.Context, ns blobcache.Handle, name str
 	if err != nil {
 		return err
 	}
+	// TODO: after calling DeleteEntry, we need to ensure remove the edge from the volumes_volumes table
+	// if it is no longer in any of the entries.
 	return nsVol.DeleteEntry(ctx, name)
 }
 
@@ -370,18 +380,59 @@ func (s *Service) ListNames(ctx context.Context, ns blobcache.Handle) ([]string,
 	return names, nil
 }
 
+func (s *Service) CreateVolumeAt(ctx context.Context, ns blobcache.Handle, name string, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	nsVol, _, err := s.resolveVol(ns)
+	if err != nil {
+		return nil, err
+	}
+	switch nsVol := nsVol.(type) {
+	case *bcnet.Volume:
+		remoteH, err := bcnet.CreateVolumeAt(ctx, s.node, nsVol.Endpoint(), nsVol.Handle(), name, vspec)
+		if err != nil {
+			return nil, err
+		}
+		localOID := blobcache.NewOID()
+		localSpec := blobcache.VolumeInfo{
+			ID:           localOID,
+			VolumeParams: vspec.Local.VolumeParams,
+			Backend: blobcache.VolumeBackend[blobcache.OID]{
+				Remote: &blobcache.VolumeBackend_Remote{
+					Endpoint: nsVol.Endpoint(),
+					Volume:   remoteH.OID,
+				},
+			},
+		}
+		// now we have a remote node's handle to the new volume.
+		if err := s.mountVolume(ctx, localOID, localSpec); err != nil {
+			return nil, err
+		}
+		localH := s.createEphemeralHandle(localOID, time.Now().Add(DefaultVolumeTTL))
+		return &localH, nil
+	default:
+		// TODO: this is good enough for remote callers to create a volume, but it should be atomic.
+		volh, err := s.CreateVolume(ctx, vspec)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.PutEntry(ctx, ns, name, *volh); err != nil {
+			return nil, err
+		}
+		return volh, nil
+	}
+}
+
 func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	if err := vspec.Validate(); err != nil {
 		return nil, err
 	}
-	if vspec.Salted {
-		return nil, fmt.Errorf("salted volumes are not yet supported")
+	vp, err := s.findVolumeParams(ctx, vspec)
+	if err != nil {
+		return nil, err
 	}
 	info := blobcache.VolumeInfo{
-		ID:       blobcache.NewOID(),
-		HashAlgo: vspec.HashAlgo,
-		MaxSize:  vspec.MaxSize,
-		Backend:  blobcache.VolumeBackendToOID(vspec.Backend),
+		// ID is intentionally left blank, createVolume will set it.
+		VolumeParams: vp,
+		Backend:      blobcache.VolumeBackendToOID(vspec),
 	}
 	volid, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.OID, error) {
 		return createVolume(tx, info)
@@ -609,6 +660,37 @@ func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend
 		return nil, err
 	}
 	return volumes.NewVault(inner, backend.Secret), nil
+}
+
+func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSpec) (blobcache.VolumeParams, error) {
+	switch {
+	case vspec.Local != nil:
+		return vspec.Local.VolumeParams, nil
+	case vspec.Git != nil:
+		return vspec.Git.VolumeParams, nil
+
+	case vspec.RootAEAD != nil:
+		innerVol, err := s.inspectVolume(vspec.RootAEAD.Inner)
+		if err != nil {
+			return blobcache.VolumeParams{}, err
+		}
+		return innerVol.info.VolumeParams, nil
+	case vspec.Vault != nil:
+		innerVol, err := s.inspectVolume(vspec.Vault.Inner)
+		if err != nil {
+			return blobcache.VolumeParams{}, err
+		}
+		return innerVol.info.VolumeParams, nil
+	case vspec.Remote != nil:
+		vol, err := bcnet.OpenVolume(ctx, s.node, vspec.Remote.Endpoint, vspec.Remote.Volume)
+		if err != nil {
+			return blobcache.VolumeParams{}, err
+		}
+		volInfo := vol.Info()
+		return volInfo.VolumeParams, nil
+	default:
+		panic(vspec)
+	}
 }
 
 func topsortEntries(ents []blobcache.Entry) {

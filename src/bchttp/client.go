@@ -102,6 +102,15 @@ func (c *Client) ListNames(ctx context.Context, ns blobcache.Handle) ([]string, 
 	return resp.Names, nil
 }
 
+func (c *Client) CreateVolumeAt(ctx context.Context, ns blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	req := CreateVolumeAtReq{Namespace: ns, Name: name, Spec: spec}
+	var resp CreateVolumeAtResp
+	if err := c.doJSON(ctx, "POST", "/CreateVolumeAt", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
 func (c *Client) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	req := CreateVolumeReq{Spec: vspec}
 	var resp CreateVolumeResp

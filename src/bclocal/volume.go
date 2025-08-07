@@ -49,18 +49,17 @@ func ensureRootVolume(tx *sqlx.Tx) error {
 	if err := insertObject(tx, rootOID, time.Now()); err != nil {
 		return err
 	}
-	backendJSON, err := json.Marshal(blobcache.VolumeBackend[blobcache.OID]{
-		Local: &blobcache.VolumeBackend_Local{},
-	})
+	info := rootVolumeInfo()
+	backendJSON, err := json.Marshal(info.Backend)
 	if err != nil {
 		return err
 	}
 	row := volumeRow{
 		OID:      rootOID,
-		HashAlgo: string(blobcache.HashAlgo_BLAKE3_256),
-		MaxSize:  1 << 22,
+		HashAlgo: string(info.HashAlgo),
+		MaxSize:  info.MaxSize,
 		Backend:  backendJSON,
-		Schema:   string(blobcache.SchemaName_Namespace),
+		Schema:   string(info.Schema),
 	}
 	if err := insertVolume(tx, row); err != nil {
 		return err
@@ -69,6 +68,21 @@ func ensureRootVolume(tx *sqlx.Tx) error {
 		return err
 	}
 	return nil
+}
+
+// rootVolumeInfo returns the info for the root volume.
+func rootVolumeInfo() blobcache.VolumeInfo {
+	return blobcache.VolumeInfo{
+		ID: blobcache.OID{},
+		VolumeParams: blobcache.VolumeParams{
+			Schema:   blobcache.SchemaName_Namespace,
+			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+			MaxSize:  1 << 22,
+		},
+		Backend: blobcache.VolumeBackend[blobcache.OID]{
+			Local: &blobcache.VolumeBackend_Local{},
+		},
+	}
 }
 
 // insertVolume inserts a volume into the volumes table.
@@ -110,12 +124,14 @@ func inspectVolume(tx *sqlx.Tx, volID blobcache.OID) (*blobcache.VolumeInfo, err
 		return nil, err
 	}
 	volInfo := blobcache.VolumeInfo{
-		ID:       volID,
-		Schema:   blobcache.SchemaName(volRow.Schema),
-		HashAlgo: blobcache.HashAlgo(volRow.HashAlgo),
-		MaxSize:  volRow.MaxSize,
-		Backend:  backend,
-		Salted:   volRow.Salted,
+		ID: volID,
+		VolumeParams: blobcache.VolumeParams{
+			Schema:   blobcache.SchemaName(volRow.Schema),
+			HashAlgo: blobcache.HashAlgo(volRow.HashAlgo),
+			MaxSize:  volRow.MaxSize,
+			Salted:   volRow.Salted,
+		},
+		Backend: backend,
 	}
 	return &volInfo, nil
 }

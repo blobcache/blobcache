@@ -54,6 +54,8 @@ func (e ErrCannotSalt) Error() string {
 	return "cannot salt"
 }
 
+// ErrNoEntry is returned when a namespace does not contain an entry.
+// It is never returned for broken handles, or missing blobs.
 type ErrNoEntry struct {
 	Namespace OID
 	Name      string

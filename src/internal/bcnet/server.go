@@ -58,6 +58,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &OpenAtResp{Handle: *h}, nil
 		})
+	case MT_NAMESPACE_CREATE_AT:
+		handleJSON(req, resp, func(req *CreateVolumeAtReq) (*CreateVolumeAtResp, error) {
+			h, err := svc.CreateVolumeAt(ctx, req.Namespace, req.Name, req.Spec)
+			if err != nil {
+				return nil, err
+			}
+			return &CreateVolumeAtResp{Handle: *h}, nil
+		})
 	case MT_NAMESPACE_LIST_NAMES:
 		handleJSON(req, resp, func(req *ListNamesReq) (*ListNamesResp, error) {
 			names, err := svc.ListNames(ctx, req.Namespace)
@@ -81,7 +89,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err != nil {
 				return nil, err
 			}
-			return &InspectVolumeResp{Info: info}, nil
+			return &InspectVolumeResp{Info: *info}, nil
 		})
 	case MT_VOLUME_BEGIN_TX:
 		handleJSON(req, resp, func(req *BeginTxReq) (*BeginTxResp, error) {

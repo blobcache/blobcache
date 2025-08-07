@@ -28,6 +28,21 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		require.NoError(t, err)
 		require.NoError(t, s2.Abort(ctx, *tx))
 	})
+	t.Run("CreateVolumeAt", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		svcs := mk(t, 2)
+		s1, s2 := svcs[0], svcs[1]
+		s1Ep, err := s1.Endpoint(ctx)
+		require.NoError(t, err)
+
+		nsh, err := s2.CreateVolume(ctx, remoteVolumeSpec(s1Ep, blobcache.OID{}))
+		require.NoError(t, err)
+		volh, err := s2.CreateVolumeAt(ctx, *nsh, "vol1", defaultLocalSpec())
+		require.NoError(t, err)
+		Modify(t, s2, *volh, func(tx *blobcache.Tx) ([]byte, error) {
+			return []byte("hello"), nil
+		})
+	})
 	t.Run("Remote/Tx", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
@@ -46,14 +61,9 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 
 func remoteVolumeSpec(ep blobcache.Endpoint, volid blobcache.OID) blobcache.VolumeSpec {
 	return blobcache.VolumeSpec{
-		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-		MaxSize:  1 << 20,
-		Salted:   false,
-		Backend: blobcache.VolumeBackend[blobcache.Handle]{
-			Remote: &blobcache.VolumeBackend_Remote{
-				Endpoint: ep,
-				Volume:   volid,
-			},
+		Remote: &blobcache.VolumeBackend_Remote{
+			Endpoint: ep,
+			Volume:   volid,
 		},
 	}
 }

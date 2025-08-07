@@ -47,14 +47,10 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		volh2, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
-			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-			MaxSize:  1 << 21,
-			Backend: blobcache.VolumeBackend[blobcache.Handle]{
-				RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
-					Inner:  *volh,
-					Algo:   blobcache.AEAD_CHACHA20POLY1305,
-					Secret: [32]byte{},
-				},
+			RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
+				Inner:  *volh,
+				Algo:   blobcache.AEAD_CHACHA20POLY1305,
+				Secret: [32]byte{},
 			},
 		})
 		require.NoError(t, err)
@@ -72,10 +68,11 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			ctx := testutil.Context(t)
 			s := mk(t)
 			volh, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
-				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-				MaxSize:  1 << 21,
-				Backend: blobcache.VolumeBackend[blobcache.Handle]{
-					Local: &blobcache.VolumeBackend_Local{},
+				Local: &blobcache.VolumeBackend_Local{
+					VolumeParams: blobcache.VolumeParams{
+						HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+						MaxSize:  1 << 21,
+					},
 				},
 			})
 			require.NoError(t, err)
@@ -88,24 +85,21 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			ctx := testutil.Context(t)
 			s := mk(t)
 			volh1, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
-				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-				MaxSize:  1 << 21,
-				Backend: blobcache.VolumeBackend[blobcache.Handle]{
-					Local: &blobcache.VolumeBackend_Local{},
+				Local: &blobcache.VolumeBackend_Local{
+					VolumeParams: blobcache.VolumeParams{
+						HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+						MaxSize:  1 << 21,
+					},
 				},
 			})
 			require.NoError(t, err)
 			require.NotNil(t, volh1)
 
 			volh, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
-				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-				MaxSize:  1 << 21,
-				Backend: blobcache.VolumeBackend[blobcache.Handle]{
-					RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
-						Inner:  *volh1,
-						Algo:   blobcache.AEAD_CHACHA20POLY1305,
-						Secret: [32]byte{},
-					},
+				RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
+					Inner:  *volh1,
+					Algo:   blobcache.AEAD_CHACHA20POLY1305,
+					Secret: [32]byte{},
 				},
 			})
 			require.NoError(t, err)
