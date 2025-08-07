@@ -61,14 +61,9 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 
 func remoteVolumeSpec(ep blobcache.Endpoint, volid blobcache.OID) blobcache.VolumeSpec {
 	return blobcache.VolumeSpec{
-		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-		MaxSize:  1 << 20,
-		Salted:   false,
-		Backend: blobcache.VolumeBackend[blobcache.Handle]{
-			Remote: &blobcache.VolumeBackend_Remote{
-				Endpoint: ep,
-				Volume:   volid,
-			},
+		Remote: &blobcache.VolumeBackend_Remote{
+			Endpoint: ep,
+			Volume:   volid,
 		},
 	}
 }

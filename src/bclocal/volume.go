@@ -73,10 +73,12 @@ func ensureRootVolume(tx *sqlx.Tx) error {
 // rootVolumeInfo returns the info for the root volume.
 func rootVolumeInfo() blobcache.VolumeInfo {
 	return blobcache.VolumeInfo{
-		ID:       blobcache.OID{},
-		Schema:   blobcache.SchemaName_Namespace,
-		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-		MaxSize:  1 << 22,
+		ID: blobcache.OID{},
+		VolumeParams: blobcache.VolumeParams{
+			Schema:   blobcache.SchemaName_Namespace,
+			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+			MaxSize:  1 << 22,
+		},
 		Backend: blobcache.VolumeBackend[blobcache.OID]{
 			Local: &blobcache.VolumeBackend_Local{},
 		},
@@ -122,12 +124,14 @@ func inspectVolume(tx *sqlx.Tx, volID blobcache.OID) (*blobcache.VolumeInfo, err
 		return nil, err
 	}
 	volInfo := blobcache.VolumeInfo{
-		ID:       volID,
-		Schema:   blobcache.SchemaName(volRow.Schema),
-		HashAlgo: blobcache.HashAlgo(volRow.HashAlgo),
-		MaxSize:  volRow.MaxSize,
-		Backend:  backend,
-		Salted:   volRow.Salted,
+		ID: volID,
+		VolumeParams: blobcache.VolumeParams{
+			Schema:   blobcache.SchemaName(volRow.Schema),
+			HashAlgo: blobcache.HashAlgo(volRow.HashAlgo),
+			MaxSize:  volRow.MaxSize,
+			Salted:   volRow.Salted,
+		},
+		Backend: backend,
 	}
 	return &volInfo, nil
 }

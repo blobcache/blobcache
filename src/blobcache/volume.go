@@ -28,38 +28,35 @@ func (e Endpoint) IsZero() bool {
 }
 
 // VolumeSpec is a specification for a volume.
-type VolumeSpec struct {
-	Schema SchemaName `json:"schema"`
-	// HashAlgo is the hash algorithm to use for the volume.
-	HashAlgo HashAlgo `json:"hash_algo"`
-	// MaxSize is the maximum size of a blob
-	MaxSize int64 `json:"max_size"`
-	Salted  bool  `json:"salted"`
-	// Backend is the implementation to use for the volume.
-	Backend VolumeBackend[Handle] `json:"backend"`
-}
+type VolumeSpec = VolumeBackend[Handle]
 
-func (v *VolumeSpec) Validate() (retErr error) {
-	if err := v.Backend.Validate(); err != nil {
-		retErr = errors.Join(retErr, err)
-	}
-	if err := v.HashAlgo.Validate(); err != nil {
-		retErr = errors.Join(retErr, err)
-	}
-	if v.MaxSize <= 0 {
-		retErr = errors.Join(retErr, fmt.Errorf("max size must be positive"))
-	}
-	return retErr
-}
+// Schema SchemaName `json:"schema"`
+// // HashAlgo is the hash algorithm to use for the volume.
+// HashAlgo HashAlgo `json:"hash_algo"`
+// // MaxSize is the maximum size of a blob
+// MaxSize int64 `json:"max_size"`
+// Salted  bool  `json:"salted"`
+// // Backend is the implementation to use for the volume.
+// Backend VolumeBackend[Handle] `json:"backend"`
+
+// func (v *VolumeSpec) Validate() (retErr error) {
+// 	if err := v.Backend.Validate(); err != nil {
+// 		retErr = errors.Join(retErr, err)
+// 	}
+// 	if err := v.HashAlgo.Validate(); err != nil {
+// 		retErr = errors.Join(retErr, err)
+// 	}
+// 	if v.MaxSize <= 0 {
+// 		retErr = errors.Join(retErr, fmt.Errorf("max size must be positive"))
+// 	}
+// 	return retErr
+// }
 
 // VolumeInfo is a volume info.
 type VolumeInfo struct {
-	ID       OID                `json:"id"`
-	Schema   SchemaName         `json:"schema"`
-	HashAlgo HashAlgo           `json:"hash_algo"`
-	MaxSize  int64              `json:"max_size"`
-	Backend  VolumeBackend[OID] `json:"backend"`
-	Salted   bool               `json:"salted"`
+	ID OID `json:"id"`
+	VolumeParams
+	Backend VolumeBackend[OID] `json:"backend"`
 }
 
 // VolumeBackend is a specification for a volume backend.
@@ -71,6 +68,17 @@ type VolumeBackend[T handleOrOID] struct {
 	Git      *VolumeBackend_Git         `json:"git,omitempty"`
 	RootAEAD *VolumeBackend_RootAEAD[T] `json:"root_aead,omitempty"`
 	Vault    *VolumeBackend_Vault[T]    `json:"vault,omitempty"`
+}
+
+func (v VolumeBackend[T]) Params() VolumeParams {
+	switch {
+	case v.Local != nil:
+		return v.Local.VolumeParams
+	case v.Git != nil:
+		return v.Git.VolumeParams
+	default:
+		panic(v)
+	}
 }
 
 func (v VolumeBackend[T]) String() string {
@@ -153,15 +161,36 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 	return ret
 }
 
-type VolumeBackend_Local struct{}
+type VolumeParams struct {
+	Schema   SchemaName `json:"schema"`
+	HashAlgo HashAlgo   `json:"hash_algo"`
+	MaxSize  int64      `json:"max_size"`
+	Salted   bool       `json:"salted"`
+}
+
+func DefaultVolumeParams() VolumeParams {
+	return VolumeParams{
+		Schema:   "",
+		HashAlgo: HashAlgo_BLAKE3_256,
+		MaxSize:  1 << 22,
+		Salted:   false,
+	}
+}
+
+type VolumeBackend_Local struct {
+	VolumeParams
+}
 
 type VolumeBackend_Remote struct {
 	Endpoint Endpoint `json:"endpoint"`
 	Volume   OID      `json:"volume"`
+	HashAlgo HashAlgo `json:"hash_algo"`
 }
 
 type VolumeBackend_Git struct {
 	URL string `json:"url"`
+
+	VolumeParams
 }
 
 // VolumeBackend_RootAEAD is a volume backend that uses a root AEAD to encrypt the volume's root.
@@ -192,10 +221,8 @@ type handleOrOID interface {
 // DefaultLocalSpec provides sensible defaults for a local volume.
 func DefaultLocalSpec() VolumeSpec {
 	return VolumeSpec{
-		HashAlgo: HashAlgo_BLAKE3_256,
-		MaxSize:  1 << 21,
-		Backend: VolumeBackend[Handle]{
-			Local: &VolumeBackend_Local{},
+		Local: &VolumeBackend_Local{
+			VolumeParams: DefaultVolumeParams(),
 		},
 	}
 }

@@ -89,7 +89,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err != nil {
 				return nil, err
 			}
-			return &InspectVolumeResp{Info: info}, nil
+			return &InspectVolumeResp{Info: *info}, nil
 		})
 	case MT_VOLUME_BEGIN_TX:
 		handleJSON(req, resp, func(req *BeginTxReq) (*BeginTxResp, error) {

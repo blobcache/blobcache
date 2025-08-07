@@ -39,6 +39,10 @@ func (v *Volume) Handle() blobcache.Handle {
 	return v.h
 }
 
+func (v *Volume) Info() *blobcache.VolumeInfo {
+	return v.info
+}
+
 func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	_, err := doJSON[AwaitReq, AwaitResp](ctx, v.n, v.ep, MT_VOLUME_AWAIT, AwaitReq{
 		Cond: blobcache.Conditions{},
@@ -247,12 +251,11 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 	return &resp, nil
 }
 
-func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, id blobcache.OID) (volumes.Volume, error) {
+func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, id blobcache.OID) (*Volume, error) {
 	resp, err := doJSON[OpenReq, OpenResp](ctx, n, ep, MT_OPEN, OpenReq{
 		OID: id,
 	})
 	if err != nil {
-		panic(err)
 		return nil, err
 	}
 	return NewVolume(n, ep, resp.Handle, &resp.Info), nil
@@ -269,4 +272,14 @@ func CreateVolumeAt(ctx context.Context, n *Node, ep blobcache.Endpoint, ns blob
 		return nil, err
 	}
 	return &resp.Handle, nil
+}
+
+func InspectVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, vol blobcache.Handle) (*blobcache.VolumeInfo, error) {
+	resp, err := doJSON[InspectVolumeReq, InspectVolumeResp](ctx, n, ep, MT_VOLUME_INSPECT, InspectVolumeReq{
+		Volume: vol,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Info, nil
 }

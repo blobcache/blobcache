@@ -87,7 +87,7 @@ type InspectVolumeReq struct {
 }
 
 type InspectVolumeResp struct {
-	Info *blobcache.VolumeInfo `json:"info"`
+	Info blobcache.VolumeInfo `json:"info"`
 }
 
 type AwaitReq struct {
