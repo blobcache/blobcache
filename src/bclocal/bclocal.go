@@ -192,21 +192,44 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 		target:    target,
 		createdAt: time.Now(),
 		expiresAt: expiresAt,
-		rights:    0, // TODO: set rights.
+		rights:    blobcache.Action_ALL, // TODO: set rights.
 	}
 	return ret
 }
 
 func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.ActionSet, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	k := handleKey(x)
 	if _, exists := s.handles[k]; !exists {
+		s.mu.RUnlock()
 		return nil, 0, blobcache.ErrInvalidHandle{Handle: x}
 	}
 	vol, exists := s.volumes[x.OID]
 	if !exists {
-		return nil, 0, fmt.Errorf("handle to %v does not refer to volume", x.OID)
+		s.mu.RUnlock()
+		// Volume not in memory, try to load from database
+		ctx := context.Background()
+		volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
+			return inspectVolume(tx, x.OID)
+		})
+		if err != nil {
+			return nil, 0, fmt.Errorf("handle to %v does not refer to volume", x.OID)
+		}
+
+		// Mount the volume
+		if err := s.mountVolume(ctx, x.OID, *volInfo); err != nil {
+			return nil, 0, err
+		}
+
+		// Now try again with the mounted volume
+		s.mu.RLock()
+		vol, exists = s.volumes[x.OID]
+		s.mu.RUnlock()
+		if !exists {
+			return nil, 0, fmt.Errorf("failed to mount volume %v", x.OID)
+		}
+	} else {
+		s.mu.RUnlock()
 	}
 	return vol.backend, blobcache.Action_ALL, nil
 }
@@ -239,7 +262,6 @@ func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (volumes.Tx, error
 }
 
 func (s *Service) inspectVolume(x blobcache.Handle) (volume, error) {
-
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if x.OID != (blobcache.OID{}) {
@@ -307,7 +329,16 @@ func (s *Service) Open(ctx context.Context, base blobcache.Handle, x blobcache.O
 		return nil, err
 	}
 	defer txn.Abort(ctx)
-	// TODO:
+	sch := simplens.Schema{}
+	src, root, err := volumes.ViewUnsalted(ctx, txn)
+	if err != nil {
+		return nil, err
+	}
+	links, err := sch.ListLinks(ctx, src, root)
+	if err != nil {
+		return nil, err
+	}
+	_ = links // TODO: use links to check access to x
 	h := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
 	return &h, nil
 }

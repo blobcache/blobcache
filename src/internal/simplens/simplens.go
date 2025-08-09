@@ -40,7 +40,6 @@ func (sch Schema) ListEntries(ctx context.Context, s cadata.Getter, root []byte)
 	buf := make([]byte, s.MaxSize())
 	n, err := s.Get(ctx, cid, buf)
 	if err != nil {
-		panic(err) // TODO
 		return nil, err
 	}
 	ents, err := decodeNamespace(buf[:n])
