@@ -15,6 +15,10 @@ type Client struct {
 
 // CreateAt creates a new Volume using spec, and links it to volh.
 func (c *Client) CreateAt(ctx context.Context, volh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return nil, err
+	}
 	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return nil, err
@@ -34,6 +38,10 @@ func (c *Client) CreateAt(ctx context.Context, volh blobcache.Handle, name strin
 }
 
 func (c *Client) OpenAt(ctx context.Context, volh blobcache.Handle, name string, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return nil, err
+	}
 	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{})
 	if err != nil {
 		return nil, err
@@ -51,6 +59,10 @@ func (c *Client) OpenAt(ctx context.Context, volh blobcache.Handle, name string,
 }
 
 func (c *Client) PutEntry(ctx context.Context, volh blobcache.Handle, name string, target blobcache.Handle) error {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return err
+	}
 	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return err
@@ -66,6 +78,10 @@ func (c *Client) PutEntry(ctx context.Context, volh blobcache.Handle, name strin
 }
 
 func (c *Client) DeleteEntry(ctx context.Context, volh blobcache.Handle, name string) error {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return err
+	}
 	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return err
@@ -78,6 +94,10 @@ func (c *Client) DeleteEntry(ctx context.Context, volh blobcache.Handle, name st
 }
 
 func (c *Client) ListNames(ctx context.Context, volh blobcache.Handle) ([]string, error) {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return nil, err
+	}
 	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{})
 	if err != nil {
 		return nil, err
@@ -88,17 +108,28 @@ func (c *Client) ListNames(ctx context.Context, volh blobcache.Handle) ([]string
 }
 
 func (c *Client) GetEntry(ctx context.Context, volh blobcache.Handle, name string) (*Entry, error) {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return nil, err
+	}
 	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{})
 	if err != nil {
 		return nil, err
 	}
 	defer txn.Abort(ctx)
 	nstx := Tx{Tx: txn}
-	ent, err := nstx.GetEntry(ctx, name)
-	if err != nil {
-		return nil, err
+	return nstx.GetEntry(ctx, name)
+}
+
+func (c *Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
+	if volh == (blobcache.Handle{}) {
+		volh2, err := c.Service.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		if err != nil {
+			return blobcache.Handle{}, err
+		}
+		volh = *volh2
 	}
-	return &Entry{Name: name, Target: ent.Target, Rights: ent.Rights}, nil
+	return volh, nil
 }
 
 type Entry struct {

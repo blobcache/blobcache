@@ -13,6 +13,7 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/volumes"
+	"go.brendoncarroll.net/exp/slices2"
 	"go.brendoncarroll.net/state/cadata"
 )
 
@@ -39,6 +40,7 @@ func (sch Schema) ListEntries(ctx context.Context, s cadata.Getter, root []byte)
 	buf := make([]byte, s.MaxSize())
 	n, err := s.Get(ctx, cid, buf)
 	if err != nil {
+		panic(err) // TODO
 		return nil, err
 	}
 	ents, err := decodeNamespace(buf[:n])
@@ -147,10 +149,9 @@ func (ns Tx) ListNames(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, len(ents))
-	for i, ent := range ents {
-		names[i] = ent.Name
-	}
+	names := slices2.Map(ents, func(e Entry) string {
+		return e.Name
+	})
 	return names, nil
 }
 

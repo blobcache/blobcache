@@ -19,8 +19,10 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		require.NoError(t, err)
 		s1Ep, err := s1.Endpoint(ctx)
 		require.NoError(t, err)
+		nsh, err := s1.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
 		nsc := simplens.Client{Service: s1}
-		require.NoError(t, nsc.PutEntry(ctx, blobcache.RootHandle(), "name1", *volh))
+		require.NoError(t, nsc.PutEntry(ctx, *nsh, "name1", *volh))
 
 		// creating a remote volume from the second node should turn into a call to Open on the first node
 		volh2, err := s2.CreateVolume(ctx, remoteVolumeSpec(s1Ep, volh.OID))

@@ -56,8 +56,10 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		})
 		require.NoError(t, err)
 		nsc := simplens.Client{Service: s}
-		require.NoError(t, nsc.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh2))
-		_, err = nsc.OpenAt(ctx, blobcache.RootHandle(), "test-name", blobcache.Action_ALL)
+		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+		require.NoError(t, nsc.PutEntry(ctx, *nsh, "test-name", *volh2))
+		_, err = nsc.OpenAt(ctx, *nsh, "test-name", blobcache.Action_ALL)
 		require.NoError(t, err)
 	})
 	t.Run("Namespace", func(t *testing.T) {
@@ -120,12 +122,14 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := simplens.Client{Service: s}
-		err = nsc.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh)
+		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+		err = nsc.PutEntry(ctx, *nsh, "test-name", *volh)
 		require.NoError(t, err)
 		err = s.Drop(ctx, *volh)
 		require.NoError(t, err)
 
-		volh2, err := nsc.OpenAt(ctx, blobcache.RootHandle(), "test-name", blobcache.Action_ALL)
+		volh2, err := nsc.OpenAt(ctx, *nsh, "test-name", blobcache.Action_ALL)
 		require.NoError(t, err)
 		require.Equal(t, volh.OID, volh2.OID)
 	})
@@ -134,7 +138,9 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		ctx := testutil.Context(t)
 		s := mk(t)
 		nsc := simplens.Client{Service: s}
-		names, err := nsc.ListNames(ctx, blobcache.RootHandle())
+		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+		names, err := nsc.ListNames(ctx, *nsh)
 		require.NoError(t, err)
 		require.Equal(t, []string{}, names)
 	})
@@ -145,12 +151,14 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
+		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
 		nsc := simplens.Client{Service: s}
 		for i := 0; i < 10; i++ {
-			err = nsc.PutEntry(ctx, blobcache.RootHandle(), fmt.Sprintf("test-name-%d", i), *volh)
+			err = nsc.PutEntry(ctx, *nsh, fmt.Sprintf("test-name-%d", i), *volh)
 			require.NoError(t, err)
 		}
-		names, err := nsc.ListNames(ctx, blobcache.RootHandle())
+		names, err := nsc.ListNames(ctx, *nsh)
 		require.NoError(t, err)
 		for i := 0; i < 10; i++ {
 			require.Contains(t, names, fmt.Sprintf("test-name-%d", i))
@@ -164,14 +172,16 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := simplens.Client{Service: s}
-		err = nsc.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh)
+		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
-		names, err := nsc.ListNames(ctx, blobcache.RootHandle())
+		err = nsc.PutEntry(ctx, *nsh, "test-name", *volh)
+		require.NoError(t, err)
+		names, err := nsc.ListNames(ctx, *nsh)
 		require.NoError(t, err)
 		require.Contains(t, names, "test-name")
-		err = nsc.DeleteEntry(ctx, blobcache.RootHandle(), "test-name")
+		err = nsc.DeleteEntry(ctx, *nsh, "test-name")
 		require.NoError(t, err)
-		names, err = nsc.ListNames(ctx, blobcache.RootHandle())
+		names, err = nsc.ListNames(ctx, *nsh)
 		require.NoError(t, err)
 		require.Equal(t, []string{}, names)
 	})
@@ -182,9 +192,11 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
+		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
 		nsc := simplens.Client{Service: s}
 		// Delets are idempotent, should not get an error.
-		err = nsc.DeleteEntry(ctx, blobcache.RootHandle(), "test-name")
+		err = nsc.DeleteEntry(ctx, *nsh, "test-name")
 		require.NoError(t, err)
 	})
 }

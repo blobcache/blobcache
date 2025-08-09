@@ -53,7 +53,7 @@ type CreateSubVolumeResp struct {
 }
 
 type AllowLinkReq struct {
-	SubVolume blobcache.Handle `json:"subvolume"`
+	Target blobcache.Handle `json:"target"`
 }
 
 type AllowLinkResp struct{}

@@ -38,7 +38,7 @@ var glfsInitCmd = star.Command{
 		}
 		defer close()
 		nsc := simplens.Client{Service: svc}
-		volh, err := nsc.OpenAt(c.Context, blobcache.RootHandle(), volumeNameParam.Load(c), blobcache.Action_ALL)
+		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
 		}

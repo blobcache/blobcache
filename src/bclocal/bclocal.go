@@ -198,10 +198,6 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 }
 
 func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.ActionSet, error) {
-	if x.OID == (blobcache.OID{}) {
-		// this is the root namespace, so we can just return the root volume.
-		return s.rootVolume(), 0, nil
-	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	k := handleKey(x)
@@ -210,7 +206,7 @@ func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.Acti
 	}
 	vol, exists := s.volumes[x.OID]
 	if !exists {
-		return nil, 0, fmt.Errorf("handle does not refer to volume")
+		return nil, 0, fmt.Errorf("handle to %v does not refer to volume", x.OID)
 	}
 	return vol.backend, blobcache.Action_ALL, nil
 }
@@ -335,6 +331,7 @@ func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) 
 	if err != nil {
 		return nil, err
 	}
+	info.ID = *volid
 	if err := s.mountVolume(ctx, *volid, info); err != nil {
 		return nil, err
 	}

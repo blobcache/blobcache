@@ -200,7 +200,7 @@ func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID
 	}
 
 	n, err := io.ReadFull(httpResp.Body, buf)
-	if err != nil && err != io.ErrUnexpectedEOF {
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		return 0, fmt.Errorf("reading response: %w", err)
 	}
 	return n, nil
@@ -216,7 +216,7 @@ func (c *Client) CreateSubVolume(ctx context.Context, tx blobcache.Handle, vspec
 }
 
 func (c *Client) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle) error {
-	req := AllowLinkReq{SubVolume: subvol}
+	req := AllowLinkReq{Target: subvol}
 	var resp AllowLinkResp
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AllowLink", tx.OID.String()), &tx.Secret, req, &resp)
 }

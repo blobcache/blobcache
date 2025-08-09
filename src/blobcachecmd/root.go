@@ -57,16 +57,13 @@ var mkVolCmd = star.Command{
 			return err
 		}
 		defer close()
-		volh, err := s.CreateVolume(c, blobcache.DefaultLocalSpec())
+		nsc := simplens.Client{Service: s}
+		volh, err := nsc.CreateAt(c, blobcache.RootHandle(), nameParam.Load(c), blobcache.DefaultLocalSpec())
 		if err != nil {
 			return err
 		}
-		nsc := simplens.Client{Service: s}
-		if err := nsc.PutEntry(c, blobcache.RootHandle(), nameParam.Load(c), *volh); err != nil {
-			return err
-		}
 		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v\n", volh)
+		c.Printf("HANDLE: %v\n", *volh)
 		return nil
 	},
 }
@@ -125,6 +122,7 @@ func RunTest(t testing.TB, env map[string]string, calledAs string, args []string
 	}
 
 	ctx := testutil.Context(t)
+	t.Log(calledAs, args)
 	err := star.Run(ctx, Root(), env, calledAs, args, stdin, stdout, stderr)
 	require.NoError(t, err)
 }

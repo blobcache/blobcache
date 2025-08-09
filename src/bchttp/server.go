@@ -28,7 +28,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
-			return &OpenResp{Handle: *handle}, nil
+			volInfo, err := s.Service.InspectVolume(ctx, *handle)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenResp{Handle: *handle, Info: *volInfo}, nil
 		})
 	case r.URL.Path == "/Endpoint":
 		handleRequest(w, r, func(ctx context.Context, req EndpointReq) (*EndpointResp, error) {
@@ -222,7 +226,7 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		})
 	case "AllowLink":
 		handleRequest(w, r, func(ctx context.Context, req AllowLinkReq) (*AllowLinkResp, error) {
-			if err := s.Service.AllowLink(ctx, h, req.SubVolume); err != nil {
+			if err := s.Service.AllowLink(ctx, h, req.Target); err != nil {
 				return nil, err
 			}
 			return &AllowLinkResp{}, nil
