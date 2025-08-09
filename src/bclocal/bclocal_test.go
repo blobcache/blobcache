@@ -6,6 +6,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/simplens"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -65,17 +66,19 @@ func TestDefaultNoAccess(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.NoError(t, svc1.PutEntry(ctx, blobcache.RootHandle(), "name1", *volh))
+	nsc1 := simplens.Client{Service: svc1}
+	nsc2 := simplens.Client{Service: svc2}
+	require.NoError(t, nsc1.PutEntry(ctx, blobcache.RootHandle(), "name1", *volh))
 
-	entry, err := svc2.GetEntry(ctx, blobcache.RootHandle(), "name1")
+	entry, err := nsc1.GetEntry(ctx, blobcache.RootHandle(), "name1")
 	require.Error(t, err)
 	require.Nil(t, entry)
 
-	err = svc2.PutEntry(ctx, *volh, "any name", blobcache.Handle{})
+	err = nsc2.PutEntry(ctx, *volh, "any name", blobcache.Handle{})
 	require.Error(t, err)
 	require.Nil(t, entry)
 
-	names, err := svc2.ListNames(ctx, *volh)
+	names, err := nsc2.ListNames(ctx, *volh)
 	require.Error(t, err)
 	require.Empty(t, names)
 }

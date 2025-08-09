@@ -3,6 +3,7 @@ package bclocal
 import (
 	"database/sql"
 	"encoding/json"
+	"iter"
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -28,6 +29,9 @@ func createVolume(tx *sqlx.Tx, info blobcache.VolumeInfo) (*blobcache.OID, error
 		Salted:   info.Salted,
 	}
 	if err := insertVolume(tx, row); err != nil {
+		return nil, err
+	}
+	if err := insertVolumeDeps(tx, *oid, info.Backend.Deps()); err != nil {
 		return nil, err
 	}
 	if info.Backend.Local != nil {
@@ -75,7 +79,7 @@ func rootVolumeInfo() blobcache.VolumeInfo {
 	return blobcache.VolumeInfo{
 		ID: blobcache.OID{},
 		VolumeParams: blobcache.VolumeParams{
-			Schema:   blobcache.SchemaName_Namespace,
+			Schema:   blobcache.SchemaName_SimpleNS,
 			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 			MaxSize:  1 << 22,
 		},
@@ -134,4 +138,25 @@ func inspectVolume(tx *sqlx.Tx, volID blobcache.OID) (*blobcache.VolumeInfo, err
 		Backend: backend,
 	}
 	return &volInfo, nil
+}
+
+// insertVolumeDeps inserts a dependency to a set of subvols.
+// If any of the subvols are not found, an error is returned (this is done with a database constraint).
+func insertVolumeDeps(tx *sqlx.Tx, volID blobcache.OID, deps iter.Seq[blobcache.OID]) error {
+	for vol2 := range deps {
+		if _, err := tx.Exec(`INSERT INTO volumes_deps (from_id, to_id) VALUES (?, ?)`, volID, vol2); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setSubVolumes sets the subvolumes for a volume within a transaction.
+func setSubVolumes(tx *sqlx.Tx, txh LocalTxnID, subvols []blobcache.OID) error {
+	return nil
+}
+
+type volumeLink struct {
+	OID    blobcache.OID
+	Rights blobcache.ActionSet
 }

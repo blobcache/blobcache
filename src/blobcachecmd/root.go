@@ -10,6 +10,7 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/simplens"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
@@ -60,7 +61,8 @@ var mkVolCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		if err := s.PutEntry(c, blobcache.RootHandle(), nameParam.Load(c), *volh); err != nil {
+		nsc := simplens.Client{Service: s}
+		if err := nsc.PutEntry(c, blobcache.RootHandle(), nameParam.Load(c), *volh); err != nil {
 			return err
 		}
 		c.Printf("Volume successfully created.\n\n")
@@ -80,7 +82,8 @@ var lsCmd = star.Command{
 			return err
 		}
 		defer close()
-		names, err := s.ListNames(c, blobcache.RootHandle())
+		nsc := simplens.Client{Service: s}
+		names, err := nsc.ListNames(c, blobcache.RootHandle())
 		if err != nil {
 			return err
 		}

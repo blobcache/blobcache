@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"slices"
-	"sort"
 	"sync"
 	"time"
 
@@ -37,6 +36,7 @@ type Env struct {
 	PrivateKey ed25519.PrivateKey
 	PacketConn net.PacketConn
 	ACL        ACL
+	Containers map[blobcache.SchemaName]volumes.Container
 }
 
 // Service implements a blobcache.Service.
@@ -104,7 +104,12 @@ func (s *Service) cleanupHandlesLoop(ctx context.Context) {
 }
 
 func (s *Service) rootVolume() volumes.Volume {
-	return &localVolume{db: s.db, oid: blobcache.OID{}}
+	return newLocalVolume(s.db, blobcache.OID{}, s.getLink)
+}
+
+func (s *Service) getLink(x blobcache.Handle) (*volumes.Link, error) {
+	// TODO
+	return &volumes.Link{Target: x.OID, Rights: blobcache.Action_ALL}, nil
 }
 
 // mountVolume ensures the volume is available.
@@ -131,7 +136,8 @@ func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobc
 	return nil
 }
 
-func (s *Service) mountAllVolumes(ctx context.Context, ns volumes.Namespace) error {
+// mountAllInContainer mounts all volumes descending from the container volume
+func (s *Service) mountAllInContainer(ctx context.Context, sch volumes.Container, contVol volumes.Volume) error {
 	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
 		return ensureRootVolume(tx)
 	}); err != nil {
@@ -140,17 +146,26 @@ func (s *Service) mountAllVolumes(ctx context.Context, ns volumes.Namespace) err
 	if err := s.mountVolume(ctx, blobcache.OID{}, rootVolumeInfo()); err != nil {
 		return err
 	}
-	ents, err := ns.ListEntries(ctx)
+	txn, err := contVol.BeginTx(ctx, blobcache.TxParams{})
 	if err != nil {
 		return err
 	}
-	topsortEntries(ents)
-	for _, ent := range ents {
-		if err := s.mountVolume(ctx, ent.Target, *ent.Volume); err != nil {
-			return err
-		}
+	defer txn.Abort(ctx)
+	src, root, err := volumes.ViewUnsalted(ctx, txn)
+	if err != nil {
+		return err
 	}
+	_, err = sch.ListLinks(ctx, src, root)
+	if err != nil {
+		return err
+	}
+	// TODO: mount all volumes referenced by the links.
 	return nil
+}
+
+// mountRoot ensures that the root volume is mounted.
+func (s *Service) mountRoot(ctx context.Context) error {
+	return s.mountAllInContainer(ctx, simplens.Schema{}, s.rootVolume())
 }
 
 type volume struct {
@@ -182,27 +197,10 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 	return ret
 }
 
-func (s *Service) resolveNS(ctx context.Context, h blobcache.Handle) (volumes.Namespace, blobcache.ActionSet, error) {
-	if h.OID != (blobcache.OID{}) {
-		// TODO: for now root is the only valid namespace.
-		return nil, 0, fmt.Errorf("volume is not a namespace")
-	}
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		return ensureRootVolume(tx)
-	}); err != nil {
-		return nil, 0, err
-	}
-	vol, _, err := s.resolveVol(h)
-	if err != nil {
-		return nil, 0, err
-	}
-	return &simplens.Namespace{Volume: vol}, blobcache.Action_ALL, nil
-}
-
 func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.ActionSet, error) {
 	if x.OID == (blobcache.OID{}) {
 		// this is the root namespace, so we can just return the root volume.
-		return &localVolume{db: s.db, oid: x.OID}, 0, nil
+		return s.rootVolume(), 0, nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -245,10 +243,13 @@ func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (volumes.Tx, error
 }
 
 func (s *Service) inspectVolume(x blobcache.Handle) (volume, error) {
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if _, exists := s.handles[handleKey(x)]; !exists {
-		return volume{}, blobcache.ErrInvalidHandle{Handle: x}
+	if x.OID != (blobcache.OID{}) {
+		if _, exists := s.handles[handleKey(x)]; !exists {
+			return volume{}, blobcache.ErrInvalidHandle{Handle: x}
+		}
 	}
 	vol, exists := s.volumes[x.OID]
 	if !exists {
@@ -285,140 +286,34 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	}, nil
 }
 
-func (s *Service) Open(ctx context.Context, x blobcache.OID) (*blobcache.Handle, error) {
-	if err := s.mountAllVolumes(ctx, &simplens.Namespace{Volume: s.rootVolume()}); err != nil {
+func (s *Service) Open(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	if err := s.mountAllInContainer(ctx, simplens.Schema{}, s.rootVolume()); err != nil {
 		return nil, err
 	}
-	if x != (blobcache.OID{}) {
-		s.mu.RLock()
-		_, exists := s.volumes[x]
-		s.mu.RUnlock()
-		if !exists {
-			return nil, blobcache.ErrNotFound{Type: "Volume", ID: x}
+	if base == (blobcache.Handle{}) {
+		if x != (blobcache.OID{}) {
+			s.mu.RLock()
+			_, exists := s.volumes[x]
+			s.mu.RUnlock()
+			if !exists {
+				return nil, blobcache.ErrNotFound{Type: "Volume", ID: x}
+			}
 		}
+		handle := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
+		return &handle, nil
 	}
-	handle := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
-	return &handle, nil
-}
-
-func (s *Service) OpenAt(ctx context.Context, base blobcache.Handle, name string) (*blobcache.Handle, error) {
-	ns, _, err := s.resolveNS(ctx, base)
+	baseVol, _, err := s.resolveVol(base)
 	if err != nil {
 		return nil, err
 	}
-	ent, err := ns.GetEntry(ctx, name)
+	txn, err := baseVol.BeginTx(ctx, blobcache.TxParams{})
 	if err != nil {
 		return nil, err
 	}
-	if ent == nil {
-		return nil, blobcache.ErrNoEntry{Namespace: base.OID, Name: name}
-	}
-	if err := s.mountVolume(ctx, ent.Target, *ent.Volume); err != nil {
-		return nil, err
-	}
-	handle := s.createEphemeralHandle(ent.Target, time.Now().Add(DefaultVolumeTTL))
-	return &handle, nil
-}
-
-func (s *Service) GetEntry(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Entry, error) {
-	nsVol, _, err := s.resolveNS(ctx, ns)
-	if err != nil {
-		return nil, err
-	}
-	ent, err := nsVol.GetEntry(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	if ent == nil {
-		return nil, blobcache.ErrNoEntry{Namespace: ns.OID, Name: name}
-	}
-	return ent, nil
-}
-
-func (s *Service) PutEntry(ctx context.Context, ns blobcache.Handle, name string, target blobcache.Handle) error {
-	nsVol, _, err := s.resolveNS(ctx, ns)
-	if err != nil {
-		return err
-	}
-	volInfo, err := s.InspectVolume(ctx, target)
-	if err != nil {
-		return err
-	}
-	// TODO: after calling PutEntry, we need to ensure add an edge to the volumes_volumes table.
-	// from the namespace volume to the target volume.
-	// We only need to do this for local namespaces.
-	return nsVol.PutEntry(ctx, blobcache.Entry{
-		Name:   name,
-		Target: target.OID,
-		Volume: volInfo,
-	})
-}
-
-func (s *Service) DeleteEntry(ctx context.Context, ns blobcache.Handle, name string) error {
-	nsVol, _, err := s.resolveNS(ctx, ns)
-	if err != nil {
-		return err
-	}
-	// TODO: after calling DeleteEntry, we need to ensure remove the edge from the volumes_volumes table
-	// if it is no longer in any of the entries.
-	return nsVol.DeleteEntry(ctx, name)
-}
-
-func (s *Service) ListNames(ctx context.Context, ns blobcache.Handle) ([]string, error) {
-	nsVol, _, err := s.resolveNS(ctx, ns)
-	if err != nil {
-		return nil, err
-	}
-	ents, err := nsVol.ListEntries(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(ents))
-	for _, e := range ents {
-		names = append(names, e.Name)
-	}
-	return names, nil
-}
-
-func (s *Service) CreateVolumeAt(ctx context.Context, ns blobcache.Handle, name string, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	nsVol, _, err := s.resolveVol(ns)
-	if err != nil {
-		return nil, err
-	}
-	switch nsVol := nsVol.(type) {
-	case *bcnet.Volume:
-		remoteH, err := bcnet.CreateVolumeAt(ctx, s.node, nsVol.Endpoint(), nsVol.Handle(), name, vspec)
-		if err != nil {
-			return nil, err
-		}
-		localOID := blobcache.NewOID()
-		localSpec := blobcache.VolumeInfo{
-			ID:           localOID,
-			VolumeParams: vspec.Local.VolumeParams,
-			Backend: blobcache.VolumeBackend[blobcache.OID]{
-				Remote: &blobcache.VolumeBackend_Remote{
-					Endpoint: nsVol.Endpoint(),
-					Volume:   remoteH.OID,
-				},
-			},
-		}
-		// now we have a remote node's handle to the new volume.
-		if err := s.mountVolume(ctx, localOID, localSpec); err != nil {
-			return nil, err
-		}
-		localH := s.createEphemeralHandle(localOID, time.Now().Add(DefaultVolumeTTL))
-		return &localH, nil
-	default:
-		// TODO: this is good enough for remote callers to create a volume, but it should be atomic.
-		volh, err := s.CreateVolume(ctx, vspec)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.PutEntry(ctx, ns, name, *volh); err != nil {
-			return nil, err
-		}
-		return volh, nil
-	}
+	defer txn.Abort(ctx)
+	// TODO:
+	h := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
+	return &h, nil
 }
 
 func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
@@ -460,6 +355,9 @@ func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
 }
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {
+	if err := s.mountRoot(ctx); err != nil {
+		return nil, err
+	}
 	vol, _, err := s.resolveVol(volh)
 	if err != nil {
 		return nil, err
@@ -573,6 +471,29 @@ func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cid blobcach
 	return txn.Delete(ctx, cid)
 }
 
+func (s *Service) AllowLink(ctx context.Context, txh blobcache.Handle, subvolh blobcache.Handle) error {
+	txn, err := s.resolveTx(txh, true)
+	if err != nil {
+		return err
+	}
+	return txn.AllowLink(ctx, subvolh)
+}
+
+func (s *Service) CreateSubVolume(ctx context.Context, txh blobcache.Handle, vspec blobcache.VolumeSpec) (*blobcache.VolumeInfo, error) {
+	txn, err := s.resolveTx(txh, true)
+	if err != nil {
+		return nil, err
+	}
+	volH, err := s.CreateVolume(ctx, vspec)
+	if err != nil {
+		return nil, err
+	}
+	if err := txn.AllowLink(ctx, *volH); err != nil {
+		return nil, err
+	}
+	return s.InspectVolume(ctx, *volH)
+}
+
 func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -591,6 +512,7 @@ func handleKey(h blobcache.Handle) [32]byte {
 }
 
 // makeVolume constructs an in-memory volume object from a backend.
+// it does not create volumes in the database.
 func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume, error) {
 	if err := backend.Validate(); err != nil {
 		return nil, err
@@ -599,7 +521,7 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	case backend.Local != nil:
 		return s.makeLocal(ctx, oid)
 	case backend.Remote != nil:
-		return bcnet.OpenVolume(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Volume)
+		return bcnet.OpenVolume(ctx, s.node, backend.Remote.Endpoint, blobcache.RootHandle(), backend.Remote.Volume, blobcache.Action_ALL)
 	case backend.Git != nil:
 		return s.makeGit(ctx, *backend.Git)
 	case backend.RootAEAD != nil:
@@ -612,14 +534,14 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 }
 
 func (s *Service) makeLocal(_ context.Context, oid blobcache.OID) (volumes.Volume, error) {
-	return &localVolume{db: s.db, oid: oid}, nil
+	return newLocalVolume(s.db, oid, s.getLink), nil
 }
 
 func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (volumes.Volume, error) {
 	return nil, fmt.Errorf("git volumes are not yet supported")
 }
 
-func (s *Service) makeRootAEAD(ctx context.Context, backend blobcache.VolumeBackend_RootAEAD[blobcache.OID]) (*volumes.RootAEAD, error) {
+func (s *Service) makeRootAEAD(ctx context.Context, backend blobcache.VolumeBackend_RootAEAD[blobcache.OID]) (*volumes.RootAEADVolume, error) {
 	s.mu.RLock()
 	volstate, exists := s.volumes[backend.Inner]
 	s.mu.RUnlock()
@@ -642,7 +564,7 @@ func (s *Service) makeRootAEAD(ctx context.Context, backend blobcache.VolumeBack
 	default:
 		return nil, fmt.Errorf("unknown AEAD algorithm: %s", backend.Algo)
 	}
-	return &volumes.RootAEAD{
+	return &volumes.RootAEADVolume{
 		AEAD:  cipher,
 		Inner: inner,
 	}, nil
@@ -682,7 +604,7 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		}
 		return innerVol.info.VolumeParams, nil
 	case vspec.Remote != nil:
-		vol, err := bcnet.OpenVolume(ctx, s.node, vspec.Remote.Endpoint, vspec.Remote.Volume)
+		vol, err := bcnet.OpenVolume(ctx, s.node, vspec.Remote.Endpoint, blobcache.RootHandle(), vspec.Remote.Volume, blobcache.Action_ALL)
 		if err != nil {
 			return blobcache.VolumeParams{}, err
 		}
@@ -691,87 +613,4 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 	default:
 		panic(vspec)
 	}
-}
-
-func topsortEntries(ents []blobcache.Entry) {
-	// Build dependency graph: map from target OID to list of entries that depend on it
-	deps := make(map[blobcache.OID][]int)
-
-	// For each entry, check if it's a RootAEAD or Vault volume and add dependencies
-	for i, ent := range ents {
-		if ent.Volume != nil && ent.Volume.Backend.RootAEAD != nil {
-			// RootAEAD depends on its inner volume
-			inner := ent.Volume.Backend.RootAEAD.Inner
-			deps[inner] = append(deps[inner], i)
-		}
-		if ent.Volume != nil && ent.Volume.Backend.Vault != nil {
-			// Vault depends on its inner volume
-			inner := ent.Volume.Backend.Vault.Inner
-			deps[inner] = append(deps[inner], i)
-		}
-	}
-
-	// Build reverse mapping: map from entry index to list of entries it depends on
-	reverseDeps := make(map[int][]int)
-	for inner, dependents := range deps {
-		// Find the index of the inner volume
-		for j, ent := range ents {
-			if ent.Target == inner {
-				// Each dependent depends on the inner volume
-				for _, depIdx := range dependents {
-					reverseDeps[depIdx] = append(reverseDeps[depIdx], j)
-				}
-				break
-			}
-		}
-	}
-
-	// Count incoming edges for each entry
-	inDegree := make([]int, len(ents))
-	for i := range ents {
-		inDegree[i] = len(reverseDeps[i])
-	}
-
-	// Kahn's algorithm for topological sort
-	var queue []int
-	var result []int
-
-	// Add all entries with no dependencies to the queue
-	for i := range ents {
-		if inDegree[i] == 0 {
-			queue = append(queue, i)
-		}
-	}
-
-	// Process the queue
-	for len(queue) > 0 {
-		// Take the first entry from queue
-		current := queue[0]
-		queue = queue[1:]
-		result = append(result, current)
-
-		// Reduce in-degree for all dependents
-		for _, depIdx := range deps[ents[current].Target] {
-			inDegree[depIdx]--
-			if inDegree[depIdx] == 0 {
-				queue = append(queue, depIdx)
-			}
-		}
-	}
-
-	// Check for cycles (shouldn't happen with valid volume configurations)
-	if len(result) != len(ents) {
-		// If there's a cycle, just sort by target OID as fallback
-		sort.Slice(ents, func(i, j int) bool {
-			return ents[i].Target.String() < ents[j].Target.String()
-		})
-		return
-	}
-
-	// Reorder the entries according to the topological sort result
-	sorted := make([]blobcache.Entry, len(ents))
-	for i, idx := range result {
-		sorted[i] = ents[idx]
-	}
-	copy(ents, sorted)
 }

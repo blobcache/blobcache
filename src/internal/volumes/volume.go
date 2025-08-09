@@ -24,28 +24,20 @@ type Tx interface {
 	Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error)
 	Delete(ctx context.Context, cid blobcache.CID) error
 	Exists(ctx context.Context, cid blobcache.CID) (bool, error)
+
 	MaxSize() int
 	Hash(salt *blobcache.CID, data []byte) blobcache.CID
 	// Volume should return the volume that this tx is operating on.
 	Volume() Volume
+
+	// AllowLink creates adds a handle to prove access to a volume.
+	AllowLink(ctx context.Context, subvol blobcache.Handle) error
 }
 
-type TypedVolume[Root any] interface {
-	BeginTx(ctx context.Context, spec blobcache.TxParams) (TypedTx[Root], error)
-	// Await blocks until the volume root changes away from prev to something else.
-	Await(ctx context.Context, prev []byte, next *[]byte) error
-}
-
-type TypedTx[Root any] interface {
-	Commit(ctx context.Context, root Root) error
-	Abort(ctx context.Context) error
-
-	Load(ctx context.Context, dst *Root) error
-
-	Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error)
-	Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error)
-	Delete(ctx context.Context, cid blobcache.CID) error
-	Exists(ctx context.Context, cid blobcache.CID) (bool, error)
-	MaxSize() int
-	Hash(salt *blobcache.CID, data []byte) blobcache.CID
+func ViewUnsalted(ctx context.Context, tx Tx) (*UnsaltedStore, []byte, error) {
+	var root []byte
+	if err := tx.Load(ctx, &root); err != nil {
+		return nil, nil, err
+	}
+	return NewUnsaltedStore(tx), root, nil
 }

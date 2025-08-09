@@ -22,7 +22,7 @@ func (s *Service) Access(peer blobcache.PeerID) blobcache.Service {
 	}
 }
 
-func (pv *PeerView) Open(ctx context.Context, x blobcache.OID) (*blobcache.Handle, error) {
+func (pv *PeerView) Open(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
 		return nil, ErrNotAllowed{
 			Peer:   pv.Peer,
@@ -30,73 +30,7 @@ func (pv *PeerView) Open(ctx context.Context, x blobcache.OID) (*blobcache.Handl
 			Target: x,
 		}
 	}
-	return pv.Service.Open(ctx, x)
-}
-
-func (pv *PeerView) OpenAt(ctx context.Context, namespace blobcache.Handle, name string) (*blobcache.Handle, error) {
-	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
-		return nil, ErrNotAllowed{
-			Peer:   pv.Peer,
-			Action: "Open",
-			Target: namespace.OID,
-		}
-	}
-	return pv.Service.OpenAt(ctx, namespace, name)
-}
-
-func (pv *PeerView) PutEntry(ctx context.Context, namespace blobcache.Handle, name string, value blobcache.Handle) error {
-	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
-		return ErrNotAllowed{
-			Peer:   pv.Peer,
-			Action: "PutEntry",
-			Target: namespace.OID,
-		}
-	}
-	return pv.Service.PutEntry(ctx, namespace, name, value)
-}
-
-func (pv *PeerView) GetEntry(ctx context.Context, namespace blobcache.Handle, name string) (*blobcache.Entry, error) {
-	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
-		return nil, ErrNotAllowed{
-			Peer:   pv.Peer,
-			Action: "GetEntry",
-			Target: namespace.OID,
-		}
-	}
-	return pv.Service.GetEntry(ctx, namespace, name)
-}
-
-func (pv *PeerView) DeleteEntry(ctx context.Context, namespace blobcache.Handle, name string) error {
-	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
-		return ErrNotAllowed{
-			Peer:   pv.Peer,
-			Action: "DeleteEntry",
-			Target: namespace.OID,
-		}
-	}
-	return pv.Service.DeleteEntry(ctx, namespace, name)
-}
-
-func (pv *PeerView) ListNames(ctx context.Context, namespace blobcache.Handle) ([]string, error) {
-	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
-		return nil, ErrNotAllowed{
-			Peer:   pv.Peer,
-			Action: "ListNames",
-			Target: namespace.OID,
-		}
-	}
-	return pv.Service.ListNames(ctx, namespace)
-}
-
-func (pv *PeerView) CreateVolumeAt(ctx context.Context, ns blobcache.Handle, name string, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
-		return nil, ErrNotAllowed{
-			Peer:   pv.Peer,
-			Action: "CreateVolumeAt",
-			Target: ns.OID,
-		}
-	}
-	return pv.Service.CreateVolumeAt(ctx, ns, name, vspec)
+	return pv.Service.Open(ctx, base, x, blobcache.Action_ALL)
 }
 
 type ACL struct {

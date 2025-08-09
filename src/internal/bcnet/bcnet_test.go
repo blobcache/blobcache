@@ -9,16 +9,16 @@ import (
 
 func TestHeader(t *testing.T) {
 	h := MessageHeader{}
-	h.SetCode(MT_NAMESPACE_OPEN_AT)
+	h.SetCode(MT_OPEN)
 	h.SetBodyLen(10)
 
-	require.Equal(t, h.Code(), MT_NAMESPACE_OPEN_AT)
+	require.Equal(t, h.Code(), MT_OPEN)
 	require.Equal(t, h.BodyLen(), 10)
 }
 
 func TestMessageReadWrite(t *testing.T) {
 	m := Message{}
-	m.SetCode(MT_NAMESPACE_OPEN_AT)
+	m.SetCode(MT_OPEN)
 	m.SetBody([]byte("hello"))
 
 	buf := &bytes.Buffer{}
@@ -29,7 +29,7 @@ func TestMessageReadWrite(t *testing.T) {
 	_, err = m2.ReadFrom(buf)
 	require.NoError(t, err)
 
-	require.Equal(t, m2.Header().Code(), MT_NAMESPACE_OPEN_AT)
+	require.Equal(t, m2.Header().Code(), MT_OPEN)
 	require.Equal(t, m2.Header().BodyLen(), len("hello"))
 	require.Equal(t, string(m2.Body()), "hello")
 }

@@ -3,7 +3,9 @@ package bcnet
 import "blobcache.io/blobcache/src/blobcache"
 
 type OpenReq struct {
-	OID blobcache.OID `json:"target"`
+	Base   blobcache.Handle    `json:"base"`
+	Target blobcache.OID       `json:"target"`
+	Mask   blobcache.ActionSet `json:"mask"`
 }
 
 type OpenResp struct {
@@ -11,54 +13,13 @@ type OpenResp struct {
 	Info   blobcache.VolumeInfo `json:"info"`
 }
 
-type OpenAtReq struct {
-	Namespace blobcache.Handle `json:"namespace"`
-	Name      string           `json:"name"`
+type CreateAndLinkReq struct {
+	Parent blobcache.Handle     `json:"parent"`
+	Name   string               `json:"name"`
+	Spec   blobcache.VolumeSpec `json:"spec"`
 }
 
-type OpenAtResp struct {
-	Handle blobcache.Handle `json:"handle"`
-}
-
-type GetEntryReq struct {
-	Namespace blobcache.Handle `json:"namespace"`
-	Name      string           `json:"name"`
-}
-
-type GetEntryResp struct {
-	Entry blobcache.Entry `json:"entry"`
-}
-
-type PutEntryReq struct {
-	Namespace blobcache.Handle `json:"namespace"`
-	Name      string           `json:"name"`
-	Target    blobcache.Handle
-}
-
-type PutEntryResp struct{}
-
-type DeleteEntryReq struct {
-	Namespace blobcache.Handle `json:"namespace"`
-	Name      string           `json:"name"`
-}
-
-type DeleteEntryResp struct{}
-
-type ListNamesReq struct {
-	Namespace blobcache.Handle `json:"namespace"`
-}
-
-type ListNamesResp struct {
-	Names []string `json:"names"`
-}
-
-type CreateVolumeAtReq struct {
-	Namespace blobcache.Handle     `json:"namespace"`
-	Name      string               `json:"name"`
-	Spec      blobcache.VolumeSpec `json:"spec"`
-}
-
-type CreateVolumeAtResp struct {
+type CreateAndLinkResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
@@ -161,4 +122,27 @@ type GetReq struct {
 
 type GetResp struct {
 	Data []byte `json:"data"`
+}
+
+type SetSubVolumesReq struct {
+	Tx      blobcache.Handle   `json:"tx"`
+	Subvols []blobcache.Handle `json:"subvols"`
+}
+
+type SetSubVolumesResp struct{}
+
+type AllowLinkReq struct {
+	Tx     blobcache.Handle `json:"tx"`
+	Subvol blobcache.Handle `json:"subvol"`
+}
+
+type AllowLinkResp struct{}
+
+type CreateSubVolumeReq struct {
+	Tx   blobcache.Handle     `json:"tx"`
+	Spec blobcache.VolumeSpec `json:"spec"`
+}
+
+type CreateSubVolumeResp struct {
+	Volume blobcache.VolumeInfo `json:"volume"`
 }

@@ -39,19 +39,10 @@ func (c *Client) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
 	return resp.Endpoint, nil
 }
 
-func (c *Client) Open(ctx context.Context, x blobcache.OID) (*blobcache.Handle, error) {
-	req := OpenReq{OID: x}
+func (c *Client) Open(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	req := OpenReq{Base: base, Target: target, Mask: mask}
 	var resp OpenResp
 	if err := c.doJSON(ctx, "POST", "/Open", nil, req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
-}
-
-func (c *Client) OpenAt(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Handle, error) {
-	req := OpenAtReq{Namespace: ns, Name: name}
-	var resp OpenAtResp
-	if err := c.doJSON(ctx, "POST", "/OpenAt", nil, req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil
@@ -64,51 +55,6 @@ func (c *Client) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobca
 		return nil, err
 	}
 	return &resp.Info, nil
-}
-
-func (c *Client) GetEntry(ctx context.Context, ns blobcache.Handle, name string) (*blobcache.Entry, error) {
-	req := GetEntryReq{Namespace: ns, Name: name}
-	var resp GetEntryResp
-	if err := c.doJSON(ctx, "POST", "/GetEntry", nil, req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Entry, nil
-}
-
-func (c *Client) PutEntry(ctx context.Context, ns blobcache.Handle, name string, target blobcache.Handle) error {
-	req := PutEntryReq{Namespace: ns, Name: name, Target: target}
-	var resp PutEntryResp
-	if err := c.doJSON(ctx, "POST", "/PutEntry", nil, req, &resp); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *Client) DeleteEntry(ctx context.Context, ns blobcache.Handle, name string) error {
-	req := DeleteEntryReq{Namespace: ns, Name: name}
-	var resp DeleteEntryResp
-	if err := c.doJSON(ctx, "POST", "/DeleteEntry", nil, req, &resp); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *Client) ListNames(ctx context.Context, ns blobcache.Handle) ([]string, error) {
-	req := ListNamesReq{Namespace: ns}
-	var resp ListNamesResp
-	if err := c.doJSON(ctx, "POST", "/ListNames", nil, req, &resp); err != nil {
-		return nil, err
-	}
-	return resp.Names, nil
-}
-
-func (c *Client) CreateVolumeAt(ctx context.Context, ns blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	req := CreateVolumeAtReq{Namespace: ns, Name: name, Spec: spec}
-	var resp CreateVolumeAtResp
-	if err := c.doJSON(ctx, "POST", "/CreateVolumeAt", nil, req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
 }
 
 func (c *Client) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
@@ -175,19 +121,19 @@ func (c *Client) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache
 func (c *Client) Commit(ctx context.Context, tx blobcache.Handle, root []byte) error {
 	req := CommitReq{Root: root}
 	var resp CommitResp
-	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Commit", tx.OID.String()), &tx.Secret, req, &resp)
+	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Commit"), &tx.Secret, req, &resp)
 }
 
 func (c *Client) Abort(ctx context.Context, tx blobcache.Handle) error {
 	req := AbortReq{}
 	var resp AbortResp
-	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Abort", tx.OID.String()), &tx.Secret, req, &resp)
+	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Abort"), &tx.Secret, req, &resp)
 }
 
 func (c *Client) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) error {
 	req := LoadReq{}
 	var resp LoadResp
-	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Load", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
+	if err := c.doJSON(ctx, "POST", c.mkTxURL(tx, "Load"), &tx.Secret, req, &resp); err != nil {
 		return err
 	}
 	*dst = resp.Root
@@ -201,7 +147,7 @@ func (c *Client) Post(ctx context.Context, tx blobcache.Handle, salt *blobcache.
 	if salt != nil {
 		headers["X-Salt"] = salt.String()
 	}
-	respBody, err := c.do(ctx, "POST", fmt.Sprintf("/tx/%s.Post", tx.OID.String()), headers, data)
+	respBody, err := c.do(ctx, "POST", c.mkTxURL(tx, "Post"), headers, data)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
@@ -216,7 +162,7 @@ func (c *Client) Post(ctx context.Context, tx blobcache.Handle, salt *blobcache.
 func (c *Client) Exists(ctx context.Context, tx blobcache.Handle, cid blobcache.CID) (bool, error) {
 	req := ExistsReq{CID: cid}
 	var resp ExistsResp
-	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Exists", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
+	if err := c.doJSON(ctx, "POST", c.mkTxURL(tx, "Exists"), &tx.Secret, req, &resp); err != nil {
 		return false, err
 	}
 	return resp.Exists, nil
@@ -225,7 +171,7 @@ func (c *Client) Exists(ctx context.Context, tx blobcache.Handle, cid blobcache.
 func (c *Client) Delete(ctx context.Context, tx blobcache.Handle, cid blobcache.CID) error {
 	req := DeleteReq{CID: cid}
 	var resp DeleteResp
-	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Delete", tx.OID.String()), &tx.Secret, req, &resp)
+	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Delete"), &tx.Secret, req, &resp)
 }
 
 func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
@@ -258,6 +204,25 @@ func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID
 		return 0, fmt.Errorf("reading response: %w", err)
 	}
 	return n, nil
+}
+
+func (c *Client) CreateSubVolume(ctx context.Context, tx blobcache.Handle, vspec blobcache.VolumeSpec) (*blobcache.VolumeInfo, error) {
+	req := CreateSubVolumeReq{Spec: vspec}
+	var resp CreateSubVolumeResp
+	if err := c.doJSON(ctx, "POST", c.mkTxURL(tx, "CreateSubVolume"), &tx.Secret, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Volume, nil
+}
+
+func (c *Client) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle) error {
+	req := AllowLinkReq{SubVolume: subvol}
+	var resp AllowLinkResp
+	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AllowLink", tx.OID.String()), &tx.Secret, req, &resp)
+}
+
+func (c *Client) mkTxURL(tx blobcache.Handle, method string) string {
+	return fmt.Sprintf("/tx/%s.%s", tx.OID.String(), method)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, headers map[string]string, reqBody []byte) ([]byte, error) {

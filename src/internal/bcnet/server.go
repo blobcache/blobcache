@@ -23,18 +23,6 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	}
 
 	switch req.Header().Code() {
-	case MT_OPEN:
-		handleJSON(req, resp, func(req *OpenReq) (*OpenResp, error) {
-			h, err := svc.Open(ctx, req.OID)
-			if err != nil {
-				return nil, err
-			}
-			info, err := svc.InspectVolume(ctx, *h)
-			if err != nil {
-				return nil, err
-			}
-			return &OpenResp{Handle: *h, Info: *info}, nil
-		})
 	case MT_HANDLE_DROP:
 		handleJSON(req, resp, func(req *DropReq) (*DropResp, error) {
 			if err := svc.Drop(ctx, req.Handle); err != nil {
@@ -50,37 +38,25 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &KeepAliveResp{}, nil
 		})
 
-	case MT_NAMESPACE_OPEN_AT:
-		handleJSON(req, resp, func(req *OpenAtReq) (*OpenAtResp, error) {
-			h, err := svc.OpenAt(ctx, req.Namespace, req.Name)
+	case MT_OPEN:
+		handleJSON(req, resp, func(req *OpenReq) (*OpenResp, error) {
+			h, err := svc.Open(ctx, req.Base, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
-			return &OpenAtResp{Handle: *h}, nil
+			info, err := svc.InspectVolume(ctx, *h)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenResp{Handle: *h, Info: *info}, nil
 		})
-	case MT_NAMESPACE_CREATE_AT:
-		handleJSON(req, resp, func(req *CreateVolumeAtReq) (*CreateVolumeAtResp, error) {
-			h, err := svc.CreateVolumeAt(ctx, req.Namespace, req.Name, req.Spec)
+	case MT_TX_CREATE_SUBVOLUME:
+		handleJSON(req, resp, func(req *CreateSubVolumeReq) (*CreateSubVolumeResp, error) {
+			info, err := svc.CreateSubVolume(ctx, req.Tx, req.Spec)
 			if err != nil {
 				return nil, err
 			}
-			return &CreateVolumeAtResp{Handle: *h}, nil
-		})
-	case MT_NAMESPACE_LIST_NAMES:
-		handleJSON(req, resp, func(req *ListNamesReq) (*ListNamesResp, error) {
-			names, err := svc.ListNames(ctx, req.Namespace)
-			if err != nil {
-				return nil, err
-			}
-			return &ListNamesResp{Names: names}, nil
-		})
-	case MT_NAMESPACE_GET_ENTRY:
-		handleJSON(req, resp, func(req *GetEntryReq) (*GetEntryResp, error) {
-			entry, err := svc.GetEntry(ctx, req.Namespace, req.Name)
-			if err != nil {
-				return nil, err
-			}
-			return &GetEntryResp{Entry: *entry}, nil
+			return &CreateSubVolumeResp{Volume: *info}, nil
 		})
 
 	case MT_VOLUME_INSPECT:
@@ -197,6 +173,13 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		}
 		resp.SetCode(MT_OK)
 		resp.SetBody(buf[:n])
+	case MT_TX_ALLOW_LINK:
+		handleJSON(req, resp, func(req *AllowLinkReq) (*AllowLinkResp, error) {
+			if err := svc.AllowLink(ctx, req.Tx, req.Subvol); err != nil {
+				return nil, err
+			}
+			return &AllowLinkResp{}, nil
+		})
 	default:
 		resp.SetError(fmt.Errorf("unknown message type: %v", req.Header().Code()))
 	}

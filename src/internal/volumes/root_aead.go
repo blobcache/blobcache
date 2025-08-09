@@ -7,28 +7,54 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-var _ Volume = &RootAEAD{}
+var _ Schema = &RootAEAD{}
 
-// RootAEAD is a volume that encrypts the root with an AEAD.
+type RootAEAD struct {
+	AEAD cipher.AEAD
+}
+
+func (sch RootAEAD) open(out []byte, root []byte) ([]byte, error) {
+	if len(root) < sch.AEAD.NonceSize() {
+		return nil, fmt.Errorf("root too short to contain nonce")
+	}
+	nonce := root[:sch.AEAD.NonceSize()]
+	root = root[sch.AEAD.NonceSize():]
+	return sch.AEAD.Open(out, nonce, root, nil)
+}
+
+// Validate returns true
+func (sch RootAEAD) Validate(ctx context.Context, s cadata.Getter, root []byte) error {
+	// if it decrypts, then it's valid.
+	_, err := sch.open(nil, root)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+var _ Volume = &RootAEADVolume{}
+
+// RootAEADVolume is a volume that encrypts the root with an AEAD.
 // The blobs are left unchanged.
 // This is useful for schemas that already encrypt the blobs that they store.
-type RootAEAD struct {
+type RootAEADVolume struct {
 	Inner Volume
 	AEAD  cipher.AEAD
 }
 
-func NewChaCha20Poly1305(inner Volume, secret *[32]byte) *RootAEAD {
+func NewChaCha20Poly1305(inner Volume, secret *[32]byte) *RootAEADVolume {
 	aead, err := chacha20poly1305.NewX(secret[:])
 	if err != nil {
 		panic(err)
 	}
-	return &RootAEAD{AEAD: aead, Inner: inner}
+	return &RootAEADVolume{AEAD: aead, Inner: inner}
 }
 
-func (v *RootAEAD) BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error) {
+func (v *RootAEADVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error) {
 	inner, err := v.Inner.BeginTx(ctx, spec)
 	if err != nil {
 		return nil, err
@@ -36,7 +62,7 @@ func (v *RootAEAD) BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, er
 	return &RootAEADTx{aead: v.AEAD, inner: inner, vol: v}, nil
 }
 
-func (v *RootAEAD) Await(ctx context.Context, prev []byte, next *[]byte) error {
+func (v *RootAEADVolume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return v.Inner.Await(ctx, prev, next)
 }
 
@@ -109,4 +135,8 @@ func (tx *RootAEADTx) MaxSize() int {
 
 func (tx *RootAEADTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return tx.inner.Hash(salt, data)
+}
+
+func (tx *RootAEADTx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
+	return tx.inner.AllowLink(ctx, subvol)
 }
