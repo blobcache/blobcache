@@ -23,7 +23,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	t.Run("CreateVolume", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s := mk(t)
-		h, err := s.CreateVolume(ctx, defaultLocalSpec())
+		h, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, h)
 	})
@@ -31,7 +31,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		// Check that an initial volume is empty.
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: false})
@@ -45,9 +45,9 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	t.Run("RootAEAD", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
-		volh2, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
+		volh2, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 			RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
 				Inner:  *volh,
 				Algo:   blobcache.AEAD_CHACHA20POLY1305,
@@ -56,7 +56,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		})
 		require.NoError(t, err)
 		nsc := simplens.Client{Service: s}
-		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		nsh, err := s.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 		require.NoError(t, nsc.PutEntry(ctx, *nsh, "test-name", *volh2))
 		_, err = nsc.OpenAt(ctx, *nsh, "test-name", blobcache.Action_ALL)
@@ -71,7 +71,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			s := mk(t)
-			volh, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
+			volh, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Local: &blobcache.VolumeBackend_Local{
 					VolumeParams: blobcache.VolumeParams{
 						HashAlgo: blobcache.HashAlgo_BLAKE3_256,
@@ -88,7 +88,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			s := mk(t)
-			volh1, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
+			volh1, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Local: &blobcache.VolumeBackend_Local{
 					VolumeParams: blobcache.VolumeParams{
 						HashAlgo: blobcache.HashAlgo_BLAKE3_256,
@@ -99,7 +99,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			require.NoError(t, err)
 			require.NotNil(t, volh1)
 
-			volh, err := s.CreateVolume(ctx, blobcache.VolumeSpec{
+			volh, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
 					Inner:  *volh1,
 					Algo:   blobcache.AEAD_CHACHA20POLY1305,
@@ -118,18 +118,17 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := simplens.Client{Service: s}
-		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
-		require.NoError(t, err)
-		err = nsc.PutEntry(ctx, *nsh, "test-name", *volh)
+		nsh := blobcache.RootHandle()
+		err = nsc.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh)
 		require.NoError(t, err)
 		err = s.Drop(ctx, *volh)
 		require.NoError(t, err)
 
-		volh2, err := nsc.OpenAt(ctx, *nsh, "test-name", blobcache.Action_ALL)
+		volh2, err := nsc.OpenAt(ctx, nsh, "test-name", blobcache.Action_ALL)
 		require.NoError(t, err)
 		require.Equal(t, volh.OID, volh2.OID)
 	})
@@ -138,9 +137,8 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		ctx := testutil.Context(t)
 		s := mk(t)
 		nsc := simplens.Client{Service: s}
-		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
-		require.NoError(t, err)
-		names, err := nsc.ListNames(ctx, *nsh)
+
+		names, err := nsc.ListNames(ctx, blobcache.RootHandle())
 		require.NoError(t, err)
 		require.Equal(t, []string{}, names)
 	})
@@ -148,17 +146,16 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
-		require.NoError(t, err)
 		nsc := simplens.Client{Service: s}
+		nsh := blobcache.RootHandle()
 		for i := 0; i < 10; i++ {
-			err = nsc.PutEntry(ctx, *nsh, fmt.Sprintf("test-name-%d", i), *volh)
+			err = nsc.PutEntry(ctx, nsh, fmt.Sprintf("test-name-%d", i), *volh)
 			require.NoError(t, err)
 		}
-		names, err := nsc.ListNames(ctx, *nsh)
+		names, err := nsc.ListNames(ctx, nsh)
 		require.NoError(t, err)
 		for i := 0; i < 10; i++ {
 			require.Contains(t, names, fmt.Sprintf("test-name-%d", i))
@@ -168,11 +165,11 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := simplens.Client{Service: s}
-		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		nsh, err := s.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 		err = nsc.PutEntry(ctx, *nsh, "test-name", *volh)
 		require.NoError(t, err)
@@ -189,10 +186,10 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		nsh, err := s.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		nsh, err := s.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 		nsc := simplens.Client{Service: s}
 		// Delets are idempotent, should not get an error.

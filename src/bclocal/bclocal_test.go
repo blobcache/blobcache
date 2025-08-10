@@ -57,7 +57,7 @@ func TestDefaultNoAccess(t *testing.T) {
 	svc2 := NewTestService(t)
 
 	// create a volume on svc1 so there is something to try to access.
-	volh, err := svc1.CreateVolume(ctx, blobcache.VolumeSpec{
+	volh, err := svc1.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 		Local: &blobcache.VolumeBackend_Local{
 			VolumeParams: blobcache.VolumeParams{
 				HashAlgo: blobcache.HashAlgo_BLAKE3_256,

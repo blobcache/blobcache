@@ -234,17 +234,6 @@ func (tx *Tx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
 	return err
 }
 
-func (tx *Tx) Create(ctx context.Context, spec blobcache.VolumeSpec) (*blobcache.VolumeInfo, error) {
-	resp, err := doJSON[CreateSubVolumeReq, CreateSubVolumeResp](ctx, tx.n, tx.ep, MT_TX_CREATE_SUBVOLUME, CreateSubVolumeReq{
-		Tx:   tx.h,
-		Spec: spec,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &resp.Volume, nil
-}
-
 func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.Endpoint, code MessageType, req Req) (*Resp, error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
@@ -271,8 +260,7 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 }
 
 func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
-	resp, err := doJSON[OpenReq, OpenResp](ctx, n, ep, MT_OPEN, OpenReq{
-		Base:   base,
+	resp, err := doJSON[OpenAsReq, OpenAsResp](ctx, n, ep, MT_OPEN_AS, OpenAsReq{
 		Target: target,
 		Mask:   mask,
 	})

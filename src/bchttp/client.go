@@ -39,15 +39,6 @@ func (c *Client) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
 	return resp.Endpoint, nil
 }
 
-func (c *Client) Open(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	req := OpenReq{Base: base, Target: target, Mask: mask}
-	var resp OpenResp
-	if err := c.doJSON(ctx, "POST", "/Open", nil, req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
-}
-
 func (c *Client) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
 	req := InspectHandleReq{Handle: h}
 	var resp InspectHandleResp
@@ -57,8 +48,38 @@ func (c *Client) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobca
 	return &resp.Info, nil
 }
 
-func (c *Client) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	req := CreateVolumeReq{Spec: vspec}
+func (c *Client) Drop(ctx context.Context, h blobcache.Handle) error {
+	req := DropReq{Handle: h}
+	var resp DropResp
+	return c.doJSON(ctx, "POST", "/Drop", &h.Secret, req, &resp)
+}
+
+func (c *Client) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
+	req := KeepAliveReq{Handles: hs}
+	var resp KeepAliveResp
+	return c.doJSON(ctx, "POST", "/KeepAlive", nil, req, &resp)
+}
+
+func (c *Client) OpenAs(ctx context.Context, caller *blobcache.PeerID, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	req := OpenAsReq{Caller: caller, Target: target, Mask: mask}
+	var resp OpenAsResp
+	if err := c.doJSON(ctx, "POST", "/OpenAs", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
+func (c *Client) OpenFrom(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	req := OpenFromReq{Base: base, Target: target, Mask: mask}
+	var resp OpenFromResp
+	if err := c.doJSON(ctx, "POST", "/OpenFrom", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
+func (c *Client) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	req := CreateVolumeReq{Caller: caller, Spec: vspec}
 	var resp CreateVolumeResp
 	if err := c.doJSON(ctx, "POST", "/volume/", nil, req, &resp); err != nil {
 		return nil, err
@@ -80,18 +101,6 @@ func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobca
 		return nil, fmt.Errorf("unmarshaling response: %w", err)
 	}
 	return &info, nil
-}
-
-func (c *Client) Drop(ctx context.Context, h blobcache.Handle) error {
-	req := DropReq{Handle: h}
-	var resp DropResp
-	return c.doJSON(ctx, "POST", "/Drop", &h.Secret, req, &resp)
-}
-
-func (c *Client) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
-	req := KeepAliveReq{Handles: hs}
-	var resp KeepAliveResp
-	return c.doJSON(ctx, "POST", "/KeepAlive", nil, req, &resp)
 }
 
 func (c *Client) Await(ctx context.Context, cond blobcache.Conditions) error {
@@ -204,15 +213,6 @@ func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID
 		return 0, fmt.Errorf("reading response: %w", err)
 	}
 	return n, nil
-}
-
-func (c *Client) CreateSubVolume(ctx context.Context, tx blobcache.Handle, vspec blobcache.VolumeSpec) (*blobcache.VolumeInfo, error) {
-	req := CreateSubVolumeReq{Spec: vspec}
-	var resp CreateSubVolumeResp
-	if err := c.doJSON(ctx, "POST", c.mkTxURL(tx, "CreateSubVolume"), &tx.Secret, req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Volume, nil
 }
 
 func (c *Client) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle) error {

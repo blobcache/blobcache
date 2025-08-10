@@ -38,9 +38,9 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &KeepAliveResp{}, nil
 		})
 
-	case MT_OPEN:
-		handleJSON(req, resp, func(req *OpenReq) (*OpenResp, error) {
-			h, err := svc.Open(ctx, req.Base, req.Target, req.Mask)
+	case MT_OPEN_AS:
+		handleJSON(req, resp, func(req *OpenAsReq) (*OpenAsResp, error) {
+			h, err := svc.OpenAs(ctx, &ep.Peer, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -48,17 +48,32 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err != nil {
 				return nil, err
 			}
-			return &OpenResp{Handle: *h, Info: *info}, nil
+			return &OpenAsResp{Handle: *h, Info: *info}, nil
 		})
-	case MT_TX_CREATE_SUBVOLUME:
-		handleJSON(req, resp, func(req *CreateSubVolumeReq) (*CreateSubVolumeResp, error) {
-			info, err := svc.CreateSubVolume(ctx, req.Tx, req.Spec)
+	case MT_OPEN_FROM:
+		handleJSON(req, resp, func(req *OpenFromReq) (*OpenFromResp, error) {
+			h, err := svc.OpenFrom(ctx, req.Base, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
-			return &CreateSubVolumeResp{Volume: *info}, nil
+			info, err := svc.InspectVolume(ctx, *h)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenFromResp{Handle: *h, Info: *info}, nil
 		})
-
+	case MT_CREATE_VOLUME:
+		handleJSON(req, resp, func(req *CreateVolumeReq) (*CreateVolumeResp, error) {
+			h, err := svc.CreateVolume(ctx, &ep.Peer, req.Spec)
+			if err != nil {
+				return nil, err
+			}
+			info, err := svc.InspectVolume(ctx, *h)
+			if err != nil {
+				return nil, err
+			}
+			return &CreateVolumeResp{Handle: *h, Info: *info}, nil
+		})
 	case MT_VOLUME_INSPECT:
 		handleJSON(req, resp, func(req *InspectVolumeReq) (*InspectVolumeResp, error) {
 			info, err := svc.InspectVolume(ctx, req.Volume)

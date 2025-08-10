@@ -133,7 +133,7 @@ func newTestFS[K comparable](t testing.TB, scheme Scheme[K]) *FS[K] {
 	db := dbutil.OpenMemory()
 	require.NoError(t, SetupDB(ctx, db))
 	svc := bclocal.NewTestService(t)
-	volh, err := svc.CreateVolume(ctx, blobcache.DefaultLocalSpec())
+	volh, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 	return New(db, svc, *volh, scheme)
 }

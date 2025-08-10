@@ -22,9 +22,9 @@ type Server struct {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
-	case r.URL.Path == "/Open":
-		handleRequest(w, r, func(ctx context.Context, req OpenReq) (*OpenResp, error) {
-			handle, err := s.Service.Open(ctx, req.Base, req.Target, req.Mask)
+	case r.URL.Path == "/OpenFrom":
+		handleRequest(w, r, func(ctx context.Context, req OpenFromReq) (*OpenFromResp, error) {
+			handle, err := s.Service.OpenFrom(ctx, req.Base, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -32,7 +32,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
-			return &OpenResp{Handle: *handle, Info: *volInfo}, nil
+			return &OpenFromResp{Handle: *handle, Info: *volInfo}, nil
+		})
+	case r.URL.Path == "/OpenAs":
+		handleRequest(w, r, func(ctx context.Context, req OpenAsReq) (*OpenAsResp, error) {
+			handle, err := s.Service.OpenAs(ctx, req.Caller, req.Target, req.Mask)
+			if err != nil {
+				return nil, err
+			}
+			volInfo, err := s.Service.InspectVolume(ctx, *handle)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenAsResp{Handle: *handle, Info: *volInfo}, nil
 		})
 	case r.URL.Path == "/Endpoint":
 		handleRequest(w, r, func(ctx context.Context, req EndpointReq) (*EndpointResp, error) {
@@ -79,7 +91,7 @@ func (s *Server) handleVolume(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/volume/":
 		handleRequest(w, r, func(ctx context.Context, req CreateVolumeReq) (*CreateVolumeResp, error) {
-			vol, err := s.Service.CreateVolume(ctx, req.Spec)
+			vol, err := s.Service.CreateVolume(ctx, req.Caller, req.Spec)
 			if err != nil {
 				return nil, err
 			}
@@ -231,14 +243,6 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			}
 			return &AllowLinkResp{}, nil
 		})
-	case "CreateSubVolume":
-		handleRequest(w, r, func(ctx context.Context, req CreateSubVolumeReq) (*CreateSubVolumeResp, error) {
-			vol, err := s.Service.CreateSubVolume(ctx, h, req.Spec)
-			if err != nil {
-				return nil, err
-			}
-			return &CreateSubVolumeResp{Volume: *vol}, nil
-		})
 	default:
 		http.Error(w, fmt.Sprintf("unsupported method %v", method), http.StatusNotFound)
 	}
@@ -265,14 +269,6 @@ func handleRequest[Req, Resp any](w http.ResponseWriter, r *http.Request, fn fun
 	if _, err := w.Write(respData); err != nil {
 		logctx.Warn(r.Context(), "writing http response", zap.Error(err))
 	}
-}
-
-func setSaltHeader(req *http.Request, salt *blobcache.CID) {
-	if salt == nil {
-		return
-	}
-	b64, _ := salt.MarshalBase64()
-	req.Header.Set("X-Salt", string(b64))
 }
 
 func getSaltFromRequest(r *http.Request) (*blobcache.CID, error) {

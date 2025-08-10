@@ -20,7 +20,7 @@ func newFS(t testing.TB) *FS[string] {
 	db := dbutil.OpenMemory()
 	require.NoError(t, SetupDB(ctx, db))
 	svc := bclocal.NewTestService(t)
-	volh, err := svc.CreateVolume(ctx, blobcache.DefaultLocalSpec())
+	volh, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 	return New[string](db, svc, *volh, nil)
 }

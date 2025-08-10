@@ -97,10 +97,6 @@ func (tx *Tx) AllowLink(ctx context.Context, target Handle) error {
 	return tx.s.AllowLink(ctx, tx.h, target)
 }
 
-func (tx *Tx) CreateSubVolume(ctx context.Context, spec VolumeSpec) (*VolumeInfo, error) {
-	return tx.s.CreateSubVolume(ctx, tx.h, spec)
-}
-
 // BeginTxSalt is the salted variant of BeginTx.
 func BeginTxSalt(ctx context.Context, s Service, volH Handle, txp TxParams) (*TxSalt, error) {
 	txh, err := s.BeginTx(ctx, volH, txp)

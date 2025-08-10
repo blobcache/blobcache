@@ -14,8 +14,9 @@ type (
 	DropResp          = bcnet.DropResp
 	KeepAliveReq      = bcnet.KeepAliveReq
 	KeepAliveResp     = bcnet.KeepAliveResp
-	OpenReq           = bcnet.OpenReq
-	OpenResp          = bcnet.OpenResp
+	OpenFromReq       = bcnet.OpenFromReq
+	OpenFromResp      = bcnet.OpenFromResp
+	OpenAsResp        = bcnet.OpenAsResp
 )
 
 // Volume messages.
@@ -25,8 +26,15 @@ type (
 	AwaitResp = bcnet.AwaitResp
 )
 
+type OpenAsReq struct {
+	Caller *blobcache.PeerID   `json:"caller,omitempty"`
+	Target blobcache.OID       `json:"target"`
+	Mask   blobcache.ActionSet `json:"mask"`
+}
+
 type CreateVolumeReq struct {
-	Spec blobcache.VolumeSpec `json:"spec"`
+	Caller *blobcache.PeerID    `json:"caller,omitempty"`
+	Spec   blobcache.VolumeSpec `json:"spec"`
 }
 
 type CreateVolumeResp struct {

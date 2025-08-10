@@ -1,41 +1,20 @@
 package bclocal
 
 import (
-	"context"
 	"fmt"
 	"slices"
 
 	"blobcache.io/blobcache/src/blobcache"
 )
 
-var _ blobcache.Service = (*PeerView)(nil)
-
-type PeerView struct {
-	*Service
-	Peer blobcache.PeerID
-}
-
-func (s *Service) Access(peer blobcache.PeerID) blobcache.Service {
-	return &PeerView{
-		Service: s,
-		Peer:    peer,
-	}
-}
-
-func (pv *PeerView) Open(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	if !slices.Contains(pv.env.ACL.Owners, pv.Peer) {
-		return nil, ErrNotAllowed{
-			Peer:   pv.Peer,
-			Action: "Open",
-			Target: x,
-		}
-	}
-	return pv.Service.Open(ctx, base, x, blobcache.Action_ALL)
-}
-
 type ACL struct {
 	// For now just blanket allow or don't.
 	Owners []blobcache.PeerID
+}
+
+// Mentions returns true if the peer is anywhere in the ACL.
+func (acl *ACL) Mentions(peer blobcache.PeerID) bool {
+	return slices.Contains(acl.Owners, peer)
 }
 
 func (acl *ACL) CanLook(peer blobcache.PeerID, name string) bool {

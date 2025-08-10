@@ -22,7 +22,7 @@ import (
 func TestGLFS(t *testing.T) {
 	ctx := testutil.Context(t)
 	svc := newTestService(t)
-	volh, err := svc.CreateVolume(ctx, blobcache.DefaultLocalSpec())
+	volh, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 
 	blobcachetests.Modify(t, svc, *volh, func(tx *blobcache.Tx) ([]byte, error) {

@@ -11,38 +11,42 @@ import (
 type Client struct {
 	Service blobcache.Service
 	Schema  Schema
+	PeerID  *blobcache.PeerID
 }
 
 // CreateAt creates a new Volume using spec, and links it to volh.
-func (c *Client) CreateAt(ctx context.Context, volh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	volh, err := c.resolve(ctx, volh)
+func (c *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	nsh, err := c.resolve(ctx, nsh)
 	if err != nil {
 		return nil, err
 	}
-	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{Mutate: true})
+	txn, err := blobcache.BeginTx(ctx, c.Service, nsh, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return nil, err
 	}
-	volInfo, err := txn.CreateSubVolume(ctx, spec)
+	volh, err := c.Service.CreateVolume(ctx, c.PeerID, spec)
 	if err != nil {
+		return nil, err
+	}
+	if err := txn.AllowLink(ctx, *volh); err != nil {
 		return nil, err
 	}
 	nstx := Tx{Tx: txn}
-	if err := nstx.PutEntry(ctx, name, volInfo.ID); err != nil {
+	if err := nstx.PutEntry(ctx, name, volh.OID); err != nil {
 		return nil, err
 	}
 	if err := nstx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return c.Service.Open(ctx, volh, volInfo.ID, blobcache.Action_ALL)
+	return volh, nil
 }
 
-func (c *Client) OpenAt(ctx context.Context, volh blobcache.Handle, name string, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	volh, err := c.resolve(ctx, volh)
+func (c *Client) OpenAt(ctx context.Context, nsh blobcache.Handle, name string, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	nsh, err := c.resolve(ctx, nsh)
 	if err != nil {
 		return nil, err
 	}
-	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{})
+	txn, err := blobcache.BeginTx(ctx, c.Service, nsh, blobcache.TxParams{})
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +59,7 @@ func (c *Client) OpenAt(ctx context.Context, volh blobcache.Handle, name string,
 	if ent == nil {
 		return nil, fmt.Errorf("entry not found")
 	}
-	return c.Service.Open(ctx, volh, ent.Target, mask)
+	return c.Service.OpenFrom(ctx, nsh, ent.Target, mask)
 }
 
 func (c *Client) PutEntry(ctx context.Context, volh blobcache.Handle, name string, target blobcache.Handle) error {
@@ -123,7 +127,7 @@ func (c *Client) GetEntry(ctx context.Context, volh blobcache.Handle, name strin
 
 func (c *Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
 	if volh == (blobcache.Handle{}) {
-		volh2, err := c.Service.Open(ctx, blobcache.RootHandle(), blobcache.OID{}, blobcache.Action_ALL)
+		volh2, err := c.Service.OpenAs(ctx, c.PeerID, blobcache.OID{}, blobcache.Action_ALL)
 		if err != nil {
 			return blobcache.Handle{}, err
 		}

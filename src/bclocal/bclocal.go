@@ -72,7 +72,11 @@ func (s *Service) Run(ctx context.Context) error {
 		eg.Go(func() error {
 			return s.node.Serve(ctx, bcnet.Server{
 				Access: func(peer blobcache.PeerID) blobcache.Service {
-					return &PeerView{Peer: peer, Service: s}
+					if s.env.ACL.Mentions(peer) {
+						return s
+					} else {
+						return nil
+					}
 				},
 			})
 		})
@@ -108,11 +112,16 @@ func (s *Service) rootVolume() volumes.Volume {
 }
 
 func (s *Service) getLink(x blobcache.Handle) (*volumes.Link, error) {
-	// TODO
-	return &volumes.Link{Target: x.OID, Rights: blobcache.Action_ALL}, nil
+	_, rights, err := s.resolveVol(x)
+	if err != nil {
+		return nil, err
+	}
+	return &volumes.Link{Target: x.OID, Rights: rights}, nil
 }
 
 // mountVolume ensures the volume is available.
+// if the volume is already in memory, it does nothing.
+// otherwise it calls makeVolume and writes to the volumes map.
 func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobcache.VolumeInfo) error {
 	s.mu.RLock()
 	_, exists := s.volumes[oid]
@@ -136,16 +145,9 @@ func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobc
 	return nil
 }
 
-// mountAllInContainer mounts all volumes descending from the container volume
+// mountAllInContainer reads the links from the container using the provided container schema.
+// Next it mounts all of those volumes.
 func (s *Service) mountAllInContainer(ctx context.Context, sch volumes.Container, contVol volumes.Volume) error {
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		return ensureRootVolume(tx)
-	}); err != nil {
-		return err
-	}
-	if err := s.mountVolume(ctx, blobcache.OID{}, rootVolumeInfo()); err != nil {
-		return err
-	}
 	txn, err := contVol.BeginTx(ctx, blobcache.TxParams{})
 	if err != nil {
 		return err
@@ -155,16 +157,44 @@ func (s *Service) mountAllInContainer(ctx context.Context, sch volumes.Container
 	if err != nil {
 		return err
 	}
-	_, err = sch.ListLinks(ctx, src, root)
+	links, err := sch.ListLinks(ctx, src, root)
 	if err != nil {
 		return err
 	}
-	// TODO: mount all volumes referenced by the links.
+	for _, link := range links {
+		volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
+			return inspectVolume(tx, link.Target)
+		})
+		if err != nil {
+			return err
+		}
+		if err := s.mountVolume(ctx, link.Target, *volInfo); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 // mountRoot ensures that the root volume is mounted.
+// First it ensures that the root volume is in the database.
+// Then is calls mount volume using the root volume info (which is constant).
+// Then is calls mountAllInContainer on the root volume.
 func (s *Service) mountRoot(ctx context.Context) error {
+	s.mu.RLock()
+	_, exists := s.volumes[blobcache.OID{}]
+	s.mu.RUnlock()
+	if exists {
+		return nil
+	}
+
+	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
+		return ensureRootVolume(tx)
+	}); err != nil {
+		return err
+	}
+	if err := s.mountVolume(ctx, blobcache.OID{}, rootVolumeInfo()); err != nil {
+		return err
+	}
 	return s.mountAllInContainer(ctx, simplens.Schema{}, s.rootVolume())
 }
 
@@ -304,10 +334,28 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	}, nil
 }
 
-func (s *Service) Open(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	if err := s.mountAllInContainer(ctx, simplens.Schema{}, s.rootVolume()); err != nil {
+func (s *Service) OpenAs(ctx context.Context, caller *blobcache.PeerID, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	if caller != nil {
+		if !slices.Contains(s.env.ACL.Owners, *caller) {
+			return nil, ErrNotAllowed{
+				Peer:   *caller,
+				Action: "OpenAs",
+				Target: x,
+			}
+		}
+	}
+	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
+	h := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
+	return &h, nil
+}
+
+func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	if err := s.mountRoot(ctx); err != nil {
+		return nil, err
+	}
+
 	if base == (blobcache.Handle{}) {
 		if x != (blobcache.OID{}) {
 			s.mu.RLock()
@@ -338,12 +386,32 @@ func (s *Service) Open(ctx context.Context, base blobcache.Handle, x blobcache.O
 	if err != nil {
 		return nil, err
 	}
+	for _, link := range links {
+		volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
+			return inspectVolume(tx, link.Target)
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := s.mountVolume(ctx, link.Target, *volInfo); err != nil {
+			return nil, err
+		}
+	}
 	_ = links // TODO: use links to check access to x
 	h := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
 	return &h, nil
 }
 
-func (s *Service) CreateVolume(ctx context.Context, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	if caller != nil {
+		if !slices.Contains(s.env.ACL.Owners, *caller) {
+			return nil, ErrNotAllowed{
+				Peer:   *caller,
+				Action: "CreateVolume",
+			}
+		}
+	}
+
 	if err := vspec.Validate(); err != nil {
 		return nil, err
 	}
@@ -505,21 +573,6 @@ func (s *Service) AllowLink(ctx context.Context, txh blobcache.Handle, subvolh b
 		return err
 	}
 	return txn.AllowLink(ctx, subvolh)
-}
-
-func (s *Service) CreateSubVolume(ctx context.Context, txh blobcache.Handle, vspec blobcache.VolumeSpec) (*blobcache.VolumeInfo, error) {
-	txn, err := s.resolveTx(txh, true)
-	if err != nil {
-		return nil, err
-	}
-	volH, err := s.CreateVolume(ctx, vspec)
-	if err != nil {
-		return nil, err
-	}
-	if err := txn.AllowLink(ctx, *volH); err != nil {
-		return nil, err
-	}
-	return s.InspectVolume(ctx, *volH)
 }
 
 func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {

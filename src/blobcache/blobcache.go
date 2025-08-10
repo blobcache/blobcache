@@ -210,10 +210,6 @@ type Service interface {
 	KeepAlive(ctx context.Context, hs []Handle) error
 	// InspectHandle returns info about a handle.
 	InspectHandle(ctx context.Context, h Handle) (*HandleInfo, error)
-	// Open returns a handle to an object by it's ID.
-	// base is the handle of a volume, which links to the object.
-	// The zero Handle may have special meaning.
-	Open(ctx context.Context, base Handle, x OID, mask ActionSet) (*Handle, error)
 
 	////
 	// Volume methods.
@@ -223,9 +219,18 @@ type Service interface {
 	// CreateVolume always creates a Volume on the local Node.
 	// CreateVolume returns a handle to the Volume.  If no other references to the Volume
 	// have been created by the time the handle expires, the Volume will be deleted.
-	CreateVolume(ctx context.Context, vspec VolumeSpec) (*Handle, error)
+	// Leave caller nil to skip Authorization checks.
+	CreateVolume(ctx context.Context, caller *PeerID, vspec VolumeSpec) (*Handle, error)
 	// InspectVolume returns info about a Volume.
 	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
+	// OpenAs returns a handle to an object by it's ID.
+	// PeerID is the peer that is opening the handle.
+	// This is where any Authorization checks are done.
+	OpenAs(ctx context.Context, caller *PeerID, x OID, mask ActionSet) (*Handle, error)
+	// OpenFrom returns a handle to an object by it's ID.
+	// base is the handle of a Volume, which links to the object.
+	// the base Volume's schema must be a Container.
+	OpenFrom(ctx context.Context, base Handle, x OID, mask ActionSet) (*Handle, error)
 	// Await waits for a set of conditions to be met.
 	Await(ctx context.Context, cond Conditions) error
 	// BeginTx begins a new transaction, on a Volume.
@@ -253,8 +258,6 @@ type Service interface {
 	// AllowLink allows the Volume to reference another volume.
 	// The volume must still have a recognized Container Schema for the volumes to be persisted.
 	AllowLink(ctx context.Context, tx Handle, subvol Handle) error
-	// CreateSubVolume creates a new volume, and links it to the volume targeted by the Tx.
-	CreateSubVolume(ctx context.Context, tx Handle, vspec VolumeSpec) (*VolumeInfo, error)
 }
 
 // CheckBlob checks that the data matches the expected CID.
