@@ -229,37 +229,14 @@ func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Tim
 
 func (s *Service) resolveVol(x blobcache.Handle) (volumes.Volume, blobcache.ActionSet, error) {
 	s.mu.RLock()
+	defer s.mu.RUnlock()
 	k := handleKey(x)
 	if _, exists := s.handles[k]; !exists {
-		s.mu.RUnlock()
 		return nil, 0, blobcache.ErrInvalidHandle{Handle: x}
 	}
 	vol, exists := s.volumes[x.OID]
 	if !exists {
-		s.mu.RUnlock()
-		// Volume not in memory, try to load from database
-		ctx := context.Background()
-		volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
-			return inspectVolume(tx, x.OID)
-		})
-		if err != nil {
-			return nil, 0, fmt.Errorf("handle to %v does not refer to volume", x.OID)
-		}
-
-		// Mount the volume
-		if err := s.mountVolume(ctx, x.OID, *volInfo); err != nil {
-			return nil, 0, err
-		}
-
-		// Now try again with the mounted volume
-		s.mu.RLock()
-		vol, exists = s.volumes[x.OID]
-		s.mu.RUnlock()
-		if !exists {
-			return nil, 0, fmt.Errorf("failed to mount volume %v", x.OID)
-		}
-	} else {
-		s.mu.RUnlock()
+		return nil, 0, fmt.Errorf("handle does not refer to volume")
 	}
 	return vol.backend, blobcache.Action_ALL, nil
 }
