@@ -3,11 +3,11 @@ package scheme_glfs
 import (
 	"testing"
 
-	"blobcache.io/blobcache/src/bcfs"
+	"blobcache.io/blobcache/src/bcfuse"
 )
 
 func TestSchemeGLFS(t *testing.T) {
-	bcfs.TestFS(t, func(tb testing.TB) bcfs.Scheme[string] {
+	bcfuse.TestFS(t, func(tb testing.TB) bcfuse.Scheme[string] {
 		return NewScheme()
 	})
 }

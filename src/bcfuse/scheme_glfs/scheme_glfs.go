@@ -6,14 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"blobcache.io/blobcache/src/bcfs"
+	"blobcache.io/blobcache/src/bcfuse"
 	"blobcache.io/glfs"
 	"go.brendoncarroll.net/exp/streams"
 	"go.brendoncarroll.net/state/cadata"
 )
 
 // Verify that Scheme implements bcfs.Scheme[string]
-var _ bcfs.Scheme[string] = (*Scheme)(nil)
+var _ bcfuse.Scheme[string] = (*Scheme)(nil)
 
 // Scheme implements the bcfs.Scheme interface using GLFS
 type Scheme struct {
@@ -26,7 +26,7 @@ func NewScheme() *Scheme {
 }
 
 // FlushExtents writes all the extents to the volume
-func (s *Scheme) FlushExtents(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, extents []bcfs.Extent[string]) ([]byte, error) {
+func (s *Scheme) FlushExtents(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, extents []bcfuse.Extent[string]) ([]byte, error) {
 	// Load the current filesystem state
 	var fsRef glfs.Ref
 	if len(root) > 0 {
@@ -105,7 +105,7 @@ func (s *Scheme) ReadFile(ctx context.Context, src cadata.Getter, root []byte, i
 }
 
 // ReadDir reads directory entries for the given identifier
-func (s *Scheme) ReadDir(ctx context.Context, src cadata.Getter, root []byte, id string) ([]bcfs.DirEntry[string], error) {
+func (s *Scheme) ReadDir(ctx context.Context, src cadata.Getter, root []byte, id string) ([]bcfuse.DirEntry[string], error) {
 	// Load the filesystem
 	var fsRef glfs.Ref
 	if err := json.Unmarshal(root, &fsRef); err != nil {
@@ -134,7 +134,7 @@ func (s *Scheme) ReadDir(ctx context.Context, src cadata.Getter, root []byte, id
 		return nil, fmt.Errorf("failed to create tree reader: %w", err)
 	}
 
-	var result []bcfs.DirEntry[string]
+	var result []bcfuse.DirEntry[string]
 	err = streams.ForEach(ctx, tr, func(entry glfs.TreeEntry) error {
 		// Convert file mode to POSIX mode
 		mode := uint32(entry.FileMode)
@@ -149,7 +149,7 @@ func (s *Scheme) ReadDir(ctx context.Context, src cadata.Getter, root []byte, id
 			childPath = id + "/" + entry.Name
 		}
 
-		result = append(result, bcfs.DirEntry[string]{
+		result = append(result, bcfuse.DirEntry[string]{
 			Name:  entry.Name,
 			Child: childPath,
 			Mode:  mode,

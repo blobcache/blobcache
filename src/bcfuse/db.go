@@ -1,4 +1,4 @@
-package bcfs
+package bcfuse
 
 import (
 	"context"

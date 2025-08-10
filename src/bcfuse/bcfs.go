@@ -1,9 +1,9 @@
-// Package bcfs implements a filesystem interface for blobcache.
-// bcfs handles the frontend components of a filesystem, like FUSE and NFS mounting.
+// Package bcfuse implements a filesystem interface for blobcache.
+// bcfuse handles the frontend components of a filesystem, like FUSE and NFS mounting.
 // The backend is provided by a blobcache volume.
 // Translating the filesystem operations into blobcache operations is handled by a Scheme.
-// bcfs provides write buffering before the data is flushed to the volume.
-package bcfs
+// bcfuse provides write buffering before the data is flushed to the volume.
+package bcfuse
 
 import (
 	"context"

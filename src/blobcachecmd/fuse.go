@@ -1,8 +1,8 @@
 package blobcachecmd
 
 import (
-	"blobcache.io/blobcache/src/bcfs"
-	"blobcache.io/blobcache/src/bcfs/scheme_glfs"
+	"blobcache.io/blobcache/src/bcfuse"
+	"blobcache.io/blobcache/src/bcfuse/scheme_glfs"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/simplens"
@@ -34,7 +34,7 @@ var fuseMountCmd = star.Command{
 			return err
 		}
 		db := dbutil.OpenMemory()
-		fsx := bcfs.New(db, svc, *volh, scheme_glfs.NewScheme())
+		fsx := bcfuse.New(db, svc, *volh, scheme_glfs.NewScheme())
 		fuseSrv, err := fs.Mount(mountpointParam.Load(c), fsx.FUSERoot(), &fs.Options{
 			MountOptions: fuse.MountOptions{
 				Debug: true,

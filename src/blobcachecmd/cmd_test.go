@@ -24,7 +24,7 @@ func TestGLFS(t *testing.T) {
 	// put file1
 	runCmd(t, []string{"--state", stateDir, "glfs", "import", "vol1", "/file1", filepath.Join(inputDir, "file1")})
 	// get file1
-	data2 := runCmdGetOut(t, []string{"--state", stateDir, "glfs", "getf", "vol1", "/file1"})
+	data2 := runCmdGetOut(t, []string{"--state", stateDir, "glfs", "read", "vol1", "/file1"})
 	// check file1
 	require.Equal(t, data1, data2)
 }

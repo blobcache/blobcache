@@ -24,7 +24,7 @@ var glfsCmd = star.NewDir(star.Metadata{
 	"init":   glfsInitCmd,
 	"look":   glfsLookCmd,
 	"import": glfsImportCmd,
-	"getf":   glfsGetFileCmd,
+	"read":   glfsReadCmd,
 })
 
 var glfsInitCmd = star.Command{
@@ -161,9 +161,9 @@ var glfsImportCmd = star.Command{
 	},
 }
 
-var glfsGetFileCmd = star.Command{
+var glfsReadCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "Get a file from a GLFS volume and write it to stdout",
+		Short: "Read a file from a GLFS volume and write it to stdout",
 	},
 	Flags: []star.AnyParam{stateDirParam},
 	Pos:   []star.AnyParam{volumeNameParam, srcPathParam},
