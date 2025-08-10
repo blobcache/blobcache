@@ -84,8 +84,17 @@ func volumeHasMutatingTx(tx *sqlx.Tx, volID LocalVolumeID) (bool, error) {
 var _ volumes.Volume = &localVolume{}
 
 type localVolume struct {
-	db  *sqlx.DB
-	oid blobcache.OID
+	db      *sqlx.DB
+	oid     blobcache.OID
+	resolve func(blobcache.Handle) (*volumes.Link, error)
+}
+
+func newLocalVolume(db *sqlx.DB, oid blobcache.OID, resolve func(blobcache.Handle) (*volumes.Link, error)) *localVolume {
+	return &localVolume{
+		db:      db,
+		oid:     oid,
+		resolve: resolve,
+	}
 }
 
 func (v *localVolume) Await(ctx context.Context, prev []byte, next *[]byte) error {
@@ -135,7 +144,7 @@ func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (vol
 		case <-tick.C:
 		}
 	}
-	return newLocalVolumeTx(ctx, v.db, *ltxid, volInfo)
+	return newLocalTxn(ctx, v.db, *ltxid, volInfo, v.resolve)
 }
 
 // createLocalTxn creates a new transaction object in the database.
@@ -206,40 +215,44 @@ func txnCommit(tx *sqlx.Tx, volID LocalVolumeID, txid LocalTxnID, root []byte) e
 	return dropLocalTxn(tx, txid)
 }
 
-var _ volumes.Tx = &localVolumeTx{}
+var _ volumes.Tx = &localTxn{}
 
-// localVolumeTx is a transaction on a local volume.
-type localVolumeTx struct {
+// localTxn is a transaction on a local volume.
+type localTxn struct {
 	db          *sqlx.DB
 	localTxnRow localTxnRow
 	volInfo     blobcache.VolumeInfo
+	resolve     func(blobcache.Handle) (*volumes.Link, error)
+
+	subvols []volumes.Link
 }
 
-// newLocalVolumeTx creates a localVolumeTx.
+// newLocalTxn creates a localTxn.
 // It does not change the database state.
 // the caller should have already created the transaction at txid, and volInfo.
-func newLocalVolumeTx(ctx context.Context, db *sqlx.DB, txid LocalTxnID, volInfo *blobcache.VolumeInfo) (*localVolumeTx, error) {
+func newLocalTxn(ctx context.Context, db *sqlx.DB, txid LocalTxnID, volInfo *blobcache.VolumeInfo, resolve func(blobcache.Handle) (*volumes.Link, error)) (*localTxn, error) {
 	txRow, err := dbutil.DoTx1(ctx, db, func(tx *sqlx.Tx) (*localTxnRow, error) {
 		return getLocalTxn(tx, txid)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &localVolumeTx{
+	return &localTxn{
 		db:          db,
 		localTxnRow: *txRow,
 		volInfo:     *volInfo,
+		resolve:     resolve,
 	}, nil
 }
 
-func (v *localVolumeTx) Volume() volumes.Volume {
+func (v *localTxn) Volume() volumes.Volume {
 	return &localVolume{
 		db:  v.db,
 		oid: v.volInfo.ID,
 	}
 }
 
-func (v *localVolumeTx) Commit(ctx context.Context, root []byte) error {
+func (v *localTxn) Commit(ctx context.Context, root []byte) error {
 	if !v.localTxnRow.Mutate {
 		return blobcache.ErrTxReadOnly{}
 	}
@@ -248,25 +261,25 @@ func (v *localVolumeTx) Commit(ctx context.Context, root []byte) error {
 	})
 }
 
-func (v *localVolumeTx) Abort(ctx context.Context) error {
+func (v *localTxn) Abort(ctx context.Context) error {
 	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
 		return dropLocalTxn(tx, v.localTxnRow.RowID)
 	})
 }
 
-func (v *localVolumeTx) Load(ctx context.Context, dst *[]byte) error {
+func (v *localTxn) Load(ctx context.Context, dst *[]byte) error {
 	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
 		return txnLoadRoot(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, dst)
 	})
 }
 
-func (v *localVolumeTx) Delete(ctx context.Context, cid blobcache.CID) error {
+func (v *localTxn) Delete(ctx context.Context, cid blobcache.CID) error {
 	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
 		return deleteBlob(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, cid)
 	})
 }
 
-func (v *localVolumeTx) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+func (v *localTxn) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
 	if salt != nil && !v.volInfo.Salted {
 		return blobcache.CID{}, blobcache.ErrCannotSalt{}
 	}
@@ -290,13 +303,13 @@ func (v *localVolumeTx) Post(ctx context.Context, salt *blobcache.CID, data []by
 	return *cid, nil
 }
 
-func (v *localVolumeTx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+func (v *localTxn) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
 	return dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (int, error) {
 		return readBlob(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, cid, buf)
 	})
 }
 
-func (v *localVolumeTx) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
+func (v *localTxn) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
 	return dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (bool, error) {
 		exists, err := txnContainsBlob(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, cid)
 		if err != nil {
@@ -312,15 +325,27 @@ func (v *localVolumeTx) Exists(ctx context.Context, cid blobcache.CID) (bool, er
 	})
 }
 
-func (v *localVolumeTx) MaxSize() int {
+func (v *localTxn) MaxSize() int {
 	return int(v.volInfo.MaxSize)
 }
 
-func (v *localVolumeTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+func (v *localTxn) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	hf := v.volInfo.HashAlgo.HashFunc()
 	return hf(salt, data)
 }
 
-func (v *localVolumeTx) Info() blobcache.VolumeInfo {
+func (v *localTxn) Info() blobcache.VolumeInfo {
 	return v.volInfo
+}
+
+func (v *localTxn) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
+	if !v.localTxnRow.Mutate {
+		return blobcache.ErrTxReadOnly{}
+	}
+	link, err := v.resolve(subvol)
+	if err != nil {
+		return err
+	}
+	v.subvols = append(v.subvols, *link)
+	return nil
 }

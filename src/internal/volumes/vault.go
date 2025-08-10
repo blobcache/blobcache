@@ -147,6 +147,10 @@ func (v *VaultTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return v.inner.Hash(salt, data)
 }
 
+func (v *VaultTx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
+	return v.inner.AllowLink(ctx, subvol)
+}
+
 // This is an adapter to a store, since we added salts to the API.
 type UnsaltedStore struct {
 	inner Tx

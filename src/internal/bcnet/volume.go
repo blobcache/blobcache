@@ -226,6 +226,14 @@ func (tx *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return hf(salt, data)
 }
 
+func (tx *Tx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
+	_, err := doJSON[AllowLinkReq, AllowLinkResp](ctx, tx.n, tx.ep, MT_TX_ALLOW_LINK, AllowLinkReq{
+		Tx:     tx.h,
+		Subvol: subvol,
+	})
+	return err
+}
+
 func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.Endpoint, code MessageType, req Req) (*Resp, error) {
 	reqData, err := json.Marshal(req)
 	if err != nil {
@@ -251,27 +259,18 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 	return &resp, nil
 }
 
-func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, id blobcache.OID) (*Volume, error) {
-	resp, err := doJSON[OpenReq, OpenResp](ctx, n, ep, MT_OPEN, OpenReq{
-		OID: id,
+func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
+	resp, err := doJSON[OpenAsReq, OpenAsResp](ctx, n, ep, MT_OPEN_AS, OpenAsReq{
+		Target: target,
+		Mask:   mask,
 	})
 	if err != nil {
+		return nil, err
+	}
+	if err := resp.Info.HashAlgo.Validate(); err != nil {
 		return nil, err
 	}
 	return NewVolume(n, ep, resp.Handle, &resp.Info), nil
-}
-
-// CreateVolumeAt creates a new volume in a namespace on a remote node.
-func CreateVolumeAt(ctx context.Context, n *Node, ep blobcache.Endpoint, ns blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	resp, err := doJSON[CreateVolumeAtReq, CreateVolumeAtResp](ctx, n, ep, MT_NAMESPACE_CREATE_AT, CreateVolumeAtReq{
-		Namespace: ns,
-		Name:      name,
-		Spec:      spec,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
 }
 
 func InspectVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, vol blobcache.Handle) (*blobcache.VolumeInfo, error) {

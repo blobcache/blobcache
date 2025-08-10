@@ -12,9 +12,9 @@ func defaultLocalSpec() blobcache.VolumeSpec {
 	return blobcache.DefaultLocalSpec()
 }
 
-func CreateVolume(t testing.TB, s blobcache.Service, spec blobcache.VolumeSpec) blobcache.Handle {
+func CreateVolume(t testing.TB, s blobcache.Service, caller *blobcache.PeerID, spec blobcache.VolumeSpec) blobcache.Handle {
 	ctx := testutil.Context(t)
-	volh, err := s.CreateVolume(ctx, spec)
+	volh, err := s.CreateVolume(ctx, caller, spec)
 	require.NoError(t, err)
 	require.NotNil(t, volh)
 	return *volh
@@ -77,4 +77,11 @@ func Commit(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte
 func Abort(t testing.TB, s blobcache.Service, txh blobcache.Handle) {
 	ctx := testutil.Context(t)
 	require.NoError(t, s.Abort(ctx, txh))
+}
+
+func Endpoint(t testing.TB, s blobcache.Service) blobcache.Endpoint {
+	ctx := testutil.Context(t)
+	ep, err := s.Endpoint(ctx)
+	require.NoError(t, err)
+	return ep
 }

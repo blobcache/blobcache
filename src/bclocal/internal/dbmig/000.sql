@@ -56,10 +56,21 @@ CREATE TABLE volumes (
     backend BLOB NOT NULL
 ), WITHOUT ROWID, STRICT;
 
-CREATE TABLE volumes_volumes (
+-- volume_deps stores dependencies between volumes.
+-- volume_deps is set by the volume backend implementation, not by the user.
+CREATE TABLE volumes_deps (
     from_id BLOB NOT NULL REFERENCES volumes(id),
     to_id BLOB NOT NULL REFERENCES volumes(id),
     PRIMARY KEY (from_id, to_id)
 ), WITHOUT ROWID, STRICT;
 
-CREATE INDEX idx_volumes_volumes_reverse ON volumes_volumes (to_id);
+CREATE INDEX idx_volumes_deps_reverse ON volumes_deps (to_id);
+
+CREATE TABLE subvolumes (
+    from_id BLOB NOT NULL REFERENCES volumes(id),
+    to_id BLOB NOT NULL REFERENCES volumes(id),
+    rights INT NOT NULL,
+    PRIMARY KEY (from_id, to_id)
+), WITHOUT ROWID, STRICT;
+
+CREATE INDEX idx_subvolumes_reverse ON subvolumes (to_id);

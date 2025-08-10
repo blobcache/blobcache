@@ -110,12 +110,13 @@ func (h HashAlgo) HashFunc() HashFunc {
 type SchemaName string
 
 const (
-	SchemaName_Namespace SchemaName = "blobcache/namespace"
+	// SchemaName_SimpleNS is the schema name for the simple namespace.
+	SchemaName_SimpleNS SchemaName = "blobcache/simplens"
 )
 
 func (s SchemaName) Validate() error {
 	switch s {
-	case SchemaName_Namespace:
+	case SchemaName_SimpleNS:
 		return nil
 	}
 	return fmt.Errorf("unknown schema: %q", s)
@@ -209,27 +210,6 @@ type Service interface {
 	KeepAlive(ctx context.Context, hs []Handle) error
 	// InspectHandle returns info about a handle.
 	InspectHandle(ctx context.Context, h Handle) (*HandleInfo, error)
-	// Open returns a handle to an object by it's ID.
-	Open(ctx context.Context, x OID) (*Handle, error)
-
-	////
-	// Namespace methods.
-	////
-
-	// OpenAt returns a handle to a volume.
-	OpenAt(ctx context.Context, ns Handle, name string) (*Handle, error)
-	// PutEntry adds an entry to a namespace
-	PutEntry(ctx context.Context, ns Handle, name string, target Handle) error
-	// DeleteEntry deletes an entry from a namespace
-	DeleteEntry(ctx context.Context, ns Handle, name string) error
-	// GetEntry returns an entry from a namespace.
-	GetEntry(ctx context.Context, ns Handle, name string) (*Entry, error)
-	// ListNames lists the names in a namespace.
-	ListNames(ctx context.Context, ns Handle) ([]string, error)
-	// CreateVolumeAt creates a new Volume in a namespace.
-	// CreateVolumeAt is an atomic equivalent to CreateVolume then PutEntry.
-	// CreateVolumeAt always creates a Volume on the same Node as the namespace.
-	CreateVolumeAt(ctx context.Context, ns Handle, name string, spec VolumeSpec) (*Handle, error)
 
 	////
 	// Volume methods.
@@ -239,9 +219,18 @@ type Service interface {
 	// CreateVolume always creates a Volume on the local Node.
 	// CreateVolume returns a handle to the Volume.  If no other references to the Volume
 	// have been created by the time the handle expires, the Volume will be deleted.
-	CreateVolume(ctx context.Context, vspec VolumeSpec) (*Handle, error)
+	// Leave caller nil to skip Authorization checks.
+	CreateVolume(ctx context.Context, caller *PeerID, vspec VolumeSpec) (*Handle, error)
 	// InspectVolume returns info about a Volume.
 	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
+	// OpenAs returns a handle to an object by it's ID.
+	// PeerID is the peer that is opening the handle.
+	// This is where any Authorization checks are done.
+	OpenAs(ctx context.Context, caller *PeerID, x OID, mask ActionSet) (*Handle, error)
+	// OpenFrom returns a handle to an object by it's ID.
+	// base is the handle of a Volume, which links to the object.
+	// the base Volume's schema must be a Container.
+	OpenFrom(ctx context.Context, base Handle, x OID, mask ActionSet) (*Handle, error)
 	// Await waits for a set of conditions to be met.
 	Await(ctx context.Context, cond Conditions) error
 	// BeginTx begins a new transaction, on a Volume.
@@ -266,6 +255,9 @@ type Service interface {
 	Delete(ctx context.Context, tx Handle, cid CID) error
 	// Get returns the data for a CID.
 	Get(ctx context.Context, tx Handle, cid CID, salt *CID, buf []byte) (int, error)
+	// AllowLink allows the Volume to reference another volume.
+	// The volume must still have a recognized Container Schema for the volumes to be persisted.
+	AllowLink(ctx context.Context, tx Handle, subvol Handle) error
 }
 
 // CheckBlob checks that the data matches the expected CID.

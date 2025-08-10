@@ -93,6 +93,10 @@ func (tx *Tx) MaxSize() int {
 	return tx.maxSize
 }
 
+func (tx *Tx) AllowLink(ctx context.Context, target Handle) error {
+	return tx.s.AllowLink(ctx, tx.h, target)
+}
+
 // BeginTxSalt is the salted variant of BeginTx.
 func BeginTxSalt(ctx context.Context, s Service, volH Handle, txp TxParams) (*TxSalt, error) {
 	txh, err := s.BeginTx(ctx, volH, txp)

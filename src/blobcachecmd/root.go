@@ -10,6 +10,7 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/simplens"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
@@ -56,15 +57,13 @@ var mkVolCmd = star.Command{
 			return err
 		}
 		defer close()
-		volh, err := s.CreateVolume(c, blobcache.DefaultLocalSpec())
+		nsc := simplens.Client{Service: s}
+		volh, err := nsc.CreateAt(c, blobcache.RootHandle(), nameParam.Load(c), blobcache.DefaultLocalSpec())
 		if err != nil {
 			return err
 		}
-		if err := s.PutEntry(c, blobcache.RootHandle(), nameParam.Load(c), *volh); err != nil {
-			return err
-		}
 		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v\n", volh)
+		c.Printf("HANDLE: %v\n", *volh)
 		return nil
 	},
 }
@@ -80,7 +79,8 @@ var lsCmd = star.Command{
 			return err
 		}
 		defer close()
-		names, err := s.ListNames(c, blobcache.RootHandle())
+		nsc := simplens.Client{Service: s}
+		names, err := nsc.ListNames(c, blobcache.RootHandle())
 		if err != nil {
 			return err
 		}
@@ -122,6 +122,7 @@ func RunTest(t testing.TB, env map[string]string, calledAs string, args []string
 	}
 
 	ctx := testutil.Context(t)
+	t.Log(calledAs, args)
 	err := star.Run(ctx, Root(), env, calledAs, args, stdin, stdout, stderr)
 	require.NoError(t, err)
 }

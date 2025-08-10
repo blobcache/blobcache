@@ -3,6 +3,7 @@ package blobcache
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"net/netip"
 	"strings"
 
@@ -30,28 +31,6 @@ func (e Endpoint) IsZero() bool {
 // VolumeSpec is a specification for a volume.
 type VolumeSpec = VolumeBackend[Handle]
 
-// Schema SchemaName `json:"schema"`
-// // HashAlgo is the hash algorithm to use for the volume.
-// HashAlgo HashAlgo `json:"hash_algo"`
-// // MaxSize is the maximum size of a blob
-// MaxSize int64 `json:"max_size"`
-// Salted  bool  `json:"salted"`
-// // Backend is the implementation to use for the volume.
-// Backend VolumeBackend[Handle] `json:"backend"`
-
-// func (v *VolumeSpec) Validate() (retErr error) {
-// 	if err := v.Backend.Validate(); err != nil {
-// 		retErr = errors.Join(retErr, err)
-// 	}
-// 	if err := v.HashAlgo.Validate(); err != nil {
-// 		retErr = errors.Join(retErr, err)
-// 	}
-// 	if v.MaxSize <= 0 {
-// 		retErr = errors.Join(retErr, fmt.Errorf("max size must be positive"))
-// 	}
-// 	return retErr
-// }
-
 // VolumeInfo is a volume info.
 type VolumeInfo struct {
 	ID OID `json:"id"`
@@ -68,6 +47,18 @@ type VolumeBackend[T handleOrOID] struct {
 	Git      *VolumeBackend_Git         `json:"git,omitempty"`
 	RootAEAD *VolumeBackend_RootAEAD[T] `json:"root_aead,omitempty"`
 	Vault    *VolumeBackend_Vault[T]    `json:"vault,omitempty"`
+}
+
+// Deps returns the volumes which must exist before this volume can be created.
+func (v *VolumeBackend[T]) Deps() iter.Seq[T] {
+	switch {
+	case v.RootAEAD != nil:
+		return unitIter[T](v.RootAEAD.Inner)
+	case v.Vault != nil:
+		return unitIter[T](v.Vault.Inner)
+	default:
+		return emptyIter[T]()
+	}
 }
 
 func (v VolumeBackend[T]) Params() VolumeParams {
@@ -240,4 +231,14 @@ func (a AEADAlgo) Validate() error {
 		return fmt.Errorf("unknown aead algo: %s", a)
 	}
 	return nil
+}
+
+func emptyIter[T any]() iter.Seq[T] {
+	return func(yield func(T) bool) {}
+}
+
+func unitIter[T any](x T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		yield(x)
+	}
 }

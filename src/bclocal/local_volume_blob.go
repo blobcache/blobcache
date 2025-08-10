@@ -10,6 +10,10 @@ import (
 
 // ensureBlob inserts a row into the blobs table, if it doesn't already exist.
 func ensureBlob(tx *sqlx.Tx, cid blobcache.CID, salt *blobcache.CID, data []byte) error {
+	if data == nil {
+		// this is necessary to avoid inserting a null blob into the database (which is not allowed)
+		data = []byte{}
+	}
 	if _, err := tx.Exec(`
 		INSERT INTO blobs (cid, salt, data)
 		VALUES (?, ?, ?)

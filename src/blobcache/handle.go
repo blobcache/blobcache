@@ -125,12 +125,3 @@ func (r ActionSet) String() string {
 	}
 	return strings.Join(parts, "|")
 }
-
-// Entry is an entry in a namespace.
-type Entry struct {
-	Name   string    `json:"name"`
-	Target OID       `json:"target"`
-	Rights ActionSet `json:"rights"`
-
-	Volume *VolumeInfo `json:"volume,omitempty"`
-}

@@ -22,45 +22,29 @@ type Server struct {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
-	case r.URL.Path == "/Open":
-		handleRequest(w, r, func(ctx context.Context, req OpenReq) (*OpenResp, error) {
-			handle, err := s.Service.Open(ctx, req.OID)
+	case r.URL.Path == "/OpenFrom":
+		handleRequest(w, r, func(ctx context.Context, req OpenFromReq) (*OpenFromResp, error) {
+			handle, err := s.Service.OpenFrom(ctx, req.Base, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
-			return &OpenResp{Handle: *handle}, nil
+			volInfo, err := s.Service.InspectVolume(ctx, *handle)
+			if err != nil {
+				return nil, err
+			}
+			return &OpenFromResp{Handle: *handle, Info: *volInfo}, nil
 		})
-	case r.URL.Path == "/OpenAt":
-		handleRequest(w, r, func(ctx context.Context, req OpenAtReq) (*OpenAtResp, error) {
-			handle, err := s.Service.OpenAt(ctx, blobcache.RootHandle(), req.Name)
+	case r.URL.Path == "/OpenAs":
+		handleRequest(w, r, func(ctx context.Context, req OpenAsReq) (*OpenAsResp, error) {
+			handle, err := s.Service.OpenAs(ctx, req.Caller, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
-			return &OpenAtResp{Handle: *handle}, nil
-		})
-	case r.URL.Path == "/PutEntry":
-		handleRequest(w, r, func(ctx context.Context, req PutEntryReq) (*PutEntryResp, error) {
-			err := s.Service.PutEntry(ctx, req.Namespace, req.Name, req.Target)
+			volInfo, err := s.Service.InspectVolume(ctx, *handle)
 			if err != nil {
 				return nil, err
 			}
-			return &PutEntryResp{}, nil
-		})
-	case r.URL.Path == "/DeleteEntry":
-		handleRequest(w, r, func(ctx context.Context, req DeleteEntryReq) (*DeleteEntryResp, error) {
-			err := s.Service.DeleteEntry(ctx, req.Namespace, req.Name)
-			if err != nil {
-				return nil, err
-			}
-			return &DeleteEntryResp{}, nil
-		})
-	case r.URL.Path == "/ListNames":
-		handleRequest(w, r, func(ctx context.Context, req ListNamesReq) (*ListNamesResp, error) {
-			names, err := s.Service.ListNames(ctx, req.Namespace)
-			if err != nil {
-				return nil, err
-			}
-			return &ListNamesResp{Names: names}, nil
+			return &OpenAsResp{Handle: *handle, Info: *volInfo}, nil
 		})
 	case r.URL.Path == "/Endpoint":
 		handleRequest(w, r, func(ctx context.Context, req EndpointReq) (*EndpointResp, error) {
@@ -107,7 +91,7 @@ func (s *Server) handleVolume(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/volume/":
 		handleRequest(w, r, func(ctx context.Context, req CreateVolumeReq) (*CreateVolumeResp, error) {
-			vol, err := s.Service.CreateVolume(ctx, req.Spec)
+			vol, err := s.Service.CreateVolume(ctx, req.Caller, req.Spec)
 			if err != nil {
 				return nil, err
 			}
@@ -252,6 +236,13 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			}
 			return &ExistsResp{Exists: exists}, nil
 		})
+	case "AllowLink":
+		handleRequest(w, r, func(ctx context.Context, req AllowLinkReq) (*AllowLinkResp, error) {
+			if err := s.Service.AllowLink(ctx, h, req.Target); err != nil {
+				return nil, err
+			}
+			return &AllowLinkResp{}, nil
+		})
 	default:
 		http.Error(w, fmt.Sprintf("unsupported method %v", method), http.StatusNotFound)
 	}
@@ -278,14 +269,6 @@ func handleRequest[Req, Resp any](w http.ResponseWriter, r *http.Request, fn fun
 	if _, err := w.Write(respData); err != nil {
 		logctx.Warn(r.Context(), "writing http response", zap.Error(err))
 	}
-}
-
-func setSaltHeader(req *http.Request, salt *blobcache.CID) {
-	if salt == nil {
-		return
-	}
-	b64, _ := salt.MarshalBase64()
-	req.Header.Set("X-Salt", string(b64))
 }
 
 func getSaltFromRequest(r *http.Request) (*blobcache.CID, error) {

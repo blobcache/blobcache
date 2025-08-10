@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/simplens"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -13,15 +14,18 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		ctx := testutil.Context(t)
 		svcs := mk(t, 2)
 		s1, s2 := svcs[0], svcs[1]
-		// create a volume on the first node
-		volh, err := s1.CreateVolume(ctx, defaultLocalSpec())
-		require.NoError(t, err)
-		s1Ep, err := s1.Endpoint(ctx)
-		require.NoError(t, err)
-		require.NoError(t, s1.PutEntry(ctx, blobcache.RootHandle(), "name1", *volh))
+		s1ep := Endpoint(t, s1)
 
-		// creating a remote volume from the second node should turn into a call to Open on the first node
-		volh2, err := s2.CreateVolume(ctx, remoteVolumeSpec(s1Ep, volh.OID))
+		// create a volume on the first node
+		volh, err := s1.CreateVolume(ctx, nil, defaultLocalSpec())
+		require.NoError(t, err)
+		nsh, err := s1.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+		nsc := simplens.Client{Service: s1}
+		require.NoError(t, nsc.PutEntry(ctx, *nsh, "name1", *volh))
+
+		// creating a remote volume on the second node should turn into a call to OpenAs on the first node
+		volh2, err := s2.CreateVolume(ctx, nil, remoteVolumeSpec(s1ep, volh.OID))
 		require.NoError(t, err)
 
 		tx, err := s2.BeginTx(ctx, *volh2, blobcache.TxParams{})
@@ -29,15 +33,19 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		require.NoError(t, s2.Abort(ctx, *tx))
 	})
 	t.Run("CreateVolumeAt", func(t *testing.T) {
+		// For now there is no way to create a new Volume on a remote node.
+		t.SkipNow()
 		ctx := testutil.Context(t)
 		svcs := mk(t, 2)
 		s1, s2 := svcs[0], svcs[1]
 		s1Ep, err := s1.Endpoint(ctx)
 		require.NoError(t, err)
 
-		nsh, err := s2.CreateVolume(ctx, remoteVolumeSpec(s1Ep, blobcache.OID{}))
+		nsc2 := simplens.Client{Service: s2}
+
+		nsh, err := s2.CreateVolume(ctx, nil, remoteVolumeSpec(s1Ep, blobcache.OID{}))
 		require.NoError(t, err)
-		volh, err := s2.CreateVolumeAt(ctx, *nsh, "vol1", defaultLocalSpec())
+		volh, err := nsc2.CreateAt(ctx, *nsh, "vol1", defaultLocalSpec())
 		require.NoError(t, err)
 		Modify(t, s2, *volh, func(tx *blobcache.Tx) ([]byte, error) {
 			return []byte("hello"), nil
@@ -48,11 +56,11 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			svcs := mk(t, 2)
 			s1, s2 := svcs[0], svcs[1]
-			vol1 := CreateVolume(t, s1, defaultLocalSpec())
+			vol1 := CreateVolume(t, s1, nil, defaultLocalSpec())
 			ep, err := s1.Endpoint(ctx)
 			require.NoError(t, err)
 			t.Log("creating remote volume", ep, vol1.OID)
-			vol2 := CreateVolume(t, s2, remoteVolumeSpec(ep, vol1.OID))
+			vol2 := CreateVolume(t, s2, nil, remoteVolumeSpec(ep, vol1.OID))
 			t.Log("setup remote volume, handing over to TxAPI test")
 			return s2, vol2
 		})
