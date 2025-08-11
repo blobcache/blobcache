@@ -12,12 +12,25 @@ import (
 	"strings"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/slices2"
 	"go.brendoncarroll.net/state/cadata"
 )
 
-var _ volumes.Container = &Schema{}
+type Entry struct {
+	Name   string
+	Target blobcache.OID
+	Rights blobcache.ActionSet
+}
+
+func (ent *Entry) Link() schema.Link {
+	return schema.Link{
+		Target: ent.Target,
+		Rights: ent.Rights,
+	}
+}
+
+var _ schema.Container = &Schema{}
 
 type Schema struct{}
 
@@ -49,14 +62,14 @@ func (sch Schema) ListEntries(ctx context.Context, s cadata.Getter, root []byte)
 	return ents, nil
 }
 
-func (sch Schema) ListLinks(ctx context.Context, s cadata.Getter, root []byte) ([]volumes.Link, error) {
+func (sch Schema) ListLinks(ctx context.Context, s cadata.Getter, root []byte) ([]schema.Link, error) {
 	ents, err := sch.ListEntries(ctx, s, root)
 	if err != nil {
 		return nil, err
 	}
-	links := make([]volumes.Link, len(ents))
+	links := make([]schema.Link, len(ents))
 	for i, ent := range ents {
-		links[i] = volumes.Link{Target: ent.Target, Rights: ent.Rights}
+		links[i] = ent.Link()
 	}
 	return links, nil
 }

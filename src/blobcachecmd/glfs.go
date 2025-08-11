@@ -15,7 +15,7 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/glfsport"
-	"blobcache.io/blobcache/src/internal/simplens"
+	"blobcache.io/blobcache/src/schema/simplens"
 )
 
 var glfsCmd = star.NewDir(star.Metadata{

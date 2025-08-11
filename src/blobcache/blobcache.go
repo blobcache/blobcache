@@ -1,6 +1,7 @@
 package blobcache
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -124,6 +125,10 @@ func (s SchemaName) Validate() error {
 
 // OID is an object identifier.
 type OID [16]byte
+
+func (o OID) Compare(other OID) int {
+	return bytes.Compare(o[:], other[:])
+}
 
 // RootHandle returns the root OID.
 func RootHandle() Handle {

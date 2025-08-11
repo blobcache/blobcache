@@ -10,8 +10,8 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
-	"blobcache.io/blobcache/src/internal/simplens"
 	"blobcache.io/blobcache/src/internal/testutil"
+	"blobcache.io/blobcache/src/schema/simplens"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
 )

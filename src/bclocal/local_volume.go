@@ -8,6 +8,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/schema"
 	"github.com/jmoiron/sqlx"
 	"lukechampine.com/blake3"
 )
@@ -86,10 +87,10 @@ var _ volumes.Volume = &localVolume{}
 type localVolume struct {
 	db      *sqlx.DB
 	oid     blobcache.OID
-	resolve func(blobcache.Handle) (*volumes.Link, error)
+	resolve func(blobcache.Handle) (*schema.Link, error)
 }
 
-func newLocalVolume(db *sqlx.DB, oid blobcache.OID, resolve func(blobcache.Handle) (*volumes.Link, error)) *localVolume {
+func newLocalVolume(db *sqlx.DB, oid blobcache.OID, resolve func(blobcache.Handle) (*schema.Link, error)) *localVolume {
 	return &localVolume{
 		db:      db,
 		oid:     oid,
@@ -222,15 +223,15 @@ type localTxn struct {
 	db          *sqlx.DB
 	localTxnRow localTxnRow
 	volInfo     blobcache.VolumeInfo
-	resolve     func(blobcache.Handle) (*volumes.Link, error)
+	resolve     func(blobcache.Handle) (*schema.Link, error)
 
-	subvols []volumes.Link
+	subvols []schema.Link
 }
 
 // newLocalTxn creates a localTxn.
 // It does not change the database state.
 // the caller should have already created the transaction at txid, and volInfo.
-func newLocalTxn(ctx context.Context, db *sqlx.DB, txid LocalTxnID, volInfo *blobcache.VolumeInfo, resolve func(blobcache.Handle) (*volumes.Link, error)) (*localTxn, error) {
+func newLocalTxn(ctx context.Context, db *sqlx.DB, txid LocalTxnID, volInfo *blobcache.VolumeInfo, resolve func(blobcache.Handle) (*schema.Link, error)) (*localTxn, error) {
 	txRow, err := dbutil.DoTx1(ctx, db, func(tx *sqlx.Tx) (*localTxnRow, error) {
 		return getLocalTxn(tx, txid)
 	})

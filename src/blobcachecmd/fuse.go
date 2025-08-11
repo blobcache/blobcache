@@ -5,7 +5,7 @@ import (
 	"blobcache.io/blobcache/src/bcfuse/scheme_glfs"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
-	"blobcache.io/blobcache/src/internal/simplens"
+	"blobcache.io/blobcache/src/schema/simplens"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"

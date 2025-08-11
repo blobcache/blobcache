@@ -135,9 +135,3 @@ func (c *Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.
 	}
 	return volh, nil
 }
-
-type Entry struct {
-	Name   string
-	Target blobcache.OID
-	Rights blobcache.ActionSet
-}

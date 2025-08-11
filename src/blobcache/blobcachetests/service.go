@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/simplens"
 	"blobcache.io/blobcache/src/internal/testutil"
+	"blobcache.io/blobcache/src/schema/simplens"
 	"github.com/stretchr/testify/require"
 	"lukechampine.com/blake3"
 )

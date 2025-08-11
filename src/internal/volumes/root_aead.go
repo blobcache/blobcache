@@ -7,11 +7,12 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-var _ Schema = &RootAEAD{}
+var _ schema.Schema = &RootAEAD{}
 
 type RootAEAD struct {
 	AEAD cipher.AEAD

@@ -6,20 +6,25 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/state/cadata"
 )
 
 var (
-	_ volumes.Schema    = &Schema{}
-	_ volumes.Container = &Schema{}
+	_ schema.Schema    = &Schema{}
+	_ schema.Container = &Schema{}
 )
 
 // Schema
 type Schema struct{}
 
 func (sch Schema) Validate(ctx context.Context, s cadata.Getter, root []byte) error {
+	var prev blobcache.OID
 	return sch.WalkOIDs(ctx, s, cadata.IDFromBytes(root), func(oid blobcache.OID) error {
+		if oid.Compare(prev) < 0 {
+			return fmt.Errorf("OID %s is less than previous OID %s", oid, prev)
+		}
+		prev = oid
 		return nil
 	})
 }
@@ -48,10 +53,19 @@ func (sch Schema) WalkOIDs(ctx context.Context, s cadata.Getter, cid blobcache.C
 	}
 }
 
-func (sch Schema) ListLinks(ctx context.Context, s cadata.Getter, root []byte) ([]volumes.Link, error) {
-	var ret []volumes.Link
+func (sch Schema) ListOIDs(ctx context.Context, s cadata.Getter, root []byte) ([]blobcache.OID, error) {
+	var ret []blobcache.OID
 	err := sch.WalkOIDs(ctx, s, cadata.IDFromBytes(root), func(oid blobcache.OID) error {
-		ret = append(ret, volumes.Link{
+		ret = append(ret, oid)
+		return nil
+	})
+	return ret, err
+}
+
+func (sch Schema) ListLinks(ctx context.Context, s cadata.Getter, root []byte) ([]schema.Link, error) {
+	var ret []schema.Link
+	err := sch.WalkOIDs(ctx, s, cadata.IDFromBytes(root), func(oid blobcache.OID) error {
+		ret = append(ret, schema.Link{
 			Target: oid,
 			Rights: blobcache.Action_ALL,
 		})

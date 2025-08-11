@@ -14,8 +14,9 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/dbutil"
-	"blobcache.io/blobcache/src/internal/simplens"
 	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/schema/simplens"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/jmoiron/sqlx"
 	"go.brendoncarroll.net/tai64"
@@ -36,7 +37,7 @@ type Env struct {
 	PrivateKey ed25519.PrivateKey
 	PacketConn net.PacketConn
 	ACL        ACL
-	Containers map[blobcache.SchemaName]volumes.Container
+	Containers map[blobcache.SchemaName]schema.Container
 }
 
 // Service implements a blobcache.Service.
@@ -111,12 +112,12 @@ func (s *Service) rootVolume() volumes.Volume {
 	return newLocalVolume(s.db, blobcache.OID{}, s.getLink)
 }
 
-func (s *Service) getLink(x blobcache.Handle) (*volumes.Link, error) {
+func (s *Service) getLink(x blobcache.Handle) (*schema.Link, error) {
 	_, rights, err := s.resolveVol(x)
 	if err != nil {
 		return nil, err
 	}
-	return &volumes.Link{Target: x.OID, Rights: rights}, nil
+	return &schema.Link{Target: x.OID, Rights: rights}, nil
 }
 
 // mountVolume ensures the volume is available.
@@ -147,7 +148,7 @@ func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobc
 
 // mountAllInContainer reads the links from the container using the provided container schema.
 // Next it mounts all of those volumes.
-func (s *Service) mountAllInContainer(ctx context.Context, sch volumes.Container, contVol volumes.Volume) error {
+func (s *Service) mountAllInContainer(ctx context.Context, sch schema.Container, contVol volumes.Volume) error {
 	txn, err := contVol.BeginTx(ctx, blobcache.TxParams{})
 	if err != nil {
 		return err
