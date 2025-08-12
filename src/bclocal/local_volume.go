@@ -3,6 +3,7 @@ package bclocal
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -49,6 +50,12 @@ func dropLocalVolume(tx *sqlx.Tx, oid blobcache.OID) error {
 	if err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM local_vol_roots WHERE vol_id = ?`, oid); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM local_volume_blobs WHERE vol_id = ?`, oid); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -85,16 +92,14 @@ func volumeHasMutatingTx(tx *sqlx.Tx, volID LocalVolumeID) (bool, error) {
 var _ volumes.Volume = &localVolume{}
 
 type localVolume struct {
-	db      *sqlx.DB
-	oid     blobcache.OID
-	resolve func(blobcache.Handle) (*schema.Link, error)
+	s   *Service
+	oid blobcache.OID
 }
 
-func newLocalVolume(db *sqlx.DB, oid blobcache.OID, resolve func(blobcache.Handle) (*schema.Link, error)) *localVolume {
+func newLocalVolume(s *Service, oid blobcache.OID) *localVolume {
 	return &localVolume{
-		db:      db,
-		oid:     oid,
-		resolve: resolve,
+		s:   s,
+		oid: oid,
 	}
 }
 
@@ -111,7 +116,7 @@ func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (vol
 	var ltxid *LocalTxnID
 	for {
 		var err error
-		if err = dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
+		if err = dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 			volRow, err := getLocalVolumeByOID(tx, v.oid)
 			if err != nil {
 				return err
@@ -145,7 +150,7 @@ func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (vol
 		case <-tick.C:
 		}
 	}
-	return newLocalTxn(ctx, v.db, *ltxid, volInfo, v.resolve)
+	return newLocalTxn(ctx, v.s, *ltxid, volInfo)
 }
 
 // createLocalTxn creates a new transaction object in the database.
@@ -204,6 +209,43 @@ func txnSetRoot(tx *sqlx.Tx, volID LocalVolumeID, txid LocalTxnID, root []byte) 
 	return nil
 }
 
+// putVolumeLinks puts the volume links into the database.
+func putVolumeLinks(tx *sqlx.Tx, volID blobcache.OID, m map[blobcache.OID]blobcache.ActionSet) error {
+	for target, rights := range m {
+		if err := putVolumeLink(tx, volID, target, rights); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// putVolumeLink puts a single volume link into the database.
+func putVolumeLink(tx *sqlx.Tx, fromID blobcache.OID, toID blobcache.OID, rights blobcache.ActionSet) error {
+	rightsBuf := binary.LittleEndian.AppendUint64(nil, uint64(rights))
+	if _, err := tx.Exec(`INSERT INTO volume_links (from_id, to_id, rights) VALUES (?, ?, ?) ON CONFLICT (from_id, to_id) DO UPDATE SET rights = ?`, fromID, toID, rightsBuf, rightsBuf); err != nil {
+		return err
+	}
+	return nil
+}
+
+// readVolumeLinks reads the volume links from volID into dst.
+func readVolumeLinks(tx *sqlx.Tx, volID blobcache.OID, dst map[blobcache.OID]blobcache.ActionSet) error {
+	rows, err := tx.Queryx(`SELECT to_id, rights FROM volume_links WHERE from_id = ?`, volID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var target blobcache.OID
+		var rights blobcache.ActionSet
+		if err := rows.Scan(&target, &rights); err != nil {
+			return err
+		}
+		dst[target] = rights
+	}
+	return rows.Err()
+}
+
 // txnCommit commits a transaction.
 // It updates the volume's last_txn field to the new transaction.
 func txnCommit(tx *sqlx.Tx, volID LocalVolumeID, txid LocalTxnID, root []byte) error {
@@ -220,62 +262,83 @@ var _ volumes.Tx = &localTxn{}
 
 // localTxn is a transaction on a local volume.
 type localTxn struct {
-	db          *sqlx.DB
+	s           *Service
 	localTxnRow localTxnRow
 	volInfo     blobcache.VolumeInfo
-	resolve     func(blobcache.Handle) (*schema.Link, error)
+	schema      schema.Schema
 
-	subvols []schema.Link
+	allowedLinks map[blobcache.OID]blobcache.ActionSet
 }
 
 // newLocalTxn creates a localTxn.
 // It does not change the database state.
 // the caller should have already created the transaction at txid, and volInfo.
-func newLocalTxn(ctx context.Context, db *sqlx.DB, txid LocalTxnID, volInfo *blobcache.VolumeInfo, resolve func(blobcache.Handle) (*schema.Link, error)) (*localTxn, error) {
-	txRow, err := dbutil.DoTx1(ctx, db, func(tx *sqlx.Tx) (*localTxnRow, error) {
+func newLocalTxn(ctx context.Context, s *Service, txid LocalTxnID, volInfo *blobcache.VolumeInfo) (*localTxn, error) {
+	txRow, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*localTxnRow, error) {
 		return getLocalTxn(tx, txid)
 	})
 	if err != nil {
 		return nil, err
 	}
+	schema, err := s.getSchema(volInfo.Schema)
+	if err != nil {
+		return nil, err
+	}
 	return &localTxn{
-		db:          db,
+		s:           s,
 		localTxnRow: *txRow,
 		volInfo:     *volInfo,
-		resolve:     resolve,
+		schema:      schema,
 	}, nil
 }
 
 func (v *localTxn) Volume() volumes.Volume {
-	return &localVolume{
-		db:  v.db,
-		oid: v.volInfo.ID,
-	}
+	return newLocalVolume(v.s, v.volInfo.ID)
 }
 
 func (v *localTxn) Commit(ctx context.Context, root []byte) error {
 	if !v.localTxnRow.Mutate {
 		return blobcache.ErrTxReadOnly{}
 	}
-	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
+
+	// produce a final set of links
+	links := make(map[blobcache.OID]blobcache.ActionSet)
+	if contSch, ok := v.schema.(schema.Container); ok {
+		src := volumes.NewUnsaltedStore(v)
+		if err := contSch.ReadLinks(ctx, src, root, links); err != nil {
+			return err
+		}
+		// constrain all claimed links by the allowed links.
+		for target, rights := range links {
+			links[target] |= v.allowedLinks[target] & rights
+			if links[target] == 0 {
+				delete(links, target)
+			}
+		}
+	}
+
+	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
+		if err := putVolumeLinks(tx, v.volInfo.ID, links); err != nil {
+			return err
+		}
 		return txnCommit(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, root)
 	})
 }
 
 func (v *localTxn) Abort(ctx context.Context) error {
-	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
+	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 		return dropLocalTxn(tx, v.localTxnRow.RowID)
 	})
 }
 
 func (v *localTxn) Load(ctx context.Context, dst *[]byte) error {
-	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
+	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 		return txnLoadRoot(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, dst)
 	})
 }
 
 func (v *localTxn) Delete(ctx context.Context, cid blobcache.CID) error {
-	return dbutil.DoTx(ctx, v.db, func(tx *sqlx.Tx) error {
+	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 		return deleteBlob(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, cid)
 	})
 }
@@ -284,7 +347,7 @@ func (v *localTxn) Post(ctx context.Context, salt *blobcache.CID, data []byte) (
 	if salt != nil && !v.volInfo.Salted {
 		return blobcache.CID{}, blobcache.ErrCannotSalt{}
 	}
-	cid, err := dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (*blobcache.CID, error) {
+	cid, err := dbutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (*blobcache.CID, error) {
 		// TODO: get hf from volume spec
 		hf := func(data []byte) blobcache.CID {
 			return blobcache.CID(blake3.Sum256(data))
@@ -305,13 +368,13 @@ func (v *localTxn) Post(ctx context.Context, salt *blobcache.CID, data []byte) (
 }
 
 func (v *localTxn) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
-	return dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (int, error) {
+	return dbutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (int, error) {
 		return readBlob(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, cid, buf)
 	})
 }
 
 func (v *localTxn) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
-	return dbutil.DoTx1(ctx, v.db, func(tx *sqlx.Tx) (bool, error) {
+	return dbutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (bool, error) {
 		exists, err := txnContainsBlob(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, cid)
 		if err != nil {
 			return false, err
@@ -343,10 +406,13 @@ func (v *localTxn) AllowLink(ctx context.Context, subvol blobcache.Handle) error
 	if !v.localTxnRow.Mutate {
 		return blobcache.ErrTxReadOnly{}
 	}
-	link, err := v.resolve(subvol)
+	link, err := v.s.handleToLink(subvol)
 	if err != nil {
 		return err
 	}
-	v.subvols = append(v.subvols, *link)
+	if v.allowedLinks == nil {
+		v.allowedLinks = make(map[blobcache.OID]blobcache.ActionSet)
+	}
+	v.allowedLinks[link.Target] |= link.Rights
 	return nil
 }

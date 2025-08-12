@@ -196,6 +196,24 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		err = nsc.DeleteEntry(ctx, *nsh, "test-name")
 		require.NoError(t, err)
 	})
+	t.Run("Invalid", func(t *testing.T) {
+		t.Parallel()
+		ctx := testutil.Context(t)
+		s := mk(t)
+		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
+		require.NoError(t, err)
+		require.NotNil(t, volh)
+		nsc := simplens.Client{Service: s}
+		require.NoError(t, nsc.PutEntry(ctx, blobcache.RootHandle(), "vol1", *volh))
+
+		nsh, err := s.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+		txh, err := s.BeginTx(ctx, *nsh, blobcache.TxParams{Mutate: true})
+		require.NoError(t, err)
+		data := []byte("this is not a valid CID")
+		require.False(t, len(data) == len(blobcache.CID{}))
+		require.Error(t, s.Commit(ctx, *txh, data))
+	})
 }
 
 func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Handle)) {

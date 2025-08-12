@@ -34,8 +34,8 @@ var _ schema.Container = &Schema{}
 
 type Schema struct{}
 
-func (sch Schema) Validate(ctx context.Context, s cadata.Getter, root []byte) error {
-	_, err := sch.ListEntries(ctx, s, root)
+func (sch Schema) Validate(ctx context.Context, s cadata.Getter, _, next []byte) error {
+	_, err := sch.ListEntries(ctx, s, next)
 	if err != nil {
 		return err
 	}
@@ -62,16 +62,15 @@ func (sch Schema) ListEntries(ctx context.Context, s cadata.Getter, root []byte)
 	return ents, nil
 }
 
-func (sch Schema) ListLinks(ctx context.Context, s cadata.Getter, root []byte) ([]schema.Link, error) {
+func (sch Schema) ReadLinks(ctx context.Context, s cadata.Getter, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error {
 	ents, err := sch.ListEntries(ctx, s, root)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	links := make([]schema.Link, len(ents))
-	for i, ent := range ents {
-		links[i] = ent.Link()
+	for _, ent := range ents {
+		dst[ent.Target] |= ent.Rights
 	}
-	return links, nil
+	return nil
 }
 
 // Tx wraps a Tx to provide a namespace view.
@@ -120,8 +119,8 @@ func (ns *Tx) GetEntry(ctx context.Context, name string) (*Entry, error) {
 	return &ents[idx], nil
 }
 
-func (ns *Tx) PutEntry(ctx context.Context, name string, target blobcache.OID) error {
-	ent := Entry{Name: name, Target: target}
+func (ns *Tx) PutEntry(ctx context.Context, name string, target blobcache.OID, rights blobcache.ActionSet) error {
+	ent := Entry{Name: name, Target: target, Rights: rights}
 	ents, err := ns.loadEntries(ctx)
 	if err != nil {
 		return err

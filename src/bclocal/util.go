@@ -4,8 +4,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/testutil"
+	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/schema/simplens"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/stretchr/testify/require"
 )
@@ -17,6 +20,7 @@ func NewTestService(t testing.TB) *Service {
 	dbPath := filepath.Join(stateDir, "blobcache.db")
 	db, err := dbutil.OpenDB(dbPath)
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
 	if err := SetupDB(ctx, db); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +30,15 @@ func NewTestService(t testing.TB) *Service {
 		PrivateKey: privateKey,
 		PacketConn: testutil.PacketConn(t),
 		DB:         db,
+		Schemas:    DefaultSchemas(),
 	})
 	go svc.Run(ctx)
 	return svc
+}
+
+func DefaultSchemas() map[blobcache.Schema]schema.Schema {
+	return map[blobcache.Schema]schema.Schema{
+		blobcache.Schema_NONE:     schema.None{},
+		blobcache.Schema_SimpleNS: simplens.Schema{},
+	}
 }

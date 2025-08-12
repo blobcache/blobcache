@@ -107,7 +107,10 @@ func openLocal(c star.Context) (*bclocal.Service, func(), error) {
 	close := func() {
 		db.Close()
 	}
-	return bclocal.New(bclocal.Env{DB: db}), close, nil
+	return bclocal.New(bclocal.Env{
+		DB:      db,
+		Schemas: bclocal.DefaultSchemas(),
+	}), close, nil
 }
 
 func RunTest(t testing.TB, env map[string]string, calledAs string, args []string, stdin *bufio.Reader, stdout *bufio.Writer, stderr *bufio.Writer) {

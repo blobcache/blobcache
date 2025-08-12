@@ -51,6 +51,7 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 		PacketConn: pc,
 		DB:         db,
 		PrivateKey: privateKey,
+		Schemas:    bclocal.DefaultSchemas(),
 	})
 
 	eg, ctx := errgroup.WithContext(ctx)

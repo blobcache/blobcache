@@ -66,11 +66,11 @@ CREATE TABLE volumes_deps (
 
 CREATE INDEX idx_volumes_deps_reverse ON volumes_deps (to_id);
 
-CREATE TABLE subvolumes (
+CREATE TABLE volume_links (
     from_id BLOB NOT NULL REFERENCES volumes(id),
     to_id BLOB NOT NULL REFERENCES volumes(id),
-    rights INT NOT NULL,
+    rights BLOB NOT NULL,
     PRIMARY KEY (from_id, to_id)
 ), WITHOUT ROWID, STRICT;
 
-CREATE INDEX idx_subvolumes_reverse ON subvolumes (to_id);
+CREATE INDEX idx_volume_links_reverse ON volume_links (to_id);

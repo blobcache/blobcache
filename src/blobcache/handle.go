@@ -1,6 +1,7 @@
 package blobcache
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -90,14 +91,24 @@ const (
 
 	Action_Volume_BeginTx
 	Action_Volume_Await
-
-	Action_Namespace_Open
-	Action_Namespace_List
-	Action_Namespace_Put
-	Action_Namespace_Delete
 )
 
 const Action_ALL = ^ActionSet(0)
+
+func (r *ActionSet) Scan(x any) error {
+	switch x := x.(type) {
+	case []byte:
+		if len(x) != 8 {
+			return fmt.Errorf("invalid ActionSet bytes length: %d", len(x))
+		}
+		*r = ActionSet(binary.BigEndian.Uint64(x))
+	case uint64:
+		*r = ActionSet(x)
+	default:
+		return fmt.Errorf("cannot scan %T into ActionSet", x)
+	}
+	return nil
+}
 
 func (r ActionSet) String() string {
 	parts := []string{}
@@ -112,11 +123,6 @@ func (r ActionSet) String() string {
 
 		Action_Volume_BeginTx: "BEGIN_TX",
 		Action_Volume_Await:   "AWAIT",
-
-		Action_Namespace_Open:   "OPEN",
-		Action_Namespace_List:   "LIST",
-		Action_Namespace_Put:    "PUT",
-		Action_Namespace_Delete: "DELETE",
 	}
 	for r2, str := range rs {
 		if r&r2 != 0 {

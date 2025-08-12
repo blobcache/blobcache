@@ -62,12 +62,13 @@ func newTestService(t testing.TB) blobcache.Service {
 	if err := bclocal.SetupDB(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	s := bclocal.New(bclocal.Env{DB: db})
+	s := bclocal.New(bclocal.Env{
+		DB:      db,
+		Schemas: bclocal.DefaultSchemas(),
+	})
 	lis := testutil.Listen(t)
 	go func() {
-		if err := http.Serve(lis, &bchttp.Server{Service: s}); err != nil {
-			t.Log(err)
-		}
+		http.Serve(lis, &bchttp.Server{Service: s})
 	}()
 	return bchttp.NewClient(nil, fmt.Sprintf("http://%s", lis.Addr().String()))
 }

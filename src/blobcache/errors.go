@@ -54,15 +54,15 @@ func (e ErrCannotSalt) Error() string {
 	return "cannot salt"
 }
 
-// ErrNoEntry is returned when a namespace does not contain an entry.
+// ErrNoLink is returned when a volume does not grant access to the requested target.
 // It is never returned for broken handles, or missing blobs.
-type ErrNoEntry struct {
-	Namespace OID
-	Name      string
+type ErrNoLink struct {
+	Base   OID
+	Target OID
 }
 
-func (e ErrNoEntry) Error() string {
-	return fmt.Sprintf("no entry %q in namespace %v", e.Name, e.Namespace)
+func (e ErrNoLink) Error() string {
+	return fmt.Sprintf("volume %v does not grant access to %v", e.Base, e.Target)
 }
 
 // ErrBadData is returned when the data does not match the expected CID.

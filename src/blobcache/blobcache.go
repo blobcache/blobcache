@@ -108,21 +108,6 @@ func (h HashAlgo) HashFunc() HashFunc {
 	}
 }
 
-type SchemaName string
-
-const (
-	// SchemaName_SimpleNS is the schema name for the simple namespace.
-	SchemaName_SimpleNS SchemaName = "blobcache/simplens"
-)
-
-func (s SchemaName) Validate() error {
-	switch s {
-	case SchemaName_SimpleNS:
-		return nil
-	}
-	return fmt.Errorf("unknown schema: %q", s)
-}
-
 // OID is an object identifier.
 type OID [16]byte
 

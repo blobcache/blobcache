@@ -28,9 +28,9 @@ func (sch RootAEAD) open(out []byte, root []byte) ([]byte, error) {
 }
 
 // Validate returns true
-func (sch RootAEAD) Validate(ctx context.Context, s cadata.Getter, root []byte) error {
+func (sch RootAEAD) Validate(ctx context.Context, s cadata.Getter, prev, next []byte) error {
 	// if it decrypts, then it's valid.
-	_, err := sch.open(nil, root)
+	_, err := sch.open(nil, next)
 	if err != nil {
 		return err
 	}

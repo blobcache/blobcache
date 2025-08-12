@@ -102,6 +102,9 @@ func (v VolumeBackend[T]) String() string {
 func (v *VolumeBackend[T]) Validate() (err error) {
 	var count int
 	if v.Local != nil {
+		if err := v.Local.Validate(); err != nil {
+			return err
+		}
 		count++
 	}
 	if v.Remote != nil {
@@ -152,16 +155,46 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 	return ret
 }
 
+type Schema string
+
+const (
+	Schema_NONE Schema = ""
+	// Schema_SimpleNS is the schema name for the simple namespace.
+	Schema_SimpleNS        Schema = "blobcache/simplens"
+	Schema_SimpleContainer Schema = "blobcache/simplecontainer"
+)
+
+func (s Schema) Validate() error {
+	switch s {
+	case Schema_SimpleNS, Schema_NONE, Schema_SimpleContainer:
+		return nil
+	}
+	return fmt.Errorf("unknown schema: %q", s)
+}
+
 type VolumeParams struct {
-	Schema   SchemaName `json:"schema"`
-	HashAlgo HashAlgo   `json:"hash_algo"`
-	MaxSize  int64      `json:"max_size"`
-	Salted   bool       `json:"salted"`
+	Schema   Schema   `json:"schema"`
+	HashAlgo HashAlgo `json:"hash_algo"`
+	MaxSize  int64    `json:"max_size"`
+	Salted   bool     `json:"salted"`
+}
+
+func (v *VolumeParams) Validate() error {
+	if err := v.Schema.Validate(); err != nil {
+		return err
+	}
+	if err := v.HashAlgo.Validate(); err != nil {
+		return err
+	}
+	if v.MaxSize <= 0 {
+		return fmt.Errorf("max size must be positive")
+	}
+	return nil
 }
 
 func DefaultVolumeParams() VolumeParams {
 	return VolumeParams{
-		Schema:   "",
+		Schema:   Schema_NONE,
 		HashAlgo: HashAlgo_BLAKE3_256,
 		MaxSize:  1 << 22,
 		Salted:   false,
@@ -170,6 +203,13 @@ func DefaultVolumeParams() VolumeParams {
 
 type VolumeBackend_Local struct {
 	VolumeParams
+}
+
+func (v *VolumeBackend_Local) Validate() error {
+	if err := v.VolumeParams.Validate(); err != nil {
+		return err
+	}
+	return nil
 }
 
 type VolumeBackend_Remote struct {

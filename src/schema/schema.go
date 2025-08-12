@@ -12,7 +12,7 @@ import (
 // All a Schema has to be able to do is validate the contents of a Volume.
 type Schema interface {
 	// Validate returns nil if the contents of the volume are valid.
-	Validate(ctx context.Context, s cadata.Getter, root []byte) error
+	Validate(ctx context.Context, s cadata.Getter, prev, next []byte) error
 }
 
 // Link is a reference from one volume to another.
@@ -27,6 +27,13 @@ type Link struct {
 type Container interface {
 	Schema
 
-	// ListLinks returns a list of links for a given root.
-	ListLinks(ctx context.Context, s cadata.Getter, root []byte) ([]Link, error)
+	// ReadLinks returns a list of links for a given root.
+	ReadLinks(ctx context.Context, s cadata.Getter, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error
+}
+
+// None is a Schema which does not impose any constraints on the contents of a volume.
+type None struct{}
+
+func (None) Validate(ctx context.Context, s cadata.Getter, prev, next []byte) error {
+	return nil
 }

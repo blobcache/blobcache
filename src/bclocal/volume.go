@@ -76,15 +76,19 @@ func ensureRootVolume(tx *sqlx.Tx) error {
 
 // rootVolumeInfo returns the info for the root volume.
 func rootVolumeInfo() blobcache.VolumeInfo {
+	params := blobcache.VolumeParams{
+		Schema:   blobcache.Schema_SimpleNS,
+		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+		MaxSize:  1 << 22,
+		Salted:   false,
+	}
 	return blobcache.VolumeInfo{
-		ID: blobcache.OID{},
-		VolumeParams: blobcache.VolumeParams{
-			Schema:   blobcache.SchemaName_SimpleNS,
-			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-			MaxSize:  1 << 22,
-		},
+		ID:           blobcache.OID{},
+		VolumeParams: params,
 		Backend: blobcache.VolumeBackend[blobcache.OID]{
-			Local: &blobcache.VolumeBackend_Local{},
+			Local: &blobcache.VolumeBackend_Local{
+				VolumeParams: params,
+			},
 		},
 	}
 }
@@ -112,7 +116,7 @@ type volumeRow struct {
 
 func getVolume(tx *sqlx.Tx, volID blobcache.OID) (*volumeRow, error) {
 	var v volumeRow
-	if err := tx.Get(&v, "SELECT id, hash_algo, max_size, backend, salted FROM volumes WHERE id = ?", volID); err != nil {
+	if err := tx.Get(&v, "SELECT id, sch, hash_algo, max_size, backend, salted FROM volumes WHERE id = ?", volID); err != nil {
 		return nil, err
 	}
 	return &v, nil
@@ -130,7 +134,7 @@ func inspectVolume(tx *sqlx.Tx, volID blobcache.OID) (*blobcache.VolumeInfo, err
 	volInfo := blobcache.VolumeInfo{
 		ID: volID,
 		VolumeParams: blobcache.VolumeParams{
-			Schema:   blobcache.SchemaName(volRow.Schema),
+			Schema:   blobcache.Schema(volRow.Schema),
 			HashAlgo: blobcache.HashAlgo(volRow.HashAlgo),
 			MaxSize:  volRow.MaxSize,
 			Salted:   volRow.Salted,
@@ -140,8 +144,8 @@ func inspectVolume(tx *sqlx.Tx, volID blobcache.OID) (*blobcache.VolumeInfo, err
 	return &volInfo, nil
 }
 
-// insertVolumeDeps inserts a dependency to a set of subvols.
-// If any of the subvols are not found, an error is returned (this is done with a database constraint).
+// insertVolumeDeps inserts a dependency to a set of volumes.
+// If any of the volumes are not found, an error is returned (this is done with a database constraint).
 func insertVolumeDeps(tx *sqlx.Tx, volID blobcache.OID, deps iter.Seq[blobcache.OID]) error {
 	for vol2 := range deps {
 		if _, err := tx.Exec(`INSERT INTO volumes_deps (from_id, to_id) VALUES (?, ?)`, volID, vol2); err != nil {
@@ -151,8 +155,54 @@ func insertVolumeDeps(tx *sqlx.Tx, volID blobcache.OID, deps iter.Seq[blobcache.
 	return nil
 }
 
-// setSubVolumes sets the subvolumes for a volume within a transaction.
-func setSubVolumes(tx *sqlx.Tx, txh LocalTxnID, subvols []blobcache.OID) error {
+// cleanupVolumes deletes volumes which are not in the keep list,
+// and which are not depended on by any other volume,
+// and which are not linked to by any other volume,
+// and which are not the root volume.
+func cleanupVolumes(tx *sqlx.Tx, keep []blobcache.OID) error {
+	if len(keep) == 0 {
+		keep = []blobcache.OID{blobcache.OID{}} // In doesn't like empty slices.
+	}
+	// figure out which volumes to delete.
+	q, args, err := sqlx.In(`SELECT id FROM volumes
+		WHERE id != ?
+		AND id NOT IN (?)
+		AND NOT EXISTS (SELECT 1 FROM volumes_deps WHERE to_id = id)
+		AND NOT EXISTS (SELECT 1 FROM volume_links WHERE to_id = id)
+	`, blobcache.OID{}, keep)
+	if err != nil {
+		return err
+	}
+	var toDelete []blobcache.OID
+	if err := tx.Select(&toDelete, q, args...); err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+	// delete the volumes.
+	for _, volID := range toDelete {
+		if err := dropVolume(tx, volID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dropVolume drops a volume from the database.
+func dropVolume(tx *sqlx.Tx, volID blobcache.OID) error {
+	if _, err := tx.Exec(`DELETE FROM local_volumes WHERE oid = ?`, volID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM volumes WHERE id = ?`, volID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM volumes_deps WHERE from_id = ?`, volID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM volume_links WHERE from_id = ?`, volID); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -18,9 +18,9 @@ var (
 // Schema
 type Schema struct{}
 
-func (sch Schema) Validate(ctx context.Context, s cadata.Getter, root []byte) error {
+func (sch Schema) Validate(ctx context.Context, s cadata.Getter, prevRoot, nextRoot []byte) error {
 	var prev blobcache.OID
-	return sch.WalkOIDs(ctx, s, cadata.IDFromBytes(root), func(oid blobcache.OID) error {
+	return sch.WalkOIDs(ctx, s, cadata.IDFromBytes(nextRoot), func(oid blobcache.OID) error {
 		if oid.Compare(prev) < 0 {
 			return fmt.Errorf("OID %s is less than previous OID %s", oid, prev)
 		}
@@ -43,7 +43,7 @@ func (sch Schema) WalkOIDs(ctx context.Context, s cadata.Getter, cid blobcache.C
 		left := cadata.IDFromBytes(buf[:blobcache.CIDBytes])
 		right := cadata.IDFromBytes(buf[blobcache.CIDBytes:])
 		for _, cid2 := range []cadata.ID{left, right} {
-			if err := sch.Validate(ctx, s, cid2[:]); err != nil {
+			if err := sch.WalkOIDs(ctx, s, cid2, fn); err != nil {
 				return err
 			}
 		}
@@ -62,14 +62,10 @@ func (sch Schema) ListOIDs(ctx context.Context, s cadata.Getter, root []byte) ([
 	return ret, err
 }
 
-func (sch Schema) ListLinks(ctx context.Context, s cadata.Getter, root []byte) ([]schema.Link, error) {
-	var ret []schema.Link
+func (sch Schema) ReadLinks(ctx context.Context, s cadata.Getter, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error {
 	err := sch.WalkOIDs(ctx, s, cadata.IDFromBytes(root), func(oid blobcache.OID) error {
-		ret = append(ret, schema.Link{
-			Target: oid,
-			Rights: blobcache.Action_ALL,
-		})
+		dst[oid] = blobcache.Action_ALL
 		return nil
 	})
-	return ret, err
+	return err
 }

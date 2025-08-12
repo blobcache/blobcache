@@ -32,7 +32,7 @@ func (c *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string
 		return nil, err
 	}
 	nstx := Tx{Tx: txn}
-	if err := nstx.PutEntry(ctx, name, volh.OID); err != nil {
+	if err := nstx.PutEntry(ctx, name, volh.OID, blobcache.Action_ALL); err != nil {
 		return nil, err
 	}
 	if err := nstx.Commit(ctx); err != nil {
@@ -75,7 +75,7 @@ func (c *Client) PutEntry(ctx context.Context, volh blobcache.Handle, name strin
 		return err
 	}
 	nstx := Tx{Tx: txn}
-	if err := nstx.PutEntry(ctx, name, target.OID); err != nil {
+	if err := nstx.PutEntry(ctx, name, target.OID, blobcache.Action_ALL); err != nil {
 		return err
 	}
 	return nstx.Commit(ctx)
