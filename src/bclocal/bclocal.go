@@ -141,22 +141,24 @@ func (s *Service) cleanupLoop(ctx context.Context) {
 	}
 }
 
+// getSchema looks up a schema by name.
 func (s *Service) getSchema(name blobcache.Schema) (schema.Schema, error) {
 	schema, exists := s.env.Schemas[name]
 	if !exists {
-		return nil, fmt.Errorf("schema %s not found", name)
+		return nil, fmt.Errorf("unknown schema %s", name)
 	}
 	return schema, nil
 }
 
+// getContainer looks up a container schema by name.
 func (s *Service) getContainer(name blobcache.Schema) (schema.Container, error) {
-	sch, exists := s.env.Schemas[name]
-	if !exists {
-		return nil, fmt.Errorf("schema %s not found", name)
+	sch, err := s.getSchema(name)
+	if err != nil {
+		return nil, err
 	}
 	container, ok := sch.(schema.Container)
 	if !ok {
-		return nil, fmt.Errorf("schema %s is not a container", name)
+		return nil, fmt.Errorf("found schema %s, but it is not a container", name)
 	}
 	return container, nil
 }
@@ -346,21 +348,6 @@ func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (transaction, erro
 	return tx, nil
 }
 
-func (s *Service) inspectVolume(x blobcache.Handle) (volume, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if x.OID != (blobcache.OID{}) {
-		if _, exists := s.handles[handleKey(x)]; !exists {
-			return volume{}, blobcache.ErrInvalidHandle{Handle: x}
-		}
-	}
-	vol, exists := s.volumes[x.OID]
-	if !exists {
-		return volume{}, fmt.Errorf("handle does not refer to volume")
-	}
-	return vol, nil
-}
-
 func (s *Service) Endpoint(_ context.Context) (blobcache.Endpoint, error) {
 	if s.node != nil {
 		return s.node.LocalEndpoint(), nil
@@ -483,7 +470,7 @@ func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vs
 }
 
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
-	vol, err := s.inspectVolume(h)
+	vol, _, err := s.resolveVol(h)
 	if err != nil {
 		return nil, err
 	}
@@ -734,13 +721,13 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		return vspec.Git.VolumeParams, nil
 
 	case vspec.RootAEAD != nil:
-		innerVol, err := s.inspectVolume(vspec.RootAEAD.Inner)
+		innerVol, _, err := s.resolveVol(vspec.RootAEAD.Inner)
 		if err != nil {
 			return blobcache.VolumeParams{}, err
 		}
 		return innerVol.info.VolumeParams, nil
 	case vspec.Vault != nil:
-		innerVol, err := s.inspectVolume(vspec.Vault.Inner)
+		innerVol, _, err := s.resolveVol(vspec.Vault.Inner)
 		if err != nil {
 			return blobcache.VolumeParams{}, err
 		}

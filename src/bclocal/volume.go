@@ -64,6 +64,7 @@ func ensureRootVolume(tx *sqlx.Tx) error {
 		MaxSize:  info.MaxSize,
 		Backend:  backendJSON,
 		Schema:   string(info.Schema),
+		Salted:   info.Salted,
 	}
 	if err := insertVolume(tx, row); err != nil {
 		return err
@@ -194,19 +195,17 @@ func dropVolume(tx *sqlx.Tx, volID blobcache.OID) error {
 	if _, err := tx.Exec(`DELETE FROM local_volumes WHERE oid = ?`, volID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM volumes WHERE id = ?`, volID); err != nil {
-		return err
-	}
 	if _, err := tx.Exec(`DELETE FROM volumes_deps WHERE from_id = ?`, volID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM volume_links WHERE from_id = ?`, volID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM volumes WHERE id = ?`, volID); err != nil {
+		return err
+	}
+	if err := dropObject(tx, volID); err != nil {
+		return err
+	}
 	return nil
-}
-
-type volumeLink struct {
-	OID    blobcache.OID
-	Rights blobcache.ActionSet
 }
