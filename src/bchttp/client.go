@@ -21,13 +21,11 @@ type Client struct {
 }
 
 func NewClient(hc *http.Client, ep string) *Client {
-	if !strings.HasPrefix(ep, "http://") {
-		panic("ep must not start with http://")
-	}
+	ep = strings.TrimPrefix(ep, "http://")
 	if hc == nil {
 		hc = http.DefaultClient
 	}
-	return &Client{hc: hc, ep: ep}
+	return &Client{hc: hc, ep: "http://" + ep}
 }
 
 func (c *Client) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {

@@ -290,6 +290,10 @@ type handle struct {
 	rights    blobcache.ActionSet
 }
 
+func (h handle) isExpired(now time.Time) bool {
+	return h.expiresAt.Before(now)
+}
+
 // createEphemeralHandle creates a handle that expires at the given time.
 // it will be stored in memory and not in the database.
 func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Time) blobcache.Handle {
@@ -357,8 +361,35 @@ func (s *Service) Endpoint(_ context.Context) (blobcache.Endpoint, error) {
 
 func (s *Service) Drop(ctx context.Context, h blobcache.Handle) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	delete(s.handles, handleKey(h))
+	s.mu.Unlock()
+	return s.Cleanup(ctx)
+}
+
+func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, h := range hs {
+		if hstate, exists := s.handles[handleKey(h)]; !exists {
+			continue
+		} else {
+			if hstate.isExpired(now) {
+				delete(s.handles, handleKey(h))
+				continue
+			}
+		}
+		var ttl time.Duration
+		if _, exists := s.volumes[h.OID]; exists {
+			ttl = DefaultVolumeTTL
+		}
+		if _, exists := s.txns[h.OID]; exists {
+			ttl = DefaultTxTTL
+		}
+		s.handles[handleKey(h)] = handle{
+			expiresAt: now.Add(ttl),
+		}
+	}
 	return nil
 }
 
@@ -478,7 +509,7 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 }
 
 func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
-	panic("not implemented")
+	return fmt.Errorf("Await not implemented")
 }
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {
@@ -621,18 +652,6 @@ func (s *Service) AllowLink(ctx context.Context, txh blobcache.Handle, subvolh b
 		return err
 	}
 	return txn.backend.AllowLink(ctx, subvolh)
-}
-
-func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, h := range hs {
-		hstate := s.handles[handleKey(h)]
-		s.handles[handleKey(h)] = handle{
-			expiresAt: hstate.expiresAt.Add(300 * time.Second),
-		}
-	}
-	return nil
 }
 
 // handleKey computes a map key from a handle.

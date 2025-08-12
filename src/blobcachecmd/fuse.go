@@ -16,17 +16,16 @@ var fuseMountCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "Mount a blobcache volume as a FUSE filesystem",
 	},
-	Flags: []star.AnyParam{stateDirParam},
+	Flags: []star.AnyParam{},
 	Pos: []star.AnyParam{
 		volumeNameParam,
 		mountpointParam,
 	},
 	F: func(c star.Context) error {
-		svc, close, err := openLocal(c)
+		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		defer close()
 		volName := volumeNameParam.Load(c)
 		nsc := simplens.Client{Service: svc}
 		volh, err := nsc.OpenAt(c.Context, blobcache.RootHandle(), volName, blobcache.Action_ALL)

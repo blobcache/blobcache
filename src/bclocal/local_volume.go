@@ -56,7 +56,7 @@ func dropLocalVolume(tx *sqlx.Tx, oid blobcache.OID) error {
 	if _, err := tx.Exec(`DELETE FROM local_volume_blobs WHERE vol_id = ?`, oid); err != nil {
 		return err
 	}
-	return nil
+	return dropVolume(tx, oid)
 }
 
 func getLocalVolumeByOID(tx *sqlx.Tx, oid blobcache.OID) (*localVolumeRow, error) {

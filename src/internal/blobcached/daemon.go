@@ -93,8 +93,8 @@ func (d *Daemon) GetDB() (*sqlx.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 	if err := bclocal.SetupDB(context.Background(), db); err != nil {
+		db.Close()
 		return nil, err
 	}
 	return db, nil

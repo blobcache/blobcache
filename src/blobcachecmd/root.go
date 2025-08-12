@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/dbutil"
@@ -111,6 +112,12 @@ func openLocal(c star.Context) (*bclocal.Service, func(), error) {
 		DB:      db,
 		Schemas: bclocal.DefaultSchemas(),
 	}), close, nil
+}
+
+// openService opens a service
+func openService(c star.Context) (blobcache.Service, error) {
+	apiUrl := c.Env[bcclient.EnvBlobcacheAPI]
+	return bcclient.NewClient(apiUrl), nil
 }
 
 func RunTest(t testing.TB, env map[string]string, calledAs string, args []string, stdin *bufio.Reader, stdout *bufio.Writer, stderr *bufio.Writer) {

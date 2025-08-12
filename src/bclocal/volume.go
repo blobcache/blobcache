@@ -192,9 +192,6 @@ func cleanupVolumes(tx *sqlx.Tx, keep []blobcache.OID) error {
 
 // dropVolume drops a volume from the database.
 func dropVolume(tx *sqlx.Tx, volID blobcache.OID) error {
-	if _, err := tx.Exec(`DELETE FROM local_volumes WHERE oid = ?`, volID); err != nil {
-		return err
-	}
 	if _, err := tx.Exec(`DELETE FROM volumes_deps WHERE from_id = ?`, volID); err != nil {
 		return err
 	}
