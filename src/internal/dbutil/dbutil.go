@@ -8,8 +8,14 @@ import (
 )
 
 func OpenDB(p string) (*sqlx.DB, error) {
-	db, err := sqlx.Open("sqlite", p)
-	return db, err
+	// How To for PRAGMAs with the modernc.org/sqlite driver
+	// https://pkg.go.dev/modernc.org/sqlite@v1.34.4#Driver.Open
+	db, err := sqlx.Open("sqlite", "file:"+p+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1) // TODO: remove
+	return db, nil
 }
 
 func OpenMemory() *sqlx.DB {

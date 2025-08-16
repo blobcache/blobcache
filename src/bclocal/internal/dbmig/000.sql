@@ -24,7 +24,7 @@ CREATE TABLE local_vol_roots (
 -- local_txns stores active transactions on local volumes.
 CREATE TABLE local_txns (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-    volume INTEGER NOT NULL REFERENCES local_volumes(id),
+    volume INTEGER NOT NULL REFERENCES local_volumes(rowid),
     -- mutate is true if the transaction is mutating the volume.
     mutate INTEGER NOT NULL,
     -- base is the transaction id, below which all transactions are visible.
