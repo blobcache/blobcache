@@ -11,7 +11,6 @@ import (
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/jmoiron/sqlx"
-	"lukechampine.com/blake3"
 )
 
 // LocalVolumeID uniquely identifies a local volume.
@@ -348,11 +347,7 @@ func (v *localTxn) Post(ctx context.Context, salt *blobcache.CID, data []byte) (
 		return blobcache.CID{}, blobcache.ErrCannotSalt{}
 	}
 	cid, err := dbutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (*blobcache.CID, error) {
-		// TODO: get hf from volume spec
-		hf := func(data []byte) blobcache.CID {
-			return blobcache.CID(blake3.Sum256(data))
-		}
-		cid := hf(data)
+		cid := v.Hash(salt, data)
 		if err := ensureBlob(tx, cid, nil, data); err != nil {
 			return nil, err
 		}

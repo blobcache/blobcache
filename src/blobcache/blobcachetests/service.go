@@ -65,8 +65,37 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	t.Run("Namespace", func(t *testing.T) {
 		SimpleNS(t, mk)
 	})
+	t.Run("HashAlgo", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s := mk(t)
+		for _, algo := range []blobcache.HashAlgo{
+			blobcache.HashAlgo_BLAKE3_256,
+			blobcache.HashAlgo_BLAKE2b_256,
+			blobcache.HashAlgo_SHA2_256,
+			blobcache.HashAlgo_SHA3_256,
+		} {
+			t.Run(string(algo), func(t *testing.T) {
+				spec := defaultLocalSpec()
+				spec.Local.HashAlgo = algo
+				hf := algo.HashFunc()
+				volh, err := s.CreateVolume(ctx, nil, spec)
+				require.NoError(t, err)
+				require.NotNil(t, volh)
+				txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: true})
+				require.NoError(t, err)
+				require.NotNil(t, txh)
+				defer s.Abort(ctx, *txh)
 
-	// Run Tx test suit on local volume.
+				data := []byte("hello world")
+				expected := hf(nil, data)
+				cid, err := s.Post(ctx, *txh, nil, data)
+				require.NoError(t, err)
+				require.Equal(t, expected, cid)
+			})
+		}
+	})
+
+	// Run Tx test suite on local volume.
 	t.Run("Local/Tx", func(t *testing.T) {
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			ctx := testutil.Context(t)
