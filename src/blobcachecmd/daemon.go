@@ -45,6 +45,7 @@ var daemonEphemeralCmd = star.Command{
 			DB:         db,
 			PacketConn: pc.X,
 			Schemas:    bclocal.DefaultSchemas(),
+			Root:       bclocal.DefaultRoot(),
 		})
 
 		apiLis := serveAPIParam.Load(ctx)

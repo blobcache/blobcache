@@ -43,55 +43,37 @@ func createVolume(tx *sqlx.Tx, info blobcache.VolumeInfo) (*blobcache.OID, error
 }
 
 // ensureRootVolume creates the root volume if it does not exist.
-func ensureRootVolume(tx *sqlx.Tx) error {
+func ensureRootVolume(tx *sqlx.Tx, spec blobcache.VolumeSpec) (*blobcache.VolumeInfo, error) {
 	rootOID := blobcache.OID{}
 	if _, err := getVolume(tx, rootOID); err == nil {
-		return nil
+		return inspectVolume(tx, rootOID)
 	} else if err != sql.ErrNoRows {
-		return err
+		return nil, err
 	}
 	if err := insertObject(tx, rootOID, time.Now()); err != nil {
-		return err
+		return nil, err
 	}
-	info := rootVolumeInfo()
-	backendJSON, err := json.Marshal(info.Backend)
+	backendJSON, err := json.Marshal(spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	vp := spec.Params()
 	row := volumeRow{
-		OID:      rootOID,
-		HashAlgo: string(info.HashAlgo),
-		MaxSize:  info.MaxSize,
-		Backend:  backendJSON,
-		Schema:   string(info.Schema),
-		Salted:   info.Salted,
+		OID:     rootOID,
+		Backend: backendJSON,
+
+		HashAlgo: string(vp.HashAlgo),
+		MaxSize:  vp.MaxSize,
+		Schema:   string(vp.Schema),
+		Salted:   vp.Salted,
 	}
 	if err := insertVolume(tx, row); err != nil {
-		return err
+		return nil, err
 	}
 	if _, err := createLocalVolume(tx, rootOID); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
-}
-
-// rootVolumeInfo returns the info for the root volume.
-func rootVolumeInfo() blobcache.VolumeInfo {
-	params := blobcache.VolumeParams{
-		Schema:   blobcache.Schema_SimpleNS,
-		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-		MaxSize:  1 << 22,
-		Salted:   false,
-	}
-	return blobcache.VolumeInfo{
-		ID:           blobcache.OID{},
-		VolumeParams: params,
-		Backend: blobcache.VolumeBackend[blobcache.OID]{
-			Local: &blobcache.VolumeBackend_Local{
-				VolumeParams: params,
-			},
-		},
-	}
+	return inspectVolume(tx, rootOID)
 }
 
 // insertVolume inserts a volume into the volumes table.

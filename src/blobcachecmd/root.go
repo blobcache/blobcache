@@ -111,6 +111,7 @@ func openLocal(c star.Context) (*bclocal.Service, func(), error) {
 	return bclocal.New(bclocal.Env{
 		DB:      db,
 		Schemas: bclocal.DefaultSchemas(),
+		Root:    bclocal.DefaultRoot(),
 	}), close, nil
 }
 

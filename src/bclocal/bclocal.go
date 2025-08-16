@@ -35,11 +35,16 @@ const (
 var _ blobcache.Service = &Service{}
 
 type Env struct {
-	DB         *sqlx.DB
+	DB *sqlx.DB
+	// PrivateKey determines the node's identity.
+	// It must be provided if PacketConn is set.
 	PrivateKey ed25519.PrivateKey
+	// PacketConn is the connection to listen on.
 	PacketConn net.PacketConn
 	Schemas    map[blobcache.Schema]schema.Schema
 	ACL        ACL
+	// Root is the spec to use for the root volume.
+	Root blobcache.VolumeSpec
 }
 
 // Service implements a blobcache.Service.
@@ -253,17 +258,18 @@ func (s *Service) mountRoot(ctx context.Context) error {
 
 	rootOID := blobcache.OID{}
 	allowedLinks := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
+	volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
 		clear(allowedLinks)
 		if err := readVolumeLinks(tx, rootOID, allowedLinks); err != nil {
-			return err
+			return nil, err
 		}
-		return ensureRootVolume(tx)
-	}); err != nil {
+		return ensureRootVolume(tx, s.env.Root)
+	})
+	if err != nil {
 		return err
 	}
-	volInfo := rootVolumeInfo()
-	if err := s.mountVolume(ctx, rootOID, volInfo); err != nil {
+
+	if err := s.mountVolume(ctx, rootOID, *volInfo); err != nil {
 		return err
 	}
 	container, err := s.getContainer(volInfo.Schema)

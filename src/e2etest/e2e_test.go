@@ -65,6 +65,7 @@ func newTestService(t testing.TB) blobcache.Service {
 	s := bclocal.New(bclocal.Env{
 		DB:      db,
 		Schemas: bclocal.DefaultSchemas(),
+		Root:    bclocal.DefaultRoot(),
 	})
 	lis := testutil.Listen(t)
 	go func() {
