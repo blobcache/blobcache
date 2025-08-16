@@ -79,7 +79,7 @@ var glfsLookCmd = star.Command{
 			return err
 		}
 		nsc := simplens.Client{Service: svc}
-		volh, err := nsc.OpenAt(c.Context, blobcache.RootHandle(), volumeNameParam.Load(c), blobcache.Action_ALL)
+		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
 		}
@@ -131,7 +131,7 @@ var glfsImportCmd = star.Command{
 			return err
 		}
 		nsc := simplens.Client{Service: svc}
-		volh, err := nsc.OpenAt(c.Context, blobcache.RootHandle(), volumeNameParam.Load(c), blobcache.Action_ALL)
+		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
 		}
@@ -173,7 +173,7 @@ var glfsReadCmd = star.Command{
 			return err
 		}
 		nsc := simplens.Client{Service: svc}
-		volh, err := nsc.OpenAt(c, blobcache.RootHandle(), volumeNameParam.Load(c), blobcache.Action_ALL)
+		volh, err := nsc.OpenAt(c, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
 		}
@@ -209,11 +209,11 @@ var glfsSyncCmd = star.Command{
 		}
 		nsc := simplens.Client{Service: svc}
 
-		srcVolh, err := nsc.OpenAt(c.Context, blobcache.RootHandle(), srcVolumeParam.Load(c), blobcache.Action_ALL)
+		srcVolh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, srcVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return fmt.Errorf("failed to open source volume: %w", err)
 		}
-		dstVolh, err := nsc.OpenAt(c.Context, blobcache.RootHandle(), dstVolumeParam.Load(c), blobcache.Action_ALL)
+		dstVolh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, dstVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return fmt.Errorf("failed to open destination volume: %w", err)
 		}

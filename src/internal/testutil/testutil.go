@@ -11,6 +11,8 @@ import (
 
 func Context(t testing.TB) context.Context {
 	ctx := context.Background()
+	ctx, cf := context.WithCancel(ctx)
+	t.Cleanup(cf)
 	lg, _ := zap.NewDevelopment()
 	ctx = logctx.NewContext(ctx, lg)
 	return ctx

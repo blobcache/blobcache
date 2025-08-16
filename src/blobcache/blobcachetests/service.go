@@ -122,8 +122,8 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := simplens.Client{Service: s}
-		nsh := blobcache.RootHandle()
-		err = nsc.PutEntry(ctx, blobcache.RootHandle(), "test-name", *volh)
+		nsh := blobcache.Handle{}
+		err = nsc.PutEntry(ctx, nsh, "test-name", *volh)
 		require.NoError(t, err)
 		err = s.Drop(ctx, *volh)
 		require.NoError(t, err)
@@ -138,7 +138,7 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		s := mk(t)
 		nsc := simplens.Client{Service: s}
 
-		names, err := nsc.ListNames(ctx, blobcache.RootHandle())
+		names, err := nsc.ListNames(ctx, blobcache.Handle{})
 		require.NoError(t, err)
 		require.Equal(t, []string{}, names)
 	})
@@ -150,7 +150,7 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := simplens.Client{Service: s}
-		nsh := blobcache.RootHandle()
+		nsh := blobcache.Handle{}
 		for i := 0; i < 10; i++ {
 			err = nsc.PutEntry(ctx, nsh, fmt.Sprintf("test-name-%d", i), *volh)
 			require.NoError(t, err)
@@ -204,7 +204,7 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := simplens.Client{Service: s}
-		require.NoError(t, nsc.PutEntry(ctx, blobcache.RootHandle(), "vol1", *volh))
+		require.NoError(t, nsc.PutEntry(ctx, blobcache.Handle{}, "vol1", *volh))
 
 		nsh, err := s.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)

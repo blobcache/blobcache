@@ -115,11 +115,6 @@ func (o OID) Compare(other OID) int {
 	return bytes.Compare(o[:], other[:])
 }
 
-// RootHandle returns the root OID.
-func RootHandle() Handle {
-	return Handle{OID: OID{}}
-}
-
 func NewOID() (ret OID) {
 	rand.Read(ret[:])
 	return ret

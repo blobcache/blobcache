@@ -144,10 +144,10 @@ func (tx *Tx) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobc
 		return blobcache.CID{}, err
 	}
 
-	if respMsg.Header().Code() == MT_ERROR {
-		return blobcache.CID{}, ParseWireError(respMsg.Body())
+	if respMsg.Header().Code().IsError() {
+		return blobcache.CID{}, ParseWireError(respMsg.Header().Code(), respMsg.Body())
 	}
-	if respMsg.Header().Code() != MT_OK {
+	if !respMsg.Header().Code().IsOK() {
 		return blobcache.CID{}, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
 	}
 
@@ -178,10 +178,10 @@ func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, b
 	if err := tx.n.Ask(ctx, tx.ep, reqMsg, &respMsg); err != nil {
 		return 0, err
 	}
-	if respMsg.Header().Code() == MT_ERROR {
-		return 0, ParseWireError(respMsg.Body())
+	if respMsg.Header().Code().IsError() {
+		return 0, ParseWireError(respMsg.Header().Code(), respMsg.Body())
 	}
-	if respMsg.Header().Code() != MT_OK {
+	if !respMsg.Header().Code().IsOK() {
 		return 0, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
 	}
 	respBody := respMsg.Body()
@@ -246,10 +246,10 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 	if err := node.Ask(ctx, remote, reqMsg, &respMsg); err != nil {
 		return nil, err
 	}
-	if respMsg.Header().Code() == MT_ERROR {
-		return nil, ParseWireError(respMsg.Body())
+	if respMsg.Header().Code().IsError() {
+		return nil, ParseWireError(respMsg.Header().Code(), respMsg.Body())
 	}
-	if respMsg.Header().Code() != MT_OK {
+	if !respMsg.Header().Code().IsOK() {
 		return nil, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
 	}
 	var resp Resp
@@ -259,7 +259,22 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 	return &resp, nil
 }
 
-func OpenVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
+func OpenVolumeFrom(ctx context.Context, n *Node, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
+	resp, err := doJSON[OpenFromReq, OpenFromResp](ctx, n, ep, MT_OPEN_FROM, OpenFromReq{
+		Base:   base,
+		Target: target,
+		Mask:   mask,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := resp.Info.HashAlgo.Validate(); err != nil {
+		return nil, err
+	}
+	return NewVolume(n, ep, resp.Handle, &resp.Info), nil
+}
+
+func OpenVolumeAs(ctx context.Context, n *Node, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
 	resp, err := doJSON[OpenAsReq, OpenAsResp](ctx, n, ep, MT_OPEN_AS, OpenAsReq{
 		Target: target,
 		Mask:   mask,

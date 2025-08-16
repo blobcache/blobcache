@@ -669,7 +669,7 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	case backend.Local != nil:
 		return s.makeLocal(ctx, oid)
 	case backend.Remote != nil:
-		return bcnet.OpenVolume(ctx, s.node, backend.Remote.Endpoint, blobcache.RootHandle(), backend.Remote.Volume, blobcache.Action_ALL)
+		return bcnet.OpenVolumeAs(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Volume, blobcache.Action_ALL)
 	case backend.Git != nil:
 		return s.makeGit(ctx, *backend.Git)
 	case backend.RootAEAD != nil:
@@ -752,7 +752,7 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		}
 		return innerVol.info.VolumeParams, nil
 	case vspec.Remote != nil:
-		vol, err := bcnet.OpenVolume(ctx, s.node, vspec.Remote.Endpoint, blobcache.RootHandle(), vspec.Remote.Volume, blobcache.Action_ALL)
+		vol, err := bcnet.OpenVolumeAs(ctx, s.node, vspec.Remote.Endpoint, vspec.Remote.Volume, blobcache.Action_ALL)
 		if err != nil {
 			return blobcache.VolumeParams{}, err
 		}

@@ -28,7 +28,7 @@ var fuseMountCmd = star.Command{
 		}
 		volName := volumeNameParam.Load(c)
 		nsc := simplens.Client{Service: svc}
-		volh, err := nsc.OpenAt(c.Context, blobcache.RootHandle(), volName, blobcache.Action_ALL)
+		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volName, blobcache.Action_ALL)
 		if err != nil {
 			return err
 		}

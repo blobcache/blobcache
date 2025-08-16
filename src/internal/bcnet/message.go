@@ -3,7 +3,7 @@ package bcnet
 import (
 	"encoding/binary"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -11,11 +11,16 @@ import (
 
 type MessageType uint8
 
+func (mt MessageType) IsError() bool {
+	return mt > MT_OK
+}
+
+func (mt MessageType) IsOK() bool {
+	return mt == MT_OK
+}
+
 const (
 	MT_UNKNOWN MessageType = iota
-
-	// MT_OK is the success response to a request.
-	MT_OK
 
 	// MT_PING is a request to ping the remote peer.
 	MT_PING
@@ -31,6 +36,7 @@ const (
 	MT_VOLUME_AWAIT
 	MT_VOLUME_BEGIN_TX
 
+	MT_TX_INSPECT
 	MT_TX_COMMIT
 	MT_TX_ABORT
 	MT_TX_LOAD
@@ -45,8 +51,17 @@ const (
 	MT_LAYER2_TELL
 	// MT_LAYER2_ASK is used for volume implementations to communicate with other volumes.
 	MT_LAYER2_ASK
+)
 
-	MT_ERROR = 255
+const (
+	MT_OK = 128 + iota
+	MT_ERROR_TIMEOUT
+	MT_ERROR_INVALID_HANDLE
+	MT_ERROR_NOT_FOUND
+	MT_ERROR_NO_PERMISSION
+	MT_ERROR_NO_LINK
+
+	MT_ERROR_UNKNOWN = 255
 )
 
 const HeaderLen = 1 + 4
@@ -122,45 +137,45 @@ func (m *Message) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func (m *Message) SetError(err error) {
-	m.SetCode(MT_ERROR)
-	m.SetBody(MarshalWireError(err))
-}
-
-type WireError struct {
-	InvalidHandle *blobcache.ErrInvalidHandle `json:"invalid_handle,omitempty"`
-	NotFound      *blobcache.ErrNotFound      `json:"not_found,omitempty"`
-	Unknown       *string                     `json:"unknown,omitempty"`
-}
-
-func ParseWireError(x []byte) error {
-	var werr WireError
-	if err := json.Unmarshal(x, &werr); err != nil {
-		return err
-	}
-	switch {
-	case werr.InvalidHandle != nil:
-		return werr.InvalidHandle
-	case werr.NotFound != nil:
-		return werr.NotFound
-	case werr.Unknown != nil:
-		return errors.New(*werr.Unknown)
-	default:
-		return errors.New("bcnet: error parsing an error")
-	}
-}
-
-func MarshalWireError(err error) []byte {
-	var werr WireError
-	switch x := err.(type) {
+	switch err.(type) {
 	case *blobcache.ErrInvalidHandle:
-		werr.InvalidHandle = x
+		m.SetCode(MT_ERROR_INVALID_HANDLE)
 	case *blobcache.ErrNotFound:
-		werr.NotFound = x
+		m.SetCode(MT_ERROR_NOT_FOUND)
+	case *blobcache.ErrNoLink:
+		m.SetCode(MT_ERROR_NO_LINK)
 	default:
-		estr := x.Error()
-		werr.Unknown = &estr
+		m.SetCode(MT_ERROR_UNKNOWN)
 	}
-	return jsonMarshal(werr)
+	data := jsonMarshal(err)
+	m.SetBody(data)
+}
+
+func ParseWireError(code MessageType, x []byte) error {
+	var ret error
+	switch code {
+	case MT_ERROR_INVALID_HANDLE:
+		var e blobcache.ErrInvalidHandle
+		if err := json.Unmarshal(x, &e); err != nil {
+			return err
+		}
+		ret = &e
+	case MT_ERROR_NOT_FOUND:
+		var e blobcache.ErrNotFound
+		if err := json.Unmarshal(x, &e); err != nil {
+			return err
+		}
+		ret = &e
+	case MT_ERROR_NO_LINK:
+		var e blobcache.ErrNoLink
+		if err := json.Unmarshal(x, &e); err != nil {
+			return err
+		}
+		ret = &e
+	default:
+		return fmt.Errorf("unknown error code: %d. data=%q", code, string(x))
+	}
+	return ret
 }
 
 func jsonMarshal(x any) []byte {

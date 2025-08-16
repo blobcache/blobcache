@@ -68,10 +68,10 @@ func TestDefaultNoAccess(t *testing.T) {
 	require.NoError(t, err)
 	nsc1 := simplens.Client{Service: svc1}
 	require.NoError(t, err)
-	require.NoError(t, nsc1.PutEntry(ctx, blobcache.RootHandle(), "name1", *volh))
+	require.NoError(t, nsc1.PutEntry(ctx, blobcache.Handle{}, "name1", *volh))
 
 	nsc2 := simplens.Client{Service: svc2}
-	entry, err := nsc2.GetEntry(ctx, blobcache.RootHandle(), "name1")
+	entry, err := nsc2.GetEntry(ctx, blobcache.Handle{}, "name1")
 	require.NoError(t, err)
 	require.Nil(t, entry)
 

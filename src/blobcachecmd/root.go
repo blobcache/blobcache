@@ -59,7 +59,7 @@ var mkVolCmd = star.Command{
 		}
 		defer close()
 		nsc := simplens.Client{Service: s}
-		volh, err := nsc.CreateAt(c, blobcache.RootHandle(), nameParam.Load(c), blobcache.DefaultLocalSpec())
+		volh, err := nsc.CreateAt(c, blobcache.Handle{}, nameParam.Load(c), blobcache.DefaultLocalSpec())
 		if err != nil {
 			return err
 		}
@@ -81,7 +81,7 @@ var lsCmd = star.Command{
 		}
 		defer close()
 		nsc := simplens.Client{Service: s}
-		names, err := nsc.ListNames(c, blobcache.RootHandle())
+		names, err := nsc.ListNames(c, blobcache.Handle{})
 		if err != nil {
 			return err
 		}
