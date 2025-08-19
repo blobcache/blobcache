@@ -164,14 +164,6 @@ const (
 	Schema_SimpleContainer Schema = "blobcache/simplecontainer"
 )
 
-func (s Schema) Validate() error {
-	switch s {
-	case Schema_SimpleNS, Schema_NONE, Schema_SimpleContainer:
-		return nil
-	}
-	return fmt.Errorf("unknown schema: %q", s)
-}
-
 type VolumeParams struct {
 	Schema   Schema   `json:"schema"`
 	HashAlgo HashAlgo `json:"hash_algo"`
@@ -180,9 +172,6 @@ type VolumeParams struct {
 }
 
 func (v *VolumeParams) Validate() error {
-	if err := v.Schema.Validate(); err != nil {
-		return err
-	}
 	if err := v.HashAlgo.Validate(); err != nil {
 		return err
 	}
