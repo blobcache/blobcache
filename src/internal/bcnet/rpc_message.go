@@ -1,6 +1,98 @@
 package bcnet
 
-import "blobcache.io/blobcache/src/blobcache"
+import (
+	"encoding/json"
+	"fmt"
+
+	"blobcache.io/blobcache/src/blobcache"
+)
+
+type InspectHandleReq struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+func (ir InspectHandleReq) Marshal(out []byte) []byte {
+	return appendHandle(out, ir.Handle)
+}
+
+func (ir *InspectHandleReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal InspectHandleReq, too short: %d", len(data))
+	}
+	return ir.Handle.UnmarshalBinary(data)
+}
+
+type InspectHandleResp struct {
+	Info blobcache.HandleInfo `json:"info"`
+}
+
+func (ir InspectHandleResp) Marshal(out []byte) []byte {
+	data, err := ir.Info.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (ir *InspectHandleResp) Unmarshal(data []byte) error {
+	return ir.Info.UnmarshalBinary(data)
+}
+
+type DropReq struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+func (dr DropReq) Marshal(out []byte) []byte {
+	return appendHandle(out, dr.Handle)
+}
+
+func (dr *DropReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal DropReq, too short: %d", len(data))
+	}
+	return dr.Handle.UnmarshalBinary(data)
+}
+
+type DropResp struct{}
+
+func (dr DropResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (dr *DropResp) Unmarshal(data []byte) error {
+	return nil
+}
+
+type KeepAliveReq struct {
+	Handles []blobcache.Handle `json:"handles"`
+}
+
+func (kr KeepAliveReq) Marshal(out []byte) []byte {
+	for _, h := range kr.Handles {
+		out = appendHandle(out, h)
+	}
+	return out
+}
+
+func (kr *KeepAliveReq) Unmarshal(data []byte) error {
+	kr.Handles = make([]blobcache.Handle, len(data)/blobcache.HandleSize)
+	for i := range kr.Handles {
+		if err := kr.Handles[i].UnmarshalBinary(data[i*blobcache.HandleSize : (i+1)*blobcache.HandleSize]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type KeepAliveResp struct{}
+
+func (kr KeepAliveResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (kr *KeepAliveResp) Unmarshal(data []byte) error {
+	return nil
+}
 
 type OpenAsReq struct {
 	Target blobcache.OID       `json:"target"`
@@ -22,26 +114,6 @@ type OpenFromResp struct {
 	Handle blobcache.Handle     `json:"handle"`
 	Info   blobcache.VolumeInfo `json:"info"`
 }
-
-type InspectHandleReq struct {
-	Handle blobcache.Handle `json:"handle"`
-}
-
-type InspectHandleResp struct {
-	Info blobcache.HandleInfo `json:"info"`
-}
-
-type DropReq struct {
-	Handle blobcache.Handle `json:"handle"`
-}
-
-type DropResp struct{}
-
-type KeepAliveReq struct {
-	Handles []blobcache.Handle `json:"handles"`
-}
-
-type KeepAliveResp struct{}
 
 type InspectVolumeReq struct {
 	Volume blobcache.Handle `json:"volume"`
@@ -73,8 +145,35 @@ type InspectTxReq struct {
 	Tx blobcache.Handle `json:"tx"`
 }
 
+func (r InspectTxReq) Marshal(out []byte) []byte {
+	data, err := r.Tx.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (r *InspectTxReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal InspectTxReq, too short: %d", len(data))
+	}
+	return r.Tx.UnmarshalBinary(data)
+}
+
 type InspectTxResp struct {
 	Info blobcache.TxInfo `json:"info"`
+}
+
+func (r InspectTxResp) Marshal(out []byte) []byte {
+	data, err := json.Marshal(r.Info)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (r *InspectTxResp) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, r)
 }
 
 type CommitReq struct {
@@ -83,20 +182,90 @@ type CommitReq struct {
 	Root *[]byte `json:"root,omitempty"`
 }
 
+func (cr CommitReq) Marshal(out []byte) []byte {
+	out = appendHandle(out, cr.Tx)
+	if cr.Root != nil {
+		out = append(out, *cr.Root...)
+	}
+	return out
+}
+
+func (cr *CommitReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal CommitReq, too short: %d", len(data))
+	}
+	if err := cr.Tx.UnmarshalBinary(data); err != nil {
+		return err
+	}
+	if len(data) > blobcache.HandleSize {
+		cr.Root = new([]byte)
+		copy(*cr.Root, data[blobcache.HandleSize:])
+	}
+	return nil
+}
+
 type CommitResp struct{}
+
+func (cr CommitResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (cr *CommitResp) Unmarshal(data []byte) error {
+	return nil
+}
 
 type AbortReq struct {
 	Tx blobcache.Handle `json:"tx"`
 }
 
+func (ar AbortReq) Marshal(out []byte) []byte {
+	return appendHandle(out, ar.Tx)
+}
+
+func (ar *AbortReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal AbortReq, too short: %d", len(data))
+	}
+	return ar.Tx.UnmarshalBinary(data)
+}
+
 type AbortResp struct{}
+
+func (ar AbortResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (ar *AbortResp) Unmarshal(data []byte) error {
+	return nil
+}
 
 type LoadReq struct {
 	Tx blobcache.Handle `json:"tx"`
 }
 
+func (lr LoadReq) Marshal(out []byte) []byte {
+	out = appendHandle(out, lr.Tx)
+	return out
+}
+
+func (lr *LoadReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal LoadReq, too short: %d", len(data))
+	}
+	return lr.Tx.UnmarshalBinary(data)
+}
+
 type LoadResp struct {
 	Root []byte `json:"root"`
+}
+
+func (lr LoadResp) Marshal(out []byte) []byte {
+	return append(out, lr.Root...)
+}
+
+func (lr *LoadResp) Unmarshal(data []byte) error {
+	lr.Root = append(lr.Root[:0], data...)
+	return nil
 }
 
 type SaveReq struct {
@@ -111,8 +280,51 @@ type ExistsReq struct {
 	CIDs []blobcache.CID  `json:"cids"`
 }
 
+func (er ExistsReq) Marshal(out []byte) []byte {
+	out = appendHandle(out, er.Tx)
+	for _, cid := range er.CIDs {
+		out = append(out, cid[:]...)
+	}
+	return out
+}
+
+func (er *ExistsReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal ExistsReq, too short: %d", len(data))
+	}
+	if err := er.Tx.UnmarshalBinary(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	er.CIDs = make([]blobcache.CID, (len(data)-blobcache.HandleSize)/blobcache.CIDSize)
+	return nil
+}
+
 type ExistsResp struct {
 	Exists []bool `json:"exists"`
+}
+
+func (er ExistsResp) Marshal(out []byte) []byte {
+	for i := range er.Exists {
+		if i%8 == 0 {
+			out = append(out, 0)
+		}
+		out[len(out)-1] |= 1 << (i % 8)
+	}
+	return out
+}
+
+func (er *ExistsResp) Unmarshal(data []byte) error {
+	er.Exists = er.Exists[:0]
+	for i := range data {
+		for j := 0; j < 8; j++ {
+			if (data[i] & (1 << j)) != 0 {
+				er.Exists = append(er.Exists, true)
+			} else {
+				er.Exists = append(er.Exists, false)
+			}
+		}
+	}
+	return nil
 }
 
 type DeleteReq struct {
@@ -120,7 +332,32 @@ type DeleteReq struct {
 	CID blobcache.CID    `json:"cid"`
 }
 
+func (dr DeleteReq) Marshal(out []byte) []byte {
+	out = appendHandle(out, dr.Tx)
+	out = append(out, dr.CID[:]...)
+	return out
+}
+
+func (dr *DeleteReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize+blobcache.CIDSize {
+		return fmt.Errorf("cannot unmarshal DeleteReq, too short: %d", len(data))
+	}
+	if err := dr.Tx.UnmarshalBinary(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	dr.CID = blobcache.CID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.CIDSize])
+	return nil
+}
+
 type DeleteResp struct{}
+
+func (dr DeleteResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (dr *DeleteResp) Unmarshal(data []byte) error {
+	return nil
+}
 
 type GetReq struct {
 	Tx   blobcache.Handle `json:"tx"`
@@ -128,8 +365,41 @@ type GetReq struct {
 	Salt *blobcache.CID   `json:"salt,omitempty"`
 }
 
+func (gr GetReq) Marshal(out []byte) []byte {
+	out = appendHandle(out, gr.Tx)
+	out = append(out, gr.CID[:]...)
+	if gr.Salt != nil {
+		out = append(out, gr.Salt[:]...)
+	}
+	return out
+}
+
+func (gr *GetReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize+blobcache.CIDSize {
+		return fmt.Errorf("cannot unmarshal GetReq, too short: %d", len(data))
+	}
+	if err := gr.Tx.UnmarshalBinary(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	gr.CID = blobcache.CID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.CIDSize])
+	if len(data) > blobcache.HandleSize+blobcache.CIDSize+blobcache.CIDSize {
+		gr.Salt = new(blobcache.CID)
+		copy(gr.Salt[:], data[blobcache.HandleSize+blobcache.CIDSize:])
+	}
+	return nil
+}
+
 type GetResp struct {
 	Data []byte `json:"data"`
+}
+
+func (gr GetResp) Marshal(out []byte) []byte {
+	return append(out, gr.Data...)
+}
+
+func (gr *GetResp) Unmarshal(data []byte) error {
+	gr.Data = append(gr.Data[:0], data...)
+	return nil
 }
 
 type AllowLinkReq struct {
@@ -137,7 +407,34 @@ type AllowLinkReq struct {
 	Subvol blobcache.Handle `json:"subvol"`
 }
 
+func (ar AllowLinkReq) Marshal(out []byte) []byte {
+	out = appendHandle(out, ar.Tx)
+	out = appendHandle(out, ar.Subvol)
+	return out
+}
+
+func (ar *AllowLinkReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize*2 {
+		return fmt.Errorf("cannot unmarshal AllowLinkReq, too short: %d", len(data))
+	}
+	if err := ar.Tx.UnmarshalBinary(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	if err := ar.Subvol.UnmarshalBinary(data[blobcache.HandleSize:]); err != nil {
+		return err
+	}
+	return nil
+}
+
 type AllowLinkResp struct{}
+
+func (ar AllowLinkResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (ar *AllowLinkResp) Unmarshal(data []byte) error {
+	return nil
+}
 
 type CreateVolumeReq struct {
 	Spec blobcache.VolumeSpec `json:"spec"`
@@ -146,4 +443,10 @@ type CreateVolumeReq struct {
 type CreateVolumeResp struct {
 	Handle blobcache.Handle     `json:"handle"`
 	Info   blobcache.VolumeInfo `json:"info"`
+}
+
+func appendHandle(out []byte, h blobcache.Handle) []byte {
+	out = append(out, h.OID[:]...)
+	out = append(out, h.Secret[:]...)
+	return out
 }

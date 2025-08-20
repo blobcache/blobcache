@@ -24,7 +24,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 
 	switch req.Header().Code() {
 	case MT_HANDLE_DROP:
-		handleJSON(req, resp, func(req *DropReq) (*DropResp, error) {
+		handleAsk(req, resp, &DropReq{}, func(req *DropReq) (*DropResp, error) {
 			if err := svc.Drop(ctx, req.Handle); err != nil {
 				return nil, err
 			}
@@ -39,11 +39,19 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &InspectHandleResp{Info: *info}, nil
 		})
 	case MT_HANDLE_KEEP_ALIVE:
-		handleJSON(req, resp, func(req *KeepAliveReq) (*KeepAliveResp, error) {
+		handleAsk(req, resp, &KeepAliveReq{}, func(req *KeepAliveReq) (*KeepAliveResp, error) {
 			if err := svc.KeepAlive(ctx, req.Handles); err != nil {
 				return nil, err
 			}
 			return &KeepAliveResp{}, nil
+		})
+	case MT_HANDLE_INSPECT:
+		handleAsk(req, resp, &InspectHandleReq{}, func(req *InspectHandleReq) (*InspectHandleResp, error) {
+			info, err := svc.InspectHandle(ctx, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectHandleResp{Info: *info}, nil
 		})
 
 	case MT_OPEN_AS:
@@ -90,6 +98,13 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &InspectVolumeResp{Info: *info}, nil
 		})
+	case MT_VOLUME_AWAIT:
+		handleJSON(req, resp, func(req *AwaitReq) (*AwaitResp, error) {
+			if err := svc.Await(ctx, req.Cond); err != nil {
+				return nil, err
+			}
+			return &AwaitResp{}, nil
+		})
 	case MT_VOLUME_BEGIN_TX:
 		handleJSON(req, resp, func(req *BeginTxReq) (*BeginTxResp, error) {
 			h, err := svc.BeginTx(ctx, req.Volume, req.Params)
@@ -111,7 +126,11 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		})
 
 	case MT_TX_COMMIT:
+<<<<<<< HEAD
 		handleJSON(req, resp, func(req *CommitReq) (*CommitResp, error) {
+=======
+		handleAsk(req, resp, &CommitReq{}, func(req *CommitReq) (*CommitResp, error) {
+>>>>>>> 9e86ad4 (wip)
 			if req.Root != nil {
 				if err := svc.Save(ctx, req.Tx, *req.Root); err != nil {
 					return nil, err
@@ -123,14 +142,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &CommitResp{}, nil
 		})
 	case MT_TX_ABORT:
-		handleJSON(req, resp, func(req *AbortReq) (*AbortResp, error) {
+		handleAsk(req, resp, &AbortReq{}, func(req *AbortReq) (*AbortResp, error) {
 			if err := svc.Abort(ctx, req.Tx); err != nil {
 				return nil, err
 			}
 			return &AbortResp{}, nil
 		})
 	case MT_TX_LOAD:
-		handleJSON(req, resp, func(req *LoadReq) (*LoadResp, error) {
+		handleAsk(req, resp, &LoadReq{}, func(req *LoadReq) (*LoadResp, error) {
 			var root []byte
 			if err := svc.Load(ctx, req.Tx, &root); err != nil {
 				return nil, err
@@ -145,7 +164,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &SaveResp{}, nil
 		})
 	case MT_TX_EXISTS:
-		handleJSON(req, resp, func(req *ExistsReq) (*ExistsResp, error) {
+		handleAsk(req, resp, &ExistsReq{}, func(req *ExistsReq) (*ExistsResp, error) {
 			exists := make([]bool, len(req.CIDs))
 			for i, cid := range req.CIDs {
 				var err error
@@ -157,7 +176,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &ExistsResp{Exists: exists}, nil
 		})
 	case MT_TX_DELETE:
-		handleJSON(req, resp, func(req *DeleteReq) (*DeleteResp, error) {
+		handleAsk(req, resp, &DeleteReq{}, func(req *DeleteReq) (*DeleteResp, error) {
 			if err := svc.Delete(ctx, req.Tx, req.CID); err != nil {
 				return nil, err
 			}
@@ -216,7 +235,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		resp.SetCode(MT_OK)
 		resp.SetBody(buf[:n])
 	case MT_TX_ALLOW_LINK:
-		handleJSON(req, resp, func(req *AllowLinkReq) (*AllowLinkResp, error) {
+		handleAsk(req, resp, &AllowLinkReq{}, func(req *AllowLinkReq) (*AllowLinkResp, error) {
 			if err := svc.AllowLink(ctx, req.Tx, req.Subvol); err != nil {
 				return nil, err
 			}
@@ -239,6 +258,30 @@ func readHandle(body []byte) (*blobcache.Handle, []byte, error) {
 	}
 	body = body[handleSize:]
 	return &h, body, nil
+}
+
+type Marshaller interface {
+	Marshal(out []byte) []byte
+}
+
+type Unmarshaller interface {
+	Unmarshal(data []byte) error
+}
+
+func handleAsk[Req Unmarshaller, Resp Marshaller](req *Message, resp *Message, zeroReq Req, fn func(Req) (*Resp, error)) {
+	var reqR = zeroReq
+	if err := reqR.Unmarshal(req.Body()); err != nil {
+		resp.SetError(err)
+		return
+	}
+	respR, err := fn(reqR)
+	if err != nil {
+		resp.SetError(err)
+		return
+	}
+	data := (*respR).Marshal(nil)
+	resp.SetCode(MT_OK)
+	resp.SetBody(data)
 }
 
 func handleJSON[Req, Resp any](req *Message, resp *Message, fn func(Req) (*Resp, error)) {

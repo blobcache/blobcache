@@ -107,7 +107,7 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	}
 	_, err := doJSON[CommitReq, CommitResp](ctx, tx.n, tx.ep, MT_TX_COMMIT, CommitReq{
 		Tx:   tx.h,
-		Root: root,
+		Root: &root,
 	})
 	if err != nil {
 		return err
