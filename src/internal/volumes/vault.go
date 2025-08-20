@@ -44,6 +44,7 @@ type VaultTx struct {
 	crypto *bccrypto.Worker
 	tries  *tries.Operator
 
+	root  []byte
 	blobs map[blobcache.CID]bccrypto.Ref
 }
 
@@ -67,7 +68,12 @@ func (v *VaultTx) Load(ctx context.Context, dst *[]byte) error {
 	return v.inner.Load(ctx, dst)
 }
 
-func (v *VaultTx) Commit(ctx context.Context, root []byte) error {
+func (v *VaultTx) Save(ctx context.Context, src []byte) error {
+	v.root = append(v.root[:0], src...)
+	return nil
+}
+
+func (v *VaultTx) Commit(ctx context.Context) error {
 	b := v.tries.NewBuilder(UnsaltedStore{v.inner}, 1024)
 	for cid, ref := range v.blobs {
 		if ref.IsZero() {
@@ -85,7 +91,10 @@ func (v *VaultTx) Commit(ctx context.Context, root []byte) error {
 	if err != nil {
 		return err
 	}
-	return v.inner.Commit(ctx, root2)
+	if err := v.inner.Save(ctx, root2); err != nil {
+		return err
+	}
+	return v.inner.Commit(ctx)
 }
 
 func (v *VaultTx) Abort(ctx context.Context) error {

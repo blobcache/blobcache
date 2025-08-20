@@ -23,8 +23,8 @@ import (
 // them from OIDs which are printed as hex.
 type CID = cadata.ID
 
-// CIDBytes is the number of bytes in a CID.
-const CIDBytes = cadata.IDSize
+// CIDSize is the number of bytes in a CID.
+const CIDSize = cadata.IDSize
 
 func ParseCID(s string) (CID, error) {
 	var ret CID
@@ -227,11 +227,14 @@ type Service interface {
 	// InspectTx returns info about a transaction.
 	InspectTx(ctx context.Context, tx Handle) (*TxInfo, error)
 	// Commit commits a transaction.
-	Commit(ctx context.Context, tx Handle, root []byte) error
+	Commit(ctx context.Context, tx Handle) error
 	// Abort aborts a transaction.
 	Abort(ctx context.Context, tx Handle) error
 	// Load loads the volume root into dst
 	Load(ctx context.Context, tx Handle, dst *[]byte) error
+	// Save writes to the volume root.
+	// Like all operations in a transaction, Save will not be visible until Commit is called.
+	Save(ctx context.Context, tx Handle, src []byte) error
 	// Post posts data to the volume
 	Post(ctx context.Context, tx Handle, salt *CID, data []byte) (CID, error)
 	// Exists checks if a CID exists in the volume

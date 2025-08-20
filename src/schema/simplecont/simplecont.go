@@ -30,7 +30,7 @@ func (sch Schema) Validate(ctx context.Context, s cadata.Getter, prevRoot, nextR
 }
 
 func (sch Schema) WalkOIDs(ctx context.Context, s cadata.Getter, cid blobcache.CID, fn func(blobcache.OID) error) error {
-	buf := make([]byte, blobcache.CIDBytes*2)
+	buf := make([]byte, blobcache.CIDSize*2)
 	n, err := s.Get(ctx, cid, buf)
 	if err != nil {
 		return err
@@ -38,10 +38,10 @@ func (sch Schema) WalkOIDs(ctx context.Context, s cadata.Getter, cid blobcache.C
 	switch n {
 	case 16:
 		return nil // base case, this is a Volume's OID
-	case 2 * blobcache.CIDBytes:
+	case 2 * blobcache.CIDSize:
 		// this is a Merkle tree node, so we need to validate the children
-		left := cadata.IDFromBytes(buf[:blobcache.CIDBytes])
-		right := cadata.IDFromBytes(buf[blobcache.CIDBytes:])
+		left := cadata.IDFromBytes(buf[:blobcache.CIDSize])
+		right := cadata.IDFromBytes(buf[blobcache.CIDSize:])
 		for _, cid2 := range []cadata.ID{left, right} {
 			if err := sch.WalkOIDs(ctx, s, cid2, fn); err != nil {
 				return err

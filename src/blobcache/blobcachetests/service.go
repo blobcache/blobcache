@@ -241,7 +241,8 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		data := []byte("this is not a valid CID")
 		require.False(t, len(data) == len(blobcache.CID{}))
-		require.Error(t, s.Commit(ctx, *txh, data))
+		require.Error(t, s.Save(ctx, *txh, data))
+		require.NoError(t, s.Commit(ctx, *txh)) // could also abort here. Save failed so volume should be unchanged.
 	})
 }
 
@@ -267,9 +268,10 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: true})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
-		err = s.Commit(ctx, *txh, []byte{1, 2, 3})
+		err = s.Save(ctx, *txh, []byte{1, 2, 3})
 		require.NoError(t, err)
-		require.NotNil(t, txh)
+		err = s.Commit(ctx, *txh)
+		require.NoError(t, err)
 	})
 	t.Run("TxCommitReadOnly", func(t *testing.T) {
 		ctx := testutil.Context(t)
@@ -277,7 +279,9 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: false})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
-		err = s.Commit(ctx, *txh, []byte{1, 2, 3})
+		err = s.Save(ctx, *txh, []byte{1, 2, 3})
+		require.Error(t, err)
+		err = s.Commit(ctx, *txh)
 		require.Error(t, err)
 	})
 	t.Run("PostExists", func(t *testing.T) {
@@ -316,7 +320,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		}
 		// commit the write transaction.
 		root2 := []byte{1, 2, 3}
-		Commit(t, s, wtxh, root2)
+		SaveCommit(t, s, wtxh, root2)
 
 		// all of the readers should still see the empty blob.
 		for _, rtxh := range rtxhs {
@@ -336,7 +340,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		for i := 0; i < N; i++ {
 			func() {
 				wtxh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
-				Commit(t, s, wtxh, []byte{byte(i)})
+				SaveCommit(t, s, wtxh, []byte{byte(i)})
 			}()
 		}
 		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: false})

@@ -570,7 +570,7 @@ func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcac
 	}
 }
 
-func (s *Service) Commit(ctx context.Context, txh blobcache.Handle, root []byte) error {
+func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) error {
 	tx, err := s.resolveTx(txh, true)
 	if err != nil {
 		return err
@@ -588,13 +588,20 @@ func (s *Service) Commit(ctx context.Context, txh blobcache.Handle, root []byte)
 	if err := sch.Validate(ctx, src, prevRoot, root); err != nil {
 		return err
 	}
+	return tx.backend.Save(ctx, root)
+}
 
-	if err := tx.backend.Commit(ctx, root); err != nil {
+func (s *Service) Commit(ctx context.Context, txh blobcache.Handle) error {
+	tx, err := s.resolveTx(txh, true)
+	if err != nil {
+		return err
+	}
+	if err := tx.backend.Commit(ctx); err != nil {
 		return err
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	delete(s.handles, handleKey(txh))
+	s.mu.Unlock()
 	return nil
 }
 

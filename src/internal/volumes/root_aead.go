@@ -79,17 +79,21 @@ func (tx *RootAEADTx) Volume() Volume {
 	return tx.vol
 }
 
-func (tx *RootAEADTx) Commit(ctx context.Context, ptext []byte) error {
+func (tx *RootAEADTx) Commit(ctx context.Context) error {
+	return tx.inner.Commit(ctx)
+}
+
+func (tx *RootAEADTx) Abort(ctx context.Context) error {
+	return tx.inner.Abort(ctx)
+}
+
+func (tx *RootAEADTx) Save(ctx context.Context, ptext []byte) error {
 	nonce := make([]byte, tx.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		panic(err)
 	}
 	ctext := tx.aead.Seal(nonce, nonce, ptext, nil)
-	return tx.inner.Commit(ctx, ctext)
-}
-
-func (tx *RootAEADTx) Abort(ctx context.Context) error {
-	return tx.inner.Abort(ctx)
+	return tx.inner.Save(ctx, ctext)
 }
 
 func (tx *RootAEADTx) Load(ctx context.Context, dst *[]byte) error {

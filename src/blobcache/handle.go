@@ -10,6 +10,9 @@ import (
 	"go.brendoncarroll.net/tai64"
 )
 
+// HandleSize is the number of bytes in a handle.
+const HandleSize = 32
+
 type Handle struct {
 	OID    OID
 	Secret [16]byte
@@ -75,6 +78,32 @@ type HandleInfo struct {
 
 	CreatedAt tai64.TAI64N `json:"created_at"`
 	ExpiresAt tai64.TAI64N `json:"expires_at"`
+}
+
+func (hi HandleInfo) MarshalBinary() ([]byte, error) {
+	var ret []byte
+	ret = append(ret, hi.OID[:]...)
+	ret = append(ret, hi.CreatedAt.Marshal()...)
+	ret = append(ret, hi.ExpiresAt.Marshal()...)
+	return ret, nil
+}
+
+func (hi *HandleInfo) UnmarshalBinary(data []byte) error {
+	if len(data) < 16+2*12 {
+		return fmt.Errorf("invalid HandleInfo length: %d", len(data))
+	}
+	hi.OID = OID(data[:16])
+	createdAt, err := tai64.ParseN(data[16 : 16+12])
+	if err != nil {
+		return err
+	}
+	hi.CreatedAt = createdAt
+	expiresAt, err := tai64.ParseN(data[16+12 : 16+12+12])
+	if err != nil {
+		return err
+	}
+	hi.ExpiresAt = expiresAt
+	return nil
 }
 
 // ActionSet is a bitmask of the actions that can be performed using a handle.
