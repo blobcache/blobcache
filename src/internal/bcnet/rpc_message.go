@@ -78,8 +78,9 @@ type InspectTxResp struct {
 }
 
 type CommitReq struct {
-	Tx   blobcache.Handle `json:"tx"`
-	Root []byte           `json:"root"`
+	Tx blobcache.Handle `json:"tx"`
+	// Root can be optionally set to call Save before Commit.
+	Root *[]byte `json:"root,omitempty"`
 }
 
 type CommitResp struct{}
@@ -97,6 +98,13 @@ type LoadReq struct {
 type LoadResp struct {
 	Root []byte `json:"root"`
 }
+
+type SaveReq struct {
+	Tx   blobcache.Handle `json:"tx"`
+	Root []byte           `json:"root"`
+}
+
+type SaveResp struct{}
 
 type ExistsReq struct {
 	Tx   blobcache.Handle `json:"tx"`

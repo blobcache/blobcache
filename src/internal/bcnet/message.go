@@ -21,40 +21,56 @@ func (mt MessageType) IsOK() bool {
 
 const (
 	MT_UNKNOWN MessageType = iota
-
 	// MT_PING is a request to ping the remote peer.
 	MT_PING
+)
 
-	MT_HANDLE_INSPECT
+// Handle messages
+const (
+	MT_HANDLE_INSPECT MessageType = 16 + iota
 	MT_HANDLE_DROP
 	MT_HANDLE_KEEP_ALIVE
+)
 
-	MT_OPEN_AS
+// Volume messages
+const (
+	MT_OPEN_AS MessageType = 32 + iota
 	MT_OPEN_FROM
 	MT_CREATE_VOLUME
 	MT_VOLUME_INSPECT
 	MT_VOLUME_AWAIT
 	MT_VOLUME_BEGIN_TX
+)
 
-	MT_TX_INSPECT
+// Tx messages
+const (
+	MT_TX_INSPECT MessageType = 48 + iota
+
 	MT_TX_COMMIT
 	MT_TX_ABORT
+
 	MT_TX_LOAD
+	MT_TX_SAVE
+
 	MT_TX_POST
 	MT_TX_POST_SALT
 	MT_TX_GET
 	MT_TX_EXISTS
 	MT_TX_DELETE
 	MT_TX_ALLOW_LINK
+)
 
+const (
 	// MT_LAYER2_TELL is used for volume implementations to communicate with other volumes.
-	MT_LAYER2_TELL
+	MT_LAYER2_TELL MessageType = 64 + iota
 	// MT_LAYER2_ASK is used for volume implementations to communicate with other volumes.
 	MT_LAYER2_ASK
 )
 
+// Response messages
 const (
 	MT_OK = 128 + iota
+
 	MT_ERROR_TIMEOUT
 	MT_ERROR_INVALID_HANDLE
 	MT_ERROR_NOT_FOUND

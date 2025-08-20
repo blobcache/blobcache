@@ -30,6 +30,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &DropResp{}, nil
 		})
+	case MT_HANDLE_INSPECT:
+		handleJSON(req, resp, func(req *InspectHandleReq) (*InspectHandleResp, error) {
+			info, err := svc.InspectHandle(ctx, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectHandleResp{Info: *info}, nil
+		})
 	case MT_HANDLE_KEEP_ALIVE:
 		handleJSON(req, resp, func(req *KeepAliveReq) (*KeepAliveResp, error) {
 			if err := svc.KeepAlive(ctx, req.Handles); err != nil {
@@ -94,10 +102,22 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &BeginTxResp{Tx: *h, VolumeInfo: *info}, nil
 		})
+	case MT_VOLUME_AWAIT:
+		handleJSON(req, resp, func(req *AwaitReq) (*AwaitResp, error) {
+			if err := svc.Await(ctx, req.Cond); err != nil {
+				return nil, err
+			}
+			return &AwaitResp{}, nil
+		})
 
 	case MT_TX_COMMIT:
 		handleJSON(req, resp, func(req *CommitReq) (*CommitResp, error) {
-			if err := svc.Commit(ctx, req.Tx, req.Root); err != nil {
+			if req.Root != nil {
+				if err := svc.Save(ctx, req.Tx, *req.Root); err != nil {
+					return nil, err
+				}
+			}
+			if err := svc.Commit(ctx, req.Tx); err != nil {
 				return nil, err
 			}
 			return &CommitResp{}, nil
@@ -116,6 +136,13 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 				return nil, err
 			}
 			return &LoadResp{Root: root}, nil
+		})
+	case MT_TX_SAVE:
+		handleJSON(req, resp, func(req *SaveReq) (*SaveResp, error) {
+			if err := svc.Save(ctx, req.Tx, req.Root); err != nil {
+				return nil, err
+			}
+			return &SaveResp{}, nil
 		})
 	case MT_TX_EXISTS:
 		handleJSON(req, resp, func(req *ExistsReq) (*ExistsResp, error) {
@@ -168,7 +195,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			resp.SetError(err)
 			return
 		}
-		if len(body) != blobcache.CIDBytes {
+		if len(body) != blobcache.CIDSize {
 			resp.SetError(fmt.Errorf("invalid request body length: %d", len(body)))
 			return
 		}
@@ -195,6 +222,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &AllowLinkResp{}, nil
 		})
+
 	default:
 		resp.SetError(fmt.Errorf("unknown message type: %v", req.Header().Code()))
 	}
