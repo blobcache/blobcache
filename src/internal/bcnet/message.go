@@ -162,9 +162,10 @@ func (m *Message) SetError(err error) {
 		m.SetCode(MT_ERROR_NO_LINK)
 	default:
 		m.SetCode(MT_ERROR_UNKNOWN)
+		m.SetBody([]byte(err.Error()))
+		return
 	}
-	data := jsonMarshal(err)
-	m.SetBody(data)
+	m.SetBody(jsonMarshal(err))
 }
 
 func ParseWireError(code MessageType, x []byte) error {
