@@ -56,7 +56,8 @@ func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx 
 	require.NoError(t, err)
 	data, err := f(tx)
 	require.NoError(t, err)
-	require.NoError(t, tx.Commit(ctx, data))
+	require.NoError(t, tx.Save(ctx, data))
+	require.NoError(t, tx.Commit(ctx))
 }
 
 func Load(t testing.TB, s blobcache.Service, txh blobcache.Handle) []byte {
@@ -69,9 +70,11 @@ func Load(t testing.TB, s blobcache.Service, txh blobcache.Handle) []byte {
 	return buf
 }
 
-func Commit(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte) {
+// SaveCommit is a convenience function that saves the given data and then commits the transaction.
+func SaveCommit(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte) {
 	ctx := testutil.Context(t)
-	require.NoError(t, s.Commit(ctx, txh, data))
+	require.NoError(t, s.Save(ctx, txh, data))
+	require.NoError(t, s.Commit(ctx, txh))
 }
 
 func Abort(t testing.TB, s blobcache.Service, txh blobcache.Handle) {

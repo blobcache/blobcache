@@ -117,7 +117,10 @@ func (fs *FS[K]) Flush(ctx context.Context) error {
 	}
 
 	// Commit the transaction with the new root
-	if err := tx.Commit(ctx, newRoot); err != nil {
+	if err := tx.Save(ctx, newRoot); err != nil {
+		return fmt.Errorf("failed to save root: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 

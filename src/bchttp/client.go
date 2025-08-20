@@ -125,8 +125,8 @@ func (c *Client) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache
 	return &resp.Info, nil
 }
 
-func (c *Client) Commit(ctx context.Context, tx blobcache.Handle, root []byte) error {
-	req := CommitReq{Root: root}
+func (c *Client) Commit(ctx context.Context, tx blobcache.Handle) error {
+	req := CommitReq{}
 	var resp CommitResp
 	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Commit"), &tx.Secret, req, &resp)
 }
@@ -135,6 +135,12 @@ func (c *Client) Abort(ctx context.Context, tx blobcache.Handle) error {
 	req := AbortReq{}
 	var resp AbortResp
 	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Abort"), &tx.Secret, req, &resp)
+}
+
+func (c *Client) Save(ctx context.Context, tx blobcache.Handle, root []byte) error {
+	req := SaveReq{Root: root}
+	var resp SaveResp
+	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Save"), &tx.Secret, req, &resp)
 }
 
 func (c *Client) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) error {

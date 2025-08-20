@@ -65,7 +65,10 @@ var glfsInitCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		return tx.Commit(ctx, rootData)
+		if err := tx.Save(ctx, rootData); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	},
 }
 
@@ -289,5 +292,8 @@ func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle,
 		return err
 	}
 	// TODO: delete old refs
-	return tx.Commit(ctx, glfsschema.MarshalRef(root2))
+	if err := tx.Save(ctx, glfsschema.MarshalRef(root2)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

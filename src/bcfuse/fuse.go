@@ -189,8 +189,11 @@ func (n *Node[K]) Create(ctx context.Context, name string, flags uint32, mode ui
 		return nil, nil, 0, syscall.EIO
 	}
 
-	// Commit the transaction
-	if err := tx.Commit(ctx, newRoot); err != nil {
+	// Save and Commit the transaction
+	if err := tx.Save(ctx, newRoot); err != nil {
+		return nil, nil, 0, syscall.EIO
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, 0, syscall.EIO
 	}
 
@@ -246,8 +249,11 @@ func (n *Node[K]) Unlink(ctx context.Context, name string) syscall.Errno {
 		return syscall.EIO
 	}
 
-	// Commit the transaction
-	if err := tx.Commit(ctx, newRoot); err != nil {
+	// Save and Commit the transaction
+	if err := tx.Save(ctx, newRoot); err != nil {
+		return syscall.EIO
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return syscall.EIO
 	}
 

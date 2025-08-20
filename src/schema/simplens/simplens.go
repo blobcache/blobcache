@@ -46,8 +46,8 @@ func (sch Schema) ListEntries(ctx context.Context, s cadata.Getter, root []byte)
 	if len(root) == 0 {
 		return nil, nil
 	}
-	if len(root) != blobcache.CIDBytes {
-		return nil, fmt.Errorf("root must be %d bytes. HAVE: %d", blobcache.CIDBytes, len(root))
+	if len(root) != blobcache.CIDSize {
+		return nil, fmt.Errorf("root must be %d bytes. HAVE: %d", blobcache.CIDSize, len(root))
 	}
 	cid := cadata.IDFromBytes(root)
 	buf := make([]byte, s.MaxSize())
@@ -167,7 +167,10 @@ func (ns Tx) ListNames(ctx context.Context) ([]string, error) {
 }
 
 func (ns Tx) Commit(ctx context.Context) error {
-	return ns.Tx.Commit(ctx, ns.Root)
+	if err := ns.Tx.Save(ctx, ns.Root); err != nil {
+		return err
+	}
+	return ns.Tx.Commit(ctx)
 }
 
 func encodeNamespace(ents []Entry) ([]byte, error) {

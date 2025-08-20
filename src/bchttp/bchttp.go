@@ -74,15 +74,19 @@ type InspectTxResp struct {
 	Info blobcache.TxInfo `json:"info"`
 }
 
-type CommitReq struct {
-	Root []byte `json:"root"`
-}
+type CommitReq struct{}
 
 type CommitResp struct{}
 
 type AbortReq struct{}
 
 type AbortResp struct{}
+
+type SaveReq struct {
+	Root []byte `json:"root"`
+}
+
+type SaveResp struct{}
 
 type LoadReq struct{}
 

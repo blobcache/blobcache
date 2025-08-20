@@ -109,5 +109,8 @@ func SyncTx(ctx context.Context, srcTx, dstTx *blobcache.Tx) error {
 	if err := glfs.Sync(ctx, dstTx, srcTx, *srcRoot); err != nil {
 		return err
 	}
-	return dstTx.Commit(ctx, MarshalRef(srcRoot))
+	if err := dstTx.Save(ctx, MarshalRef(srcRoot)); err != nil {
+		return err
+	}
+	return dstTx.Commit(ctx)
 }

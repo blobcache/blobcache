@@ -168,7 +168,7 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		})
 	case "Commit":
 		handleRequest(w, r, func(ctx context.Context, req CommitReq) (*CommitResp, error) {
-			if err := s.Service.Commit(ctx, h, req.Root); err != nil {
+			if err := s.Service.Commit(ctx, h); err != nil {
 				return nil, err
 			}
 			return &CommitResp{}, nil
@@ -179,6 +179,21 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 			return &AbortResp{}, nil
+		})
+	case "Load":
+		handleRequest(w, r, func(ctx context.Context, req LoadReq) (*LoadResp, error) {
+			var root []byte
+			if err := s.Service.Load(ctx, h, &root); err != nil {
+				return nil, err
+			}
+			return &LoadResp{Root: root}, nil
+		})
+	case "Save":
+		handleRequest(w, r, func(ctx context.Context, req SaveReq) (*SaveResp, error) {
+			if err := s.Service.Save(ctx, h, req.Root); err != nil {
+				return nil, err
+			}
+			return &SaveResp{}, nil
 		})
 	// Post and Get are special cases that does not use JSON.
 	case "Post":
@@ -213,14 +228,6 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Write(buf[:n])
 		return
-	case "Load":
-		handleRequest(w, r, func(ctx context.Context, req LoadReq) (*LoadResp, error) {
-			var root []byte
-			if err := s.Service.Load(ctx, h, &root); err != nil {
-				return nil, err
-			}
-			return &LoadResp{Root: root}, nil
-		})
 	case "Delete":
 		handleRequest(w, r, func(ctx context.Context, req DeleteReq) (*DeleteResp, error) {
 			if err := s.Service.Delete(ctx, h, req.CID); err != nil {

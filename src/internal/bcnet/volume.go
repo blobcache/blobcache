@@ -82,6 +82,8 @@ type Tx struct {
 	ep      blobcache.Endpoint
 	h       blobcache.Handle
 	volInfo *blobcache.VolumeInfo
+
+	root []byte
 }
 
 func (tx *Tx) Volume() volumes.Volume {
@@ -93,10 +95,10 @@ func (tx *Tx) Volume() volumes.Volume {
 	}
 }
 
-func (tx *Tx) Commit(ctx context.Context, root []byte) error {
+func (tx *Tx) Commit(ctx context.Context) error {
 	_, err := doJSON[CommitReq, CommitResp](ctx, tx.n, tx.ep, MT_TX_COMMIT, CommitReq{
 		Tx:   tx.h,
-		Root: root,
+		Root: &tx.root,
 	})
 	if err != nil {
 		return err
@@ -119,6 +121,13 @@ func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
 		return err
 	}
 	*dst = append((*dst)[:0], resp.Root...)
+	return nil
+}
+
+func (tx *Tx) Save(ctx context.Context, src []byte) error {
+	tx.root = append(tx.root[:0], src...)
+	// TODO: we could also send this to the server, but it's probably
+	// better to just wait until the Commit time.
 	return nil
 }
 
@@ -153,7 +162,7 @@ func (tx *Tx) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobc
 
 	// request is ok at this point.
 	respBody := respMsg.Body()
-	if len(respBody) != blobcache.CIDBytes {
+	if len(respBody) != blobcache.CIDSize {
 		return blobcache.CID{}, fmt.Errorf("invalid response body length: %d", len(respBody))
 	}
 	var theirCID blobcache.CID

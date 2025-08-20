@@ -15,9 +15,10 @@ type Volume interface {
 
 // Tx is a consistent view of a volume, during a transaction.
 type Tx interface {
-	Commit(ctx context.Context, root []byte) error
+	Commit(ctx context.Context) error
 	Abort(ctx context.Context) error
 
+	Save(ctx context.Context, src []byte) error
 	Load(ctx context.Context, dst *[]byte) error
 
 	Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error)

@@ -267,6 +267,7 @@ type localTxn struct {
 	schema      schema.Schema
 
 	allowedLinks map[blobcache.OID]blobcache.ActionSet
+	root         []byte
 }
 
 // newLocalTxn creates a localTxn.
@@ -295,7 +296,7 @@ func (v *localTxn) Volume() volumes.Volume {
 	return newLocalVolume(v.s, v.volInfo.ID)
 }
 
-func (v *localTxn) Commit(ctx context.Context, root []byte) error {
+func (v *localTxn) Commit(ctx context.Context) error {
 	if !v.localTxnRow.Mutate {
 		return blobcache.ErrTxReadOnly{}
 	}
@@ -304,7 +305,7 @@ func (v *localTxn) Commit(ctx context.Context, root []byte) error {
 	links := make(map[blobcache.OID]blobcache.ActionSet)
 	if contSch, ok := v.schema.(schema.Container); ok {
 		src := volumes.NewUnsaltedStore(v)
-		if err := contSch.ReadLinks(ctx, src, root, links); err != nil {
+		if err := contSch.ReadLinks(ctx, src, v.root, links); err != nil {
 			return err
 		}
 		// constrain all claimed links by the allowed links.
@@ -320,7 +321,14 @@ func (v *localTxn) Commit(ctx context.Context, root []byte) error {
 		if err := putVolumeLinks(tx, v.volInfo.ID, links); err != nil {
 			return err
 		}
-		return txnCommit(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, root)
+		if v.root == nil {
+			// if the root is nil, then it has not be changed in this transaction.
+			// get the previous root from the database.
+			if err := txnLoadRoot(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, &v.root); err != nil {
+				return err
+			}
+		}
+		return txnCommit(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, v.root)
 	})
 }
 
@@ -328,6 +336,20 @@ func (v *localTxn) Abort(ctx context.Context) error {
 	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 		return dropLocalTxn(tx, v.localTxnRow.RowID)
 	})
+}
+
+func (v *localTxn) Save(ctx context.Context, root []byte) error {
+	if !v.localTxnRow.Mutate {
+		return blobcache.ErrTxReadOnly{}
+	}
+	if root == nil {
+		// This is to distinguish between a:
+		//  - nil root (Save not called)
+		//  - an empty root (Save called with an zero length slice)
+		root = []byte{}
+	}
+	v.root = append(v.root[:0], root...)
+	return nil
 }
 
 func (v *localTxn) Load(ctx context.Context, dst *[]byte) error {

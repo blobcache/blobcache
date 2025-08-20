@@ -43,15 +43,19 @@ func NewTx(s Service, h Handle, hash HashFunc, maxSize int) *Tx {
 	}
 }
 
+func (tx *Tx) Save(ctx context.Context, src []byte) error {
+	return tx.s.Save(ctx, tx.h, src)
+}
+
 func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
 	return tx.s.Load(ctx, tx.h, dst)
 }
 
-func (tx *Tx) Commit(ctx context.Context, root []byte) error {
+func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.done {
 		return ErrTxDone{ID: tx.h.OID}
 	}
-	err := tx.s.Commit(ctx, tx.h, root)
+	err := tx.s.Commit(ctx, tx.h)
 	tx.done = true
 	return err
 }
@@ -133,11 +137,15 @@ func (tx *TxSalt) Load(ctx context.Context, dst *[]byte) error {
 	return tx.s.Load(ctx, tx.h, dst)
 }
 
-func (tx *TxSalt) Commit(ctx context.Context, root []byte) error {
+func (tx *TxSalt) Save(ctx context.Context, src []byte) error {
+	return tx.s.Save(ctx, tx.h, src)
+}
+
+func (tx *TxSalt) Commit(ctx context.Context) error {
 	if tx.done {
 		return ErrTxDone{ID: tx.h.OID}
 	}
-	err := tx.s.Commit(ctx, tx.h, root)
+	err := tx.s.Commit(ctx, tx.h)
 	tx.done = true
 	return err
 }
