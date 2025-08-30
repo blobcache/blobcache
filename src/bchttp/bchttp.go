@@ -7,29 +7,55 @@ import (
 )
 
 // Handle messages.
-type (
-	InspectHandleReq  = bcnet.InspectHandleReq
-	InspectHandleResp = bcnet.InspectHandleResp
-	DropReq           = bcnet.DropReq
-	DropResp          = bcnet.DropResp
-	KeepAliveReq      = bcnet.KeepAliveReq
-	KeepAliveResp     = bcnet.KeepAliveResp
-	OpenFromReq       = bcnet.OpenFromReq
-	OpenFromResp      = bcnet.OpenFromResp
-	OpenAsResp        = bcnet.OpenAsResp
-)
+type InspectHandleReq struct {
+	Handle blobcache.Handle `json:"handle"`
+}
 
-// Volume messages.
+type InspectHandleResp struct {
+	Info blobcache.HandleInfo `json:"info"`
+}
+
+type DropReq struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type DropResp struct{}
+
+type KeepAliveReq struct {
+	Handles []blobcache.Handle `json:"handles"`
+}
+
+type KeepAliveResp struct{}
 
 type (
 	AwaitReq  = bcnet.AwaitReq
 	AwaitResp = bcnet.AwaitResp
 )
 
+type OpenFromReq struct {
+	Base   blobcache.Handle    `json:"base"`
+	Target blobcache.OID       `json:"target"`
+	Mask   blobcache.ActionSet `json:"mask"`
+}
+
+type OpenFromResp struct {
+	Handle blobcache.Handle     `json:"handle"`
+	Info   blobcache.VolumeInfo `json:"info"`
+}
+
 type OpenAsReq struct {
 	Caller *blobcache.PeerID   `json:"caller,omitempty"`
 	Target blobcache.OID       `json:"target"`
 	Mask   blobcache.ActionSet `json:"mask"`
+}
+
+type OpenAsResp struct {
+	Handle blobcache.Handle     `json:"handle"`
+	Info   blobcache.VolumeInfo `json:"info"`
+}
+
+type InspectVolumeReq struct {
+	Volume blobcache.Handle `json:"volume"`
 }
 
 type CreateVolumeReq struct {

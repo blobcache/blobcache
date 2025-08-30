@@ -36,7 +36,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &DropResp{}, nil
 		})
 	case MT_HANDLE_INSPECT:
-		handleJSON(req, resp, func(req *InspectHandleReq) (*InspectHandleResp, error) {
+		handleAsk(req, resp, &InspectHandleReq{}, func(req *InspectHandleReq) (*InspectHandleResp, error) {
 			info, err := svc.InspectHandle(ctx, req.Handle)
 			if err != nil {
 				return nil, err

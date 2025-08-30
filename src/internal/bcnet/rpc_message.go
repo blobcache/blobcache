@@ -1,6 +1,7 @@
 package bcnet
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 
@@ -8,7 +9,7 @@ import (
 )
 
 type InspectHandleReq struct {
-	Handle blobcache.Handle `json:"handle"`
+	Handle blobcache.Handle
 }
 
 func (ir InspectHandleReq) Marshal(out []byte) []byte {
@@ -23,11 +24,19 @@ func (ir *InspectHandleReq) Unmarshal(data []byte) error {
 }
 
 type InspectHandleResp struct {
-	Info blobcache.HandleInfo `json:"info"`
+	Info blobcache.HandleInfo
+}
+
+func (ir InspectHandleResp) Marshal(out []byte) []byte {
+	return ir.Info.Marshal(out)
+}
+
+func (ir *InspectHandleResp) Unmarshal(data []byte) error {
+	return ir.Info.Unmarshal(data)
 }
 
 type DropReq struct {
-	Handle blobcache.Handle `json:"handle"`
+	Handle blobcache.Handle
 }
 
 func (dr DropReq) Marshal(out []byte) []byte {
@@ -84,8 +93,23 @@ func (kr *KeepAliveResp) Unmarshal(data []byte) error {
 }
 
 type OpenAsReq struct {
-	Target blobcache.OID       `json:"target"`
-	Mask   blobcache.ActionSet `json:"mask"`
+	Target blobcache.OID
+	Mask   blobcache.ActionSet
+}
+
+func (oa OpenAsReq) Marshal(out []byte) []byte {
+	out = oa.Target.Marshal(out)
+	out = binary.BigEndian.AppendUint64(out, uint64(oa.Mask))
+	return out
+}
+
+func (oa *OpenAsReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.OIDSize+8 {
+		return fmt.Errorf("cannot unmarshal OpenAsReq, too short: %d", len(data))
+	}
+	oa.Target = blobcache.OID(data[:blobcache.OIDSize])
+	oa.Mask = blobcache.ActionSet(binary.BigEndian.Uint64(data[blobcache.OIDSize:]))
+	return nil
 }
 
 type OpenAsResp struct {
