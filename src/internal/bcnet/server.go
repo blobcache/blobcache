@@ -23,6 +23,11 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	}
 
 	switch req.Header().Code() {
+	case MT_PING:
+		resp.SetCode(MT_OK)
+		resp.SetBody(nil)
+
+	// BEGIN HANDLE
 	case MT_HANDLE_DROP:
 		handleAsk(req, resp, &DropReq{}, func(req *DropReq) (*DropResp, error) {
 			if err := svc.Drop(ctx, req.Handle); err != nil {
@@ -45,15 +50,9 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &KeepAliveResp{}, nil
 		})
-	case MT_HANDLE_INSPECT:
-		handleAsk(req, resp, &InspectHandleReq{}, func(req *InspectHandleReq) (*InspectHandleResp, error) {
-			info, err := svc.InspectHandle(ctx, req.Handle)
-			if err != nil {
-				return nil, err
-			}
-			return &InspectHandleResp{Info: *info}, nil
-		})
+	// END HANDLE
 
+	// BEGIN VOLUME
 	case MT_OPEN_AS:
 		handleJSON(req, resp, func(req *OpenAsReq) (*OpenAsResp, error) {
 			h, err := svc.OpenAs(ctx, &ep.Peer, req.Target, req.Mask)
@@ -117,20 +116,11 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &BeginTxResp{Tx: *h, VolumeInfo: *info}, nil
 		})
-	case MT_VOLUME_AWAIT:
-		handleJSON(req, resp, func(req *AwaitReq) (*AwaitResp, error) {
-			if err := svc.Await(ctx, req.Cond); err != nil {
-				return nil, err
-			}
-			return &AwaitResp{}, nil
-		})
+	// END VOLUME
 
+	// BEGIN TX
 	case MT_TX_COMMIT:
-<<<<<<< HEAD
-		handleJSON(req, resp, func(req *CommitReq) (*CommitResp, error) {
-=======
 		handleAsk(req, resp, &CommitReq{}, func(req *CommitReq) (*CommitResp, error) {
->>>>>>> 9e86ad4 (wip)
 			if req.Root != nil {
 				if err := svc.Save(ctx, req.Tx, *req.Root); err != nil {
 					return nil, err
@@ -157,7 +147,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &LoadResp{Root: root}, nil
 		})
 	case MT_TX_SAVE:
-		handleJSON(req, resp, func(req *SaveReq) (*SaveResp, error) {
+		handleAsk(req, resp, &SaveReq{}, func(req *SaveReq) (*SaveResp, error) {
 			if err := svc.Save(ctx, req.Tx, req.Root); err != nil {
 				return nil, err
 			}
@@ -241,6 +231,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &AllowLinkResp{}, nil
 		})
+	// END TX
 
 	default:
 		resp.SetError(fmt.Errorf("unknown message type: %v", req.Header().Code()))
@@ -248,15 +239,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 }
 
 func readHandle(body []byte) (*blobcache.Handle, []byte, error) {
-	const handleSize = 32
-	if len(body) < handleSize {
+	if len(body) < blobcache.HandleSize {
 		return nil, nil, fmt.Errorf("invalid request body length: %d", len(body))
 	}
 	var h blobcache.Handle
-	if err := h.UnmarshalBinary(body[:handleSize]); err != nil {
+	if err := h.Unmarshal(body[:blobcache.HandleSize]); err != nil {
 		return nil, nil, err
 	}
-	body = body[handleSize:]
+	body = body[blobcache.HandleSize:]
 	return &h, body, nil
 }
 

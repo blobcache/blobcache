@@ -105,10 +105,10 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.root != nil {
 		root = &tx.root
 	}
-	_, err := doJSON[CommitReq, CommitResp](ctx, tx.n, tx.ep, MT_TX_COMMIT, CommitReq{
+	_, err := doBinary(ctx, tx.n, tx.ep, MT_TX_COMMIT, CommitReq{
 		Tx:   tx.h,
-		Root: &root,
-	})
+		Root: root,
+	}, &CommitResp{})
 	if err != nil {
 		return err
 	}
@@ -116,16 +116,16 @@ func (tx *Tx) Commit(ctx context.Context) error {
 }
 
 func (tx *Tx) Abort(ctx context.Context) error {
-	_, err := doJSON[AbortReq, AbortResp](ctx, tx.n, tx.ep, MT_TX_ABORT, AbortReq{
+	_, err := doBinary(ctx, tx.n, tx.ep, MT_TX_ABORT, AbortReq{
 		Tx: tx.h,
-	})
+	}, &AbortResp{})
 	return err
 }
 
 func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
-	resp, err := doJSON[LoadReq, LoadResp](ctx, tx.n, tx.ep, MT_TX_LOAD, LoadReq{
+	resp, err := doBinary(ctx, tx.n, tx.ep, MT_TX_LOAD, LoadReq{
 		Tx: tx.h,
-	})
+	}, &LoadResp{})
 	if err != nil {
 		return err
 	}
@@ -217,10 +217,10 @@ func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, b
 }
 
 func (tx *Tx) Delete(ctx context.Context, cid blobcache.CID) error {
-	_, err := doJSON[DeleteReq, DeleteResp](ctx, tx.n, tx.ep, MT_TX_DELETE, DeleteReq{
+	_, err := doBinary(ctx, tx.n, tx.ep, MT_TX_DELETE, DeleteReq{
 		Tx:  tx.h,
 		CID: cid,
-	})
+	}, &DeleteResp{})
 	if err != nil {
 		return err
 	}
@@ -228,10 +228,10 @@ func (tx *Tx) Delete(ctx context.Context, cid blobcache.CID) error {
 }
 
 func (tx *Tx) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
-	resp, err := doJSON[ExistsReq, ExistsResp](ctx, tx.n, tx.ep, MT_TX_EXISTS, ExistsReq{
+	resp, err := doBinary(ctx, tx.n, tx.ep, MT_TX_EXISTS, ExistsReq{
 		Tx:   tx.h,
 		CIDs: []blobcache.CID{cid},
-	})
+	}, &ExistsResp{})
 	if err != nil {
 		return false, err
 	}
@@ -248,10 +248,10 @@ func (tx *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 }
 
 func (tx *Tx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
-	_, err := doJSON[AllowLinkReq, AllowLinkResp](ctx, tx.n, tx.ep, MT_TX_ALLOW_LINK, AllowLinkReq{
+	_, err := doBinary(ctx, tx.n, tx.ep, MT_TX_ALLOW_LINK, AllowLinkReq{
 		Tx:     tx.h,
 		Subvol: subvol,
-	})
+	}, &AllowLinkResp{})
 	return err
 }
 
@@ -278,6 +278,32 @@ func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.End
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func doBinary[Req interface{ Marshal(out []byte) []byte }, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node *Node, remote blobcache.Endpoint, code MessageType, req Req, zeroResp Resp) (Resp, error) {
+	reqData := req.Marshal(nil)
+	var reqMsg Message
+	reqMsg.SetCode(code)
+	reqMsg.SetBody(reqData)
+	var respMsg Message
+	if err := node.Ask(ctx, remote, reqMsg, &respMsg); err != nil {
+		var zero Resp
+		return zero, err
+	}
+	if respMsg.Header().Code().IsError() {
+		var zero Resp
+		return zero, ParseWireError(respMsg.Header().Code(), respMsg.Body())
+	}
+	if !respMsg.Header().Code().IsOK() {
+		var zero Resp
+		return zero, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
+	}
+	resp := zeroResp
+	if err := resp.Unmarshal(respMsg.Body()); err != nil {
+		var zero Resp
+		return zero, err
+	}
+	return resp, nil
 }
 
 func OpenVolumeFrom(ctx context.Context, n *Node, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {

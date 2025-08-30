@@ -108,11 +108,26 @@ func (h HashAlgo) HashFunc() HashFunc {
 	}
 }
 
+// OIDSize is the number of bytes in an OID.
+const OIDSize = 16
+
 // OID is an object identifier.
-type OID [16]byte
+type OID [OIDSize]byte
 
 func (o OID) Compare(other OID) int {
 	return bytes.Compare(o[:], other[:])
+}
+
+func (o OID) Marshal(out []byte) []byte {
+	return append(out, o[:]...)
+}
+
+func (o *OID) Unmarshal(data []byte) error {
+	if len(data) < OIDSize {
+		return fmt.Errorf("OID: data too short: %d", len(data))
+	}
+	copy(o[:], data)
+	return nil
 }
 
 func NewOID() (ret OID) {
