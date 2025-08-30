@@ -1,6 +1,7 @@
 package blobcache
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
@@ -38,6 +39,18 @@ type VolumeInfo struct {
 	Backend VolumeBackend[OID] `json:"backend"`
 }
 
+func (vi VolumeInfo) Marshal(out []byte) []byte {
+	data, err := json.Marshal(vi)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (vi *VolumeInfo) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, vi)
+}
+
 // VolumeBackend is a specification for a volume backend.
 // If it is going into the API, the it will be a VolumeBackend[Handle].
 // If it is coming out of the API, the it will be a VolumeBackend[OID].
@@ -47,6 +60,18 @@ type VolumeBackend[T handleOrOID] struct {
 	Git      *VolumeBackend_Git         `json:"git,omitempty"`
 	RootAEAD *VolumeBackend_RootAEAD[T] `json:"root_aead,omitempty"`
 	Vault    *VolumeBackend_Vault[T]    `json:"vault,omitempty"`
+}
+
+func (v *VolumeBackend[T]) Marshal(out []byte) []byte {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (v *VolumeBackend[T]) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, v)
 }
 
 // Deps returns the volumes which must exist before this volume can be created.

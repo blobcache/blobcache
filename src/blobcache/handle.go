@@ -11,13 +11,14 @@ import (
 )
 
 // HandleSize is the number of bytes in a handle.
-const HandleSize = 32
+const HandleSize = OIDSize + 16
 
 type Handle struct {
 	OID    OID
 	Secret [16]byte
 }
 
+// ParseHandle parses a handle from a string.
 func ParseHandle(s string) (Handle, error) {
 	parts := strings.Split(s, ".")
 	if len(parts) != 2 {
@@ -56,49 +57,50 @@ func (h Handle) String() string {
 	return h.OID.String() + "." + hex.EncodeToString(h.Secret[:])
 }
 
-func (h *Handle) UnmarshalBinary(data []byte) error {
-	if len(data) != 32 {
-		return fmt.Errorf("invalid handle length: %d", len(data))
-	}
-	copy(h.OID[:], data[:16])
-	copy(h.Secret[:], data[16:])
-	return nil
+func (h Handle) Marshal(out []byte) []byte {
+	buf := make([]byte, HandleSize)
+	copy(buf[:OIDSize], h.OID[:])
+	copy(buf[OIDSize:], h.Secret[:])
+	return buf
 }
 
-func (h Handle) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, 32)
-	copy(buf[:32], h.OID[:])
-	copy(buf[32:], h.Secret[:])
-	return buf, nil
+// Unmarshal unmarshals a handle from it's binary representation.
+func (h *Handle) Unmarshal(data []byte) error {
+	if len(data) != HandleSize {
+		return fmt.Errorf("invalid handle length: %d", len(data))
+	}
+	copy(h.OID[:], data[:OIDSize])
+	copy(h.Secret[:], data[OIDSize:])
+	return nil
 }
 
 // HandleInfo is information about a handle, *NOT* the object it points to.
 type HandleInfo struct {
 	OID OID `json:"oid"`
 
-	CreatedAt tai64.TAI64N `json:"created_at"`
-	ExpiresAt tai64.TAI64N `json:"expires_at"`
+	CreatedAt tai64.TAI64 `json:"created_at"`
+	ExpiresAt tai64.TAI64 `json:"expires_at"`
 }
 
-func (hi HandleInfo) MarshalBinary() ([]byte, error) {
-	var ret []byte
+func (hi HandleInfo) Marshal(out []byte) []byte {
+	ret := out
 	ret = append(ret, hi.OID[:]...)
 	ret = append(ret, hi.CreatedAt.Marshal()...)
 	ret = append(ret, hi.ExpiresAt.Marshal()...)
-	return ret, nil
+	return ret
 }
 
-func (hi *HandleInfo) UnmarshalBinary(data []byte) error {
-	if len(data) < 16+2*12 {
+func (hi *HandleInfo) Unmarshal(data []byte) error {
+	if len(data) < 16+2*8 {
 		return fmt.Errorf("invalid HandleInfo length: %d", len(data))
 	}
 	hi.OID = OID(data[:16])
-	createdAt, err := tai64.ParseN(data[16 : 16+12])
+	createdAt, err := tai64.Parse(data[16 : 16+tai64.TAI64Size])
 	if err != nil {
 		return err
 	}
 	hi.CreatedAt = createdAt
-	expiresAt, err := tai64.ParseN(data[16+12 : 16+12+12])
+	expiresAt, err := tai64.Parse(data[16+tai64.TAI64Size : 16+2*tai64.TAI64Size])
 	if err != nil {
 		return err
 	}

@@ -408,8 +408,8 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	}
 	return &blobcache.HandleInfo{
 		OID:       h.OID,
-		CreatedAt: tai64.Now(), // TODO: store creation time.
-		ExpiresAt: tai64.FromGoTime(hstate.expiresAt),
+		CreatedAt: tai64.Now().TAI64(), // TODO: store creation time.
+		ExpiresAt: tai64.FromGoTime(hstate.expiresAt).TAI64(),
 	}, nil
 }
 
