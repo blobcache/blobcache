@@ -2,7 +2,6 @@ package bcnet
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -54,7 +53,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 
 	// BEGIN VOLUME
 	case MT_OPEN_AS:
-		handleJSON(req, resp, func(req *OpenAsReq) (*OpenAsResp, error) {
+		handleAsk(req, resp, &OpenAsReq{}, func(req *OpenAsReq) (*OpenAsResp, error) {
 			h, err := svc.OpenAs(ctx, &ep.Peer, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
@@ -66,7 +65,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &OpenAsResp{Handle: *h, Info: *info}, nil
 		})
 	case MT_OPEN_FROM:
-		handleJSON(req, resp, func(req *OpenFromReq) (*OpenFromResp, error) {
+		handleAsk(req, resp, &OpenFromReq{}, func(req *OpenFromReq) (*OpenFromResp, error) {
 			h, err := svc.OpenFrom(ctx, req.Base, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
@@ -78,7 +77,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &OpenFromResp{Handle: *h, Info: *info}, nil
 		})
 	case MT_CREATE_VOLUME:
-		handleJSON(req, resp, func(req *CreateVolumeReq) (*CreateVolumeResp, error) {
+		handleAsk(req, resp, &CreateVolumeReq{}, func(req *CreateVolumeReq) (*CreateVolumeResp, error) {
 			h, err := svc.CreateVolume(ctx, &ep.Peer, req.Spec)
 			if err != nil {
 				return nil, err
@@ -90,7 +89,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &CreateVolumeResp{Handle: *h, Info: *info}, nil
 		})
 	case MT_VOLUME_INSPECT:
-		handleJSON(req, resp, func(req *InspectVolumeReq) (*InspectVolumeResp, error) {
+		handleAsk(req, resp, &InspectVolumeReq{}, func(req *InspectVolumeReq) (*InspectVolumeResp, error) {
 			info, err := svc.InspectVolume(ctx, req.Volume)
 			if err != nil {
 				return nil, err
@@ -98,14 +97,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &InspectVolumeResp{Info: *info}, nil
 		})
 	case MT_VOLUME_AWAIT:
-		handleJSON(req, resp, func(req *AwaitReq) (*AwaitResp, error) {
+		handleAsk(req, resp, &AwaitReq{}, func(req *AwaitReq) (*AwaitResp, error) {
 			if err := svc.Await(ctx, req.Cond); err != nil {
 				return nil, err
 			}
 			return &AwaitResp{}, nil
 		})
 	case MT_VOLUME_BEGIN_TX:
-		handleJSON(req, resp, func(req *BeginTxReq) (*BeginTxResp, error) {
+		handleAsk(req, resp, &BeginTxReq{}, func(req *BeginTxReq) (*BeginTxResp, error) {
 			h, err := svc.BeginTx(ctx, req.Volume, req.Params)
 			if err != nil {
 				return nil, err
@@ -270,26 +269,6 @@ func handleAsk[Req Unmarshaller, Resp Marshaller](req *Message, resp *Message, z
 		return
 	}
 	data := (*respR).Marshal(nil)
-	resp.SetCode(MT_OK)
-	resp.SetBody(data)
-}
-
-func handleJSON[Req, Resp any](req *Message, resp *Message, fn func(Req) (*Resp, error)) {
-	var reqR Req
-	if err := json.Unmarshal(req.Body(), &reqR); err != nil {
-		resp.SetError(err)
-		return
-	}
-	respR, err := fn(reqR)
-	if err != nil {
-		resp.SetError(err)
-		return
-	}
-	data, err := json.Marshal(respR)
-	if err != nil {
-		resp.SetError(err)
-		return
-	}
 	resp.SetCode(MT_OK)
 	resp.SetBody(data)
 }

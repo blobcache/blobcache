@@ -3,7 +3,6 @@ package bchttp
 
 import (
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/bcnet"
 )
 
 // Handle messages.
@@ -27,10 +26,11 @@ type KeepAliveReq struct {
 
 type KeepAliveResp struct{}
 
-type (
-	AwaitReq  = bcnet.AwaitReq
-	AwaitResp = bcnet.AwaitResp
-)
+type AwaitReq struct {
+	Cond blobcache.Conditions `json:"cond"`
+}
+
+type AwaitResp struct{}
 
 type OpenFromReq struct {
 	Base   blobcache.Handle    `json:"base"`

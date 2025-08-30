@@ -8,6 +8,7 @@ import (
 	"crypto/sha3"
 	"database/sql/driver"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -176,6 +177,18 @@ type Conditions struct {
 	NOTEqual *NOTEqual `json:"not,omitempty"`
 }
 
+func (c Conditions) Marshal(out []byte) []byte {
+	data, err := json.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (c *Conditions) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, c)
+}
+
 type NOTEqual struct {
 	Volume Handle
 	Value  []byte
@@ -187,11 +200,35 @@ type TxParams struct {
 	Mutate bool
 }
 
+func (tp TxParams) Marshal(out []byte) []byte {
+	data, err := json.Marshal(tp)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (tp *TxParams) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, tp)
+}
+
 type TxInfo struct {
 	ID       OID
 	Volume   OID
 	MaxSize  int64
 	HashAlgo HashAlgo
+}
+
+func (ti TxInfo) Marshal(out []byte) []byte {
+	data, err := json.Marshal(ti)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (ti *TxInfo) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, ti)
 }
 
 type Service interface {

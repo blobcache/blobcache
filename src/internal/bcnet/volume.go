@@ -2,7 +2,6 @@ package bcnet
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -44,15 +43,15 @@ func (v *Volume) Info() *blobcache.VolumeInfo {
 }
 
 func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
-	_, err := doJSON[AwaitReq, AwaitResp](ctx, v.n, v.ep, MT_VOLUME_AWAIT, AwaitReq{
+	_, err := doBinary(ctx, v.n, v.ep, MT_VOLUME_AWAIT, AwaitReq{
 		Cond: blobcache.Conditions{},
-	})
+	}, &AwaitResp{})
 	if err != nil {
 		return err
 	}
-	loadResp, err := doJSON[LoadReq, LoadResp](ctx, v.n, v.ep, MT_TX_LOAD, LoadReq{
+	loadResp, err := doBinary(ctx, v.n, v.ep, MT_TX_LOAD, LoadReq{
 		Tx: v.h,
-	})
+	}, &LoadResp{})
 	if err != nil {
 		return err
 	}
@@ -61,10 +60,10 @@ func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 }
 
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
-	resp, err := doJSON[BeginTxReq, BeginTxResp](ctx, v.n, v.ep, MT_VOLUME_BEGIN_TX, BeginTxReq{
+	resp, err := doBinary(ctx, v.n, v.ep, MT_VOLUME_BEGIN_TX, BeginTxReq{
 		Volume: v.h,
 		Params: spec,
-	})
+	}, &BeginTxResp{})
 	if err != nil {
 		return nil, err
 	}
@@ -255,31 +254,6 @@ func (tx *Tx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
 	return err
 }
 
-func doJSON[Req, Resp any](ctx context.Context, node *Node, remote blobcache.Endpoint, code MessageType, req Req) (*Resp, error) {
-	reqData, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	var reqMsg Message
-	reqMsg.SetCode(code)
-	reqMsg.SetBody(reqData)
-	var respMsg Message
-	if err := node.Ask(ctx, remote, reqMsg, &respMsg); err != nil {
-		return nil, err
-	}
-	if respMsg.Header().Code().IsError() {
-		return nil, ParseWireError(respMsg.Header().Code(), respMsg.Body())
-	}
-	if !respMsg.Header().Code().IsOK() {
-		return nil, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
-	}
-	var resp Resp
-	if err := json.Unmarshal(respMsg.Body(), &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
 func doBinary[Req interface{ Marshal(out []byte) []byte }, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node *Node, remote blobcache.Endpoint, code MessageType, req Req, zeroResp Resp) (Resp, error) {
 	reqData := req.Marshal(nil)
 	var reqMsg Message
@@ -307,11 +281,11 @@ func doBinary[Req interface{ Marshal(out []byte) []byte }, Resp interface{ Unmar
 }
 
 func OpenVolumeFrom(ctx context.Context, n *Node, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
-	resp, err := doJSON[OpenFromReq, OpenFromResp](ctx, n, ep, MT_OPEN_FROM, OpenFromReq{
+	resp, err := doBinary(ctx, n, ep, MT_OPEN_FROM, OpenFromReq{
 		Base:   base,
 		Target: target,
 		Mask:   mask,
-	})
+	}, &OpenFromResp{})
 	if err != nil {
 		return nil, err
 	}
@@ -322,10 +296,10 @@ func OpenVolumeFrom(ctx context.Context, n *Node, ep blobcache.Endpoint, base bl
 }
 
 func OpenVolumeAs(ctx context.Context, n *Node, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
-	resp, err := doJSON[OpenAsReq, OpenAsResp](ctx, n, ep, MT_OPEN_AS, OpenAsReq{
+	resp, err := doBinary(ctx, n, ep, MT_OPEN_AS, OpenAsReq{
 		Target: target,
 		Mask:   mask,
-	})
+	}, &OpenAsResp{})
 	if err != nil {
 		return nil, err
 	}
@@ -336,9 +310,9 @@ func OpenVolumeAs(ctx context.Context, n *Node, ep blobcache.Endpoint, target bl
 }
 
 func InspectVolume(ctx context.Context, n *Node, ep blobcache.Endpoint, vol blobcache.Handle) (*blobcache.VolumeInfo, error) {
-	resp, err := doJSON[InspectVolumeReq, InspectVolumeResp](ctx, n, ep, MT_VOLUME_INSPECT, InspectVolumeReq{
+	resp, err := doBinary(ctx, n, ep, MT_VOLUME_INSPECT, InspectVolumeReq{
 		Volume: vol,
-	})
+	}, &InspectVolumeResp{})
 	if err != nil {
 		return nil, err
 	}
