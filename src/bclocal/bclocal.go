@@ -18,6 +18,7 @@ import (
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
+	"github.com/cockroachdb/pebble"
 	"github.com/jmoiron/sqlx"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.brendoncarroll.net/tai64"
@@ -35,14 +36,15 @@ const (
 var _ blobcache.Service = &Service{}
 
 type Env struct {
-	DB *sqlx.DB
+	PebbleDB *pebble.DB
+	DB       *sqlx.DB
 	// PrivateKey determines the node's identity.
 	// It must be provided if PacketConn is set.
 	PrivateKey ed25519.PrivateKey
 	// PacketConn is the connection to listen on.
 	PacketConn net.PacketConn
 	Schemas    map[blobcache.Schema]schema.Schema
-	ACL        ACL
+	Policy     Policy
 	// Root is the spec to use for the root volume.
 	Root blobcache.VolumeSpec
 }
@@ -80,7 +82,7 @@ func (s *Service) Run(ctx context.Context) error {
 		eg.Go(func() error {
 			return s.node.Serve(ctx, bcnet.Server{
 				Access: func(peer blobcache.PeerID) blobcache.Service {
-					if s.env.ACL.Mentions(peer) {
+					if policyMentions(s.env.Policy, peer) {
 						return s
 					} else {
 						return nil
@@ -415,17 +417,20 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 
 func (s *Service) OpenAs(ctx context.Context, caller *blobcache.PeerID, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	if caller != nil {
-		if !slices.Contains(s.env.ACL.Owners, *caller) {
+		mask2 := s.env.Policy.Open(*caller, x)
+		if mask2 == 0 {
 			return nil, ErrNotAllowed{
 				Peer:   *caller,
 				Action: "OpenAs",
 				Target: x,
 			}
 		}
+		mask &= mask2
 	}
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
+	// TODO: use mask
 	h := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
 	return &h, nil
 }
@@ -472,7 +477,7 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 
 func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	if caller != nil {
-		if !slices.Contains(s.env.ACL.Owners, *caller) {
+		if !s.env.Policy.CanCreate(*caller) {
 			return nil, ErrNotAllowed{
 				Peer:   *caller,
 				Action: "CreateVolume",

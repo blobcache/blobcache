@@ -150,9 +150,9 @@ var verbParam = star.Param[blobcached.Action]{
 	},
 }
 
-var objectParam = star.Param[blobcached.Object]{
+var objectParam = star.Param[blobcached.ObjectSet]{
 	Name: "object",
-	Parse: func(x string) (blobcached.Object, error) {
+	Parse: func(x string) (blobcached.ObjectSet, error) {
 		return blobcached.ParseObject([]byte(x))
 	},
 }

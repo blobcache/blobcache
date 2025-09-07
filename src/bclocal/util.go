@@ -1,6 +1,7 @@
 package bclocal
 
 import (
+	"log"
 	"path/filepath"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"blobcache.io/blobcache/src/schema/simplecont"
 	"blobcache.io/blobcache/src/schema/simplens"
 	"github.com/cloudflare/circl/sign/ed25519"
+	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,19 +20,24 @@ import (
 func NewTestService(t testing.TB) *Service {
 	ctx := testutil.Context(t)
 	stateDir := t.TempDir()
+
 	dbPath := filepath.Join(stateDir, "blobcache.db")
-	db, err := dbutil.OpenDB(dbPath)
-	require.NoError(t, err)
-	db.SetMaxOpenConns(1)
-	if err := SetupDB(ctx, db); err != nil {
-		t.Fatal(err)
+	sqlDB, err := dbutil.OpenDB(dbPath)
+	if err != nil {
+		log.Fatal(err)
 	}
+	require.NoError(t, SetupDB(ctx, sqlDB))
+
+	pebbleDB, err := pebble.Open(filepath.Join(stateDir, "pebble"), &pebble.Options{})
+	require.NoError(t, err)
+
 	_, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	svc := New(Env{
 		PrivateKey: privateKey,
 		PacketConn: testutil.PacketConn(t),
-		DB:         db,
+		DB:         sqlDB,
+		PebbleDB:   pebbleDB,
 		Schemas:    DefaultSchemas(),
 		Root:       DefaultRoot(),
 	})

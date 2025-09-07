@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -85,27 +84,27 @@ func TestParseAuthzFile(t *testing.T) {
 		O []Grant
 	}{
 		{
-			I: "@alice LOOK .+\n",
+			I: "@alice LOOK 00000000000000000000000000000000\n",
 			O: []Grant{
 				{
 					Subject: Identity{Name: ptr("alice")},
 					Verb:    Action_LOOK,
-					Object:  Object{NameSet: regexp.MustCompile(".+")},
+					Object:  ObjectSet{ByOID: ptr(blobcache.OID{})},
 				},
 			},
 		},
 		{
-			I: "@alice LOOK .+\n@bob TOUCH .+\n",
+			I: "@alice LOOK 00000000000000000000000000000000\n@bob TOUCH 00000000000000000000000000000000\n",
 			O: []Grant{
 				{
 					Subject: Identity{Name: ptr("alice")},
 					Verb:    Action_LOOK,
-					Object:  Object{NameSet: regexp.MustCompile(".+")},
+					Object:  ObjectSet{ByOID: ptr(blobcache.OID{})},
 				},
 				{
 					Subject: Identity{Name: ptr("bob")},
 					Verb:    Action_TOUCH,
-					Object:  Object{NameSet: regexp.MustCompile(".+")},
+					Object:  ObjectSet{ByOID: ptr(blobcache.OID{})},
 				},
 			},
 		},

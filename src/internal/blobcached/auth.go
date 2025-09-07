@@ -9,10 +9,11 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 
+	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema"
 	"go.inet256.org/inet256/src/inet256"
 )
 
@@ -116,7 +117,7 @@ func WriteAuthnFile(w io.Writer, membership []Membership) error {
 type Grant struct {
 	Subject Identity
 	Verb    Action
-	Object  Object
+	Object  ObjectSet
 }
 
 func (g *Grant) Equals(other Grant) bool {
@@ -168,47 +169,38 @@ func ParseAction(x []byte) (Action, error) {
 	return "", fmt.Errorf("invalid action: %s", x)
 }
 
-// Object is something that Actions are performed on.
+// ObjectSet is something that Actions are performed on.
 // It can be a specific OID, or a set of names defined by a regular expression.
-type Object struct {
-	ByOID   *blobcache.OID
-	NameSet *regexp.Regexp
+type ObjectSet struct {
+	ByOID *blobcache.OID
 }
 
-func (o Object) Equals(other Object) bool {
+func (o ObjectSet) Equals(other ObjectSet) bool {
 	switch {
 	case o.ByOID != nil:
 		return other.ByOID != nil && *o.ByOID == *other.ByOID
-	case o.NameSet != nil:
-		return other.NameSet != nil && o.NameSet.String() == other.NameSet.String()
 	}
 	return false
 }
 
-func (o Object) String() string {
+func (o ObjectSet) String() string {
 	switch {
 	case o.ByOID != nil:
 		return o.ByOID.String()
-	case o.NameSet != nil:
-		return o.NameSet.String()
 	default:
 		return ""
 	}
 }
 
-func ParseObject(x []byte) (Object, error) {
+func ParseObject(x []byte) (ObjectSet, error) {
 	if len(x) == hex.EncodedLen(len(blobcache.OID{})) {
 		oid, err := blobcache.ParseOID(string(x))
 		if err != nil {
-			return Object{}, fmt.Errorf("invalid object: %s", x)
+			return ObjectSet{}, fmt.Errorf("invalid object: %s", x)
 		}
-		return Object{ByOID: &oid}, nil
+		return ObjectSet{ByOID: &oid}, nil
 	}
-	re, err := regexp.Compile(string(x))
-	if err != nil {
-		return Object{}, fmt.Errorf("invalid object: %s", x)
-	}
-	return Object{NameSet: re}, nil
+	return ObjectSet{}, fmt.Errorf("could not parse object set: %s", x)
 }
 
 func ParseAuthzFile(r io.Reader) (ret []Grant, _ error) {
@@ -237,13 +229,27 @@ func WriteAuthzFile(w io.Writer, grants []Grant) error {
 	return bw.Flush()
 }
 
+var _ bclocal.Policy = &Policy{}
+
 type Policy struct {
 	groups map[string][]Identity
 	grants []Grant
 }
 
+func (p *Policy) GrantsFor(peer blobcache.PeerID) iter.Seq[schema.Link] {
+	panic("not implemented")
+}
+
+func (p *Policy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+	return blobcache.Action_ALL
+}
+
+func (p *Policy) CanCreate(peer blobcache.PeerID) bool {
+	return false
+}
+
 type grantKey struct {
-	Object Object
+	Object ObjectSet
 	Verb   Action
 }
 

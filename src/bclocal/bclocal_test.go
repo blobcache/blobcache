@@ -42,7 +42,7 @@ func TestMultiNode(t *testing.T) {
 					continue
 				}
 				peerID := svcs[j].(*Service).node.LocalID()
-				svcs[i].(*Service).env.ACL.Owners = append(svcs[i].(*Service).env.ACL.Owners, peerID)
+				svcs[i].(*Service).env.Policy = &AllOrNothingPolicy{Allow: []blobcache.PeerID{peerID}}
 			}
 		}
 		return svcs
