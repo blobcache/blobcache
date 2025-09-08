@@ -8,18 +8,17 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"os"
 	"slices"
 	"sync"
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
-	"github.com/jmoiron/sqlx"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.brendoncarroll.net/tai64"
 	"go.uber.org/zap"
@@ -36,8 +35,10 @@ const (
 var _ blobcache.Service = &Service{}
 
 type Env struct {
-	PebbleDB *pebble.DB
-	DB       *sqlx.DB
+	// DB is the main database to store metadata in.
+	DB *pebble.DB
+	// BlobDir is the directory to store blobs in.
+	BlobDir *os.Root
 	// PrivateKey determines the node's identity.
 	// It must be provided if PacketConn is set.
 	PrivateKey ed25519.PrivateKey
@@ -52,7 +53,6 @@ type Env struct {
 // Service implements a blobcache.Service.
 type Service struct {
 	env  Env
-	db   *sqlx.DB
 	node *bcnet.Node
 
 	mu      sync.RWMutex
@@ -60,6 +60,8 @@ type Service struct {
 	txns    map[blobcache.OID]transaction
 	// handles stores ephemeral handles.
 	handles map[[32]byte]handle
+
+	localSys localSystem
 }
 
 func New(env Env) *Service {
@@ -67,12 +69,14 @@ func New(env Env) *Service {
 	if env.PacketConn != nil {
 		node = bcnet.New(env.PrivateKey, env.PacketConn)
 	}
+
 	return &Service{
 		env:  env,
-		db:   env.DB,
 		node: node,
 
 		handles: make(map[[32]byte]handle),
+
+		localSys: newLocalSystem(env.DB, env.BlobDir),
 	}
 }
 
@@ -126,11 +130,9 @@ func (s *Service) Cleanup(ctx context.Context) error {
 	s.mu.Unlock()
 
 	keepSlice := slices.Collect(maps.Keys(keep))
-	return dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		// TODO: fix cleanupVolumes
-		return nil
-		return cleanupVolumes(tx, keepSlice)
-	})
+	logctx.Info(ctx, "keeping", zap.Any("keep", keepSlice))
+	// TODO: need to delete volumes, not in keep.
+	return nil
 }
 
 func (s *Service) cleanupLoop(ctx context.Context) {
@@ -233,9 +235,10 @@ func (s *Service) mountAllInContainer(ctx context.Context, sch schema.Container,
 		}
 	}
 	for target := range links {
-		volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
-			return inspectVolume(tx, target)
-		})
+		volInfo, err := inspectVolume(s.env.DB, target)
+		if err != nil {
+			return err
+		}
 		if err != nil {
 			return err
 		}
@@ -260,14 +263,16 @@ func (s *Service) mountRoot(ctx context.Context) error {
 
 	rootOID := blobcache.OID{}
 	allowedLinks := make(map[blobcache.OID]blobcache.ActionSet)
-	volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
+	var volInfo *blobcache.VolumeInfo
+	if err := doRWBatch(s.env.DB, func(ba *pebble.Batch) error {
 		clear(allowedLinks)
-		if err := readVolumeLinks(tx, rootOID, allowedLinks); err != nil {
-			return nil, err
+		if err := readVolumeLinks(ba, rootOID, allowedLinks); err != nil {
+			return err
 		}
-		return ensureRootVolume(tx, s.env.Root)
-	})
-	if err != nil {
+		var err error
+		volInfo, err = ensureRootVolume(ba, s.env.Root)
+		return err
+	}); err != nil {
 		return err
 	}
 
@@ -450,8 +455,8 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 	defer txn.Abort(ctx)
 
 	links := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		return readVolumeLinks(tx, base.OID, links)
+	if err := doSnapshot(s.env.DB, func(sp *pebble.Snapshot) error {
+		return readVolumeLinks(sp, base.OID, links)
 	}); err != nil {
 		return nil, err
 	}
@@ -459,10 +464,13 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 		return nil, blobcache.ErrNoLink{Base: base.OID, Target: x}
 	}
 
+	sp := s.env.DB.NewSnapshot()
+	defer sp.Close()
 	for target := range links {
-		volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
-			return inspectVolume(tx, target)
-		})
+		volInfo, err := inspectVolume(sp, target)
+		if err != nil {
+			return nil, err
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -497,17 +505,17 @@ func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vs
 		VolumeParams: vp,
 		Backend:      blobcache.VolumeBackendToOID(vspec),
 	}
-	volid, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.OID, error) {
-		return createVolume(tx, info)
-	})
-	if err != nil {
+	ba := s.env.DB.NewBatch()
+	defer ba.Close()
+	volid := blobcache.NewOID()
+	if err := putVolume(ba, volid, info); err != nil {
 		return nil, err
 	}
-	info.ID = *volid
-	if err := s.mountVolume(ctx, *volid, info); err != nil {
+	info.ID = volid
+	if err := s.mountVolume(ctx, volid, info); err != nil {
 		return nil, err
 	}
-	handle := s.createEphemeralHandle(*volid, time.Now().Add(DefaultVolumeTTL))
+	handle := s.createEphemeralHandle(volid, time.Now().Add(DefaultVolumeTTL))
 	return &handle, nil
 }
 

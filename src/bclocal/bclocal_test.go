@@ -1,23 +1,18 @@
 package bclocal
 
 import (
+	"encoding/binary"
+	"math/rand/v2"
+	"os"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema/simplens"
 	"github.com/stretchr/testify/require"
+	"lukechampine.com/blake3"
 )
-
-func TestSetupDB(t *testing.T) {
-	ctx := testutil.Context(t)
-	db := dbutil.OpenMemory()
-	if err := SetupDB(ctx, db); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestNewService(t *testing.T) {
 	NewTestService(t)
@@ -81,4 +76,34 @@ func TestDefaultNoAccess(t *testing.T) {
 	names, err := nsc2.ListNames(ctx, *volh)
 	require.Error(t, err)
 	require.Empty(t, names)
+}
+
+func TestUploadDownload(t *testing.T) {
+	blobDir, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	defer blobDir.Close()
+
+	const blobSize = 1 << 18
+	var cids []blobcache.CID
+
+	var buf []byte
+	for i := 0; i < 1024; i++ {
+		buf = buf[:0]
+		rng := rand.NewPCG(uint64(i), uint64(i))
+		for len(buf) < blobSize {
+			buf = binary.LittleEndian.AppendUint64(buf, rng.Uint64())
+		}
+
+		cid := blake3.Sum256(buf)
+		require.NoError(t, uploadBlob(blobDir, cid, buf))
+		cids = append(cids, cid)
+	}
+
+	for _, cid := range cids {
+		n, err := downloadBlob(blobDir, cid, buf)
+		require.NoError(t, err)
+		data := buf[:n]
+		h := blake3.Sum256(data)
+		require.Equal(t, cid, h)
+	}
 }

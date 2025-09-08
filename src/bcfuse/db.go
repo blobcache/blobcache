@@ -3,13 +3,13 @@ package bcfuse
 import (
 	"context"
 
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/migrations"
+	"blobcache.io/blobcache/src/internal/sqlutil"
 	"github.com/jmoiron/sqlx"
 )
 
 func SetupDB(ctx context.Context, db *sqlx.DB) error {
-	return dbutil.DoTx(ctx, db, func(tx *sqlx.Tx) error {
+	return sqlutil.DoTx(ctx, db, func(tx *sqlx.Tx) error {
 		return migrations.EnsureAll(tx, migs)
 	})
 }

@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/sqlutil"
 	"github.com/jmoiron/sqlx"
 	"go.brendoncarroll.net/state/cadata"
 )
@@ -137,7 +137,7 @@ func (fs *FS[K]) PutExtent(ctx context.Context, id K, startAt int64, data []byte
 	defer fs.mu.Unlock()
 
 	endAt := startAt + int64(len(data))
-	return dbutil.DoTx(ctx, fs.db, func(tx *sqlx.Tx) error {
+	return sqlutil.DoTx(ctx, fs.db, func(tx *sqlx.Tx) error {
 		// Remove overlapping extents
 		_, err := tx.Exec(`
 			DELETE FROM extents 
@@ -228,7 +228,7 @@ func (fs *FS[K]) getAllExtents(ctx context.Context) ([]Extent[K], error) {
 
 // clearExtents removes all extents from the database
 func (fs *FS[K]) clearExtents(ctx context.Context) error {
-	return dbutil.DoTx(ctx, fs.db, func(tx *sqlx.Tx) error {
+	return sqlutil.DoTx(ctx, fs.db, func(tx *sqlx.Tx) error {
 		_, err := tx.Exec("DELETE FROM extents")
 		return err
 	})

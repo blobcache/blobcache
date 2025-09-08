@@ -2,92 +2,121 @@ package bclocal
 
 import (
 	"context"
-	"database/sql"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"slices"
 	"sync"
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/sqlutil"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
+	"github.com/cockroachdb/pebble"
 	"github.com/jmoiron/sqlx"
+	"github.com/owlmessenger/owl/pkg/dbutil"
+	"go.brendoncarroll.net/state/cadata"
 )
 
-// LocalVolumeID uniquely identifies a local volume.
-type LocalVolumeID int64
+// MVCCID is used to order transactions on volumes.
+type MVCCID uint64
 
-// LocalTxnID uniquely identifies a transaction on a local volume.
-// It is the rowid of the local_txns table.
-type LocalTxnID int64
+// localSystem manages the local volumes and transactions on those volumes.
+type localSystem struct {
+	db      *pebble.DB
+	blobDir *os.Root
 
-// localVolumeRow is a row in the local_volumes table.
-type localVolumeRow struct {
-	// RowID is the primary key.
-	// Do not set this in calls to insertLocalVolume.
-	RowID LocalVolumeID `db:"rowid"`
-	OID   blobcache.OID `db:"oid"`
-	// Base is the transaction_id below which all transactions have been successfully applied.
-	Base LocalTxnID `db:"base"`
+	// volumes prevents concurrent operations on:
+	// txns allows a transaction to be locked.
+	txns mapOfLocks[blobcache.OID]
+	// blobs prevents concurrent operations on blobs
+	blobs mapOfLocks[blobcache.CID]
 }
 
-// createLocalVolume creates a new local volume.
-func createLocalVolume(tx *sqlx.Tx, oid blobcache.OID) (LocalVolumeID, error) {
-	var ret LocalVolumeID
-	if err := tx.Get(&ret, `INSERT INTO local_volumes (oid) VALUES (?) RETURNING rowid`, oid); err != nil {
-		return 0, err
+func newLocalSystem(db *pebble.DB, blobDir *os.Root) localSystem {
+	return localSystem{
+		db:      db,
+		blobDir: blobDir,
 	}
-	// insert an empty root for the volume.
-	if _, err := tx.Exec(`INSERT INTO local_vol_roots (vol_id, txn_id, root) VALUES (?, ?, ?)`, ret, 0, []byte{}); err != nil {
-		return 0, err
-	}
-	return ret, nil
 }
 
-// dropLocalVolume deletes a local volume.
-func dropLocalVolume(tx *sqlx.Tx, oid blobcache.OID) error {
-	_, err := tx.Exec(`DELETE FROM local_volumes WHERE oid = ?`, oid)
+func (s *localSystem) beginTx(ctx context.Context, volID blobcache.OID) (*localTxn, error) {
+	ba := s.db.NewBatch()
+	defer ba.Close()
+	ve, err := getVolume(ba, volID)
 	if err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM local_vol_roots WHERE vol_id = ?`, oid); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM local_volume_blobs WHERE vol_id = ?`, oid); err != nil {
-		return err
-	}
-	return dropVolume(tx, oid)
-}
-
-func getLocalVolumeByOID(tx *sqlx.Tx, oid blobcache.OID) (*localVolumeRow, error) {
-	var ret localVolumeRow
-	if err := tx.Get(&ret, "SELECT rowid, oid, base FROM local_volumes WHERE oid = ?", oid); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, blobcache.ErrNotFound{ID: oid}
-		}
 		return nil, err
 	}
-	return &ret, nil
+	if ve == nil {
+		return nil, blobcache.ErrNotFound{ID: volID}
+	}
+	putLocalTxn(ba, ve.RowID, false)
+	txnid, err := createLocalTxn(ba, ve.RowID, false)
+	if err != nil {
+		return nil, err
+	}
+	volInfo, err := inspectVolume(ba, volID)
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
 
-// localTxnRow is a row in the local_txns table.
-type localTxnRow struct {
-	RowID  LocalTxnID    `db:"rowid"`
-	Base   LocalTxnID    `db:"base"`
-	VolID  LocalVolumeID `db:"volume"`
-	Mutate bool          `db:"mutate"`
+// postBlob adds a blob to a local volume.
+func (s *localSystem) postBlob(volID blobcache.OID, mvid MVCCID, cid blobcache.CID, salt *blobcache.CID, data []byte) error {
+	if exists, err := blobExists(s.db, volID, cid); err != nil {
+		return err
+	} else if exists {
+		return nil
+	}
+
+	ba := s.db.NewIndexedBatch()
+	defer ba.Close()
+
+	// add the blob if necessary.
+	if yes, err := haveBlobMeta(ba, cid); err != nil {
+		return err
+	} else if !yes {
+		flags := uint8(0)
+		if salt != nil {
+			flags |= 1 << 0
+		}
+		if err := putBlobMeta(ba, blobMeta{
+			cid: cid,
+
+			flags:    flags,
+			size:     uint32(len(data)),
+			refCount: 1,
+			salt:     salt,
+		}); err != nil {
+			return err
+		}
+		if err := putBlobData(ba, cid, data); err != nil {
+			return err
+		}
+	}
+
+	// add the blob to the volume.
+
+	return ba.Commit(nil)
 }
 
-func volumeHasMutatingTx(tx *sqlx.Tx, volID LocalVolumeID) (bool, error) {
-	var ret bool
-	if err := tx.Get(&ret, `SELECT EXISTS (
-		SELECT 1 FROM local_txns
-		WHERE volume = ? AND mutate = TRUE
-	)`, volID); err != nil {
+// dropVolume removes all state associated with a volume.
+func (s *localSystem) dropVolume(ctx context.Context, volID blobcache.OID) error {
+	ba := s.db.NewIndexedBatch()
+	defer ba.Close()
+	return ba.Commit(nil)
+}
+
+func blobExists(db dbReading, volID blobcache.OID, mvc MVCCID, cid blobcache.CID) (bool, error) {
+	k := tableKey(nil, tid_LOCAL_VOLUME_BLOBS, slices.Concat(volID[:], cid[:], binary.BigEndian.AppendUint64(nil, uint64(mvc))))
+	_, closer, err := db.Get(k)
+	if err != nil {
 		return false, err
 	}
-	return ret, nil
+	defer closer.Close()
+	return true, nil
 }
 
 var _ volumes.Volume = &localVolume{}
@@ -117,7 +146,7 @@ func (v *localVolume) BeginTx(ctx context.Context, spec blobcache.TxParams) (vol
 	var ltxid *LocalTxnID
 	for {
 		var err error
-		if err = dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
+		if err = sqlutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 			volRow, err := getLocalVolumeByOID(tx, v.oid)
 			if err != nil {
 				return err
@@ -200,20 +229,23 @@ func txnLoadRoot(tx *sqlx.Tx, volID LocalVolumeID, baseTxid, txid LocalTxnID, ds
 }
 
 // txnSetRoot sets the root of a local volume.
-func txnSetRoot(tx *sqlx.Tx, volID LocalVolumeID, txid LocalTxnID, root []byte) error {
+func txnSetRoot(ba *pebble.Batch, volID blobcache.OID, txid MVCCID, root []byte) error {
 	if root == nil {
 		root = []byte{}
 	}
-	if _, err := tx.Exec(`INSERT INTO local_vol_roots (vol_id, txn_id, root) VALUES (?, ?, ?)`, volID, txid, root); err != nil {
+	k := tableKey(nil, tid_LOCAL_VOLUME_CELLS, append(volID[:], txid[:]...))
+	rootBuf := binary.LittleEndian.AppendUint64(nil, uint64(len(root)))
+	rootBuf = append(rootBuf, root...)
+	if err := ba.Set(k, rootBuf, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
 // putVolumeLinks puts the volume links into the database.
-func putVolumeLinks(tx *sqlx.Tx, volID blobcache.OID, m map[blobcache.OID]blobcache.ActionSet) error {
+func putVolumeLinks(ba *pebble.Batch, volID blobcache.OID, m map[blobcache.OID]blobcache.ActionSet) error {
 	for target, rights := range m {
-		if err := putVolumeLink(tx, volID, target, rights); err != nil {
+		if err := putVolumeLink(ba, volID, target, rights); err != nil {
 			return err
 		}
 	}
@@ -221,30 +253,48 @@ func putVolumeLinks(tx *sqlx.Tx, volID blobcache.OID, m map[blobcache.OID]blobca
 }
 
 // putVolumeLink puts a single volume link into the database.
-func putVolumeLink(tx *sqlx.Tx, fromID blobcache.OID, toID blobcache.OID, rights blobcache.ActionSet) error {
+func putVolumeLink(ba *pebble.Batch, fromID blobcache.OID, toID blobcache.OID, rights blobcache.ActionSet) error {
+	k := tableKey(nil, tid_VOLUME_LINKS, append(fromID[:], toID[:]...))
 	rightsBuf := binary.LittleEndian.AppendUint64(nil, uint64(rights))
-	if _, err := tx.Exec(`INSERT INTO volume_links (from_id, to_id, rights) VALUES (?, ?, ?) ON CONFLICT (from_id, to_id) DO UPDATE SET rights = ?`, fromID, toID, rightsBuf, rightsBuf); err != nil {
-		return err
+	return ba.Set(k, rightsBuf, nil)
+}
+
+// parseVolumeLink parses an entry from the VOLUME_LINKS table.
+func parseVolumeLink(k, v []byte) (blobcache.OID, schema.Link, error) {
+	if len(k) < 4 {
+		return blobcache.OID{}, schema.Link{}, fmt.Errorf("volume link key too short: %d", len(k))
 	}
-	return nil
+	k = k[4:]
+	if len(k) < 2*blobcache.OIDSize {
+		return blobcache.OID{}, schema.Link{}, fmt.Errorf("volume link key too short: %d", len(k))
+	}
+	fromID := blobcache.OID(k[:blobcache.OIDSize])
+	toID := blobcache.OID(k[blobcache.OIDSize:])
+	return fromID, schema.Link{
+		Target: toID,
+		Rights: blobcache.ActionSet(binary.LittleEndian.Uint64(v)),
+	}, nil
 }
 
 // readVolumeLinks reads the volume links from volID into dst.
-func readVolumeLinks(tx *sqlx.Tx, volID blobcache.OID, dst map[blobcache.OID]blobcache.ActionSet) error {
-	rows, err := tx.Queryx(`SELECT to_id, rights FROM volume_links WHERE from_id = ?`, volID)
+func readVolumeLinks(sp dbReading, fromVolID blobcache.OID, dst map[blobcache.OID]blobcache.ActionSet) error {
+	iter, err := sp.NewIter(&pebble.IterOptions{
+		LowerBound: tableKey(nil, tid_VOLUME_LINKS, fromVolID[:]),
+		UpperBound: tableKey(nil, tid_VOLUME_LINKS, append(fromVolID[:], 0)),
+	})
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var target blobcache.OID
-		var rights blobcache.ActionSet
-		if err := rows.Scan(&target, &rights); err != nil {
+	defer iter.Close()
+
+	for iter.Next() {
+		volLink, err := parseVolumeLink(iter.Key(), iter.Value())
+		if err != nil {
 			return err
 		}
-		dst[target] = rights
+		dst[volLink.Target] = volLink.Rights
 	}
-	return rows.Err()
+	return nil
 }
 
 // txnCommit commits a transaction.
@@ -277,7 +327,7 @@ type localTxn struct {
 // It does not change the database state.
 // the caller should have already created the transaction at txid, and volInfo.
 func newLocalTxn(ctx context.Context, s *Service, txid LocalTxnID, volInfo *blobcache.VolumeInfo) (*localTxn, error) {
-	txRow, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*localTxnRow, error) {
+	txRow, err := sqlutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*localTxnRow, error) {
 		return getLocalTxn(tx, txid)
 	})
 	if err != nil {
@@ -322,7 +372,7 @@ func (v *localTxn) Commit(ctx context.Context) error {
 		}
 	}
 
-	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
+	return sqlutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 		if err := putVolumeLinks(tx, v.volInfo.ID, links); err != nil {
 			return err
 		}
@@ -338,7 +388,7 @@ func (v *localTxn) Commit(ctx context.Context) error {
 }
 
 func (v *localTxn) Abort(ctx context.Context) error {
-	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
+	return sqlutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 		return dropLocalTxn(tx, v.localTxnRow.RowID)
 	})
 }
@@ -360,7 +410,7 @@ func (v *localTxn) Save(ctx context.Context, root []byte) error {
 }
 
 func (v *localTxn) Load(ctx context.Context, dst *[]byte) error {
-	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
+	return sqlutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
 		return txnLoadRoot(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, dst)
 	})
 }
@@ -380,7 +430,7 @@ func (v *localTxn) Post(ctx context.Context, salt *blobcache.CID, data []byte) (
 	if salt != nil && !v.volInfo.Salted {
 		return blobcache.CID{}, blobcache.ErrCannotSalt{}
 	}
-	cid, err := dbutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (*blobcache.CID, error) {
+	cid, err := sqlutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (*blobcache.CID, error) {
 		cid := v.Hash(salt, data)
 		if err := ensureBlob(tx, cid, nil, data); err != nil {
 			return nil, err
@@ -397,7 +447,7 @@ func (v *localTxn) Post(ctx context.Context, salt *blobcache.CID, data []byte) (
 }
 
 func (v *localTxn) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
-	return dbutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (int, error) {
+	return sqlutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (int, error) {
 		return readBlob(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, cid, buf)
 	})
 }
@@ -453,3 +503,100 @@ func (v *localTxn) AllowLink(ctx context.Context, subvol blobcache.Handle) error
 	v.allowedLinks[link.Target] |= link.Rights
 	return nil
 }
+
+var _ volumes.Tx = &localTxnRO{}
+
+// localTxnRO is a read-only transaction on a local volume.
+type localTxnRO struct {
+	sys         *localSystem
+	localTxnRow localTxnRow
+	volInfo     blobcache.VolumeInfo
+	sp          *pebble.Snapshot
+}
+
+func (v *localTxnRO) Abort(ctx context.Context) error {
+	return v.sp.Close()
+}
+
+func (v *localTxnRO) Commit(ctx context.Context) error {
+	return blobcache.ErrTxReadOnly{}
+}
+
+func (v *localTxnRO) Load(ctx context.Context, dst *[]byte) error {
+	iter, err := v.sp.NewIter(&pebble.IterOptions{
+		LowerBound: tableKey(nil, tid_LOCAL_VOLUME_CELLS, v.volInfo.ID[:]),
+		UpperBound: tableKey(nil, tid_LOCAL_VOLUME_CELLS, slices.Concat(v.volInfo.ID[:], maxMVCCID[:])),
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+	if iter.Last() {
+		*dst = append((*dst)[:0], iter.Value()...)
+	}
+	return nil
+}
+
+func (v *localTxnRO) Save(ctx context.Context, root []byte) error {
+	return blobcache.ErrTxReadOnly{Op: "Save"}
+}
+
+func (v *localTxnRO) Delete(ctx context.Context, cid blobcache.CID) error {
+	return blobcache.ErrTxReadOnly{Op: "Delete"}
+}
+
+func (v *localTxnRO) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+	return blobcache.CID{}, blobcache.ErrTxReadOnly{Op: "Post"}
+}
+
+func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+	if ok, err := v.Exists(ctx, cid); err != nil {
+		return 0, err
+	} else if !ok {
+		return 0, cadata.ErrNotFound{Key: cid}
+	}
+
+}
+
+func (v *localTxnRO) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
+	iter, err := v.sp.NewIter(&pebble.IterOptions{
+		LowerBound: tableKey(nil, tid_LOCAL_VOLUME_CELLS, slices.Concat(v.volInfo.ID[:], cid[:])),
+		UpperBound: tableKey(nil, tid_LOCAL_VOLUME_CELLS, slices.Concat(v.volInfo.ID[:], cid[:], maxMVCCID[:])),
+	})
+	if err != nil {
+		return false, err
+	}
+	defer iter.Close()
+	if iter.Last() {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (v *localTxnRO) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
+	return blobcache.ErrTxReadOnly{Op: "AllowLink"}
+}
+
+func (v *localTxnRO) MaxSize() int {
+	return int(v.volInfo.MaxSize)
+}
+
+func (v *localTxnRO) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+	return v.volInfo.HashAlgo.HashFunc()(salt, data)
+}
+
+func (v *localTxnRO) Info() blobcache.VolumeInfo {
+	return v.volInfo
+}
+
+func (v *localTxnRO) Volume() volumes.Volume {
+	return newLocalVolume(v.sys, v.volInfo.ID)
+}
+
+var maxMVCCID [8]byte = func() [8]byte {
+	var ret [8]byte
+	for i := range ret {
+		ret[i] = 0xff
+	}
+	return ret
+}()

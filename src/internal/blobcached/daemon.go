@@ -12,10 +12,9 @@ import (
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/ed25519"
-	"github.com/jmoiron/sqlx"
+	"github.com/cockroachdb/pebble"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
@@ -33,7 +32,7 @@ var pki = inet256.PKI{
 // If the context is cancelled, Run returns nil.  Run returns an error if it returns for any other reason.
 func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.Listener) error {
 	d := Daemon{StateDir: stateDir}
-	db, err := d.GetDB()
+	db, err := pebble.Open(filepath.Join(stateDir, "pebble"), &pebble.Options{})
 	if err != nil {
 		return err
 	}
@@ -88,14 +87,10 @@ type Daemon struct {
 }
 
 // GetDB opens the database file, runs any migrations, and returns the database.
-func (d *Daemon) GetDB() (*sqlx.DB, error) {
-	dbPath := filepath.Join(d.StateDir, "blobcache.db")
-	db, err := dbutil.OpenDB(dbPath)
+func (d *Daemon) GetDB() (*pebble.DB, error) {
+	dbPath := filepath.Join(d.StateDir, "pebble")
+	db, err := pebble.Open(dbPath, &pebble.Options{})
 	if err != nil {
-		return nil, err
-	}
-	if err := bclocal.SetupDB(context.Background(), db); err != nil {
-		db.Close()
 		return nil, err
 	}
 	return db, nil

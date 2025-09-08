@@ -1,42 +1,75 @@
 package bclocal
 
 import (
-	"context"
-	"time"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"slices"
 
-	"blobcache.io/blobcache/src/bclocal/internal/dbmig"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
-	"blobcache.io/blobcache/src/internal/migrations"
-	"github.com/jmoiron/sqlx"
+	"github.com/cockroachdb/pebble"
 )
 
-// SetupDB idempotently applies all migrations to the database.
-func SetupDB(ctx context.Context, db *sqlx.DB) error {
-	migs := dbmig.ListMigrations()
-	return dbutil.DoTx(ctx, db, func(tx *sqlx.Tx) error {
-		return migrations.EnsureAll(tx, migs)
-	})
+type tableID uint32
+
+// tableKey appends a tableID to out, followed by key.
+func tableKey(out []byte, tid tableID, key []byte) []byte {
+	out = binary.BigEndian.AppendUint32(out, uint32(tid))
+	out = append(out, key...)
+	return out
 }
 
-func createObject(tx *sqlx.Tx) (*blobcache.OID, error) {
-	oid := blobcache.NewOID()
-	return &oid, insertObject(tx, oid, time.Now())
+func splitTableID(key []byte) (tableID, []byte, error) {
+	if len(key) < 4 {
+		return 0, nil, fmt.Errorf("key is too short to contain tableID")
+	}
+	return tableID(binary.BigEndian.Uint32(key[:4])), key[4:], nil
 }
 
-func insertObject(tx *sqlx.Tx, oid blobcache.OID, createdAt time.Time) error {
-	_, err := tx.Exec("INSERT INTO objects (id, created_at) VALUES (?, ?)", oid, createdAt.Unix())
-	if err != nil {
+const (
+	tid_UNKNOWN = tableID(iota)
+
+	tid_BLOB_DATA
+	tid_BLOB_META
+	tid_VOLUMES
+	tid_LOCAL_TXNS
+	tid_LOCAL_VOLUME_CELLS
+	tid_LOCAL_VOLUME_BLOBS
+	tid_VOLUME_LINKS
+	tid_VOLUME_LINKS_INV
+)
+
+type dbReading interface {
+	Get(k []byte) (v []byte, closer io.Closer, err error)
+	NewIter(opts *pebble.IterOptions) (*pebble.Iterator, error)
+}
+
+type dbWriting interface {
+	Set(k, v []byte, opts *pebble.WriteOptions) error
+}
+
+var _ dbReading = (*pebble.Snapshot)(nil)
+
+func doSnapshot(db *pebble.DB, fn func(*pebble.Snapshot) error) error {
+	sn := db.NewSnapshot()
+	defer sn.Close()
+	return fn(sn)
+}
+
+// doRWBatch creates an indexed batch and calls fn with it.
+// if fn returns nil, the batch is committed.
+func doRWBatch(db *pebble.DB, fn func(*pebble.Batch) error) error {
+	ba := db.NewIndexedBatch()
+	defer ba.Close()
+	if err := fn(ba); err != nil {
 		return err
 	}
-	return nil
+	return ba.Commit(pebble.Sync)
 }
 
-func dropObject(tx *sqlx.Tx, oid blobcache.OID) error {
-	// drop the object
-	_, err := tx.Exec("DELETE FROM objects WHERE id = ?", oid)
-	if err != nil {
-		return err
-	}
-	return nil
+func volumeBlobKey(volID blobcache.OID, cid blobcache.CID, mvc MVCCID) []byte {
+	return tableKey(nil,
+		tid_LOCAL_VOLUME_BLOBS,
+		slices.Concat(volID[:], cid[:], binary.BigEndian.AppendUint64(nil, uint64(mvc))),
+	)
 }

@@ -5,7 +5,7 @@ import (
 
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/sqlutil"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ func TestNewFS(t *testing.T) {
 
 func newFS(t testing.TB) *FS[string] {
 	ctx := testutil.Context(t)
-	db := dbutil.OpenMemory()
+	db := sqlutil.OpenMemory()
 	require.NoError(t, SetupDB(ctx, db))
 	svc := bclocal.NewTestService(t)
 	volh, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())

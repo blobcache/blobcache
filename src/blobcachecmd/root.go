@@ -4,15 +4,16 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"os"
 	"path/filepath"
 	"testing"
 
 	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema/simplens"
+	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
 )
@@ -98,18 +99,22 @@ var nameParam = star.Param[string]{
 }
 
 func openLocal(c star.Context) (*bclocal.Service, func(), error) {
-	db, err := dbutil.OpenDB(filepath.Join(stateDirParam.Load(c), "blobcache.db"))
+	db, err := pebble.Open(filepath.Join(stateDirParam.Load(c), "pebble"), &pebble.Options{})
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := bclocal.SetupDB(c, db); err != nil {
+	blobDir, err := os.OpenRoot(filepath.Join(stateDirParam.Load(c), "blob"))
+	if err != nil {
 		return nil, nil, err
 	}
 	close := func() {
 		db.Close()
+		blobDir.Close()
 	}
 	return bclocal.New(bclocal.Env{
 		DB:      db,
+		BlobDir: blobDir,
+
 		Schemas: bclocal.DefaultSchemas(),
 		Root:    bclocal.DefaultRoot(),
 	}), close, nil

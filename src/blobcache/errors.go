@@ -77,11 +77,12 @@ func (e ErrBadData) Error() string {
 	return fmt.Sprintf("bad data: salt=%v, expected %s, actual %s, len=%d", e.Salt, e.Expected, e.Actual, e.Len)
 }
 
-// ErrTxReadOnly is returned when a transaction is read-only, and the caller calls Commit.
+// ErrTxReadOnly is returned when a transaction is read-only, and the caller calls a mutating method.
 type ErrTxReadOnly struct {
 	Tx OID
+	Op string
 }
 
 func (e ErrTxReadOnly) Error() string {
-	return fmt.Sprintf("transaction %v is read-only", e.Tx)
+	return fmt.Sprintf("transaction %v is read-only, cannot perform %v", e.Tx, e.Op)
 }

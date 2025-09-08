@@ -1,12 +1,11 @@
 package bclocal
 
 import (
-	"log"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/simplecont"
@@ -21,14 +20,9 @@ func NewTestService(t testing.TB) *Service {
 	ctx := testutil.Context(t)
 	stateDir := t.TempDir()
 
-	dbPath := filepath.Join(stateDir, "blobcache.db")
-	sqlDB, err := dbutil.OpenDB(dbPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	require.NoError(t, SetupDB(ctx, sqlDB))
-
 	pebbleDB, err := pebble.Open(filepath.Join(stateDir, "pebble"), &pebble.Options{})
+	require.NoError(t, err)
+	blobDir, err := os.OpenRoot(filepath.Join(stateDir, "blob"))
 	require.NoError(t, err)
 
 	_, privateKey, err := ed25519.GenerateKey(nil)
@@ -36,8 +30,8 @@ func NewTestService(t testing.TB) *Service {
 	svc := New(Env{
 		PrivateKey: privateKey,
 		PacketConn: testutil.PacketConn(t),
-		DB:         sqlDB,
-		PebbleDB:   pebbleDB,
+		DB:         pebbleDB,
+		BlobDir:    blobDir,
 		Schemas:    DefaultSchemas(),
 		Root:       DefaultRoot(),
 	})
