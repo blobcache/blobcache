@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"fmt"
+	"sync"
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -266,6 +268,7 @@ type localTxn struct {
 	volInfo     blobcache.VolumeInfo
 	schema      schema.Schema
 
+	mu           sync.Mutex
 	allowedLinks map[blobcache.OID]blobcache.ActionSet
 	root         []byte
 }
@@ -297,6 +300,8 @@ func (v *localTxn) Volume() volumes.Volume {
 }
 
 func (v *localTxn) Commit(ctx context.Context) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	if !v.localTxnRow.Mutate {
 		return blobcache.ErrTxReadOnly{}
 	}
@@ -342,6 +347,8 @@ func (v *localTxn) Save(ctx context.Context, root []byte) error {
 	if !v.localTxnRow.Mutate {
 		return blobcache.ErrTxReadOnly{}
 	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	if root == nil {
 		// This is to distinguish between a:
 		//  - nil root (Save not called)
@@ -423,10 +430,15 @@ func (v *localTxn) AllowLink(ctx context.Context, subvol blobcache.Handle) error
 	if !v.localTxnRow.Mutate {
 		return blobcache.ErrTxReadOnly{}
 	}
+	if _, ok := v.schema.(schema.Container); !ok {
+		return fmt.Errorf("schema %T for volume %s is not a container", v.schema, v.volInfo.ID)
+	}
 	link, err := v.s.handleToLink(subvol)
 	if err != nil {
 		return err
 	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	if v.allowedLinks == nil {
 		v.allowedLinks = make(map[blobcache.OID]blobcache.ActionSet)
 	}

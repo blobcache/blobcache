@@ -62,7 +62,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		_, err = nsc.OpenAt(ctx, *nsh, "test-name", blobcache.Action_ALL)
 		require.NoError(t, err)
 	})
-	t.Run("Namespace", func(t *testing.T) {
+	t.Run("SimpleNS", func(t *testing.T) {
 		SimpleNS(t, mk)
 	})
 	t.Run("HashAlgo", func(t *testing.T) {
@@ -243,6 +243,32 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.False(t, len(data) == len(blobcache.CID{}))
 		require.Error(t, s.Save(ctx, *txh, data))
 		require.NoError(t, s.Commit(ctx, *txh)) // could also abort here. Save failed so volume should be unchanged.
+	})
+	t.Run("Nested", func(t *testing.T) {
+		t.Parallel()
+		ctx := testutil.Context(t)
+		s := mk(t)
+		// Open the root namespace
+		nsc := simplens.Client{Service: s}
+		rootNSh, err := s.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+
+		// Create 10 nested namespaces.
+		ns1h := *rootNSh
+		for i := 0; i < 10; i++ {
+			subNSSpec := defaultLocalSpec()
+			subNSSpec.Local.Schema = blobcache.Schema_SimpleNS
+			ns2h, err := nsc.CreateAt(ctx, ns1h, "nested", subNSSpec)
+			require.NoError(t, err)
+			ns1h = *ns2h
+		}
+
+		ns1h = *rootNSh
+		for i := 0; i < 10; i++ {
+			ns2h, err := nsc.OpenAt(ctx, ns1h, "nested", blobcache.Action_ALL)
+			require.NoError(t, err)
+			ns1h = *ns2h
+		}
 	})
 }
 

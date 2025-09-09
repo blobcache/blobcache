@@ -26,6 +26,7 @@ func createVolume(tx *sqlx.Tx, info blobcache.VolumeInfo) (*blobcache.OID, error
 		HashAlgo: string(info.HashAlgo),
 		MaxSize:  info.MaxSize,
 		Backend:  backendJSON,
+		Schema:   string(info.Schema),
 		Salted:   info.Salted,
 	}
 	if err := insertVolume(tx, row); err != nil {
