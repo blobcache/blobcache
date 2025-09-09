@@ -664,6 +664,20 @@ func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cid blobcach
 	return txn.backend.Delete(ctx, cid)
 }
 
+func (s *Service) AddFrom(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle) ([]bool, error) {
+	_, err := s.resolveTx(txh, true)
+	if err != nil {
+		return nil, err
+	}
+	// for now, we just return false for all cids.
+	// This is an allowed behavior, the caller can always fallback to Post.
+	ret := make([]bool, len(cids))
+	for i := range cids {
+		ret[i] = false
+	}
+	return ret, nil
+}
+
 func (s *Service) AllowLink(ctx context.Context, txh blobcache.Handle, subvolh blobcache.Handle) error {
 	txn, err := s.resolveTx(txh, true)
 	if err != nil {

@@ -295,6 +295,9 @@ type Service interface {
 	Delete(ctx context.Context, tx Handle, cid CID) error
 	// Get returns the data for a CID.
 	Get(ctx context.Context, tx Handle, cid CID, salt *CID, buf []byte) (int, error)
+	// AddFrom has the same effect as Post, but it does not require sending the data to Blobcache.
+	// It returns a slice of booleans, indicating if the CID could be added.
+	AddFrom(ctx context.Context, tx Handle, cids []CID, srcTxns []Handle) ([]bool, error)
 	// AllowLink allows the Volume to reference another volume.
 	// The volume must still have a recognized Container Schema for the volumes to be persisted.
 	AllowLink(ctx context.Context, tx Handle, subvol Handle) error

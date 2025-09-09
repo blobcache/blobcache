@@ -139,6 +139,15 @@ type GetReq struct {
 	Salt *blobcache.CID `json:"salt,omitempty"`
 }
 
+type AddFromReq struct {
+	CIDs []blobcache.CID    `json:"cids"`
+	Srcs []blobcache.Handle `json:"srcs"`
+}
+
+type AddFromResp struct {
+	Added []bool `json:"added"`
+}
+
 // Miscellaneous messages.
 
 type EndpointReq struct{}

@@ -225,6 +225,15 @@ func (c *Client) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blob
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AllowLink", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
+func (c *Client) AddFrom(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcs []blobcache.Handle) ([]bool, error) {
+	req := AddFromReq{CIDs: cids, Srcs: srcs}
+	var resp AddFromResp
+	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AddFrom", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Added, nil
+}
+
 func (c *Client) mkTxURL(tx blobcache.Handle, method string) string {
 	return fmt.Sprintf("/tx/%s.%s", tx.OID.String(), method)
 }
