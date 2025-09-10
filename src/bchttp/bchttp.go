@@ -67,6 +67,16 @@ type CreateVolumeResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
+type CloneVolumeReq struct {
+	// Volume is the handle to the volume to clone.
+	Volume blobcache.Handle `json:"volume"`
+}
+
+type CloneVolumeResp struct {
+	// Clone is the handle to the cloned volume.
+	Clone blobcache.Handle `json:"clone"`
+}
+
 type BeginTxReq struct {
 	Volume blobcache.Handle   `json:"volume"`
 	Params blobcache.TxParams `json:"params"`

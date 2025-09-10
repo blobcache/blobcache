@@ -85,6 +85,15 @@ func (c *Client) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vsp
 	return &resp.Handle, nil
 }
 
+func (c *Client) CloneVolume(ctx context.Context, caller *blobcache.PeerID, vol blobcache.Handle) (*blobcache.Handle, error) {
+	req := CloneVolumeReq{Volume: vol}
+	var resp CloneVolumeResp
+	if err := c.doJSON(ctx, "POST", "/volume/Clone", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Clone, nil
+}
+
 func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
 	p := fmt.Sprintf("/volume/%s.Inspect", h.OID.String())
 	headers := map[string]string{

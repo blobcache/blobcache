@@ -272,6 +272,8 @@ type Service interface {
 	Await(ctx context.Context, cond Conditions) error
 	// BeginTx begins a new transaction, on a Volume.
 	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
+	// CloneVolume clones a Volume, copying it's configuration, blobs, and cell data.
+	CloneVolume(ctx context.Context, caller *PeerID, volh Handle) (*Handle, error)
 
 	////
 	// Transactions methods.

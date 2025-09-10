@@ -511,6 +511,35 @@ func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vs
 	return &handle, nil
 }
 
+func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+	vol, _, err := s.resolveVol(volh)
+	if err != nil {
+		return nil, err
+	}
+	if vol.info.Backend.Local == nil {
+		return nil, fmt.Errorf("only local volumes can be cloned")
+	}
+
+	newInfo := vol.info
+	var newID *blobcache.OID
+	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
+		var err error
+		newID, err = createVolume(tx, newInfo)
+		if err != nil {
+			return err
+		}
+		// copy over all the blobs from the original volume.
+		_, err = tx.Exec(`INSERT INTO volume_blobs (vol_id, cid, txn_id)
+		    SELECT ?, cid, txn_id FROM volume_blobs WHERE vol_id = ?
+		`, *newID, vol.info.ID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	newVol := s.createEphemeralHandle(*newID, time.Now().Add(DefaultVolumeTTL))
+	return &newVol, nil
+}
+
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
 	vol, _, err := s.resolveVol(h)
 	if err != nil {
