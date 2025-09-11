@@ -133,19 +133,23 @@ func (v *VaultTx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CI
 	return v.crypto.Get(ctx, UnsaltedStore{v.inner}, ref, buf)
 }
 
-func (v *VaultTx) Delete(ctx context.Context, cid blobcache.CID) error {
-	if ref, exists := v.blobs[cid]; exists {
-		v.inner.Delete(ctx, ref.CID)
+func (v *VaultTx) Delete(ctx context.Context, cids []blobcache.CID) error {
+	var innerCIDs []blobcache.CID
+	for _, cid := range cids {
+		if ref, exists := v.blobs[cid]; exists {
+			innerCIDs = append(innerCIDs, ref.CID)
+		}
 	}
-	v.blobs[cid] = bccrypto.Ref{}
-	return nil
+	return v.inner.Delete(ctx, innerCIDs)
 }
 
-func (v *VaultTx) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
-	if ref, exists := v.blobs[cid]; exists {
-		return !ref.IsZero(), nil
+func (v *VaultTx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	for i := range cids {
+		if ref, exists := v.blobs[cids[i]]; exists {
+			dst[i] = !ref.IsZero()
+		}
 	}
-	return v.inner.Exists(ctx, cid)
+	return nil
 }
 
 func (v *VaultTx) MaxSize() int {
@@ -178,11 +182,15 @@ func (v UnsaltedStore) Get(ctx context.Context, cid blobcache.CID, buf []byte) (
 }
 
 func (v UnsaltedStore) Delete(ctx context.Context, cid blobcache.CID) error {
-	return v.inner.Delete(ctx, cid)
+	return v.inner.Delete(ctx, []blobcache.CID{cid})
 }
 
 func (v UnsaltedStore) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
-	return v.inner.Exists(ctx, cid)
+	dst := [1]bool{}
+	if err := v.inner.Exists(ctx, []blobcache.CID{cid}, dst[:]); err != nil {
+		return false, err
+	}
+	return dst[0], nil
 }
 
 func (v UnsaltedStore) MaxSize() int {

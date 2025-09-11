@@ -669,12 +669,15 @@ func (s *Service) Post(ctx context.Context, txh blobcache.Handle, salt *blobcach
 	return txn.backend.Post(ctx, salt, data)
 }
 
-func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cid blobcache.CID) (bool, error) {
+func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	if len(cids) != len(dst) {
+		return fmt.Errorf("cids and dst must have the same length")
+	}
 	txn, err := s.resolveTx(txh, true)
 	if err != nil {
-		return false, err
+		return err
 	}
-	return txn.backend.Exists(ctx, cid)
+	return txn.backend.Exists(ctx, cids, dst)
 }
 
 func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
@@ -685,18 +688,21 @@ func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.C
 	return txn.backend.Get(ctx, cid, salt, buf)
 }
 
-func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cid blobcache.CID) error {
+func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
 	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return err
 	}
-	return txn.backend.Delete(ctx, cid)
+	return txn.backend.Delete(ctx, cids)
 }
 
-func (s *Service) AddFrom(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle) ([]bool, error) {
+func (s *Service) AddFrom(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, out []bool) error {
+	if len(cids) != len(out) {
+		return fmt.Errorf("cids and out must have the same length")
+	}
 	_, err := s.resolveTx(txh, true)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// for now, we just return false for all cids.
 	// This is an allowed behavior, the caller can always fallback to Post.
@@ -704,7 +710,7 @@ func (s *Service) AddFrom(ctx context.Context, txh blobcache.Handle, cids []blob
 	for i := range cids {
 		ret[i] = false
 	}
-	return ret, nil
+	return nil
 }
 
 func (s *Service) AllowLink(ctx context.Context, txh blobcache.Handle, subvolh blobcache.Handle) error {
@@ -713,6 +719,25 @@ func (s *Service) AllowLink(ctx context.Context, txh blobcache.Handle, subvolh b
 		return err
 	}
 	return txn.backend.AllowLink(ctx, subvolh)
+}
+
+func (s *Service) Visit(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
+	_, err := s.resolveTx(txh, true)
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("Visit not implemented")
+}
+
+func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	if len(cids) != len(dst) {
+		return fmt.Errorf("cids and out must have the same length")
+	}
+	_, err := s.resolveTx(txh, true)
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("IsVisited not implemented")
 }
 
 // handleKey computes a map key from a handle.

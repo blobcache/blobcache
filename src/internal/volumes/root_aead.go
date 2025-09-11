@@ -126,12 +126,12 @@ func (tx *RootAEADTx) Get(ctx context.Context, cid blobcache.CID, salt *blobcach
 	return tx.inner.Get(ctx, cid, salt, buf)
 }
 
-func (tx *RootAEADTx) Delete(ctx context.Context, cid blobcache.CID) error {
-	return tx.inner.Delete(ctx, cid)
+func (tx *RootAEADTx) Delete(ctx context.Context, cids []blobcache.CID) error {
+	return tx.inner.Delete(ctx, cids)
 }
 
-func (tx *RootAEADTx) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
-	return tx.inner.Exists(ctx, cid)
+func (tx *RootAEADTx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	return tx.inner.Exists(ctx, cids, dst)
 }
 
 func (tx *RootAEADTx) MaxSize() int {

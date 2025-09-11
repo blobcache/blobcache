@@ -155,18 +155,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	case MT_TX_EXISTS:
 		handleAsk(req, resp, &ExistsReq{}, func(req *ExistsReq) (*ExistsResp, error) {
 			exists := make([]bool, len(req.CIDs))
-			for i, cid := range req.CIDs {
-				var err error
-				exists[i], err = svc.Exists(ctx, req.Tx, cid)
-				if err != nil {
-					return nil, err
-				}
+			if err := svc.Exists(ctx, req.Tx, req.CIDs, exists); err != nil {
+				return nil, err
 			}
 			return &ExistsResp{Exists: exists}, nil
 		})
 	case MT_TX_DELETE:
 		handleAsk(req, resp, &DeleteReq{}, func(req *DeleteReq) (*DeleteResp, error) {
-			if err := svc.Delete(ctx, req.Tx, req.CID); err != nil {
+			if err := svc.Delete(ctx, req.Tx, req.CIDs); err != nil {
 				return nil, err
 			}
 			return &DeleteResp{}, nil

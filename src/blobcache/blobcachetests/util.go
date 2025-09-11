@@ -45,7 +45,7 @@ func Get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.
 
 func Exists(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID) bool {
 	ctx := testutil.Context(t)
-	yes, err := s.Exists(ctx, txh, cid)
+	yes, err := blobcache.ExistsSingle(ctx, s, txh, cid)
 	require.NoError(t, err)
 	return yes
 }

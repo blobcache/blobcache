@@ -230,15 +230,15 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		return
 	case "Delete":
 		handleRequest(w, r, func(ctx context.Context, req DeleteReq) (*DeleteResp, error) {
-			if err := s.Service.Delete(ctx, h, req.CID); err != nil {
+			if err := s.Service.Delete(ctx, h, req.CIDs); err != nil {
 				return nil, err
 			}
 			return &DeleteResp{}, nil
 		})
 	case "Exists":
 		handleRequest(w, r, func(ctx context.Context, req ExistsReq) (*ExistsResp, error) {
-			exists, err := s.Service.Exists(ctx, h, req.CID)
-			if err != nil {
+			exists := make([]bool, len(req.CIDs))
+			if err := s.Service.Exists(ctx, h, req.CIDs, exists); err != nil {
 				return nil, err
 			}
 			return &ExistsResp{Exists: exists}, nil

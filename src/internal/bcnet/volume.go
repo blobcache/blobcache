@@ -158,10 +158,10 @@ func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, b
 	return Get(ctx, tx.n, tx.ep, tx.h, tx.Hash, cid, salt, buf)
 }
 
-func (tx *Tx) Delete(ctx context.Context, cid blobcache.CID) error {
+func (tx *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
 	_, err := doAsk(ctx, tx.n, tx.ep, MT_TX_DELETE, DeleteReq{
-		Tx:  tx.h,
-		CID: cid,
+		Tx:   tx.h,
+		CIDs: cids,
 	}, &DeleteResp{})
 	if err != nil {
 		return err
@@ -169,15 +169,16 @@ func (tx *Tx) Delete(ctx context.Context, cid blobcache.CID) error {
 	return nil
 }
 
-func (tx *Tx) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
+func (tx *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
 	resp, err := doAsk(ctx, tx.n, tx.ep, MT_TX_EXISTS, ExistsReq{
 		Tx:   tx.h,
-		CIDs: []blobcache.CID{cid},
+		CIDs: cids,
 	}, &ExistsResp{})
 	if err != nil {
-		return false, err
+		return err
 	}
-	return resp.Exists[0], nil
+	copy(dst, resp.Exists)
+	return nil
 }
 
 func (tx *Tx) MaxSize() int {

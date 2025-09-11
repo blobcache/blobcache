@@ -365,9 +365,14 @@ func (v *localTxn) Load(ctx context.Context, dst *[]byte) error {
 	})
 }
 
-func (v *localTxn) Delete(ctx context.Context, cid blobcache.CID) error {
+func (v *localTxn) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
-		return deleteBlob(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, cid)
+		for _, cid := range cids {
+			if err := deleteBlob(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, cid); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -397,19 +402,22 @@ func (v *localTxn) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.C
 	})
 }
 
-func (v *localTxn) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
-	return dbutil.DoTx1(ctx, v.s.db, func(tx *sqlx.Tx) (bool, error) {
-		exists, err := txnContainsBlob(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, cid)
-		if err != nil {
-			return false, err
-		}
-		// if the blob exists, then we need to add it to the tx store.
-		if exists {
-			if err := addBlob(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, cid); err != nil {
-				return false, err
+func (v *localTxn) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	return dbutil.DoTx(ctx, v.s.db, func(tx *sqlx.Tx) error {
+		for i, cid := range cids {
+			exists, err := txnContainsBlob(tx, v.localTxnRow.VolID, v.localTxnRow.Base, v.localTxnRow.RowID, cid)
+			if err != nil {
+				return err
 			}
+			// if the blob exists, then we need to add it to the tx store.
+			if exists {
+				if err := addBlob(tx, v.localTxnRow.VolID, v.localTxnRow.RowID, cid); err != nil {
+					return err
+				}
+			}
+			dst[i] = exists
 		}
-		return exists, nil
+		return nil
 	})
 }
 

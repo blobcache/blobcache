@@ -198,6 +198,18 @@ type NOTEqual struct {
 // The zero value is a read-only transaction.
 type TxParams struct {
 	Mutate bool
+	// GC causes the transaction to remove all blobs that have not been
+	// observed in the transaction.
+	// This happens at the end of the transaction.
+	// Mutate must be true if GC is set, or BeginTx will return an error.
+	GC bool
+}
+
+func (tp TxParams) Validate() error {
+	if tp.Mutate && !tp.GC {
+		return fmt.Errorf("mutate must be true if GC is set")
+	}
+	return nil
 }
 
 func (tp TxParams) Marshal(out []byte) []byte {
@@ -291,18 +303,25 @@ type Service interface {
 	Save(ctx context.Context, tx Handle, src []byte) error
 	// Post posts data to the volume
 	Post(ctx context.Context, tx Handle, salt *CID, data []byte) (CID, error)
-	// Exists checks if a CID exists in the volume
-	Exists(ctx context.Context, tx Handle, cid CID) (bool, error)
-	// Delete deletes a CID from the volume
-	Delete(ctx context.Context, tx Handle, cid CID) error
 	// Get returns the data for a CID.
 	Get(ctx context.Context, tx Handle, cid CID, salt *CID, buf []byte) (int, error)
+	// Exists checks if several CID exists in the volume
+	// len(dst) must be equal to len(cids), or Exists will return an error.
+	Exists(ctx context.Context, tx Handle, cids []CID, dst []bool) error
+	// Delete deletes a CID from the volume
+	Delete(ctx context.Context, tx Handle, cids []CID) error
 	// AddFrom has the same effect as Post, but it does not require sending the data to Blobcache.
 	// It returns a slice of booleans, indicating if the CID could be added.
-	AddFrom(ctx context.Context, tx Handle, cids []CID, srcTxns []Handle) ([]bool, error)
+	AddFrom(ctx context.Context, tx Handle, cids []CID, srcTxns []Handle, success []bool) error
 	// AllowLink allows the Volume to reference another volume.
 	// The volume must still have a recognized Container Schema for the volumes to be persisted.
 	AllowLink(ctx context.Context, tx Handle, subvol Handle) error
+	// Visit is only usable in a GC transaction.
+	// It marks each CID as being visited, so it will not be removed by GC.
+	Visit(ctx context.Context, tx Handle, cids []CID) error
+	// IsVisited is only usable in a GC transaction.
+	// It checks if each CID has been visited.
+	IsVisited(ctx context.Context, tx Handle, cids []CID, yesVisited []bool) error
 }
 
 // CheckBlob checks that the data matches the expected CID.

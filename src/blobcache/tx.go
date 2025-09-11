@@ -78,11 +78,11 @@ func (tx *Tx) Post(ctx context.Context, data []byte) (CID, error) {
 }
 
 func (tx *Tx) Exists(ctx context.Context, cid CID) (bool, error) {
-	return tx.s.Exists(ctx, tx.h, cid)
+	return ExistsSingle(ctx, tx.s, tx.h, cid)
 }
 
 func (tx *Tx) Delete(ctx context.Context, cid CID) error {
-	return tx.s.Delete(ctx, tx.h, cid)
+	return tx.s.Delete(ctx, tx.h, []CID{cid})
 }
 
 func (tx *Tx) Get(ctx context.Context, cid CID, buf []byte) (int, error) {
@@ -99,6 +99,14 @@ func (tx *Tx) MaxSize() int {
 
 func (tx *Tx) AllowLink(ctx context.Context, target Handle) error {
 	return tx.s.AllowLink(ctx, tx.h, target)
+}
+
+func (tx *Tx) Visit(ctx context.Context, cids []CID) error {
+	return tx.s.Visit(ctx, tx.h, cids)
+}
+
+func (tx *Tx) IsVisited(ctx context.Context, cids []CID, yesVisited []bool) error {
+	return tx.s.IsVisited(ctx, tx.h, cids, yesVisited)
 }
 
 // BeginTxSalt is the salted variant of BeginTx.
@@ -168,11 +176,11 @@ func (tx *TxSalt) Post(ctx context.Context, salt *CID, data []byte) (CID, error)
 }
 
 func (tx *TxSalt) Exists(ctx context.Context, cid CID) (bool, error) {
-	return tx.s.Exists(ctx, tx.h, cid)
+	return ExistsSingle(ctx, tx.s, tx.h, cid)
 }
 
 func (tx *TxSalt) Delete(ctx context.Context, cid CID) error {
-	return tx.s.Delete(ctx, tx.h, cid)
+	return tx.s.Delete(ctx, tx.h, []CID{cid})
 }
 
 func (tx *TxSalt) Get(ctx context.Context, cid CID, buf []byte) (int, error) {
@@ -185,4 +193,15 @@ func (tx *TxSalt) Hash(salt *CID, data []byte) CID {
 
 func (tx *TxSalt) MaxSize() int {
 	return tx.maxSize
+}
+
+// ExistsSingle is a convenience function for checking if a single CID exists using the slice based API.
+func ExistsSingle(ctx context.Context, s interface {
+	Exists(ctx context.Context, txh Handle, cids []CID, dst []bool) error
+}, txh Handle, cid CID) (bool, error) {
+	var dst [1]bool
+	if err := s.Exists(ctx, txh, []CID{cid}, dst[:]); err != nil {
+		return false, err
+	}
+	return dst[0], nil
 }

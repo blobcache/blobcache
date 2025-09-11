@@ -131,15 +131,15 @@ type LoadResp struct {
 }
 
 type ExistsReq struct {
-	CID blobcache.CID `json:"cid"`
+	CIDs []blobcache.CID `json:"cids"`
 }
 
 type ExistsResp struct {
-	Exists bool `json:"exists"`
+	Exists []bool `json:"exists"`
 }
 
 type DeleteReq struct {
-	CID blobcache.CID `json:"cid"`
+	CIDs []blobcache.CID `json:"cids"`
 }
 
 type DeleteResp struct{}
@@ -156,6 +156,20 @@ type AddFromReq struct {
 
 type AddFromResp struct {
 	Added []bool `json:"added"`
+}
+
+type VisitReq struct {
+	CIDs []blobcache.CID `json:"cids"`
+}
+
+type VisitResp struct{}
+
+type IsVisitedReq struct {
+	CIDs []blobcache.CID `json:"cids"`
+}
+
+type IsVisitedResp struct {
+	Visited []bool `json:"visited"`
 }
 
 // Miscellaneous messages.

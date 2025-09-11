@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/sbe"
 )
 
 type InspectHandleReq struct {
@@ -485,13 +486,16 @@ func (er *ExistsResp) Unmarshal(data []byte) error {
 }
 
 type DeleteReq struct {
-	Tx  blobcache.Handle
-	CID blobcache.CID
+	Tx   blobcache.Handle
+	CIDs []blobcache.CID
 }
 
 func (dr DeleteReq) Marshal(out []byte) []byte {
 	out = dr.Tx.Marshal(out)
-	out = append(out, dr.CID[:]...)
+	out = binary.AppendUvarint(out, uint64(len(dr.CIDs)))
+	for _, cid := range dr.CIDs {
+		out = append(out, cid[:]...)
+	}
 	return out
 }
 
@@ -502,7 +506,18 @@ func (dr *DeleteReq) Unmarshal(data []byte) error {
 	if err := dr.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
 	}
-	dr.CID = blobcache.CID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.CIDSize])
+	numCIDs, data, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
+	if err != nil {
+		return err
+	}
+	dr.CIDs = make([]blobcache.CID, numCIDs)
+	for i := range dr.CIDs {
+		if len(data) < blobcache.CIDSize {
+			return fmt.Errorf("cannot unmarshal DeleteReq, too short: %d", len(data))
+		}
+		dr.CIDs[i] = blobcache.CID(data[:blobcache.CIDSize])
+		data = data[blobcache.CIDSize:]
+	}
 	return nil
 }
 

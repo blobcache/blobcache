@@ -193,9 +193,9 @@ func Exists(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcac
 	return resp.Exists[0], nil
 }
 
-func Delete(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cid blobcache.CID) error {
+func Delete(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID) error {
 	var resp DeleteResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_DELETE, DeleteReq{Tx: tx, CID: cid}, &resp); err != nil {
+	if _, err := doAsk(ctx, tp, ep, MT_TX_DELETE, DeleteReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
 	return nil

@@ -181,17 +181,18 @@ func (c *Client) Post(ctx context.Context, tx blobcache.Handle, salt *blobcache.
 	return cid, nil
 }
 
-func (c *Client) Exists(ctx context.Context, tx blobcache.Handle, cid blobcache.CID) (bool, error) {
-	req := ExistsReq{CID: cid}
+func (c *Client) Exists(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	req := ExistsReq{CIDs: cids}
 	var resp ExistsResp
 	if err := c.doJSON(ctx, "POST", c.mkTxURL(tx, "Exists"), &tx.Secret, req, &resp); err != nil {
-		return false, err
+		return err
 	}
-	return resp.Exists, nil
+	copy(dst, resp.Exists)
+	return nil
 }
 
-func (c *Client) Delete(ctx context.Context, tx blobcache.Handle, cid blobcache.CID) error {
-	req := DeleteReq{CID: cid}
+func (c *Client) Delete(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID) error {
+	req := DeleteReq{CIDs: cids}
 	var resp DeleteResp
 	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Delete"), &tx.Secret, req, &resp)
 }
@@ -234,13 +235,30 @@ func (c *Client) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blob
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AllowLink", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
-func (c *Client) AddFrom(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcs []blobcache.Handle) ([]bool, error) {
+func (c *Client) AddFrom(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcs []blobcache.Handle, out []bool) error {
 	req := AddFromReq{CIDs: cids, Srcs: srcs}
 	var resp AddFromResp
 	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AddFrom", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
-		return nil, err
+		return err
 	}
-	return resp.Added, nil
+	copy(out, resp.Added)
+	return nil
+}
+
+func (c *Client) Visit(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID) error {
+	req := VisitReq{CIDs: cids}
+	var resp VisitResp
+	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Visit", tx.OID.String()), &tx.Secret, req, &resp)
+}
+
+func (c *Client) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, out []bool) error {
+	req := IsVisitedReq{CIDs: cids}
+	var resp IsVisitedResp
+	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.IsVisited", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
+		return err
+	}
+	copy(out, resp.Visited)
+	return nil
 }
 
 func (c *Client) mkTxURL(tx blobcache.Handle, method string) string {
