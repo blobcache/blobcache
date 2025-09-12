@@ -22,7 +22,9 @@ func NewTestService(t testing.TB) *Service {
 
 	pebbleDB, err := pebble.Open(filepath.Join(stateDir, "pebble"), &pebble.Options{})
 	require.NoError(t, err)
-	blobDir, err := os.OpenRoot(filepath.Join(stateDir, "blob"))
+	blobPath := filepath.Join(stateDir, "blob")
+	require.NoError(t, os.MkdirAll(blobPath, 0o755))
+	blobDir, err := os.OpenRoot(blobPath)
 	require.NoError(t, err)
 
 	_, privateKey, err := ed25519.GenerateKey(nil)

@@ -3,75 +3,37 @@ package bclocal
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"github.com/cockroachdb/pebble"
 )
 
-// uploadBlob writes a blob to the filesystem.
-// cid is not checked, and is assumed to be correct for data, possible with a salt.
-func uploadBlob(blobDir *os.Root, cid blobcache.CID, data []byte) error {
-	p := blobPath(cid)
-	f, err := blobDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return nil
-		}
-		return err
-	}
-	defer f.Close()
-	_, err = f.Write(data)
-	if err != nil {
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
-	return f.Close()
-}
-
-// downloadBlob reads a blob from the filesystem.
-func downloadBlob(blobDir *os.Root, cid blobcache.CID, buf []byte) (int, error) {
-	p := blobPath(cid)
-	f, err := blobDir.OpenFile(p, os.O_RDONLY, 0644)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-	for len(buf) > 0 {
-		n, err := f.Read(buf)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return n, nil
-			}
-			return 0, err
-		}
-		if n == 0 {
-			return n, nil
-		}
-		buf = buf[n:]
-	}
-	return 0, io.ErrShortBuffer
-}
-
-func dropBlob(db *pebble.DB, blobDir *os.Root, cid blobcache.CID) error {
-	p := hex.EncodeToString(cid[:])
-	return os.Remove(p)
-}
-
 // putBlobData puts a blob into the database.
 func putBlobData(ba *pebble.Batch, cid blobcache.CID, data []byte) error {
-	return ba.Set(tableKey(nil, tid_BLOB_DATA, cid[:]), data, nil)
+	return ba.Set(pdb.TKey{TableID: tid_BLOB_DATA, Key: cid[:]}.Marshal(nil), data, nil)
 }
 
 // deleteBlobData deletes a blob from the database.
 func deleteBlobData(ba *pebble.Batch, cid blobcache.CID) error {
-	return ba.Delete(tableKey(nil, tid_BLOB_DATA, cid[:]), nil)
+	return ba.Delete(pdb.TKey{TableID: tid_BLOB_DATA, Key: cid[:]}.Marshal(nil), nil)
 }
 
+// readBlobData reads a blob from the database into buf.
+func readBlobData(r pdb.RO, cid blobcache.CID, buf []byte) (int, error) {
+	data, closer, err := r.Get(pdb.TKey{TableID: tid_BLOB_DATA, Key: cid[:]}.Marshal(nil))
+	if err != nil {
+		return 0, fmt.Errorf("readBlobData: %w", err)
+	}
+	defer closer.Close()
+	return copy(buf, data), nil
+}
+
+// blobMeta is a row in the BLOB_META table.
 type blobMeta struct {
 	cid blobcache.CID
 
@@ -101,7 +63,10 @@ func parseBlobMeta(k []byte, v []byte) (blobMeta, error) {
 }
 
 func (bi blobMeta) Key(out []byte) []byte {
-	return tableKey(out, tid_BLOB_META, bi.cid[:])
+	return pdb.TKey{
+		TableID: tid_BLOB_META,
+		Key:     bi.cid[:],
+	}.Marshal(out)
 }
 
 func (bi blobMeta) Value(out []byte) []byte {
@@ -117,8 +82,19 @@ func putBlobMeta(ba *pebble.Batch, bi blobMeta) error {
 	return ba.Set(bi.Key(nil), bi.Value(nil), nil)
 }
 
-func haveBlobMeta(ba *pebble.Batch, cid blobcache.CID) (bool, error) {
-	_, closer, err := ba.Get(tableKey(nil, tid_BLOB_META, cid[:]))
+func getBlobMeta(ba *pebble.Batch, cid blobcache.CID) (blobMeta, error) {
+	k := pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil)
+	v, closer, err := ba.Get(k)
+	if err != nil {
+		return blobMeta{}, err
+	}
+	defer closer.Close()
+	return parseBlobMeta(k, v)
+}
+
+func existsBlobMeta(ba *pebble.Batch, cid blobcache.CID) (bool, error) {
+	k := pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil)
+	_, closer, err := ba.Get(k)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return false, nil
@@ -135,4 +111,51 @@ func blobPath(cid blobcache.CID) string {
 		hex.EncodeToString(cid[:1]),
 		hex.EncodeToString(cid[1:]),
 	)
+}
+
+// uploadBlob writes a blob to the filesystem.
+// cid is not checked, and is assumed to be correct for data, possible with a salt.
+func uploadBlob(blobDir *os.Root, cid blobcache.CID, data []byte) error {
+	p := blobPath(cid)
+	if err := blobDir.Mkdir(filepath.Dir(p), 0o755); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return err
+		}
+	}
+	f, err := blobDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(data)
+	if err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// downloadBlob reads a blob from the filesystem.
+func downloadBlob(blobDir *os.Root, cid blobcache.CID, buf []byte) (int, error) {
+	p := blobPath(cid)
+	f, err := blobDir.OpenFile(p, os.O_RDONLY, 0644)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	n, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return 0, err
+	}
+	return n, nil
+}
+
+func dropExternalBlob(blobDir *os.Root, cid blobcache.CID) error {
+	p := blobPath(cid)
+	return blobDir.Remove(p)
 }

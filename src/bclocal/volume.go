@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
+	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/sbe"
 	"github.com/cockroachdb/pebble"
@@ -13,7 +15,7 @@ import (
 
 // putVolume writes to the VOLUMES table.
 // It does not commit the batch.
-func putVolume(db dbWriting, oid blobcache.OID, info blobcache.VolumeInfo) error {
+func putVolume(w pdb.WO, oid blobcache.OID, info blobcache.VolumeInfo) error {
 	backendJSON, err := json.Marshal(info.Backend)
 	if err != nil {
 		return err
@@ -25,16 +27,15 @@ func putVolume(db dbWriting, oid blobcache.OID, info blobcache.VolumeInfo) error
 		HashAlgo: string(info.HashAlgo),
 		MaxSize:  info.MaxSize,
 		Backend:  backendJSON,
-		Schema:   string(info.Schema),
 		Salted:   info.Salted,
 	}
-	return ba.Set(ve.Key(nil), ve.Value(nil), nil)
+	return w.Set(ve.Key(nil), ve.Value(nil), nil)
 }
 
 // getVolume reads a volume entry from the VOLUMES table.
 // getVolume returns nil if the volume does not exist.
-func getVolume(sn dbReading, oid blobcache.OID) (*volumeEntry, error) {
-	k := tableKey(nil, tid_VOLUMES, oid[:])
+func getVolume(sn pdb.RO, oid blobcache.OID) (*volumeEntry, error) {
+	k := pdb.TKey{TableID: tid_VOLUMES, Key: oid[:]}.Marshal(nil)
 	v, closer, err := sn.Get(k)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
@@ -82,7 +83,7 @@ type volumeEntry struct {
 
 // Key appends the key for the volume entry.
 func (ve *volumeEntry) Key(out []byte) []byte {
-	return tableKey(out, tid_VOLUMES, ve.OID[:])
+	return pdb.TKey{TableID: tid_VOLUMES, Key: ve.OID[:]}.Marshal(out)
 }
 
 // Value appends the value for the volume entry.
@@ -130,7 +131,7 @@ func parseVolumeEntry(k, v []byte) (*volumeEntry, error) {
 }
 
 // inspectVolume is like getVolume, but it returns a VolumeInfo.
-func inspectVolume(sn dbReading, volID blobcache.OID) (*blobcache.VolumeInfo, error) {
+func inspectVolume(sn pdb.RO, volID blobcache.OID) (*blobcache.VolumeInfo, error) {
 	ve, err := getVolume(sn, volID)
 	if err != nil {
 		return nil, err
@@ -154,12 +155,59 @@ func inspectVolume(sn dbReading, volID blobcache.OID) (*blobcache.VolumeInfo, er
 
 // dropVolume drops a volume from the VOLUMES table.
 // It does not delete local volume state
-func dropVolume(ba *pebble.Batch, volID blobcache.OID) error {
-	k := tableKey(nil, tid_VOLUMES, volID[:])
+func dropVolume(ba pdb.WO, volID blobcache.OID) error {
+	k := pdb.TKey{TableID: tid_VOLUMES, Key: volID[:]}.Marshal(nil)
 	if err := ba.Delete(k, nil); err != nil {
 		return err
 	}
 	return nil
+}
+
+func cleanupVolumes(db *pebble.DB, keep func(blobcache.OID) bool) error {
+	ba := db.NewIndexedBatch()
+	defer ba.Close()
+	iter, err := db.NewIter(&pebble.IterOptions{
+		LowerBound: pdb.TableLowerBound(tid_VOLUMES),
+		UpperBound: pdb.TableUpperBound(tid_VOLUMES),
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	volumeDeps := make(map[blobcache.OID]struct{})
+	volumeLinks := make(map[blobcache.OID]struct{})
+	for iter.Next(); iter.Valid(); iter.Next() {
+		k, err := pdb.ParseTKey(iter.Key())
+		if err != nil {
+			return err
+		}
+		if len(k.Key) < blobcache.OIDSize {
+			return fmt.Errorf("volume key too short: %d", len(k.Key))
+		}
+		if keep(blobcache.OID(k.Key)) {
+			continue
+		}
+
+		clear(volumeDeps)
+		if err := readVolumeDepsTo(ba, blobcache.OID(k.Key), volumeDeps); err != nil {
+			return err
+		}
+		if len(volumeLinks) > 0 {
+			continue
+		}
+		clear(volumeLinks)
+		if err := readVolumeLinksTo(ba, blobcache.OID(k.Key), volumeLinks); err != nil {
+			return err
+		}
+		if len(volumeLinks) > 0 {
+			continue
+		}
+		if err := ba.Delete(iter.Key(), nil); err != nil {
+			return err
+		}
+	}
+	return ba.Commit(nil)
 }
 
 func boolToUint8(b bool) uint8 {
@@ -171,4 +219,175 @@ func boolToUint8(b bool) uint8 {
 
 func uint8ToBool(b uint8) bool {
 	return b != 0
+}
+
+type volumeLink struct {
+	From, To blobcache.OID
+	Rights   blobcache.ActionSet
+}
+
+// parseVolumeLink parses an entry from the VOLUME_LINKS table.
+func parseVolumeLink(k, v []byte) (volumeLink, error) {
+	if len(k) < 4 {
+		return volumeLink{}, fmt.Errorf("volume link key too short: %d", len(k))
+	}
+	k = k[4:]
+	if len(k) < 2*blobcache.OIDSize {
+		return volumeLink{}, fmt.Errorf("volume link key too short: %d", len(k))
+	}
+	fromID := blobcache.OID(k[:blobcache.OIDSize])
+	toID := blobcache.OID(k[blobcache.OIDSize:])
+	return volumeLink{
+		From:   fromID,
+		To:     toID,
+		Rights: blobcache.ActionSet(binary.LittleEndian.Uint64(v)),
+	}, nil
+}
+
+func putVolumeLink(ba *pebble.Batch, fromVolID blobcache.OID, toID blobcache.OID, rights blobcache.ActionSet) error {
+	// forwards
+	k := pdb.TKey{TableID: tid_VOLUME_LINKS, Key: slices.Concat(fromVolID[:], toID[:])}
+	v := binary.LittleEndian.AppendUint64(nil, uint64(rights))
+	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
+		return err
+	}
+	// inverse
+	k = pdb.TKey{TableID: tid_VOLUME_LINKS_INV, Key: slices.Concat(toID[:], fromVolID[:])}
+	v = []byte{}
+	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+// putVolumeLinks puts the volume links from fromVolID into links into the database.
+// It overwrites the previous links for the volume.
+// putVolumeLinks requires that the batch is indexed.
+func putVolumeLinks(ba *pebble.Batch, fromVolID blobcache.OID, links linkSet) error {
+	oldLinks := make(map[blobcache.OID]blobcache.ActionSet)
+	if err := readVolumeLinks(ba, fromVolID, oldLinks); err != nil {
+		return err
+	}
+	// delete forwards
+	gteq := pdb.TKey{
+		TableID: tid_VOLUME_LINKS,
+		Key:     fromVolID[:],
+	}
+	lt := pdb.TKey{
+		TableID: tid_VOLUME_LINKS,
+		Key:     slices.Concat(fromVolID[:], allOnesOID[:]),
+	}
+	if err := ba.DeleteRange(gteq.Marshal(nil), lt.Marshal(nil), nil); err != nil {
+		return err
+	}
+	// delete inverse
+	for toID := range oldLinks {
+		invKey := pdb.TKey{TableID: tid_VOLUME_LINKS_INV, Key: slices.Concat(toID[:], fromVolID[:])}
+		if err := ba.Delete(invKey.Marshal(nil), nil); err != nil {
+			return err
+		}
+	}
+	// add the new links
+	for toID, rights := range links {
+		if err := putVolumeLink(ba, fromVolID, toID, rights); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// readVolumeLinks reads the volume links from volID into dst.
+func readVolumeLinks(sp pdb.RO, fromVolID blobcache.OID, dst linkSet) error {
+	gteq := pdb.TKey{
+		TableID: tid_VOLUME_LINKS,
+		Key:     fromVolID[:],
+	}
+	lt := pdb.TKey{
+		TableID: tid_VOLUME_LINKS,
+		Key:     slices.Concat(fromVolID[:], allOnesOID[:]),
+	}
+	iter, err := sp.NewIter(&pebble.IterOptions{
+		LowerBound: gteq.Marshal(nil),
+		UpperBound: lt.Marshal(nil),
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.Last(); iter.Valid(); iter.Next() {
+		volLink, err := parseVolumeLink(iter.Key(), iter.Value())
+		if err != nil {
+			return err
+		}
+		dst[volLink.To] = volLink.Rights
+	}
+	return nil
+}
+
+// readVolumeLinksTo reads the volume links to toVolID into dst.
+// It only reads the inverse links.
+// To get the rights, read from the VOLUME_LINKS table.
+func readVolumeLinksTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]struct{}) error {
+	gteq := pdb.TKey{
+		TableID: tid_VOLUME_LINKS_INV,
+		Key:     toVolID[:],
+	}
+	lt := pdb.TKey{
+		TableID: tid_VOLUME_LINKS_INV,
+		Key:     pdb.PrefixUpperBound(toVolID[:]),
+	}
+	iter, err := sp.NewIter(&pebble.IterOptions{
+		LowerBound: gteq.Marshal(nil),
+		UpperBound: lt.Marshal(nil),
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.Last(); iter.Valid(); iter.Next() {
+		if len(iter.Key()) < 2*blobcache.OIDSize {
+			return fmt.Errorf("volume link inverse key too short: %d", len(iter.Key()))
+		}
+		fromID := blobcache.OID(iter.Key()[:blobcache.OIDSize])
+		dst[fromID] = struct{}{}
+	}
+	return nil
+}
+
+// volumeDep is a dependency on a volume.
+// unlike volumeLink, it does not store the rights
+type volumeDep struct {
+	From blobcache.OID
+	To   blobcache.OID
+}
+
+// readVolumeDepsTo reads the volume deps to toVolID into dst.
+func readVolumeDepsTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]struct{}) error {
+	gteq := pdb.TKey{
+		TableID: tid_VOLUME_DEPS_INV,
+		Key:     toVolID[:],
+	}
+	lt := pdb.TKey{
+		TableID: tid_VOLUME_DEPS_INV,
+		Key:     slices.Concat(toVolID[:], allOnesOID[:]),
+	}
+	iter, err := sp.NewIter(&pebble.IterOptions{
+		LowerBound: gteq.Marshal(nil),
+		UpperBound: lt.Marshal(nil),
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.Last(); iter.Valid(); iter.Next() {
+		if len(iter.Key()) < 2*blobcache.OIDSize {
+			return fmt.Errorf("volume dep inverse key too short: %d", len(iter.Key()))
+		}
+		fromID := blobcache.OID(iter.Key()[:blobcache.OIDSize])
+		dst[fromID] = struct{}{}
+	}
+	return nil
 }

@@ -40,3 +40,10 @@ func ReadUint32(x []byte) (uint32, []byte, error) {
 	}
 	return binary.LittleEndian.Uint32(x[:4]), x[4:], nil
 }
+
+// Uint64Bytes returns x as bytes in little endian order.
+func Uint64Bytes(x uint64) []byte {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], x)
+	return buf[:]
+}
