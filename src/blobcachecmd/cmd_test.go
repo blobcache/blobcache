@@ -18,7 +18,7 @@ import (
 
 func TestGLFS(t *testing.T) {
 	stateDir := t.TempDir()
-	runCmd(t, nil, []string{"--state", stateDir, "mkvol", "vol1"})
+	runCmd(t, nil, []string{"--state", stateDir, "mkvol.local", "vol1"})
 	runCmd(t, nil, []string{"--state", stateDir, "ls"})
 	apiUrl := setupTestDaemon(t, stateDir)
 	env := map[string]string{

@@ -32,43 +32,27 @@ var rootCmd = star.NewDir(
 	}, map[star.Symbol]star.Command{
 		"daemon":           daemonCmd,
 		"daemon-ephemeral": daemonEphemeralCmd,
-		"mkvol":            mkVolCmd,
-		"ls":               lsCmd,
-		"glfs":             glfsCmd,
 
+		// volume management
+		"ls":           lsCmd,
+		"mkvol.local":  mkVolLocalCmd,
+		"mkvol.remote": mkVolRemoteCmd,
+		"mkvol.vault":  mkVolVaultCmd,
+
+		// group management
 		"addmem": addMemCmd,
 		"rmmem":  rmMemCmd,
 		"groups": groupsCmd,
 
+		// authorization management
 		"grant":  grantCmd,
 		"revoke": revokeCmd,
 
+		// applications
+		"glfs":       glfsCmd,
 		"fuse-mount": fuseMountCmd,
 	},
 )
-
-var mkVolCmd = star.Command{
-	Metadata: star.Metadata{
-		Short: "create a new volume",
-	},
-	Flags: []star.AnyParam{stateDirParam},
-	Pos:   []star.AnyParam{nameParam},
-	F: func(c star.Context) error {
-		s, close, err := openLocal(c)
-		if err != nil {
-			return err
-		}
-		defer close()
-		nsc := simplens.Client{Service: s}
-		volh, err := nsc.CreateAt(c, blobcache.Handle{}, nameParam.Load(c), blobcache.DefaultLocalSpec())
-		if err != nil {
-			return err
-		}
-		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v\n", *volh)
-		return nil
-	},
-}
 
 var lsCmd = star.Command{
 	Metadata: star.Metadata{
