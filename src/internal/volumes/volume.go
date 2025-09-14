@@ -28,8 +28,6 @@ type Tx interface {
 
 	MaxSize() int
 	Hash(salt *blobcache.CID, data []byte) blobcache.CID
-	// Volume should return the volume that this tx is operating on.
-	Volume() Volume
 
 	// AllowLink creates adds a handle to prove access to a volume.
 	AllowLink(ctx context.Context, subvol blobcache.Handle) error

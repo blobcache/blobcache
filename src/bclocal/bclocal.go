@@ -3,7 +3,6 @@ package bclocal
 
 import (
 	"context"
-	"crypto/cipher"
 	"fmt"
 	"net"
 	"os"
@@ -20,7 +19,6 @@ import (
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.brendoncarroll.net/tai64"
 	"go.uber.org/zap"
-	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/sync/errgroup"
 	"lukechampine.com/blake3"
 )
@@ -609,7 +607,7 @@ func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcac
 			MaxSize:  volInfo.info.MaxSize,
 			HashAlgo: volInfo.info.HashAlgo,
 		}, nil
-	case *volumes.RootAEADVolume:
+	case *volumes.Vault:
 		// For RootAEAD, report the underlying volume's params
 		innerVol := vol.Inner
 		switch inner := innerVol.(type) {
@@ -792,8 +790,6 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 		return bcnet.OpenVolumeAs(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Volume, blobcache.Action_ALL)
 	case backend.Git != nil:
 		return s.makeGit(ctx, *backend.Git)
-	case backend.RootAEAD != nil:
-		return s.makeRootAEAD(ctx, *backend.RootAEAD)
 	case backend.Vault != nil:
 		return s.makeVault(ctx, *backend.Vault)
 	default:
@@ -807,35 +803,6 @@ func (s *Service) makeLocal(_ context.Context, lvid LocalVolumeID) (volumes.Volu
 
 func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (volumes.Volume, error) {
 	return nil, fmt.Errorf("git volumes are not yet supported")
-}
-
-func (s *Service) makeRootAEAD(ctx context.Context, backend blobcache.VolumeBackend_RootAEAD[blobcache.OID]) (*volumes.RootAEADVolume, error) {
-	s.mu.RLock()
-	volstate, exists := s.volumes[backend.Inner]
-	s.mu.RUnlock()
-	if !exists {
-		return nil, fmt.Errorf("inner volume not found: %v", backend.Inner)
-	}
-	inner, err := s.makeVolume(ctx, backend.Inner, volstate.info.Backend)
-	if err != nil {
-		return nil, err
-	}
-
-	var cipher cipher.AEAD
-	switch backend.Algo {
-	case blobcache.AEAD_CHACHA20POLY1305:
-		var err error
-		cipher, err = chacha20poly1305.New(backend.Secret[:])
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("unknown AEAD algorithm: %s", backend.Algo)
-	}
-	return &volumes.RootAEADVolume{
-		AEAD:  cipher,
-		Inner: inner,
-	}, nil
 }
 
 func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*volumes.Vault, error) {
@@ -866,12 +833,6 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		volInfo := vol.Info()
 		return volInfo.VolumeParams, nil
 
-	case vspec.RootAEAD != nil:
-		innerVol, _, err := s.resolveVol(vspec.RootAEAD.Inner)
-		if err != nil {
-			return blobcache.VolumeParams{}, err
-		}
-		return innerVol.info.VolumeParams, nil
 	case vspec.Vault != nil:
 		innerVol, _, err := s.resolveVol(vspec.Vault.Inner)
 		if err != nil {

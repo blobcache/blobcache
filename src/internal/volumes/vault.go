@@ -13,19 +13,19 @@ import (
 var _ Volume = &Vault{}
 
 type Vault struct {
-	inner  Volume
+	Inner  Volume
 	secret [32]byte
 }
 
 func NewVault(inner Volume, secret [32]byte) *Vault {
 	return &Vault{
-		inner:  inner,
+		Inner:  inner,
 		secret: secret,
 	}
 }
 
 func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (Tx, error) {
-	inner, err := v.inner.BeginTx(ctx, params)
+	inner, err := v.Inner.BeginTx(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (Tx, err
 }
 
 func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
-	return v.inner.Await(ctx, prev, next)
+	return v.Inner.Await(ctx, prev, next)
 }
 
 var _ Tx = &VaultTx{}
@@ -42,14 +42,14 @@ type VaultTx struct {
 	vol    *Vault
 	inner  Tx
 	crypto *bccrypto.Worker
-	tries  *tries.Operator
+	tries  *tries.Machine
 
 	root  []byte
 	blobs map[blobcache.CID]bccrypto.Ref
 }
 
 func newVaultTx(vol *Vault, inner Tx) *VaultTx {
-	trieOp := tries.NewOperator()
+	trieOp := tries.NewMachine()
 	return &VaultTx{
 		vol:    vol,
 		inner:  inner,
@@ -65,7 +65,26 @@ func (tx *VaultTx) Volume() Volume {
 }
 
 func (v *VaultTx) Load(ctx context.Context, dst *[]byte) error {
-	return v.inner.Load(ctx, dst)
+	if v.root != nil {
+		*dst = append((*dst)[:0], v.root...)
+		return nil
+	}
+
+	var innerRoot []byte
+	if err := v.inner.Load(ctx, &innerRoot); err != nil {
+		return err
+	}
+	var trieRoot tries.Root
+	if err := json.Unmarshal(innerRoot, &trieRoot); err != nil {
+		return err
+	}
+	rootVal, err := v.tries.Get(ctx, UnsaltedStore{v.inner}, trieRoot, nil)
+	if err != nil {
+		return err
+	}
+	v.root = rootVal
+	*dst = append((*dst)[:0], rootVal...)
+	return nil
 }
 
 func (v *VaultTx) Save(ctx context.Context, src []byte) error {

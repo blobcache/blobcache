@@ -1,6 +1,7 @@
 package blobcache
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,11 +56,10 @@ func (vi *VolumeInfo) Unmarshal(data []byte) error {
 // If it is going into the API, the it will be a VolumeBackend[Handle].
 // If it is coming out of the API, the it will be a VolumeBackend[OID].
 type VolumeBackend[T handleOrOID] struct {
-	Local    *VolumeBackend_Local       `json:"local,omitempty"`
-	Remote   *VolumeBackend_Remote      `json:"remote,omitempty"`
-	Git      *VolumeBackend_Git         `json:"git,omitempty"`
-	RootAEAD *VolumeBackend_RootAEAD[T] `json:"root_aead,omitempty"`
-	Vault    *VolumeBackend_Vault[T]    `json:"vault,omitempty"`
+	Local  *VolumeBackend_Local    `json:"local,omitempty"`
+	Remote *VolumeBackend_Remote   `json:"remote,omitempty"`
+	Git    *VolumeBackend_Git      `json:"git,omitempty"`
+	Vault  *VolumeBackend_Vault[T] `json:"vault,omitempty"`
 }
 
 func (v *VolumeBackend[T]) Marshal(out []byte) []byte {
@@ -77,8 +77,6 @@ func (v *VolumeBackend[T]) Unmarshal(data []byte) error {
 // Deps returns the volumes which must exist before this volume can be created.
 func (v *VolumeBackend[T]) Deps() iter.Seq[T] {
 	switch {
-	case v.RootAEAD != nil:
-		return unitIter[T](v.RootAEAD.Inner)
 	case v.Vault != nil:
 		return unitIter[T](v.Vault.Inner)
 	default:
@@ -112,10 +110,6 @@ func (v VolumeBackend[T]) String() string {
 	if v.Git != nil {
 		sb.WriteString("git")
 	}
-	if v.RootAEAD != nil {
-		sb.WriteString("root_aead:")
-		sb.WriteString(fmt.Sprintf("%v", v.RootAEAD.Inner))
-	}
 	if v.Vault != nil {
 		sb.WriteString("vault:")
 		sb.WriteString(fmt.Sprintf("%v", v.Vault.Inner))
@@ -136,10 +130,6 @@ func (v *VolumeBackend[T]) Validate() (err error) {
 		count++
 	}
 	if v.Git != nil {
-		count++
-	}
-	if v.RootAEAD != nil {
-		err = errors.Join(err, v.RootAEAD.Validate())
 		count++
 	}
 	if v.Vault != nil {
@@ -163,13 +153,6 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 		Local:  x.Local,
 		Remote: x.Remote,
 		Git:    x.Git,
-	}
-	if x.RootAEAD != nil {
-		ret.RootAEAD = &VolumeBackend_RootAEAD[OID]{
-			Inner:  x.RootAEAD.Inner.OID,
-			Algo:   x.RootAEAD.Algo,
-			Secret: x.RootAEAD.Secret,
-		}
 	}
 	if x.Vault != nil {
 		ret.Vault = &VolumeBackend_Vault[OID]{
@@ -238,22 +221,6 @@ type VolumeBackend_Git struct {
 	VolumeParams
 }
 
-// VolumeBackend_RootAEAD is a volume backend that uses a root AEAD to encrypt the volume's root.
-// The volume's blobs are not encrypted.  The inner volume will have the same blobs as this volume,
-// they will have different roots.
-type VolumeBackend_RootAEAD[T handleOrOID] struct {
-	Inner  T        `json:"inner"`
-	Algo   AEADAlgo `json:"algo"`
-	Secret [32]byte `json:"secret"`
-}
-
-func (v *VolumeBackend_RootAEAD[T]) Validate() error {
-	if err := v.Algo.Validate(); err != nil {
-		return err
-	}
-	return nil
-}
-
 type VolumeBackend_Vault[T handleOrOID] struct {
 	Inner  T        `json:"inner"`
 	Secret [32]byte `json:"secret"`
@@ -295,4 +262,32 @@ func unitIter[T any](x T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		yield(x)
 	}
+}
+
+// DEK is a data encryption key.
+type DEK [32]byte
+
+func (d DEK) MarshalText() ([]byte, error) {
+	return json.Marshal(hex.EncodeToString(d[:]))
+}
+
+func (d *DEK) UnmarshalText(data []byte) error {
+	var hexString string
+	if err := json.Unmarshal(data, &hexString); err != nil {
+		return err
+	}
+	decoded, err := hex.DecodeString(hexString)
+	if err != nil {
+		return err
+	}
+	copy(d[:], decoded)
+	return nil
+}
+
+func (d DEK) String() string {
+	d2, err := d.MarshalText()
+	if err != nil {
+		panic(err)
+	}
+	return string(d2)
 }

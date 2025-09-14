@@ -38,7 +38,7 @@ func parseRef(x []byte) (*Ref, error) {
 	return y, nil
 }
 
-func (o *Operator) post(ctx context.Context, s cadata.Poster, ptext []byte) (*Ref, error) {
+func (o *Machine) post(ctx context.Context, s cadata.Poster, ptext []byte) (*Ref, error) {
 	l := len(ptext)
 	ref, err := o.crypto.Post(ctx, s, ptext)
 	if err != nil {
@@ -51,7 +51,7 @@ func (o *Operator) post(ctx context.Context, s cadata.Poster, ptext []byte) (*Re
 	}, nil
 }
 
-func (o *Operator) getF(ctx context.Context, s cadata.Getter, ref Ref, fn func([]byte) error) error {
+func (o *Machine) getF(ctx context.Context, s cadata.Getter, ref Ref, fn func([]byte) error) error {
 	key := blake3.Sum256(marshalRef(ref))
 	v, exists := o.cache.Get(key)
 	if exists {

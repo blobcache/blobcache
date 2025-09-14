@@ -10,14 +10,14 @@ import (
 )
 
 type Iterator struct {
-	op      *Operator
+	op      *Machine
 	s       cadata.Store
 	root    Root
 	span    Span
 	lastKey []byte
 }
 
-func (o *Operator) NewIterator(s cadata.Store, root Root, span Span) *Iterator {
+func (o *Machine) NewIterator(s cadata.Store, root Root, span Span) *Iterator {
 	return &Iterator{op: o, s: s, root: root, span: span}
 }
 
@@ -40,7 +40,7 @@ func (it *Iterator) Next(ctx context.Context) (*Entry, error) {
 }
 
 // MinEntry returns the first entry >= gteq
-func (o *Operator) MinEntry(ctx context.Context, s cadata.Store, root Root, gteq []byte) (*Entry, error) {
+func (o *Machine) MinEntry(ctx context.Context, s cadata.Store, root Root, gteq []byte) (*Entry, error) {
 	ents, err := o.getNode(ctx, s, root, false)
 	if err != nil {
 		return nil, err

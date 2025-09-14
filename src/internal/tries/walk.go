@@ -18,7 +18,7 @@ type Walker struct {
 // w.ShouldWalk is called before walking a node, if false is returned the node is skipped
 // w.EntryFn is called for every entry in a node
 // w.NodeFn is called for the node after all the entries reachable from it have been walked.
-func (o *Operator) Walk(ctx context.Context, s cadata.Store, root Root, w Walker) error {
+func (o *Machine) Walk(ctx context.Context, s cadata.Store, root Root, w Walker) error {
 	if !w.ShouldWalk(root) {
 		return nil
 	}
@@ -58,7 +58,7 @@ func (o *Operator) Walk(ctx context.Context, s cadata.Store, root Root, w Walker
 
 // Sync ensures that data structure exists in dst, using src to retrieve missing pieces.
 // Sync is only correct if dangling references can be guarenteed to not exist in dst.
-func (o *Operator) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn func(*Entry) error) error {
+func (o *Machine) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn func(*Entry) error) error {
 	return o.Walk(ctx, src, root, Walker{
 		ShouldWalk: func(root Root) bool {
 			exists, err := kv.ExistsUsingList(ctx, dst, root.Ref.ID)
@@ -74,7 +74,7 @@ func (o *Operator) Sync(ctx context.Context, dst, src cadata.Store, root Root, f
 	})
 }
 
-func (o *Operator) Populate(ctx context.Context, s cadata.Store, root Root, set cadata.Set, fn func(*Entry) error) error {
+func (o *Machine) Populate(ctx context.Context, s cadata.Store, root Root, set cadata.Set, fn func(*Entry) error) error {
 	return o.Walk(ctx, s, root, Walker{
 		ShouldWalk: func(root Root) bool {
 			exists, err := set.Exists(ctx, root.Ref.ID)

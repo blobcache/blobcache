@@ -60,7 +60,7 @@ func entryFromRoot(x Root) *Entry {
 	}
 }
 
-func (o *Operator) Validate(ctx context.Context, s cadata.Store, x Root) error {
+func (o *Machine) Validate(ctx context.Context, s cadata.Store, x Root) error {
 	// getEntries includes validation
 	ents, err := o.getNode(ctx, s, x, false)
 	if err != nil {

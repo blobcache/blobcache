@@ -17,7 +17,7 @@ type writeStore interface {
 }
 
 type Builder struct {
-	op        *Operator
+	op        *Machine
 	s         writeStore
 	batchSize int
 
@@ -25,7 +25,7 @@ type Builder struct {
 	ents []*Entry
 }
 
-func (o *Operator) NewBuilder(s writeStore, batchSize int) *Builder {
+func (o *Machine) NewBuilder(s writeStore, batchSize int) *Builder {
 	return &Builder{
 		op:        o,
 		s:         s,

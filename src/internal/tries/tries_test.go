@@ -13,7 +13,7 @@ import (
 func TestPutGet(t *testing.T) {
 	ctx := context.TODO()
 	s := cadata.NewMem(cadata.DefaultHash, 1<<20)
-	op := NewOperator()
+	op := NewMachine()
 	const N = 1000
 
 	x, err := op.PostSlice(ctx, s, nil)

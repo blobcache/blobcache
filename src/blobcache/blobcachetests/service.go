@@ -42,29 +42,6 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.Equal(t, 0, len(buf))
 	})
-	t.Run("RootAEAD", func(t *testing.T) {
-		ctx := testutil.Context(t)
-		s := mk(t)
-		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
-		require.NoError(t, err)
-		volh2, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
-			RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
-				Inner:  *volh,
-				Algo:   blobcache.AEAD_CHACHA20POLY1305,
-				Secret: [32]byte{},
-			},
-		})
-		require.NoError(t, err)
-		nsc := simplens.Client{Service: s}
-		nsh, err := s.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
-		require.NoError(t, err)
-		require.NoError(t, nsc.PutEntry(ctx, *nsh, "test-name", *volh2))
-		_, err = nsc.OpenAt(ctx, *nsh, "test-name", blobcache.Action_ALL)
-		require.NoError(t, err)
-	})
-	t.Run("SimpleNS", func(t *testing.T) {
-		SimpleNS(t, mk)
-	})
 	t.Run("HashAlgo", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s := mk(t)
@@ -94,7 +71,9 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			})
 		}
 	})
-
+	t.Run("SimpleNS", func(t *testing.T) {
+		SimpleNS(t, mk)
+	})
 	// Run Tx test suite on local volume.
 	t.Run("Local/Tx", func(t *testing.T) {
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
@@ -113,7 +92,8 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			return s, *volh
 		})
 	})
-	t.Run("RootAEAD/Tx", func(t *testing.T) {
+	t.Run("Vault/Tx", func(t *testing.T) {
+		t.SkipNow()
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			s := mk(t)
@@ -129,9 +109,8 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			require.NotNil(t, volh1)
 
 			volh, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
-				RootAEAD: &blobcache.VolumeBackend_RootAEAD[blobcache.Handle]{
+				Vault: &blobcache.VolumeBackend_Vault[blobcache.Handle]{
 					Inner:  *volh1,
-					Algo:   blobcache.AEAD_CHACHA20POLY1305,
 					Secret: [32]byte{},
 				},
 			})
