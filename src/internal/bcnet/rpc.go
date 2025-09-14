@@ -68,6 +68,14 @@ func CreateVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, call
 	return &resp.Handle, nil
 }
 
+func CloneVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+	var resp CloneVolumeResp
+	if _, err := doAsk(ctx, tp, ep, MT_VOLUME_CLONE, CloneVolumeReq{Volume: volh}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
 func BeginTx(ctx context.Context, tp Transport, ep blobcache.Endpoint, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
 	var resp BeginTxResp
 	if _, err := doAsk(ctx, tp, ep, MT_VOLUME_BEGIN_TX, BeginTxReq{Volume: volh, Params: txp}, &resp); err != nil {
@@ -105,6 +113,7 @@ func Load(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache
 	if _, err := doAsk(ctx, tp, ep, MT_TX_LOAD, LoadReq{Tx: tx}, &resp); err != nil {
 		return err
 	}
+	*dst = append((*dst)[:0], resp.Root...)
 	return nil
 }
 
@@ -185,12 +194,13 @@ func Get(ctx context.Context, tp Transport, ep blobcache.Endpoint, txh blobcache
 	return len(respMsg.Body()), nil
 }
 
-func Exists(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID) (bool, error) {
+func Exists(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
 	var resp ExistsResp
 	if _, err := doAsk(ctx, tp, ep, MT_TX_EXISTS, ExistsReq{Tx: tx, CIDs: cids}, &resp); err != nil {
-		return false, err
+		return err
 	}
-	return resp.Exists[0], nil
+	copy(dst, resp.Exists)
+	return nil
 }
 
 func Delete(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID) error {
@@ -201,9 +211,34 @@ func Delete(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcac
 	return nil
 }
 
+func AddFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
+	var resp AddFromResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_ADD_FROM, AddFromReq{Tx: tx, CIDs: cids, Srcs: srcTxns}, &resp); err != nil {
+		return err
+	}
+	copy(success, resp.Added)
+	return nil
+}
+
 func AllowLink(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, subvol blobcache.Handle) error {
 	var resp AllowLinkResp
 	if _, err := doAsk(ctx, tp, ep, MT_TX_ALLOW_LINK, AllowLinkReq{Tx: tx, Subvol: subvol}, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func Visit(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID) error {
+	var resp VisitResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_VISIT, VisitReq{Tx: tx, CIDs: cids}, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func IsVisited(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	var resp IsVisitedResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_IS_VISITED, IsVisitedReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
 	return nil

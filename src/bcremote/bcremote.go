@@ -9,6 +9,7 @@ import (
 
 	"github.com/cloudflare/circl/sign/ed25519"
 	lru "github.com/hashicorp/golang-lru/v2"
+	"golang.org/x/sync/errgroup"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
@@ -25,28 +26,50 @@ func Dial(privateKey ed25519.PrivateKey, ep blobcache.Endpoint) (*Service, error
 }
 
 // New creates a Service, which is implemented remotely.
+// Endpoint describes the service to connect to.
+// Connections will be established out of pc.
+// privateKey is used to authenticate to the service.
 func New(privateKey ed25519.PrivateKey, pc net.PacketConn, ep blobcache.Endpoint) *Service {
 	cache, _ := lru.New[blobcache.OID, *blobcache.TxInfo](128)
-	return &Service{
+	bgCtx, bgCtxCancel := context.WithCancel(context.Background())
+	s := &Service{
 		ep:    ep,
 		node:  bcnet.New(privateKey, pc),
 		pc:    pc,
 		cache: cache,
+		cf:    bgCtxCancel,
 	}
+	s.start(bgCtx)
+	return s
 }
 
 var _ blobcache.Service = &Service{}
 
 type Service struct {
-	ep    blobcache.Endpoint
-	node  *bcnet.Node
-	pc    net.PacketConn
+	ep   blobcache.Endpoint
+	node *bcnet.Node
+	pc   net.PacketConn
+
 	cache *lru.Cache[blobcache.OID, *blobcache.TxInfo]
+	eg    errgroup.Group
+	cf    context.CancelFunc
 }
 
 // Close closes the Service.
 func (s *Service) Close() error {
-	return s.pc.Close()
+	s.cf()
+	if err := s.pc.Close(); err != nil {
+		return err
+	}
+	return s.eg.Wait()
+}
+
+func (s *Service) start(bgCtx context.Context) {
+	s.eg.Go(func() error {
+		return s.node.Serve(bgCtx, bcnet.Server{
+			Access: func(peer blobcache.PeerID) blobcache.Service { return nil },
+		})
+	})
 }
 
 // Endpoint returns the endpoint of the remote service.
@@ -95,6 +118,10 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 	return bcnet.InspectVolume(ctx, s.node, s.ep, h)
 }
 
+func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+	return bcnet.CloneVolume(ctx, s.node, s.ep, caller, volh)
+}
+
 // InspectTx returns info about a transaction.
 func (s *Service) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache.TxInfo, error) {
 	return bcnet.InspectTx(ctx, s.node, s.ep, tx)
@@ -126,8 +153,11 @@ func (s *Service) Post(ctx context.Context, tx blobcache.Handle, salt *blobcache
 }
 
 // Exists checks if a CID exists in the volume
-func (s *Service) Exists(ctx context.Context, tx blobcache.Handle, cid blobcache.CID) (bool, error) {
-	return bcnet.Exists(ctx, s.node, s.ep, tx, []blobcache.CID{cid})
+func (s *Service) Exists(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	if len(cids) != len(dst) {
+		return fmt.Errorf("cids and dst must have the same length")
+	}
+	return bcnet.Exists(ctx, s.node, s.ep, tx, cids, dst)
 }
 
 // Delete deletes a CID from the volume

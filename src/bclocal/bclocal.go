@@ -609,6 +609,26 @@ func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcac
 			MaxSize:  volInfo.info.MaxSize,
 			HashAlgo: volInfo.info.HashAlgo,
 		}, nil
+	case *volumes.RootAEADVolume:
+		// For RootAEAD, report the underlying volume's params
+		innerVol := vol.Inner
+		switch inner := innerVol.(type) {
+		case *localVolume:
+			s.mu.RLock()
+			volInfo, exists := s.volumes[oidFromLocalID(inner.lvid)]
+			s.mu.RUnlock()
+			if !exists {
+				return nil, fmt.Errorf("volume not found")
+			}
+			return &blobcache.TxInfo{
+				ID:       txh.OID,
+				Volume:   volInfo.info.ID,
+				MaxSize:  volInfo.info.MaxSize,
+				HashAlgo: volInfo.info.HashAlgo,
+			}, nil
+		default:
+			return nil, fmt.Errorf("InspectTx not implemented for inner volume type:%T", inner)
+		}
 	default:
 		return nil, fmt.Errorf("InspectTx not implemented for volume type:%T", vol)
 	}

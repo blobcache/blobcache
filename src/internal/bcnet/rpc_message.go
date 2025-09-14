@@ -229,6 +229,30 @@ func (ar *AwaitResp) Unmarshal(data []byte) error {
 	return nil
 }
 
+type CloneVolumeReq struct {
+	Volume blobcache.Handle
+}
+
+func (cr CloneVolumeReq) Marshal(out []byte) []byte {
+	return cr.Volume.Marshal(out)
+}
+
+func (cr *CloneVolumeReq) Unmarshal(data []byte) error {
+	return cr.Volume.Unmarshal(data)
+}
+
+type CloneVolumeResp struct {
+	Handle blobcache.Handle
+}
+
+func (cr CloneVolumeResp) Marshal(out []byte) []byte {
+	return cr.Handle.Marshal(out)
+}
+
+func (cr *CloneVolumeResp) Unmarshal(data []byte) error {
+	return cr.Handle.Unmarshal(data)
+}
+
 type BeginTxReq struct {
 	Volume blobcache.Handle
 	Params blobcache.TxParams
@@ -608,6 +632,192 @@ func (ar *AllowLinkResp) Unmarshal(data []byte) error {
 	return nil
 }
 
+type AddFromReq struct {
+	Tx   blobcache.Handle
+	CIDs []blobcache.CID
+	Srcs []blobcache.Handle
+}
+
+func (ar AddFromReq) Marshal(out []byte) []byte {
+	out = ar.Tx.Marshal(out)
+	out = binary.AppendUvarint(out, uint64(len(ar.CIDs)))
+	for _, cid := range ar.CIDs {
+		out = append(out, cid[:]...)
+	}
+	out = binary.AppendUvarint(out, uint64(len(ar.Srcs)))
+	for _, src := range ar.Srcs {
+		out = src.Marshal(out)
+	}
+	return out
+}
+
+func (ar *AddFromReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal AddFromReq, too short: %d", len(data))
+	}
+	if err := ar.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	numCIDs, data, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
+	if err != nil {
+		return err
+	}
+	ar.CIDs = make([]blobcache.CID, numCIDs)
+	for i := range ar.CIDs {
+		if len(data) < blobcache.CIDSize {
+			return fmt.Errorf("cannot unmarshal AddFromReq, too short: %d", len(data))
+		}
+		ar.CIDs[i] = blobcache.CID(data[:blobcache.CIDSize])
+		data = data[blobcache.CIDSize:]
+	}
+	numSrcs, data, err := sbe.ReadUVarint(data)
+	if err != nil {
+		return err
+	}
+	ar.Srcs = make([]blobcache.Handle, numSrcs)
+	for i := range ar.Srcs {
+		if len(data) < blobcache.HandleSize {
+			return fmt.Errorf("cannot unmarshal AddFromReq, too short: %d", len(data))
+		}
+		if err := ar.Srcs[i].Unmarshal(data); err != nil {
+			return err
+		}
+		data = data[blobcache.HandleSize:]
+	}
+	return nil
+}
+
+type AddFromResp struct {
+	Added []bool
+}
+
+func (ar AddFromResp) Marshal(out []byte) []byte {
+	for i := range ar.Added {
+		if i%8 == 0 {
+			out = append(out, 0)
+		}
+		if ar.Added[i] {
+			out[len(out)-1] |= 1 << (i % 8)
+		}
+	}
+	return out
+}
+
+func (ar *AddFromResp) Unmarshal(data []byte) error {
+	ar.Added = make([]bool, len(data)*8)
+	for i := range data {
+		for j := 0; j < 8; j++ {
+			if (data[i] & (1 << j)) != 0 {
+				ar.Added[i*8+j] = true
+			} else {
+				ar.Added[i*8+j] = false
+			}
+		}
+	}
+	return nil
+}
+
+type VisitReq struct {
+	Tx   blobcache.Handle
+	CIDs []blobcache.CID
+}
+
+func (vr VisitReq) Marshal(out []byte) []byte {
+	out = vr.Tx.Marshal(out)
+	out = binary.AppendUvarint(out, uint64(len(vr.CIDs)))
+	for _, cid := range vr.CIDs {
+		out = append(out, cid[:]...)
+	}
+	return out
+}
+
+func (vr *VisitReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal VisitReq, too short: %d", len(data))
+	}
+	if err := vr.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	numCIDs, data, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
+	if err != nil {
+		return err
+	}
+	vr.CIDs = make([]blobcache.CID, numCIDs)
+	for i := range vr.CIDs {
+		if len(data) < blobcache.CIDSize {
+			return fmt.Errorf("cannot unmarshal VisitReq, too short: %d", len(data))
+		}
+		vr.CIDs[i] = blobcache.CID(data[:blobcache.CIDSize])
+		data = data[blobcache.CIDSize:]
+	}
+	return nil
+}
+
+type VisitResp struct{}
+
+func (vr VisitResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (vr *VisitResp) Unmarshal(data []byte) error {
+	if len(data) != 0 {
+		return fmt.Errorf("empty data expected for VisitResp")
+	}
+	return nil
+}
+
+type IsVisitedReq struct {
+	Tx   blobcache.Handle
+	CIDs []blobcache.CID
+}
+
+func (ir IsVisitedReq) Marshal(out []byte) []byte {
+	out = ir.Tx.Marshal(out)
+	out = binary.AppendUvarint(out, uint64(len(ir.CIDs)))
+	for _, cid := range ir.CIDs {
+		out = append(out, cid[:]...)
+	}
+	return out
+}
+
+func (ir *IsVisitedReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal IsVisitedReq, too short: %d", len(data))
+	}
+	if err := ir.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	return nil
+}
+
+type IsVisitedResp struct {
+	Visited []bool
+}
+
+func (ir IsVisitedResp) Marshal(out []byte) []byte {
+	for i := range ir.Visited {
+		if i%8 == 0 {
+			out = append(out, 0)
+		}
+		if ir.Visited[i] {
+			out[len(out)-1] |= 1 << (i % 8)
+		}
+	}
+	return out
+}
+
+func (ir *IsVisitedResp) Unmarshal(data []byte) error {
+	ir.Visited = make([]bool, len(data)*8)
+	for i := range data {
+		for j := 0; j < 8; j++ {
+			if (data[i] & (1 << j)) != 0 {
+				ir.Visited[i*8+j] = true
+			}
+		}
+	}
+	return nil
+}
+
 type CreateVolumeReq struct {
 	Spec blobcache.VolumeSpec
 }
@@ -616,7 +826,7 @@ func (cr CreateVolumeReq) Marshal(out []byte) []byte {
 	return cr.Spec.Marshal(out)
 }
 
-func (cr CreateVolumeReq) Unmarshal(data []byte) error {
+func (cr *CreateVolumeReq) Unmarshal(data []byte) error {
 	return cr.Spec.Unmarshal(data)
 }
 

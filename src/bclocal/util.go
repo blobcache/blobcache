@@ -2,6 +2,7 @@ package bclocal
 
 import (
 	"context"
+	"iter"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,6 +19,9 @@ import (
 )
 
 // NewTestService creates a service scoped to the life of the test.
+// It uses:
+// - t.TempDir() to create a temporary directory
+// - creates a UDP socket on a random port.
 func NewTestService(t testing.TB) *Service {
 	ctx := testutil.Context(t)
 	stateDir := t.TempDir()
@@ -36,6 +40,7 @@ func NewTestService(t testing.TB) *Service {
 		PacketConn: testutil.PacketConn(t),
 		DB:         pebbleDB,
 		BlobDir:    blobDir,
+		Policy:     &allowAllPolicy{},
 		Schemas:    DefaultSchemas(),
 		Root:       DefaultRoot(),
 	})
@@ -74,4 +79,23 @@ func DefaultRoot() blobcache.VolumeSpec {
 			},
 		},
 	}
+}
+
+// allowAllPolicy is a policy that allows all actions for all peers.
+// this is useful for testing, but is otherwise a bad idea.
+// Do not make this public.
+type allowAllPolicy struct{}
+
+func (p *allowAllPolicy) GrantsFor(peer blobcache.PeerID) iter.Seq[schema.Link] {
+	return func(yield func(schema.Link) bool) {
+		yield(schema.Link{Target: blobcache.OID{}, Rights: blobcache.Action_ALL})
+	}
+}
+
+func (p *allowAllPolicy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+	return blobcache.Action_ALL
+}
+
+func (p *allowAllPolicy) CanCreate(peer blobcache.PeerID) bool {
+	return true
 }

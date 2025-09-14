@@ -58,10 +58,9 @@ func (h Handle) String() string {
 }
 
 func (h Handle) Marshal(out []byte) []byte {
-	buf := make([]byte, HandleSize)
-	copy(buf[:OIDSize], h.OID[:])
-	copy(buf[OIDSize:], h.Secret[:])
-	return buf
+	out = append(out, h.OID[:]...)
+	out = append(out, h.Secret[:]...)
+	return out
 }
 
 // Unmarshal unmarshals a handle from it's binary representation.
