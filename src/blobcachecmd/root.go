@@ -99,6 +99,11 @@ var nameParam = star.Param[string]{
 }
 
 func openLocal(c star.Context) (*bclocal.Service, func(), error) {
+	for _, d := range []string{"pebble", "blob"} {
+		if err := os.MkdirAll(filepath.Join(stateDirParam.Load(c), d), 0755); err != nil {
+			return nil, nil, err
+		}
+	}
 	db, err := pebble.Open(filepath.Join(stateDirParam.Load(c), "pebble"), &pebble.Options{})
 	if err != nil {
 		return nil, nil, err

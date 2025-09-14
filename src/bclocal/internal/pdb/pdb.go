@@ -199,7 +199,7 @@ func IncrUint32(ba *pebble.Batch, key []byte, delta int32, deleteZero bool) (uin
 			return 0, err
 		}
 		defer closer.Close()
-		if len(v) != 8 {
+		if len(v) != 4 {
 			return 0, fmt.Errorf("invalid value length: %d", len(v))
 		}
 		return binary.BigEndian.Uint32(v), nil

@@ -1,6 +1,7 @@
 package bclocal
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -166,10 +167,10 @@ func dropVolume(ba pdb.WO, volID blobcache.OID) error {
 	return nil
 }
 
-func cleanupVolumes(db *pebble.DB, keep func(blobcache.OID) bool) error {
+func cleanupVolumes(ctx context.Context, db *pebble.DB, keep func(blobcache.OID) bool) error {
 	ba := db.NewIndexedBatch()
 	defer ba.Close()
-	iter, err := db.NewIter(&pebble.IterOptions{
+	iter, err := db.NewIterWithContext(ctx, &pebble.IterOptions{
 		LowerBound: pdb.TableLowerBound(tid_VOLUMES),
 		UpperBound: pdb.TableUpperBound(tid_VOLUMES),
 	})

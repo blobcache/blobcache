@@ -402,6 +402,26 @@ func (s *localSystem) blobExists(volID LocalVolumeID, mvid pdb.MVTag, cids []blo
 	return nil
 }
 
+// load loads the root data for a local volume.
+func (s *localSystem) load(volID LocalVolumeID, mvid pdb.MVTag, dst *[]byte) error {
+	return s.doRO(func(sp *pebble.Snapshot, ignoring func(pdb.MVTag) bool) error {
+		ignoring2 := func(x pdb.MVTag) bool {
+			return x != mvid && ignoring(x)
+		}
+		mvr, closer, err := pdb.MVGet(sp, tid_LOCAL_VOLUME_CELLS, volID.Marshal(nil), ignoring2)
+		if err != nil {
+			return err
+		}
+		defer closer.Close()
+		if mvr == nil {
+			return nil
+		}
+		*dst = append((*dst)[:0], mvr.Value...)
+		return nil
+	})
+
+}
+
 // visit marks all the cids as visited.
 // If any of them do not exist, the operation is a no-op.
 func (s *localSystem) visit(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcache.CID) error {
@@ -428,7 +448,7 @@ func (s *localSystem) visit(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcach
 	})
 }
 
-func (s *localSystem) isVisited(volID blobcache.OID, mvid pdb.MVTag, cids []blobcache.CID, dst []bool) error {
+func (s *localSystem) isVisited(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcache.CID, dst []bool) error {
 	sn := s.db.NewSnapshot()
 	defer sn.Close()
 	active := make(pdb.MVSet)
@@ -440,7 +460,7 @@ func (s *localSystem) isVisited(volID blobcache.OID, mvid pdb.MVTag, cids []blob
 		cidPrefix := cid[:16]
 		k := pdb.MVKey{
 			TableID: tid_LOCAL_VOLUME_BLOBS,
-			Key:     slices.Concat(volID[:], cidPrefix),
+			Key:     slices.Concat(volID.Marshal(nil), cidPrefix),
 			Version: mvid,
 		}
 		// if the (volume, blob) association has the 2nd bit of the value set, then the blob is visited.
@@ -535,20 +555,6 @@ func volumeBlobExists(db pdb.RO, volID LocalVolumeID, cid blobcache.CID, excludi
 		return false, nil
 	}
 	return true, nil
-}
-
-// lvLoad loads the root data for a local volume.
-func lvLoad(sp pdb.RO, volID LocalVolumeID, mvid pdb.MVTag, dst *[]byte) error {
-	mvr, closer, err := pdb.MVGet(sp, tid_LOCAL_VOLUME_CELLS, volID.Marshal(nil), nil)
-	if err != nil {
-		return err
-	}
-	defer closer.Close()
-	if mvr == nil {
-		return nil
-	}
-	*dst = append((*dst)[:0], mvr.Value...)
-	return nil
 }
 
 // lvSave saves the root data for a local volume.
@@ -654,10 +660,19 @@ func (ltx *localTxnMut) Commit(ctx context.Context) error {
 	if contSch, ok := ltx.schema.(schema.Container); ok {
 		links = make(linkSet)
 		var root []byte
-		if err := ltx.Load(ctx, &root); err != nil {
+		if err := ltx.localSys.load(ltx.volid, ltx.mvid, &root); err != nil {
 			return err
 		}
-		if err := contSch.ReadLinks(ctx, volumes.NewUnsaltedStore(ltx), root, links); err != nil {
+		// this is necessary because we have the lock exclusively, but we need to
+		// present the transaction as a read-only store to ReadLinks.
+		// None of the public methods will work while we are holding the lock exclusively.
+		// linter complains about the lock being copied, but it's okay because we zero
+		// the lock on the line below.
+		//nolint:copylocks // see above
+		ltx2 := *ltx
+		ltx2.mu = sync.RWMutex{}
+		var store cadata.Getter = volumes.NewUnsaltedStore(&ltx2)
+		if err := contSch.ReadLinks(ctx, store, root, links); err != nil {
 			return err
 		}
 	}
@@ -696,7 +711,7 @@ func (v *localTxnMut) Load(ctx context.Context, dst *[]byte) error {
 		return err
 	}
 	defer unlock()
-	return lvLoad(v.localSys.db, v.volid, v.mvid, dst)
+	return v.localSys.load(v.volid, v.mvid, dst)
 }
 
 func (v *localTxnMut) Delete(ctx context.Context, cids []blobcache.CID) error {
@@ -790,7 +805,8 @@ type localTxnRO struct {
 	volParams blobcache.VolumeParams
 
 	// activeTxns is the set of active transactions for the volume.
-	mu         sync.Mutex
+	mu         sync.RWMutex
+	closed     bool
 	activeTxns map[pdb.MVTag]struct{}
 }
 
@@ -803,8 +819,25 @@ func newLocalTxnRO(sys *localSystem, volid LocalVolumeID, sp *pebble.Snapshot, v
 	}
 }
 
+func (v *localTxnRO) checkClosed() (func(), error) {
+	v.mu.RLock()
+	if v.closed {
+		return nil, blobcache.ErrTxDone{}
+	}
+	return v.mu.RUnlock, nil
+}
+
 func (v *localTxnRO) Abort(ctx context.Context) error {
-	return v.sp.Close()
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.closed {
+		return nil
+	}
+	if err := v.sp.Close(); err != nil {
+		return err
+	}
+	v.closed = true
+	return nil
 }
 
 func (v *localTxnRO) Commit(ctx context.Context) error {
@@ -816,6 +849,11 @@ func (v *localTxnRO) Load(ctx context.Context, dst *[]byte) error {
 	if err != nil {
 		return err
 	}
+	unlock, err := v.checkClosed()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	mvr, closer, err := pdb.MVGet(v.sp, tid_LOCAL_VOLUME_CELLS, v.volid.Marshal(nil), activeTxns)
 	if err != nil {
 		return err
@@ -848,6 +886,11 @@ func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, salt *blobcache
 	} else if !exists[0] {
 		return 0, cadata.ErrNotFound{Key: cid}
 	}
+	unlock, err := v.checkClosed()
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
 	return readBlobData(v.sp, cidPrefix(cid[:16]), buf)
 }
 
@@ -883,11 +926,11 @@ func (v *localTxnRO) Volume() volumes.Volume {
 }
 
 func (v *localTxnRO) Visit(ctx context.Context, cids []blobcache.CID) error {
-	return fmt.Errorf("Visit called on non-GC transaction")
+	return blobcache.ErrTxReadOnly{Op: "Visit"}
 }
 
 func (v *localTxnRO) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	return fmt.Errorf("IsVisited called on non-GC transaction")
+	return blobcache.ErrTxReadOnly{Op: "IsVisited"}
 }
 
 func (v *localTxnRO) getExcluded() (func(pdb.MVTag) bool, error) {

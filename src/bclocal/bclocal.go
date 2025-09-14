@@ -59,6 +59,7 @@ type Service struct {
 
 	// mu guards the volumes and txns.
 	// pure handle operations like Drop, KeepAlive, Inspect, etc. do not require this lock.
+	// mu should always be taken for a superset of the time that the handle system's lock is taken.
 	mu      sync.RWMutex
 	volumes map[blobcache.OID]volume
 	txns    map[blobcache.OID]transaction
@@ -84,6 +85,7 @@ func New(env Env) *Service {
 // Run performs background tasks for the service.
 // This includes cleaning up expired handles, and garbage collecting volumes and transactions.
 // If a PacketConn and PrivateKey were provided, then the Service will also listen for peers.
+// Cancelling the context will cause Run to return without an error.
 func (s *Service) Run(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 	if s.node != nil {
@@ -103,7 +105,24 @@ func (s *Service) Run(ctx context.Context) error {
 		s.cleanupLoop(ctx)
 		return nil
 	})
-	return eg.Wait()
+	if err := eg.Wait(); ctx.Err() == err && err == context.Canceled {
+		return nil
+	}
+	return nil
+}
+
+// AbortAll aborts all transactions.
+func (s *Service) AbortAll(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for oid, txn := range s.txns {
+		if err := txn.backend.Abort(ctx); err != nil {
+			logctx.Warn(ctx, "aborting transaction", zap.Error(err))
+		}
+		s.handles.DropAllForOID(oid)
+		delete(s.txns, oid)
+	}
+	return nil
 }
 
 // Cleanup runs the full cleanup process.
@@ -112,22 +131,25 @@ func (s *Service) Cleanup(ctx context.Context) error {
 	logctx.Info(ctx, "cleanup BEGIN")
 	defer logctx.Info(ctx, "cleanup END")
 	now := time.Now()
-	logctx.Info(ctx, "cleaning up handles")
-	s.mu.Lock()
+
 	// 1. Delete expired handles.
+	logctx.Info(ctx, "cleaning up handles")
 	s.handles.filter(func(h handle) bool {
 		// return true to keep, false to delete.
 		return h.expiresAt.After(now)
 	})
-	logctx.Info(ctx, "cleaning up transactions")
+
 	// 2. Release resources for transactions which do not have a handle.
+	logctx.Info(ctx, "cleaning up transactions")
+	s.mu.Lock()
 	for oid := range s.txns {
 		if !s.handles.isAlive(oid) {
 			delete(s.txns, oid)
 		}
 	}
-	logctx.Info(ctx, "cleaning up volumes")
+
 	// 3. Release resources for mounted volumes which do not have a handle.
+	logctx.Info(ctx, "cleaning up volumes")
 	for oid := range s.volumes {
 		if !s.handles.isAlive(oid) {
 			delete(s.volumes, oid)
@@ -136,10 +158,12 @@ func (s *Service) Cleanup(ctx context.Context) error {
 	s.mu.Unlock()
 
 	// cleanup volumes.
-	if err := cleanupVolumes(s.env.DB, func(oid blobcache.OID) bool {
+	if err := cleanupVolumes(ctx, s.env.DB, func(oid blobcache.OID) bool {
 		if oid == (blobcache.OID{}) {
 			return true
 		}
+		s.mu.RLock()
+		defer s.mu.RUnlock()
 		_, exists := s.volumes[oid]
 		return exists
 	}); err != nil {
@@ -189,14 +213,6 @@ func (s *Service) getContainer(name blobcache.Schema) (schema.Container, error) 
 
 func (s *Service) rootVolume() volumes.Volume {
 	return newLocalVolume(&s.localSys, 0)
-}
-
-func (s *Service) handleToLink(x blobcache.Handle) (*schema.Link, error) {
-	_, rights, err := s.resolveVol(x)
-	if err != nil {
-		return nil, err
-	}
-	return &schema.Link{Target: x.OID, Rights: rights}, nil
 }
 
 // mountVolume ensures the volume is available.
@@ -362,21 +378,21 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	now := time.Now()
 	volExpire := now.Add(DefaultVolumeTTL)
 	txExpire := now.Add(DefaultTxTTL)
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, h := range hs {
 		_, exists := s.handles.Inspect(h)
 		if !exists {
 			continue
 		}
 		var expiresAt time.Time
-		s.mu.RLock()
 		if _, exists := s.volumes[h.OID]; exists {
 			expiresAt = volExpire
 		}
 		if _, exists := s.txns[h.OID]; exists {
 			expiresAt = txExpire
 		}
-		s.mu.RUnlock()
-
 		s.handles.KeepAlive(h, expiresAt)
 	}
 	return nil

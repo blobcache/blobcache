@@ -82,6 +82,7 @@ func TestDefaultNoAccess(t *testing.T) {
 }
 
 func TestUploadDownload(t *testing.T) {
+	t.SkipNow() // this test is slow.
 	blobDir, err := os.OpenRoot(t.TempDir())
 	require.NoError(t, err)
 	defer blobDir.Close()

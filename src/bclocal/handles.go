@@ -91,6 +91,16 @@ func (hs *handleSystem) Inspect(h blobcache.Handle) (handle, bool) {
 	return handle, exists
 }
 
+func (hs *handleSystem) DropAllForOID(oid blobcache.OID) {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	for k, handle := range hs.handles {
+		if handle.target == oid {
+			hs.dropHandleNoLock(k)
+		}
+	}
+}
+
 func (hs *handleSystem) filter(keep func(handle) bool) {
 	hs.mu.Lock()
 	defer hs.mu.Unlock()

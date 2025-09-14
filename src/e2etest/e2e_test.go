@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"blobcache.io/glfs"
-	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 
 	"blobcache.io/blobcache/src/bchttp"
@@ -59,23 +56,7 @@ func jsonMarshal(x any) []byte {
 }
 
 func newTestService(t testing.TB) blobcache.Service {
-	stateDir := t.TempDir()
-	pdbPath := filepath.Join(stateDir, "pebble")
-	db, err := pebble.Open(pdbPath, &pebble.Options{})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
-
-	blobDir, err := os.OpenRoot(filepath.Join(stateDir, "blob"))
-	require.NoError(t, err)
-	s := bclocal.New(bclocal.Env{
-		DB:      db,
-		BlobDir: blobDir,
-
-		Schemas: bclocal.DefaultSchemas(),
-		Root:    bclocal.DefaultRoot(),
-	})
+	s := bclocal.NewTestService(t)
 	lis := testutil.Listen(t)
 	go func() {
 		http.Serve(lis, &bchttp.Server{Service: s})

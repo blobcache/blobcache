@@ -1,6 +1,7 @@
 package bclocal
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 // NewTestService creates a service scoped to the life of the test.
@@ -37,7 +39,18 @@ func NewTestService(t testing.TB) *Service {
 		Schemas:    DefaultSchemas(),
 		Root:       DefaultRoot(),
 	})
-	go svc.Run(ctx)
+	var eg errgroup.Group
+	ctx, cf := context.WithCancel(ctx)
+	eg.Go(func() error {
+		return svc.Run(ctx)
+	})
+	t.Cleanup(func() {
+		cf()
+		require.NoError(t, eg.Wait())
+		require.NoError(t, svc.AbortAll(ctx))
+		require.NoError(t, blobDir.Close())
+		require.NoError(t, pebbleDB.Close())
+	})
 	return svc
 }
 
