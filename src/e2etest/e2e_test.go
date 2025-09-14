@@ -14,7 +14,6 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/testutil"
 )
 
@@ -57,16 +56,7 @@ func jsonMarshal(x any) []byte {
 }
 
 func newTestService(t testing.TB) blobcache.Service {
-	ctx := testutil.Context(t)
-	db := dbutil.OpenMemory()
-	if err := bclocal.SetupDB(ctx, db); err != nil {
-		t.Fatal(err)
-	}
-	s := bclocal.New(bclocal.Env{
-		DB:      db,
-		Schemas: bclocal.DefaultSchemas(),
-		Root:    bclocal.DefaultRoot(),
-	})
+	s := bclocal.NewTestService(t)
 	lis := testutil.Listen(t)
 	go func() {
 		http.Serve(lis, &bchttp.Server{Service: s})

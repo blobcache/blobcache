@@ -1,23 +1,21 @@
 package bclocal
 
 import (
+	"encoding/binary"
+	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema/simplens"
+	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
+	"lukechampine.com/blake3"
 )
-
-func TestSetupDB(t *testing.T) {
-	ctx := testutil.Context(t)
-	db := dbutil.OpenMemory()
-	if err := SetupDB(ctx, db); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestNewService(t *testing.T) {
 	NewTestService(t)
@@ -81,4 +79,82 @@ func TestDefaultNoAccess(t *testing.T) {
 	names, err := nsc2.ListNames(ctx, *volh)
 	require.Error(t, err)
 	require.Empty(t, names)
+}
+
+func TestUploadDownload(t *testing.T) {
+	t.SkipNow() // this test is slow.
+	blobDir, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	defer blobDir.Close()
+
+	const blobSize = 1 << 16
+	var cids []blobcache.CID
+
+	var buf []byte
+	for i := 0; i < 512; i++ {
+		buf = buf[:0]
+		rng := rand.NewPCG(uint64(i), uint64(i))
+		for len(buf) < blobSize {
+			buf = binary.LittleEndian.AppendUint64(buf, rng.Uint64())
+		}
+
+		cid := blake3.Sum256(buf)
+		require.NoError(t, uploadBlob(blobDir, cid, buf))
+		cids = append(cids, cid)
+	}
+
+	t.Log(len(buf))
+	for _, cid := range cids {
+		n, err := downloadBlob(blobDir, cid, buf)
+		require.NoError(t, err)
+		data := buf[:n]
+		h := blake3.Sum256(data)
+		require.Equal(t, cid, blobcache.CID(h))
+	}
+}
+
+func TestTxSystem(t *testing.T) {
+	db := newTestPebbleDB(t)
+	txs := newTxSystem(db)
+
+	// allocate a new transaction ID
+	txid1, err := txs.allocateTxID()
+	require.NoError(t, err)
+	require.Equal(t, pdb.MVTag(1), txid1)
+	txid2, err := txs.allocateTxID()
+	require.NoError(t, err)
+	require.Equal(t, pdb.MVTag(2), txid2)
+
+	// mark the transaction as active
+	require.NoError(t, doRWBatch(db, func(ba *pebble.Batch) error {
+		return txs.start(ba, txid1)
+	}))
+	// read the active transactions
+	activeTxns := make(map[pdb.MVTag]struct{})
+	require.NoError(t, doSnapshot(db, func(sn *pebble.Snapshot) error {
+		clear(activeTxns)
+		return txs.readActive(sn, activeTxns)
+	}))
+	require.Equal(t, 1, len(activeTxns))
+
+	// remove the transaction from the active set
+	require.NoError(t, doRWBatch(db, func(ba *pebble.Batch) error {
+		return txs.success(ba, txid1)
+	}))
+	// read the active transactions
+	require.NoError(t, doSnapshot(db, func(sn *pebble.Snapshot) error {
+		clear(activeTxns)
+		return txs.readActive(sn, activeTxns)
+	}))
+	require.Equal(t, 0, len(activeTxns))
+}
+
+func newTestPebbleDB(t *testing.T) *pebble.DB {
+	dbPath := filepath.Join(t.TempDir(), "pebble")
+	db, err := pebble.Open(dbPath, &pebble.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	return db
 }

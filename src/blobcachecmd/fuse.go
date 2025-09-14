@@ -4,7 +4,7 @@ import (
 	"blobcache.io/blobcache/src/bcfuse"
 	"blobcache.io/blobcache/src/bcfuse/scheme_glfs"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/sqlutil"
 	"blobcache.io/blobcache/src/schema/simplens"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -32,7 +32,7 @@ var fuseMountCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		db := dbutil.OpenMemory()
+		db := sqlutil.OpenMemory()
 		fsx := bcfuse.New(db, svc, *volh, scheme_glfs.NewScheme())
 		fuseSrv, err := fs.Mount(mountpointParam.Load(c), fsx.FUSERoot(), &fs.Options{
 			MountOptions: fuse.MountOptions{

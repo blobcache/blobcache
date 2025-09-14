@@ -4,22 +4,19 @@ package bclocal
 import (
 	"context"
 	"crypto/cipher"
-	"crypto/rand"
 	"fmt"
-	"maps"
 	"net"
+	"os"
 	"slices"
 	"sync"
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
-	"github.com/jmoiron/sqlx"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.brendoncarroll.net/tai64"
 	"go.uber.org/zap"
@@ -36,15 +33,18 @@ const (
 var _ blobcache.Service = &Service{}
 
 type Env struct {
-	PebbleDB *pebble.DB
-	DB       *sqlx.DB
+	// DB is the main database to store metadata in.
+	DB *pebble.DB
+	// BlobDir is the directory to store blobs in.
+	BlobDir *os.Root
 	// PrivateKey determines the node's identity.
 	// It must be provided if PacketConn is set.
 	PrivateKey ed25519.PrivateKey
 	// PacketConn is the connection to listen on.
 	PacketConn net.PacketConn
-	Schemas    map[blobcache.Schema]schema.Schema
-	Policy     Policy
+	// Schemas is the supported schemas.
+	Schemas map[blobcache.Schema]schema.Schema
+	Policy  Policy
 	// Root is the spec to use for the root volume.
 	Root blobcache.VolumeSpec
 }
@@ -52,14 +52,17 @@ type Env struct {
 // Service implements a blobcache.Service.
 type Service struct {
 	env  Env
-	db   *sqlx.DB
 	node *bcnet.Node
 
+	handles  handleSystem
+	localSys localSystem
+
+	// mu guards the volumes and txns.
+	// pure handle operations like Drop, KeepAlive, Inspect, etc. do not require this lock.
+	// mu should always be taken for a superset of the time that the handle system's lock is taken.
 	mu      sync.RWMutex
 	volumes map[blobcache.OID]volume
 	txns    map[blobcache.OID]transaction
-	// handles stores ephemeral handles.
-	handles map[[32]byte]handle
 }
 
 func New(env Env) *Service {
@@ -67,15 +70,22 @@ func New(env Env) *Service {
 	if env.PacketConn != nil {
 		node = bcnet.New(env.PrivateKey, env.PacketConn)
 	}
-	return &Service{
-		env:  env,
-		db:   env.DB,
-		node: node,
 
-		handles: make(map[[32]byte]handle),
+	s := &Service{
+		env:  env,
+		node: node,
 	}
+	s.localSys = newLocalSystem(env.DB, env.BlobDir, &s.handles, func(s blobcache.Schema) schema.Schema {
+		return env.Schemas[s]
+	})
+
+	return s
 }
 
+// Run performs background tasks for the service.
+// This includes cleaning up expired handles, and garbage collecting volumes and transactions.
+// If a PacketConn and PrivateKey were provided, then the Service will also listen for peers.
+// Cancelling the context will cause Run to return without an error.
 func (s *Service) Run(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 	if s.node != nil {
@@ -95,42 +105,73 @@ func (s *Service) Run(ctx context.Context) error {
 		s.cleanupLoop(ctx)
 		return nil
 	})
-	return eg.Wait()
+	if err := eg.Wait(); ctx.Err() == err && err == context.Canceled {
+		return nil
+	}
+	return nil
+}
+
+// AbortAll aborts all transactions.
+func (s *Service) AbortAll(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for oid, txn := range s.txns {
+		if err := txn.backend.Abort(ctx); err != nil {
+			logctx.Warn(ctx, "aborting transaction", zap.Error(err))
+		}
+		s.handles.DropAllForOID(oid)
+		delete(s.txns, oid)
+	}
+	return nil
 }
 
 // Cleanup runs the full cleanup process.
+// This method is called periodically by Run, but it can also be called manually.
 func (s *Service) Cleanup(ctx context.Context) error {
+	logctx.Info(ctx, "cleanup BEGIN")
+	defer logctx.Info(ctx, "cleanup END")
 	now := time.Now()
-	keep := map[blobcache.OID]struct{}{}
-	s.mu.Lock()
+
 	// 1. Delete expired handles.
-	for k, h := range s.handles {
-		if h.expiresAt.Before(now) {
-			delete(s.handles, k)
-		} else {
-			keep[h.target] = struct{}{}
-		}
-	}
+	logctx.Info(ctx, "cleaning up handles")
+	s.handles.filter(func(h handle) bool {
+		// return true to keep, false to delete.
+		return h.expiresAt.After(now)
+	})
+
 	// 2. Release resources for transactions which do not have a handle.
+	logctx.Info(ctx, "cleaning up transactions")
+	s.mu.Lock()
 	for oid := range s.txns {
-		if _, exists := keep[oid]; !exists {
+		if !s.handles.isAlive(oid) {
 			delete(s.txns, oid)
 		}
 	}
+
 	// 3. Release resources for mounted volumes which do not have a handle.
+	logctx.Info(ctx, "cleaning up volumes")
 	for oid := range s.volumes {
-		if _, exists := keep[oid]; !exists {
+		if !s.handles.isAlive(oid) {
 			delete(s.volumes, oid)
 		}
 	}
 	s.mu.Unlock()
 
-	keepSlice := slices.Collect(maps.Keys(keep))
-	return dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		// TODO: fix cleanupVolumes
-		return nil
-		return cleanupVolumes(tx, keepSlice)
-	})
+	// cleanup volumes.
+	if err := cleanupVolumes(ctx, s.env.DB, func(oid blobcache.OID) bool {
+		if oid == (blobcache.OID{}) {
+			return true
+		}
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		_, exists := s.volumes[oid]
+		return exists
+	}); err != nil {
+		return err
+	}
+
+	// TODO: cleanup database.
+	return nil
 }
 
 func (s *Service) cleanupLoop(ctx context.Context) {
@@ -171,15 +212,7 @@ func (s *Service) getContainer(name blobcache.Schema) (schema.Container, error) 
 }
 
 func (s *Service) rootVolume() volumes.Volume {
-	return newLocalVolume(s, blobcache.OID{})
-}
-
-func (s *Service) handleToLink(x blobcache.Handle) (*schema.Link, error) {
-	_, rights, err := s.resolveVol(x)
-	if err != nil {
-		return nil, err
-	}
-	return &schema.Link{Target: x.OID, Rights: rights}, nil
+	return newLocalVolume(&s.localSys, 0)
 }
 
 // mountVolume ensures the volume is available.
@@ -233,9 +266,10 @@ func (s *Service) mountAllInContainer(ctx context.Context, sch schema.Container,
 		}
 	}
 	for target := range links {
-		volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
-			return inspectVolume(tx, target)
-		})
+		volInfo, err := inspectVolume(s.env.DB, target)
+		if err != nil {
+			return err
+		}
 		if err != nil {
 			return err
 		}
@@ -260,14 +294,16 @@ func (s *Service) mountRoot(ctx context.Context) error {
 
 	rootOID := blobcache.OID{}
 	allowedLinks := make(map[blobcache.OID]blobcache.ActionSet)
-	volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
+	var volInfo *blobcache.VolumeInfo
+	if err := doRWBatch(s.env.DB, func(ba *pebble.Batch) error {
 		clear(allowedLinks)
-		if err := readVolumeLinks(tx, rootOID, allowedLinks); err != nil {
-			return nil, err
+		if err := readVolumeLinks(ba, rootOID, allowedLinks); err != nil {
+			return err
 		}
-		return ensureRootVolume(tx, s.env.Root)
-	})
-	if err != nil {
+		var err error
+		volInfo, err = ensureRootVolume(ba, s.env.Root)
+		return err
+	}); err != nil {
 		return err
 	}
 
@@ -287,75 +323,39 @@ type volume struct {
 }
 
 type transaction struct {
+	info    blobcache.TxInfo
 	backend volumes.Tx
 	volume  *volume
-}
-
-type handle struct {
-	target    blobcache.OID
-	createdAt time.Time
-	expiresAt time.Time // zero value means no expiration
-	rights    blobcache.ActionSet
-}
-
-func (h handle) isExpired(now time.Time) bool {
-	return h.expiresAt.Before(now)
-}
-
-// createEphemeralHandle creates a handle that expires at the given time.
-// it will be stored in memory and not in the database.
-func (s *Service) createEphemeralHandle(target blobcache.OID, expiresAt time.Time) blobcache.Handle {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	secret := [16]byte{}
-	rand.Read(secret[:])
-	ret := blobcache.Handle{OID: target, Secret: secret}
-	s.handles[handleKey(ret)] = handle{
-		target:    target,
-		createdAt: time.Now(),
-		expiresAt: expiresAt,
-		rights:    blobcache.Action_ALL, // TODO: set rights.
-	}
-	return ret
 }
 
 func (s *Service) resolveVol(x blobcache.Handle) (volume, blobcache.ActionSet, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	k := handleKey(x)
-	if _, exists := s.handles[k]; !exists {
+	oid, rights := s.handles.Resolve(x)
+	if rights == 0 {
 		return volume{}, 0, blobcache.ErrInvalidHandle{Handle: x}
 	}
-	vol, exists := s.volumes[x.OID]
+	vol, exists := s.volumes[oid]
 	if !exists {
 		return volume{}, 0, fmt.Errorf("handle does not refer to volume")
 	}
-	return vol, blobcache.Action_ALL, nil
+	return vol, rights, nil
 }
 
 // resolveTx looks up the transaction handle from memory.
 // If the handle is valid it will load a new transaction.
 func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (transaction, error) {
-	if touch {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-	} else {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
+	oid, rights := s.handles.Resolve(txh)
+	if rights == 0 {
+		return transaction{}, blobcache.ErrInvalidHandle{Handle: txh}
 	}
 	// transactions are not stored in the database, so we only have to check the handles map.
-	h, exists := s.handles[handleKey(txh)]
+	tx, exists := s.txns[oid]
 	if !exists {
 		return transaction{}, blobcache.ErrInvalidHandle{Handle: txh}
 	}
-	tx, exists := s.txns[h.target]
-	if !exists {
-		return transaction{}, fmt.Errorf("handle is valid, but not for a transaction")
-	}
 	if touch {
-		h := s.handles[handleKey(txh)]
-		h.expiresAt = time.Now().Add(DefaultTxTTL)
-		s.handles[handleKey(txh)] = h
+		s.handles.KeepAlive(txh, time.Now().Add(DefaultTxTTL))
 	}
 	return tx, nil
 }
@@ -369,42 +369,37 @@ func (s *Service) Endpoint(_ context.Context) (blobcache.Endpoint, error) {
 
 func (s *Service) Drop(ctx context.Context, h blobcache.Handle) error {
 	s.mu.Lock()
-	delete(s.handles, handleKey(h))
+	s.handles.Drop(h)
 	s.mu.Unlock()
 	return s.Cleanup(ctx)
 }
 
 func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	now := time.Now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	volExpire := now.Add(DefaultVolumeTTL)
+	txExpire := now.Add(DefaultTxTTL)
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, h := range hs {
-		if hstate, exists := s.handles[handleKey(h)]; !exists {
+		_, exists := s.handles.Inspect(h)
+		if !exists {
 			continue
-		} else {
-			if hstate.isExpired(now) {
-				delete(s.handles, handleKey(h))
-				continue
-			}
 		}
-		var ttl time.Duration
+		var expiresAt time.Time
 		if _, exists := s.volumes[h.OID]; exists {
-			ttl = DefaultVolumeTTL
+			expiresAt = volExpire
 		}
 		if _, exists := s.txns[h.OID]; exists {
-			ttl = DefaultTxTTL
+			expiresAt = txExpire
 		}
-		s.handles[handleKey(h)] = handle{
-			expiresAt: now.Add(ttl),
-		}
+		s.handles.KeepAlive(h, expiresAt)
 	}
 	return nil
 }
 
 func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	hstate, exists := s.handles[handleKey(h)]
+	hstate, exists := s.handles.Inspect(h)
 	if !exists {
 		return nil, blobcache.ErrInvalidHandle{Handle: h}
 	}
@@ -430,8 +425,9 @@ func (s *Service) OpenAs(ctx context.Context, caller *blobcache.PeerID, x blobca
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
-	// TODO: use mask
-	h := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
+	createdAt := time.Now()
+	expiresAt := createdAt.Add(DefaultVolumeTTL)
+	h := s.handles.Create(x, mask, createdAt, expiresAt)
 	return &h, nil
 }
 
@@ -439,19 +435,14 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
-	baseVol, _, err := s.resolveVol(base)
+	_, _, err := s.resolveVol(base)
 	if err != nil {
 		return nil, err
 	}
-	txn, err := baseVol.backend.BeginTx(ctx, blobcache.TxParams{})
-	if err != nil {
-		return nil, err
-	}
-	defer txn.Abort(ctx)
 
 	links := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		return readVolumeLinks(tx, base.OID, links)
+	if err := doSnapshot(s.env.DB, func(sp *pebble.Snapshot) error {
+		return readVolumeLinks(sp, base.OID, links)
 	}); err != nil {
 		return nil, err
 	}
@@ -459,10 +450,13 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 		return nil, blobcache.ErrNoLink{Base: base.OID, Target: x}
 	}
 
+	sp := s.env.DB.NewSnapshot()
+	defer sp.Close()
 	for target := range links {
-		volInfo, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.VolumeInfo, error) {
-			return inspectVolume(tx, target)
-		})
+		volInfo, err := inspectVolume(sp, target)
+		if err != nil {
+			return nil, err
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -470,8 +464,11 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 			return nil, err
 		}
 	}
-	_ = links // TODO: use links to check access to x
-	h := s.createEphemeralHandle(x, time.Now().Add(DefaultVolumeTTL))
+
+	rights := links[x] & mask
+	createdAt := time.Now()
+	expiresAt := createdAt.Add(DefaultVolumeTTL)
+	h := s.handles.Create(x, rights, createdAt, expiresAt)
 	return &h, nil
 }
 
@@ -492,22 +489,29 @@ func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vs
 	if err != nil {
 		return nil, err
 	}
-	info := blobcache.VolumeInfo{
-		// ID is intentionally left blank, createVolume will set it.
-		VolumeParams: vp,
-		Backend:      blobcache.VolumeBackendToOID(vspec),
-	}
-	volid, err := dbutil.DoTx1(ctx, s.db, func(tx *sqlx.Tx) (*blobcache.OID, error) {
-		return createVolume(tx, info)
-	})
+	lvid, err := s.localSys.GenerateLocalID()
 	if err != nil {
 		return nil, err
 	}
-	info.ID = *volid
-	if err := s.mountVolume(ctx, *volid, info); err != nil {
+	oid := oidFromLocalID(lvid)
+	info := blobcache.VolumeInfo{
+		ID:           oid,
+		VolumeParams: vp,
+		Backend:      blobcache.VolumeBackendToOID(vspec),
+	}
+
+	if err := doRWBatch(s.env.DB, func(ba *pebble.Batch) error {
+		return putVolume(ba, info)
+	}); err != nil {
 		return nil, err
 	}
-	handle := s.createEphemeralHandle(*volid, time.Now().Add(DefaultVolumeTTL))
+	if err := s.mountVolume(ctx, info.ID, info); err != nil {
+		return nil, err
+	}
+
+	createdAt := time.Now()
+	expiresAt := createdAt.Add(DefaultVolumeTTL)
+	handle := s.handles.Create(info.ID, blobcache.Action_ALL, createdAt, expiresAt)
 	return &handle, nil
 }
 
@@ -520,24 +524,28 @@ func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, vol
 		return nil, fmt.Errorf("only local volumes can be cloned")
 	}
 
-	newInfo := vol.info
-	var newID *blobcache.OID
-	if err := dbutil.DoTx(ctx, s.db, func(tx *sqlx.Tx) error {
-		var err error
-		newID, err = createVolume(tx, newInfo)
-		if err != nil {
-			return err
-		}
-		// copy over all the blobs from the original volume.
-		_, err = tx.Exec(`INSERT INTO volume_blobs (vol_id, cid, txn_id)
-		    SELECT ?, cid, txn_id FROM volume_blobs WHERE vol_id = ?
-		`, *newID, vol.info.ID)
-		return err
-	}); err != nil {
+	ba := s.env.DB.NewIndexedBatch()
+	defer ba.Close()
+	vinfo, err := inspectVolume(ba, vol.info.ID)
+	if err != nil {
 		return nil, err
 	}
-	newVol := s.createEphemeralHandle(*newID, time.Now().Add(DefaultVolumeTTL))
-	return &newVol, nil
+	if vinfo == nil {
+		return nil, fmt.Errorf("volume not found")
+	}
+	vinfo.ID = blobcache.NewOID()
+	if err := putVolume(ba, *vinfo); err != nil {
+		return nil, err
+	}
+	if err := ba.Commit(nil); err != nil {
+		return nil, err
+	}
+
+	h, err := s.handles.Create(vol.info.ID, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL)), nil
+	if err != nil {
+		return nil, err
+	}
+	return &h, nil
 }
 
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
@@ -575,7 +583,9 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blo
 		volume:  &vol,
 	}
 	s.mu.Unlock()
-	h := s.createEphemeralHandle(txoid, time.Now().Add(DefaultTxTTL))
+	createdAt := time.Now()
+	expiresAt := createdAt.Add(DefaultTxTTL)
+	h := s.handles.Create(txoid, blobcache.Action_ALL, createdAt, expiresAt)
 	return &h, nil
 }
 
@@ -588,7 +598,7 @@ func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcac
 	switch vol := vol.(type) {
 	case *localVolume:
 		s.mu.RLock()
-		volInfo, exists := s.volumes[vol.oid]
+		volInfo, exists := s.volumes[oidFromLocalID(vol.lvid)]
 		s.mu.RUnlock()
 		if !exists {
 			return nil, fmt.Errorf("volume not found")
@@ -634,7 +644,7 @@ func (s *Service) Commit(ctx context.Context, txh blobcache.Handle) error {
 		return err
 	}
 	s.mu.Lock()
-	delete(s.handles, handleKey(txh))
+	s.handles.Drop(txh)
 	s.mu.Unlock()
 	return nil
 }
@@ -649,7 +659,7 @@ func (s *Service) Abort(ctx context.Context, txh blobcache.Handle) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.handles, handleKey(txh))
+	s.handles.Drop(txh)
 	return nil
 }
 
@@ -753,7 +763,11 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	}
 	switch {
 	case backend.Local != nil:
-		return s.makeLocal(ctx, oid)
+		lvid, err := localVolumeIDFromOID(oid)
+		if err != nil {
+			return nil, err
+		}
+		return s.makeLocal(ctx, lvid)
 	case backend.Remote != nil:
 		return bcnet.OpenVolumeAs(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Volume, blobcache.Action_ALL)
 	case backend.Git != nil:
@@ -767,8 +781,8 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	}
 }
 
-func (s *Service) makeLocal(_ context.Context, oid blobcache.OID) (volumes.Volume, error) {
-	return newLocalVolume(s, oid), nil
+func (s *Service) makeLocal(_ context.Context, lvid LocalVolumeID) (volumes.Volume, error) {
+	return s.localSys.Open(lvid)
 }
 
 func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (volumes.Volume, error) {
@@ -824,6 +838,13 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		return vspec.Local.VolumeParams, nil
 	case vspec.Git != nil:
 		return vspec.Git.VolumeParams, nil
+	case vspec.Remote != nil:
+		vol, err := bcnet.OpenVolumeAs(ctx, s.node, vspec.Remote.Endpoint, vspec.Remote.Volume, blobcache.Action_ALL)
+		if err != nil {
+			return blobcache.VolumeParams{}, err
+		}
+		volInfo := vol.Info()
+		return volInfo.VolumeParams, nil
 
 	case vspec.RootAEAD != nil:
 		innerVol, _, err := s.resolveVol(vspec.RootAEAD.Inner)
@@ -837,13 +858,6 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 			return blobcache.VolumeParams{}, err
 		}
 		return innerVol.info.VolumeParams, nil
-	case vspec.Remote != nil:
-		vol, err := bcnet.OpenVolumeAs(ctx, s.node, vspec.Remote.Endpoint, vspec.Remote.Volume, blobcache.Action_ALL)
-		if err != nil {
-			return blobcache.VolumeParams{}, err
-		}
-		volInfo := vol.Info()
-		return volInfo.VolumeParams, nil
 	default:
 		panic(vspec)
 	}

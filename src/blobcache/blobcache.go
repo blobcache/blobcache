@@ -229,6 +229,7 @@ type TxInfo struct {
 	Volume   OID
 	MaxSize  int64
 	HashAlgo HashAlgo
+	Params   TxParams
 }
 
 func (ti TxInfo) Marshal(out []byte) []byte {

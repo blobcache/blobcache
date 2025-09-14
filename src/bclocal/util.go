@@ -1,12 +1,12 @@
 package bclocal
 
 import (
-	"log"
+	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/simplecont"
@@ -14,6 +14,7 @@ import (
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 // NewTestService creates a service scoped to the life of the test.
@@ -21,14 +22,11 @@ func NewTestService(t testing.TB) *Service {
 	ctx := testutil.Context(t)
 	stateDir := t.TempDir()
 
-	dbPath := filepath.Join(stateDir, "blobcache.db")
-	sqlDB, err := dbutil.OpenDB(dbPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	require.NoError(t, SetupDB(ctx, sqlDB))
-
 	pebbleDB, err := pebble.Open(filepath.Join(stateDir, "pebble"), &pebble.Options{})
+	require.NoError(t, err)
+	blobPath := filepath.Join(stateDir, "blob")
+	require.NoError(t, os.MkdirAll(blobPath, 0o755))
+	blobDir, err := os.OpenRoot(blobPath)
 	require.NoError(t, err)
 
 	_, privateKey, err := ed25519.GenerateKey(nil)
@@ -36,12 +34,23 @@ func NewTestService(t testing.TB) *Service {
 	svc := New(Env{
 		PrivateKey: privateKey,
 		PacketConn: testutil.PacketConn(t),
-		DB:         sqlDB,
-		PebbleDB:   pebbleDB,
+		DB:         pebbleDB,
+		BlobDir:    blobDir,
 		Schemas:    DefaultSchemas(),
 		Root:       DefaultRoot(),
 	})
-	go svc.Run(ctx)
+	var eg errgroup.Group
+	ctx, cf := context.WithCancel(ctx)
+	eg.Go(func() error {
+		return svc.Run(ctx)
+	})
+	t.Cleanup(func() {
+		cf()
+		require.NoError(t, eg.Wait())
+		require.NoError(t, svc.AbortAll(ctx))
+		require.NoError(t, blobDir.Close())
+		require.NoError(t, pebbleDB.Close())
+	})
 	return svc
 }
 

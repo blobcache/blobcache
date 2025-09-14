@@ -5,7 +5,7 @@ import (
 
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/dbutil"
+	"blobcache.io/blobcache/src/internal/sqlutil"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -130,7 +130,7 @@ func testFlushOperations[K comparable](t *testing.T, newScheme func(testing.TB) 
 // newTestFS creates a new filesystem for testing with the given scheme
 func newTestFS[K comparable](t testing.TB, scheme Scheme[K]) *FS[K] {
 	ctx := testutil.Context(t)
-	db := dbutil.OpenMemory()
+	db := sqlutil.OpenMemory()
 	require.NoError(t, SetupDB(ctx, db))
 	svc := bclocal.NewTestService(t)
 	volh, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())

@@ -17,3 +17,33 @@ func ReadUVarint(x []byte) (uint64, []byte, error) {
 	}
 	return i, x[n:], nil
 }
+
+func AppendLP(out []byte, x []byte) []byte {
+	out = AppendUVarint(out, uint64(len(x)))
+	return append(out, x...)
+}
+
+func ReadLP(x []byte) ([]byte, []byte, error) {
+	l, x, err := ReadUVarint(x)
+	if err != nil {
+		return nil, nil, err
+	}
+	if l > uint64(len(x)) {
+		return nil, nil, fmt.Errorf("buffer too short to contain %d bytes. only %d", l, len(x))
+	}
+	return x[:int(l)], x[int(l):], nil
+}
+
+func ReadUint32(x []byte) (uint32, []byte, error) {
+	if len(x) < 4 {
+		return 0, nil, fmt.Errorf("too short to contain uint32")
+	}
+	return binary.LittleEndian.Uint32(x[:4]), x[4:], nil
+}
+
+// Uint64Bytes returns x as bytes in little endian order.
+func Uint64Bytes(x uint64) []byte {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], x)
+	return buf[:]
+}
