@@ -15,13 +15,13 @@ import (
 
 // putVolume writes to the VOLUMES table.
 // It does not commit the batch.
-func putVolume(w pdb.WO, oid blobcache.OID, info blobcache.VolumeInfo) error {
+func putVolume(w pdb.WO, info blobcache.VolumeInfo) error {
 	backendJSON, err := json.Marshal(info.Backend)
 	if err != nil {
 		return err
 	}
 	ve := volumeEntry{
-		OID: oid,
+		OID: info.ID,
 
 		Schema:   string(info.Schema),
 		HashAlgo: string(info.HashAlgo),
@@ -63,7 +63,7 @@ func ensureRootVolume(ba *pebble.Batch, spec blobcache.VolumeSpec) (*blobcache.V
 		VolumeParams: spec.Params(),
 		Backend:      blobcache.VolumeBackendToOID(spec),
 	}
-	if err := putVolume(ba, rootOID, info); err != nil {
+	if err := putVolume(ba, info); err != nil {
 		return nil, err
 	}
 	return inspectVolume(ba, rootOID)
@@ -135,6 +135,9 @@ func inspectVolume(sn pdb.RO, volID blobcache.OID) (*blobcache.VolumeInfo, error
 	ve, err := getVolume(sn, volID)
 	if err != nil {
 		return nil, err
+	}
+	if ve == nil {
+		return nil, nil
 	}
 	var backend blobcache.VolumeBackend[blobcache.OID]
 	if err := json.Unmarshal(ve.Backend, &backend); err != nil {
@@ -363,6 +366,36 @@ type volumeDep struct {
 	To   blobcache.OID
 }
 
+// putVolumeDep puts a row in the VOLUME_DEPS table, and the inverse row in the VOLUME_DEPS_INV table.
+func putVolumeDep(ba pdb.WO, fromVolID blobcache.OID, toVolID blobcache.OID) error {
+	// forwards
+	k := pdb.TKey{TableID: tid_VOLUME_DEPS, Key: slices.Concat(fromVolID[:], toVolID[:])}
+	v := []byte{}
+	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
+		return err
+	}
+	// inverse
+	k = pdb.TKey{TableID: tid_VOLUME_DEPS_INV, Key: slices.Concat(toVolID[:], fromVolID[:])}
+	v = []byte{}
+	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+// deleteVolumeDep deletes a row in the VOLUME_DEPS table, and the inverse row in the VOLUME_DEPS_INV table.
+func deleteVolumeDep(ba pdb.WO, fromVolID blobcache.OID, toVolID blobcache.OID) error {
+	k := pdb.TKey{TableID: tid_VOLUME_DEPS, Key: slices.Concat(fromVolID[:], toVolID[:])}
+	if err := ba.Delete(k.Marshal(nil), nil); err != nil {
+		return err
+	}
+	k = pdb.TKey{TableID: tid_VOLUME_DEPS_INV, Key: slices.Concat(toVolID[:], fromVolID[:])}
+	if err := ba.Delete(k.Marshal(nil), nil); err != nil {
+		return err
+	}
+	return nil
+}
+
 // readVolumeDepsTo reads the volume deps to toVolID into dst.
 func readVolumeDepsTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]struct{}) error {
 	gteq := pdb.TKey{
@@ -391,3 +424,5 @@ func readVolumeDepsTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]st
 	}
 	return nil
 }
+
+type linkSet = map[blobcache.OID]blobcache.ActionSet

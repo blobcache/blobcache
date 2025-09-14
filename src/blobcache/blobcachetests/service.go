@@ -310,6 +310,18 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		err = s.Commit(ctx, *txh)
 		require.Error(t, err)
 	})
+	t.Run("TxReadOnly", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s, volh := mk(t)
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: false})
+		require.NoError(t, err)
+		require.NotNil(t, txh)
+
+		cid, err := s.Post(ctx, *txh, nil, []byte{1, 2, 3})
+		require.Error(t, err)
+		err = s.Delete(ctx, *txh, []blobcache.CID{cid})
+		require.Error(t, err)
+	})
 	t.Run("PostExists", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
@@ -330,6 +342,18 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		cid := Post(t, s, txh, nil, data1)
 		data2 := Get(t, s, txh, cid, nil, 100)
 		require.Equal(t, data1, data2)
+	})
+	t.Run("Exists", func(t *testing.T) {
+		s, volh := mk(t)
+		hf := defaultLocalSpec().Local.HashAlgo.HashFunc()
+
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		data1 := []byte("hello world")
+		require.False(t, Exists(t, s, txh, hf(nil, data1)))
+		Post(t, s, txh, nil, data1)
+		require.True(t, Exists(t, s, txh, hf(nil, data1)))
+		Delete(t, s, txh, hf(nil, data1))
+		require.False(t, Exists(t, s, txh, hf(nil, data1)))
 	})
 	t.Run("1WriterNReaders", func(t *testing.T) {
 		s, volh := mk(t)

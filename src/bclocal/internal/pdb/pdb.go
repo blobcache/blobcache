@@ -32,6 +32,14 @@ func ParseTKey(k []byte) (TKey, error) {
 	return TKey{TableID: TableID(binary.BigEndian.Uint32(k[:4])), Key: k[4:]}, nil
 }
 
+func TableDelete(ba WO, tid TableID, key []byte) error {
+	return ba.Delete(TKey{TableID: tid, Key: key}.Marshal(nil), nil)
+}
+
+func TablePut(ba WO, tid TableID, key []byte, value []byte) error {
+	return ba.Set(TKey{TableID: tid, Key: key}.Marshal(nil), value, nil)
+}
+
 // RO is a read-only interface for the Pebble database.
 type RO interface {
 	Get(k []byte) (v []byte, closer io.Closer, err error)
@@ -44,21 +52,42 @@ type WO interface {
 	Delete(k []byte, opts *pebble.WriteOptions) error
 }
 
-// MVID (Multi-Version ID) is used to order transactions on volumes.
-type MVID uint64
+// Exists returns true if the key exists in the database, who's value satisfies a predicate.
+// If pred is nil, it is ignored.
+func Exists(sp RO, k []byte, pred func([]byte) bool) (bool, error) {
+	val, closer, err := sp.Get(k)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer closer.Close()
+	if pred != nil {
+		return pred(val), nil
+	}
+	return true, nil
+}
+
+// MVTag (Multi-Version Tag) is used to order transactions on volumes.
+type MVTag uint64
+
+func (mvt MVTag) Marshal(out []byte) []byte {
+	return binary.BigEndian.AppendUint64(out, uint64(mvt))
+}
 
 // MVKey is a multi-version key.
 // Not all tables use MVKeys.
 type MVKey struct {
 	TableID TableID
 	Key     []byte
-	Version MVID
+	Version MVTag
 }
 
 func (k MVKey) Marshal(out []byte) []byte {
 	out = binary.BigEndian.AppendUint32(out, uint32(k.TableID))
 	out = append(out, k.Key...)
-	out = binary.BigEndian.AppendUint64(out, uint64(k.Version))
+	out = k.Version.Marshal(out)
 	return out
 }
 
@@ -67,7 +96,7 @@ func ParseMVKey(k []byte) (MVKey, error) {
 		return MVKey{}, fmt.Errorf("key too short to contain tableID and MVCCID")
 	}
 	tid := TableID(binary.BigEndian.Uint32(k[:4]))
-	mvcc := MVID(binary.BigEndian.Uint64(k[len(k)-8:]))
+	mvcc := MVTag(binary.BigEndian.Uint64(k[len(k)-8:]))
 	data := k[4 : len(k)-8]
 	return MVKey{
 		TableID: tid,
@@ -83,13 +112,14 @@ type MVRow struct {
 }
 
 // MVSet is a set of MVIDs.
-type MVSet = map[MVID]struct{}
+type MVSet = map[MVTag]struct{}
 
 // MVGet gets the most recent value for the given MVKey from the database, where the version is not in excluding.
 // Excluding should be a fast, deterministic function, that returns true if the version should be excluded.
-func MVGet(sp RO, tid TableID, data []byte, excluding func(MVID) bool) (*MVRow, io.Closer, error) {
+// If no row is found, (nil, no-op-closer, nil) is returned.
+func MVGet(sp RO, tid TableID, data []byte, excluding func(MVTag) bool) (*MVRow, io.Closer, error) {
 	if excluding == nil {
-		excluding = func(mvid MVID) bool {
+		excluding = func(mvid MVTag) bool {
 			return false
 		}
 	}
@@ -102,7 +132,7 @@ func MVGet(sp RO, tid TableID, data []byte, excluding func(MVID) bool) (*MVRow, 
 		UpperBound: MVKey{
 			TableID: tid,
 			Key:     data,
-			Version: MVID(^uint64(0)),
+			Version: MVTag(^uint64(0)),
 		}.Marshal(nil),
 		SkipPoint: func(k []byte) bool {
 			// return true to skip
@@ -159,6 +189,43 @@ func IncrUint64(ba *pebble.Batch, key []byte, delta int64) (uint64, error) {
 	return n, nil
 }
 
+func IncrUint32(ba *pebble.Batch, key []byte, delta int32, deleteZero bool) (uint32, error) {
+	n, err := func() (uint32, error) {
+		v, closer, err := ba.Get(key)
+		if err != nil {
+			if errors.Is(err, pebble.ErrNotFound) {
+				return 0, nil
+			}
+			return 0, err
+		}
+		defer closer.Close()
+		if len(v) != 8 {
+			return 0, fmt.Errorf("invalid value length: %d", len(v))
+		}
+		return binary.BigEndian.Uint32(v), nil
+	}()
+	if err != nil {
+		return 0, err
+	}
+	if delta == 0 {
+		// no change, just return it.
+		return n, nil
+	}
+	n += uint32(delta)
+	if n == 0 && deleteZero {
+		// delete the key if the value is 0.
+		if err := ba.Delete(key, nil); err != nil {
+			return 0, err
+		}
+	} else {
+		// set the new value.
+		if err := ba.Set(key, binary.BigEndian.AppendUint32(nil, n), nil); err != nil {
+			return 0, err
+		}
+	}
+	return n, nil
+}
+
 func TableLowerBound(tableID TableID) []byte {
 	return TKey{TableID: tableID}.Marshal(nil)
 }
@@ -171,7 +238,7 @@ func TableUpperBound(tableID TableID) []byte {
 // The snapshot should be from before the batch.
 // There can be an arbitrary amount of time between the snapshot and the batch, and this algorithm will still be correct.
 // This assumes that MVIDs are never reused.
-func Compact(sp *pebble.Snapshot, ba *pebble.Batch, tableID TableID, exclude func(MVID) bool) error {
+func Compact(sp *pebble.Snapshot, ba *pebble.Batch, tableID TableID, exclude func(MVTag) bool) error {
 	iter, err := sp.NewIter(&pebble.IterOptions{
 		LowerBound: MVKey{
 			TableID: tableID,
@@ -194,7 +261,7 @@ func Compact(sp *pebble.Snapshot, ba *pebble.Batch, tableID TableID, exclude fun
 		return err
 	}
 	var prevKey []byte
-	var prevVersion MVID
+	var prevVersion MVTag
 	for iter.Next() {
 		k, err := ParseMVKey(iter.Key())
 		if err != nil {
@@ -218,7 +285,7 @@ func Compact(sp *pebble.Snapshot, ba *pebble.Batch, tableID TableID, exclude fun
 }
 
 // Undo removes all the rows in a given table with a specific version.
-func Undo(sp *pebble.Snapshot, ba *pebble.Batch, tid TableID, prefix []byte, mvid MVID) error {
+func Undo(sp RO, ba WO, tid TableID, prefix []byte, mvid MVTag) error {
 	var upperBound []byte
 	if len(prefix) == 0 {
 		upperBound = TableUpperBound(tid)

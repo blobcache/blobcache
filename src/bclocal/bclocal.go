@@ -70,14 +70,15 @@ func New(env Env) *Service {
 		node = bcnet.New(env.PrivateKey, env.PacketConn)
 	}
 
-	return &Service{
+	s := &Service{
 		env:  env,
 		node: node,
-
-		localSys: newLocalSystem(env.DB, env.BlobDir, func(s blobcache.Schema) schema.Schema {
-			return env.Schemas[s]
-		}),
 	}
+	s.localSys = newLocalSystem(env.DB, env.BlobDir, &s.handles, func(s blobcache.Schema) schema.Schema {
+		return env.Schemas[s]
+	})
+
+	return s
 }
 
 // Run performs background tasks for the service.
@@ -187,7 +188,7 @@ func (s *Service) getContainer(name blobcache.Schema) (schema.Container, error) 
 }
 
 func (s *Service) rootVolume() volumes.Volume {
-	return newLocalVolume(&s.localSys, blobcache.OID{})
+	return newLocalVolume(&s.localSys, 0)
 }
 
 func (s *Service) handleToLink(x blobcache.Handle) (*schema.Link, error) {
@@ -472,24 +473,29 @@ func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vs
 	if err != nil {
 		return nil, err
 	}
+	lvid, err := s.localSys.GenerateLocalID()
+	if err != nil {
+		return nil, err
+	}
+	oid := oidFromLocalID(lvid)
 	info := blobcache.VolumeInfo{
-		// ID is intentionally left blank, createVolume will set it.
+		ID:           oid,
 		VolumeParams: vp,
 		Backend:      blobcache.VolumeBackendToOID(vspec),
 	}
-	ba := s.env.DB.NewBatch()
-	defer ba.Close()
-	volid := blobcache.NewOID()
-	if err := putVolume(ba, volid, info); err != nil {
+
+	if err := doRWBatch(s.env.DB, func(ba *pebble.Batch) error {
+		return putVolume(ba, info)
+	}); err != nil {
 		return nil, err
 	}
-	info.ID = volid
-	if err := s.mountVolume(ctx, volid, info); err != nil {
+	if err := s.mountVolume(ctx, info.ID, info); err != nil {
 		return nil, err
 	}
+
 	createdAt := time.Now()
 	expiresAt := createdAt.Add(DefaultVolumeTTL)
-	handle := s.handles.Create(volid, blobcache.Action_ALL, createdAt, expiresAt)
+	handle := s.handles.Create(info.ID, blobcache.Action_ALL, createdAt, expiresAt)
 	return &handle, nil
 }
 
@@ -501,7 +507,29 @@ func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, vol
 	if vol.info.Backend.Local == nil {
 		return nil, fmt.Errorf("only local volumes can be cloned")
 	}
-	panic("not implemented")
+
+	ba := s.env.DB.NewIndexedBatch()
+	defer ba.Close()
+	vinfo, err := inspectVolume(ba, vol.info.ID)
+	if err != nil {
+		return nil, err
+	}
+	if vinfo == nil {
+		return nil, fmt.Errorf("volume not found")
+	}
+	vinfo.ID = blobcache.NewOID()
+	if err := putVolume(ba, *vinfo); err != nil {
+		return nil, err
+	}
+	if err := ba.Commit(nil); err != nil {
+		return nil, err
+	}
+
+	h, err := s.handles.Create(vol.info.ID, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL)), nil
+	if err != nil {
+		return nil, err
+	}
+	return &h, nil
 }
 
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
@@ -554,7 +582,7 @@ func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcac
 	switch vol := vol.(type) {
 	case *localVolume:
 		s.mu.RLock()
-		volInfo, exists := s.volumes[vol.oid]
+		volInfo, exists := s.volumes[oidFromLocalID(vol.lvid)]
 		s.mu.RUnlock()
 		if !exists {
 			return nil, fmt.Errorf("volume not found")
@@ -719,7 +747,11 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	}
 	switch {
 	case backend.Local != nil:
-		return s.makeLocal(ctx, oid)
+		lvid, err := localVolumeIDFromOID(oid)
+		if err != nil {
+			return nil, err
+		}
+		return s.makeLocal(ctx, lvid)
 	case backend.Remote != nil:
 		return bcnet.OpenVolumeAs(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Volume, blobcache.Action_ALL)
 	case backend.Git != nil:
@@ -733,8 +765,8 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 	}
 }
 
-func (s *Service) makeLocal(_ context.Context, oid blobcache.OID) (volumes.Volume, error) {
-	return newLocalVolume(&s.localSys, oid), nil
+func (s *Service) makeLocal(_ context.Context, lvid LocalVolumeID) (volumes.Volume, error) {
+	return s.localSys.Open(lvid)
 }
 
 func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (volumes.Volume, error) {
@@ -790,6 +822,13 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		return vspec.Local.VolumeParams, nil
 	case vspec.Git != nil:
 		return vspec.Git.VolumeParams, nil
+	case vspec.Remote != nil:
+		vol, err := bcnet.OpenVolumeAs(ctx, s.node, vspec.Remote.Endpoint, vspec.Remote.Volume, blobcache.Action_ALL)
+		if err != nil {
+			return blobcache.VolumeParams{}, err
+		}
+		volInfo := vol.Info()
+		return volInfo.VolumeParams, nil
 
 	case vspec.RootAEAD != nil:
 		innerVol, _, err := s.resolveVol(vspec.RootAEAD.Inner)
@@ -803,13 +842,6 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 			return blobcache.VolumeParams{}, err
 		}
 		return innerVol.info.VolumeParams, nil
-	case vspec.Remote != nil:
-		vol, err := bcnet.OpenVolumeAs(ctx, s.node, vspec.Remote.Endpoint, vspec.Remote.Volume, blobcache.Action_ALL)
-		if err != nil {
-			return blobcache.VolumeParams{}, err
-		}
-		volInfo := vol.Info()
-		return volInfo.VolumeParams, nil
 	default:
 		panic(vspec)
 	}

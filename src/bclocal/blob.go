@@ -1,6 +1,7 @@
 package bclocal
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,19 +14,23 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
+type cidPrefix [16]byte
+
 // putBlobData puts a blob into the database.
-func putBlobData(ba *pebble.Batch, cid blobcache.CID, data []byte) error {
-	return ba.Set(pdb.TKey{TableID: tid_BLOB_DATA, Key: cid[:]}.Marshal(nil), data, nil)
+// It must be called with a lock on the blob.
+func putBlobData(ba *pebble.Batch, cidp cidPrefix, data []byte) error {
+	return ba.Set(pdb.TKey{TableID: tid_BLOB_DATA, Key: cidp[:]}.Marshal(nil), data, nil)
 }
 
 // deleteBlobData deletes a blob from the database.
-func deleteBlobData(ba *pebble.Batch, cid blobcache.CID) error {
-	return ba.Delete(pdb.TKey{TableID: tid_BLOB_DATA, Key: cid[:]}.Marshal(nil), nil)
+// It must be called with a lock on the blob.
+func deleteBlobData(ba *pebble.Batch, cidp cidPrefix) error {
+	return ba.Delete(pdb.TKey{TableID: tid_BLOB_DATA, Key: cidp[:]}.Marshal(nil), nil)
 }
 
 // readBlobData reads a blob from the database into buf.
-func readBlobData(r pdb.RO, cid blobcache.CID, buf []byte) (int, error) {
-	data, closer, err := r.Get(pdb.TKey{TableID: tid_BLOB_DATA, Key: cid[:]}.Marshal(nil))
+func readBlobData(r pdb.RO, cidp cidPrefix, buf []byte) (int, error) {
+	data, closer, err := r.Get(pdb.TKey{TableID: tid_BLOB_DATA, Key: cidp[:]}.Marshal(nil))
 	if err != nil {
 		return 0, fmt.Errorf("readBlobData: %w", err)
 	}
@@ -37,10 +42,9 @@ func readBlobData(r pdb.RO, cid blobcache.CID, buf []byte) (int, error) {
 type blobMeta struct {
 	cid blobcache.CID
 
-	flags    uint8
-	salt     *blobcache.CID
-	size     uint32
-	refCount uint32
+	flags uint8
+	salt  *blobcache.CID
+	size  uint32
 }
 
 func (bi blobMeta) hasSalt() bool {
@@ -78,11 +82,13 @@ func (bi blobMeta) Value(out []byte) []byte {
 	return out
 }
 
-func putBlobMeta(ba *pebble.Batch, bi blobMeta) error {
-	return ba.Set(bi.Key(nil), bi.Value(nil), nil)
+// putBlobMeta puts a blobMeta into the database.
+func putBlobMeta(ba pdb.WO, bm blobMeta) error {
+	return ba.Set(bm.Key(nil), bm.Value(nil), nil)
 }
 
-func getBlobMeta(ba *pebble.Batch, cid blobcache.CID) (blobMeta, error) {
+// getBlobMeta gets a blobMeta from the database.
+func getBlobMeta(ba pdb.RO, cid blobcache.CID) (blobMeta, error) {
 	k := pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil)
 	v, closer, err := ba.Get(k)
 	if err != nil {
@@ -92,17 +98,9 @@ func getBlobMeta(ba *pebble.Batch, cid blobcache.CID) (blobMeta, error) {
 	return parseBlobMeta(k, v)
 }
 
+// existsBlobMeta returns true if an entry for cid exists in the BLOB_META table.
 func existsBlobMeta(ba *pebble.Batch, cid blobcache.CID) (bool, error) {
-	k := pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil)
-	_, closer, err := ba.Get(k)
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	defer closer.Close()
-	return true, nil
+	return pdb.Exists(ba, pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil), nil)
 }
 
 // blobPath returns the path to store the blob at in the filesystem.
@@ -155,7 +153,43 @@ func downloadBlob(blobDir *os.Root, cid blobcache.CID, buf []byte) (int, error) 
 	return n, nil
 }
 
+// dropExternalBlob drops a blob from the filesystem.
 func dropExternalBlob(blobDir *os.Root, cid blobcache.CID) error {
 	p := blobPath(cid)
 	return blobDir.Remove(p)
 }
+
+type RefCount uint32
+
+// blobRefCountIncr must be called with a lock on the blob.
+// blob ref counts are the number of times a blob is referenced (excluding delete operations) in the LOCAL_VOLUME_BLOBS table.
+func blobRefCountIncr(ba *pebble.Batch, cidp cidPrefix, delta int32) (RefCount, error) {
+	k := pdb.TKey{TableID: tid_BLOB_REF_COUNT, Key: cidp[:]}.Marshal(nil)
+	n, err := pdb.IncrUint32(ba, k, delta, false)
+	if err != nil {
+		return 0, err
+	}
+	return RefCount(n), nil
+}
+
+// blobRefCountGet gets the reference count for a blob.
+func blobRefCountGet(ba pdb.RO, cidp cidPrefix) (RefCount, error) {
+	k := pdb.TKey{TableID: tid_BLOB_REF_COUNT, Key: cidp[:]}.Marshal(nil)
+	v, closer, err := ba.Get(k)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	defer closer.Close()
+	if len(v) != 4 {
+		return 0, fmt.Errorf("invalid value length: %d", len(v))
+	}
+	return RefCount(binary.BigEndian.Uint32(v)), nil
+}
+
+const (
+	volumeBlobFlag_ADDED   = 1 << 0
+	volumeBlobFlag_VISITED = 1 << 1
+)

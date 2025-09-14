@@ -2,6 +2,8 @@ package bclocal
 
 import (
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -9,17 +11,23 @@ import (
 
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/sbe"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cockroachdb/pebble"
 	"go.brendoncarroll.net/state/cadata"
 )
 
+type LocalVolumeID uint64
+
+func (lvid LocalVolumeID) Marshal(out []byte) []byte {
+	return binary.BigEndian.AppendUint64(out, uint64(lvid))
+}
+
 // localSystem manages the local volumes and transactions on those volumes.
 type localSystem struct {
 	db        *pebble.DB
 	blobDir   *os.Root
+	hsys      *handleSystem
 	getSchema func(blobcache.Schema) schema.Schema
 
 	// txSys manages the transaction sequence number, and the set of active transactions.
@@ -28,7 +36,7 @@ type localSystem struct {
 	// mutVol manages access to volumes
 	// only one mutating transaction can access a volume at a time.
 	// mutating transactions should hold one of these locks starting in beginTx, and release when {Commit, Abort} is called.
-	mutVol mapOfLocks[blobcache.OID]
+	mutVol mapOfLocks[LocalVolumeID]
 	// blobs prevents concurrent operations on blobs
 	// only one {Post, Delete, Add} operation can have a lock at a time.
 	// - Post could potentially increment the refCount, and ingest blob data.
@@ -37,9 +45,10 @@ type localSystem struct {
 	blobs mapOfLocks[blobcache.CID]
 }
 
-func newLocalSystem(db *pebble.DB, blobDir *os.Root, getSchema func(blobcache.Schema) schema.Schema) localSystem {
+func newLocalSystem(db *pebble.DB, blobDir *os.Root, hsys *handleSystem, getSchema func(blobcache.Schema) schema.Schema) localSystem {
 	return localSystem{
 		db:        db,
+		hsys:      hsys,
 		blobDir:   blobDir,
 		getSchema: getSchema,
 
@@ -47,21 +56,113 @@ func newLocalSystem(db *pebble.DB, blobDir *os.Root, getSchema func(blobcache.Sc
 	}
 }
 
-func (ls *localSystem) beginTx(ctx context.Context, volID blobcache.OID, params blobcache.TxParams) (_ volumes.Tx, retErr error) {
+func (ls *localSystem) GenerateLocalID() (LocalVolumeID, error) {
+	n, err := ls.txSys.allocateTxID()
+	if err != nil {
+		return 0, err
+	}
+	return LocalVolumeID(n), nil
+}
+
+func (ls *localSystem) Open(lvid LocalVolumeID) (*localVolume, error) {
+	return newLocalVolume(ls, lvid), nil
+}
+
+// GCBlobs walks all of the blob reference counts, and deletes any blobs that have a reference count of 0.
+func (ls *localSystem) GCBlobs(ctx context.Context, lvid LocalVolumeID) error {
+	iter, err := ls.db.NewIterWithContext(ctx, &pebble.IterOptions{
+		LowerBound: pdb.TableLowerBound(tid_BLOB_REF_COUNT),
+		UpperBound: pdb.TableUpperBound(tid_BLOB_REF_COUNT),
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+	for iter.First(); iter.Valid(); iter.Next() {
+		var cid blobcache.CID
+		// this will only be the prefix
+		copy(cid[:], iter.Key())
+
+		if len(iter.Value()) != 4 {
+			return fmt.Errorf("invalid value length: %d", len(iter.Value()))
+		}
+		refCount := binary.BigEndian.Uint32(iter.Value())
+		if refCount != 0 {
+			continue
+		}
+
+		if err := func() error {
+			if err := ls.blobs.Lock(ctx, cid); err != nil {
+				return err
+			}
+			defer ls.blobs.Unlock(cid)
+			return ls.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
+				if err := deleteBlobData(ba, cidPrefix(cid[:16])); err != nil {
+					return err
+				}
+				return nil
+			})
+		}(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ls *localSystem) doRO(fn func(sp *pebble.Snapshot, ignore func(pdb.MVTag) bool) error) error {
+	sp := ls.db.NewSnapshot()
+	defer sp.Close()
+	active := make(pdb.MVSet)
+	if err := ls.txSys.readActive(sp, active); err != nil {
+		return err
+	}
+	excluding := func(mvid pdb.MVTag) bool {
+		_, ok := active[mvid]
+		return ok
+	}
+	if err := fn(sp, excluding); err != nil {
+		return err
+	}
+	return nil
+}
+
+// doRW creates an indexed batch, reads the set of active transactions from the SYS_TXNS table, and then calls fn
+// with both of those things.
+// if fn returns nil, the batch is committed, otherwise it is rolled back.
+// the caller should use the ignore function to exclude rows written by active transactions.
+func (ls *localSystem) doRW(fn func(ba *pebble.Batch, ignore func(pdb.MVTag) bool) error) error {
+	ba := ls.db.NewIndexedBatch()
+	defer ba.Close()
+	active := make(pdb.MVSet)
+	if err := ls.txSys.readActive(ba, active); err != nil {
+		return err
+	}
+	excluding := func(mvid pdb.MVTag) bool {
+		_, ok := active[mvid]
+		return ok
+	}
+	if err := fn(ba, excluding); err != nil {
+		return err
+	}
+	return ba.Commit(nil)
+}
+
+func (ls *localSystem) beginTx(ctx context.Context, lvid LocalVolumeID, params blobcache.TxParams) (_ volumes.Tx, retErr error) {
 	if !params.Mutate {
 		sp := ls.db.NewSnapshot()
-		volInfo, err := inspectVolume(sp, volID)
+		volInfo, err := inspectVolume(sp, oidFromLocalID(lvid))
 		if err != nil {
 			return nil, err
 		}
-		txInfo := blobcache.TxInfo{
-			// Leave ID empty for now.
-			Volume:   volInfo.ID,
+		if volInfo == nil {
+			return nil, fmt.Errorf("volume not found, but it should exist")
+		}
+		volParams := blobcache.VolumeParams{
 			MaxSize:  volInfo.MaxSize,
 			HashAlgo: blobcache.HashAlgo(volInfo.HashAlgo),
-			Params:   params,
+			Salted:   volInfo.Salted,
 		}
-		return newLocalTxnRO(ls, sp, &txInfo, volInfo), nil
+		return newLocalTxnRO(ls, lvid, sp, volParams), nil
 	}
 
 	txid, err := ls.txSys.allocateTxID()
@@ -69,135 +170,360 @@ func (ls *localSystem) beginTx(ctx context.Context, volID blobcache.OID, params 
 		return nil, err
 	}
 	// this could potentially block for a while, so do it first.
-	if err := ls.mutVol.Lock(ctx, volID); err != nil {
+	if err := ls.mutVol.Lock(ctx, lvid); err != nil {
 		return nil, err
 	}
 	defer func() {
 		if retErr != nil {
-			ls.mutVol.Unlock(volID)
+			ls.mutVol.Unlock(lvid)
 		}
 	}()
 
+	// we don't use doRW here because, nothing we do accesses MVCC tables.
 	ba := ls.db.NewIndexedBatch()
 	defer ba.Close()
-	vinfo, err := inspectVolume(ba, volID)
+	vinfo, err := inspectVolume(ba, oidFromLocalID(lvid))
 	if err != nil {
 		return nil, err
 	}
 	if vinfo == nil {
-		return nil, blobcache.ErrNotFound{ID: volID}
+		return nil, blobcache.ErrNotFound{ID: oidFromLocalID(lvid)}
 	}
-	txInfo := blobcache.TxInfo{
-		Volume:   volID,
-		MaxSize:  vinfo.MaxSize,
-		HashAlgo: blobcache.HashAlgo(vinfo.HashAlgo),
-		Params:   params,
-	}
-	if err := putLocalVolumeTxn(ba, volID, txid); err != nil {
+	if err := putLocalVolumeTxn(ba, lvid, txid); err != nil {
 		return nil, err
 	}
 	if err := ba.Commit(nil); err != nil {
 		return nil, err
 	}
-	sch := ls.getSchema(vinfo.Schema)
+
+	volParams := blobcache.VolumeParams{
+		Schema:   blobcache.Schema(vinfo.Schema),
+		MaxSize:  vinfo.MaxSize,
+		HashAlgo: blobcache.HashAlgo(vinfo.HashAlgo),
+		Salted:   vinfo.Salted,
+	}
+	txParams := blobcache.TxParams{
+		Mutate: params.Mutate,
+		GC:     params.GC,
+	}
+	sch := ls.getSchema(volParams.Schema)
 	if sch == nil {
 		return nil, fmt.Errorf("unknown schema %s", vinfo.Schema)
 	}
-	return newLocalTxn(ls, vinfo, &txInfo, txid, sch)
+	return newLocalTxn(ls, lvid, txid, volParams, txParams, sch)
 }
 
-type linkSet = map[blobcache.OID]blobcache.ActionSet
+// abortMut aborts a mutating transaction.
+func (s *localSystem) abortMut(volID LocalVolumeID, mvid pdb.MVTag) error {
+	if err := func() error {
+		ba := s.db.NewIndexedBatch()
+		defer ba.Close()
+		yesActive, err := s.txSys.isActive(ba, mvid)
+		if err != nil {
+			return err
+		}
+		if !yesActive {
+			return nil
+		}
+		if err := s.txSys.failure(ba, mvid); err != nil {
+			return err
+		}
+		return ba.Commit(nil)
+	}(); err != nil {
+		return err
+	}
+	s.mutVol.Unlock(volID)
+
+	if err := func() error {
+		ba := s.db.NewBatch()
+		defer ba.Close()
+		if err := pdb.Undo(s.db, ba, tid_LOCAL_VOLUME_BLOBS, volID.Marshal(nil), mvid); err != nil {
+			return err
+		}
+		if err := pdb.Undo(s.db, ba, tid_LOCAL_VOLUME_CELLS, volID.Marshal(nil), mvid); err != nil {
+			return err
+		}
+		if err := s.txSys.removeFailed(ba, mvid); err != nil {
+			return err
+		}
+		return ba.Commit(nil)
+	}(); err != nil {
+		return err
+	}
+	return nil
+}
 
 // commit commits a local volume.
 // links should be the actual links returned by the schema
 // newlyAllowed should be the allowed links that were added to the volume during the transaction
-func (s *localSystem) commit(volID blobcache.OID, mvid pdb.MVID, links linkSet, newlyAllowed linkSet) error {
+func (s *localSystem) commit(volID LocalVolumeID, mvid pdb.MVTag, links linkSet, newlyAllowed linkSet) error {
 	ba := s.db.NewIndexedBatch()
 	defer ba.Close()
 
+	oid := oidFromLocalID(volID)
 	prevLinks := make(linkSet)
-	if err := readVolumeLinks(ba, volID, prevLinks); err != nil {
+	if err := readVolumeLinks(ba, oid, prevLinks); err != nil {
+		return err
+	}
+	for target := range links {
+		links[target] &= (prevLinks[target] | newlyAllowed[target])
+		if links[target] == 0 {
+			delete(links, target)
+		}
+	}
+	if err := putVolumeLinks(ba, oid, links); err != nil {
+		return err
+	}
+	if err := s.txSys.success(ba, mvid); err != nil {
+		return err
+	}
+	if err := ba.Commit(nil); err != nil {
 		return err
 	}
 
-	return ba.Commit(nil)
+	s.mutVol.Unlock(volID)
+	return nil
 }
 
 // postBlob adds a blob to a local volume.
-func (s *localSystem) postBlob(volID blobcache.OID, mvid pdb.MVID, cid blobcache.CID, salt *blobcache.CID, data []byte) error {
-	ba := s.db.NewIndexedBatch()
-	defer ba.Close()
-	// in the current implementation, there can only be one mutating transaction at a time.
-	// so exclude nothing.
-	excluding := func(mvid pdb.MVID) bool {
-		return false
-	}
-	if exists, err := blobExists(s.db, volID, cid, excluding); err != nil {
+func (s *localSystem) postBlob(ctx context.Context, volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID, salt *blobcache.CID, data []byte) error {
+	// if the blob has already been added in the current transaction, then we don't need to do anything.
+	vbFlags, rowExists, err := s.getVolumeBlob(s.db, volID, cid, mvid)
+	if err != nil {
 		return err
-	} else if exists {
+	}
+	if rowExists && vbFlags&volumeBlobFlag_ADDED > 0 {
+		// the blob has already been added in the current transaction.
 		return nil
 	}
-	// add the blob if necessary.
-	if yes, err := blobExists(ba, volID, cid, excluding); err != nil {
+
+	if err := s.blobs.Lock(ctx, cid); err != nil {
 		return err
-	} else if !yes {
-		flags := uint8(0)
-		if salt != nil {
-			flags |= 1 << 0
-		}
-		if err := putBlobMeta(ba, blobMeta{
-			cid: cid,
-
-			flags:    flags,
-			size:     uint32(len(data)),
-			refCount: 1,
-			salt:     salt,
-		}); err != nil {
-			return err
-		}
-		if err := putBlobData(ba, cid, data); err != nil {
-			return err
-		}
 	}
+	defer s.blobs.Unlock(cid)
+	if err := s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
+		if yes, err := existsBlobMeta(ba, cid); err != nil {
+			return err
+		} else if !yes {
+			// need to add the blob
+			if err := putBlobData(ba, cidPrefix(cid[:16]), data); err != nil {
+				return err
+			}
+			bmFlags := uint8(0)
+			if salt != nil {
+				bmFlags |= 1 << 0
+			}
+			if err := putBlobMeta(ba, blobMeta{
+				cid: cid,
 
-	// add the blob to the volume.
-	return ba.Commit(nil)
-}
-
-// dropVolume removes all state associated with a volume.
-func (s *localSystem) dropVolume(ctx context.Context, volID blobcache.OID) error {
-	ba := s.db.NewIndexedBatch()
-	defer ba.Close()
-	return ba.Commit(nil)
-}
-
-func (s *localSystem) handleToLink(h blobcache.Handle) (*schema.Link, error) {
-	return nil, nil
-}
-
-func putLocalTxn(ba *pebble.Batch, volID blobcache.OID, txid pdb.MVID) error {
-	return nil
-}
-
-// putLocalVolumeTxn adds an entry to the LOCAL_VOLUME_TXNS table.
-func putLocalVolumeTxn(ba pdb.WO, volID blobcache.OID, txid pdb.MVID) error {
-	k := pdb.TKey{TableID: tid_LOCAL_VOLUME_TXNS, Key: volID[:]}
-	if err := ba.Set(k.Marshal(nil), sbe.Uint64Bytes(uint64(txid)), nil); err != nil {
+				flags: bmFlags,
+				size:  uint32(len(data)),
+				salt:  salt,
+			}); err != nil {
+				return err
+			}
+		}
+		return setVolumeBlob(ba, volID, mvid, cid, volumeBlobFlag_ADDED)
+	}); err != nil {
 		return err
 	}
 	return nil
 }
 
-// deleteVolumeTxn removes a volume transaction.
-func deleteVolumeTxn(ba pdb.WO, volID blobcache.OID, txid pdb.MVID) error {
-	k := pdb.TKey{TableID: tid_LOCAL_VOLUME_TXNS, Key: volID[:]}
-	return ba.Delete(k.Marshal(nil), nil)
+// getBlob is the main entry point for the Get operation.
+func (s *localSystem) getBlob(volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID, buf []byte) (int, error) {
+	var n int
+	if err := s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
+		mvr, closer, err := pdb.MVGet(ba, tid_LOCAL_VOLUME_BLOBS, slices.Concat(volID.Marshal(nil), cid[:16]), excluding)
+		if err != nil {
+			return err
+		}
+		defer closer.Close()
+		if mvr == nil {
+			// blob is not in the volume, return not found
+			return cadata.ErrNotFound{Key: cid}
+		}
+		// read into buffer
+		n, err = readBlobData(ba, cidPrefix(cid[:16]), buf)
+		if err != nil {
+			return err
+		}
+		// mark the blob as observed
+		if err := setVolumeBlob(ba, volID, mvid, cid, 0); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
-// blobExists returns true if the blob exists in the volume.
+// deleteBlob deletes a blob from a local volume.
+// deleting a blob is done by adding a new row to the LOCAL_VOLUME_BLOBS table, with an empty value.
+// ref counts are not affected by this operation.
+func (s *localSystem) deleteBlob(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcache.CID) error {
+	// delete does not update ref counts, and doesn't need to check if the blobs exists
+	// so we don't need to acquire a lock on the blobs.
+	// if there are concurrent Post or Add operations, then they will race to set the (volume, blob) row.
+	// but that's the callers fault, and any order is valid.
+	return s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
+		for _, cid := range cids {
+			if err := unsetVolumeBlob(ba, volID, mvid, cid); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *localSystem) blobExists(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcache.CID, dst []bool) error {
+	sn := s.db.NewSnapshot()
+	defer sn.Close()
+	active := make(pdb.MVSet)
+	if err := s.txSys.readActive(sn, active); err != nil {
+		return err
+	}
+	excluding := func(x pdb.MVTag) bool {
+		if x == mvid {
+			return false // never exclude the current transaction
+		} else {
+			_, ok := active[x]
+			return ok
+		}
+	}
+	for i, cid := range cids {
+		exists, err := volumeBlobExists(sn, volID, cid, excluding)
+		if err != nil {
+			return err
+		}
+		dst[i] = exists
+	}
+	return nil
+}
+
+// visit marks all the cids as visited.
+// If any of them do not exist, the operation is a no-op.
+func (s *localSystem) visit(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcache.CID) error {
+	return s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
+		for _, cid := range cids {
+			exists, err := volumeBlobExists(ba, volID, cid, excluding)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return fmt.Errorf("cannot visit, blob %s does not exist", cid)
+			}
+			cidPrefix := cid[:16]
+			k := pdb.MVKey{
+				TableID: tid_LOCAL_VOLUME_BLOBS,
+				Key:     slices.Concat(volID.Marshal(nil), cidPrefix),
+				Version: mvid,
+			}
+			if err := ba.Set(k.Marshal(nil), nil, nil); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *localSystem) isVisited(volID blobcache.OID, mvid pdb.MVTag, cids []blobcache.CID, dst []bool) error {
+	sn := s.db.NewSnapshot()
+	defer sn.Close()
+	active := make(pdb.MVSet)
+	if err := s.txSys.readActive(sn, active); err != nil {
+		return err
+	}
+	for i, cid := range cids {
+		// we only have to check for a specific version.
+		cidPrefix := cid[:16]
+		k := pdb.MVKey{
+			TableID: tid_LOCAL_VOLUME_BLOBS,
+			Key:     slices.Concat(volID[:], cidPrefix),
+			Version: mvid,
+		}
+		// if the (volume, blob) association has the 2nd bit of the value set, then the blob is visited.
+		isVisit, err := pdb.Exists(sn, k.Marshal(nil), func(v []byte) bool {
+			return len(v) > 0 && v[0]&0x2 > 0
+		})
+		if err != nil {
+			return err
+		}
+		dst[i] = isVisit
+	}
+	return nil
+}
+
+// getVolumeBlob gets a row from the LOCAL_VOLUME_BLOBS table.
+// It does not perform an MVCC lookup, a specific version is required.
+// If the record does not exist, or it is a tombstone (empty value), then (0, false, nil) is returned.
+// If the record exists, then the flags and true and returned.
+// If any error occurs, then (0, false, err) is returned.
+func (s *localSystem) getVolumeBlob(db pdb.RO, volID LocalVolumeID, cid blobcache.CID, mvid pdb.MVTag) (uint8, bool, error) {
+	cidPrefix := cid[:16]
+	k := pdb.TKey{
+		TableID: tid_LOCAL_VOLUME_BLOBS,
+		Key:     slices.Concat(volID.Marshal(nil), cidPrefix, mvid.Marshal(nil)),
+	}
+	val, closer, err := db.Get(k.Marshal(nil))
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	defer closer.Close()
+	if len(val) == 0 {
+		return 0, false, nil
+	}
+	return val[0], true, nil
+}
+
+// setVolumeBlob associates a volume with a blob according to the flags.
+// setVolumeBlob requires an IndexedBatch because it increments the ref count.
+func setVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID, flags uint8) error {
+	k := pdb.MVKey{
+		TableID: tid_LOCAL_VOLUME_BLOBS,
+		Key:     slices.Concat(volID.Marshal(nil), cid[:16]),
+		Version: mvid,
+	}
+	val, closer, err := ba.Get(k.Marshal(nil))
+	if err != nil && !errors.Is(err, pebble.ErrNotFound) {
+		return err
+	}
+	if closer != nil {
+		defer closer.Close()
+	}
+	needUpdateRC := len(val) == 0
+	if err := ba.Set(k.Marshal(nil), []byte{flags}, nil); err != nil {
+		return err
+	}
+	if needUpdateRC {
+		if _, err := blobRefCountIncr(ba, cidPrefix(cid[:16]), 1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// unsetVolumeBlob writes an empty value to the LOCAL_VOLUME_BLOBS table.
+// empty values are tombstones, which will eventually be cleaned up by the vacuum process.
+func unsetVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID) error {
+	cidPrefix := cid[:16]
+	k := pdb.MVKey{
+		TableID: tid_LOCAL_VOLUME_BLOBS,
+		Key:     slices.Concat(volID.Marshal(nil), cidPrefix),
+		Version: mvid,
+	}
+	return ba.Set(k.Marshal(nil), nil, nil)
+}
+
+// volumeBlobExists returns true if the blob exists in the volume.
 // This method checks the (volune, blob) association. See also: blobExistsMeta.
-func blobExists(db pdb.RO, volID blobcache.OID, cid blobcache.CID, excluding func(pdb.MVID) bool) (bool, error) {
-	mvr, closer, err := pdb.MVGet(db, tid_LOCAL_VOLUME_BLOBS, slices.Concat(volID[:], cid[:]), excluding)
+func volumeBlobExists(db pdb.RO, volID LocalVolumeID, cid blobcache.CID, excluding func(pdb.MVTag) bool) (bool, error) {
+	cidPrefix := cid[:16]
+	mvr, closer, err := pdb.MVGet(db, tid_LOCAL_VOLUME_BLOBS, slices.Concat(volID.Marshal(nil), cidPrefix), excluding)
 	if err != nil {
 		return false, err
 	}
@@ -205,12 +531,15 @@ func blobExists(db pdb.RO, volID blobcache.OID, cid blobcache.CID, excluding fun
 	if mvr == nil {
 		return false, nil
 	}
+	if len(mvr.Value) == 0 {
+		return false, nil
+	}
 	return true, nil
 }
 
 // lvLoad loads the root data for a local volume.
-func lvLoad(sp pdb.RO, volID blobcache.OID, mvid pdb.MVID, dst *[]byte) error {
-	mvr, closer, err := pdb.MVGet(sp, tid_LOCAL_VOLUME_CELLS, volID[:], nil)
+func lvLoad(sp pdb.RO, volID LocalVolumeID, mvid pdb.MVTag, dst *[]byte) error {
+	mvr, closer, err := pdb.MVGet(sp, tid_LOCAL_VOLUME_CELLS, volID.Marshal(nil), nil)
 	if err != nil {
 		return err
 	}
@@ -224,10 +553,10 @@ func lvLoad(sp pdb.RO, volID blobcache.OID, mvid pdb.MVID, dst *[]byte) error {
 
 // lvSave saves the root data for a local volume.
 // This performs a blind Set on the LOCAL_VOLUME_CELLS table.
-func lvSave(w pdb.WO, volID blobcache.OID, mvid pdb.MVID, root []byte) error {
+func lvSave(w pdb.WO, volID LocalVolumeID, mvid pdb.MVTag, root []byte) error {
 	k := pdb.MVKey{
 		TableID: tid_LOCAL_VOLUME_CELLS,
-		Key:     volID[:],
+		Key:     volID.Marshal(nil),
 		Version: mvid,
 	}
 	return w.Set(k.Marshal(nil), root, nil)
@@ -236,14 +565,14 @@ func lvSave(w pdb.WO, volID blobcache.OID, mvid pdb.MVID, root []byte) error {
 var _ volumes.Volume = &localVolume{}
 
 type localVolume struct {
-	sys *localSystem
-	oid blobcache.OID
+	sys  *localSystem
+	lvid LocalVolumeID
 }
 
-func newLocalVolume(sys *localSystem, oid blobcache.OID) *localVolume {
+func newLocalVolume(sys *localSystem, lvid LocalVolumeID) *localVolume {
 	return &localVolume{
-		sys: sys,
-		oid: oid,
+		sys:  sys,
+		lvid: lvid,
 	}
 }
 
@@ -252,46 +581,73 @@ func (v *localVolume) Await(ctx context.Context, prev []byte, next *[]byte) erro
 }
 
 func (v *localVolume) BeginTx(ctx context.Context, tp blobcache.TxParams) (volumes.Tx, error) {
-	return v.sys.beginTx(ctx, v.oid, tp)
+	return v.sys.beginTx(ctx, v.lvid, tp)
 }
 
-var _ volumes.Tx = &localTxn{}
+var _ volumes.Tx = &localTxnMut{}
 
-// localTxn is a transaction on a local volume.
-type localTxn struct {
-	localSys *localSystem
-	mvid     pdb.MVID
-	txInfo   *blobcache.TxInfo
-	volInfo  *blobcache.VolumeInfo
-	schema   schema.Schema
+// localTxnMut is a mutating transaction on a local volume.
+type localTxnMut struct {
+	localSys  *localSystem
+	volid     LocalVolumeID
+	mvid      pdb.MVTag
+	volParams blobcache.VolumeParams
+	txParams  blobcache.TxParams
+	schema    schema.Schema
+	hf        blobcache.HashFunc
 
-	mu           sync.Mutex
+	// mu protects the finished and allowedLinks fields.
+	// mu must be taken exclusively to {Commit, Abort, AllowLink}
+	// mu must be taken in read mode for all other operations {Save, Delete, Post, Get, Exists}.
+	// checkFinished is the most convenient way to make sure the transaction is not finished, during an operation.
+	mu sync.RWMutex
+	// finished is set to true when the transaction is finished.
+	finished     bool
 	allowedLinks map[blobcache.OID]blobcache.ActionSet
 }
 
 // newLocalTxn creates a localTxn.
 // It does not change the database state.
 // the caller should have already created the transaction at txid, and volInfo.
-func newLocalTxn(localSys *localSystem, volInfo *blobcache.VolumeInfo, txInfo *blobcache.TxInfo, mvid pdb.MVID, schema schema.Schema) (*localTxn, error) {
-	return &localTxn{
-		localSys: localSys,
-		mvid:     mvid,
-		txInfo:   txInfo,
-		volInfo:  volInfo,
-		schema:   schema,
+func newLocalTxn(localSys *localSystem, lvid LocalVolumeID, mvid pdb.MVTag, volParams blobcache.VolumeParams, txParams blobcache.TxParams, schema schema.Schema) (*localTxnMut, error) {
+	hf := volParams.HashAlgo.HashFunc()
+	return &localTxnMut{
+		localSys:  localSys,
+		volid:     lvid,
+		mvid:      mvid,
+		volParams: volParams,
+		txParams:  txParams,
+		schema:    schema,
+		hf:        hf,
 	}, nil
 }
 
-func (v *localTxn) Volume() volumes.Volume {
-	return newLocalVolume(v.localSys, v.volInfo.ID)
+func (v *localTxnMut) Volume() volumes.Volume {
+	return newLocalVolume(v.localSys, v.volid)
 }
 
-func (ltx *localTxn) Commit(ctx context.Context) error {
-	if !ltx.txInfo.Params.Mutate {
-		return blobcache.ErrTxReadOnly{}
+func (v *localTxnMut) MaxSize() int {
+	return int(v.volParams.MaxSize)
+}
+
+func (v *localTxnMut) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+	return v.hf(salt, data)
+}
+
+func (v *localTxnMut) checkFinished() (func(), error) {
+	v.mu.RLock()
+	if v.finished {
+		return nil, blobcache.ErrTxDone{}
 	}
+	return v.mu.RUnlock, nil
+}
+
+func (ltx *localTxnMut) Commit(ctx context.Context) error {
 	ltx.mu.Lock()
 	defer ltx.mu.Unlock()
+	if ltx.finished {
+		return blobcache.ErrTxDone{}
+	}
 
 	// produce a final set of links
 	var links linkSet
@@ -305,84 +661,122 @@ func (ltx *localTxn) Commit(ctx context.Context) error {
 			return err
 		}
 	}
-	return ltx.localSys.commit(ltx.volInfo.ID, ltx.mvid, links, ltx.allowedLinks)
-}
-
-func (v *localTxn) Abort(ctx context.Context) error {
-	panic("not implemented")
-}
-
-func (v *localTxn) Save(ctx context.Context, root []byte) error {
-	if !v.txInfo.Params.Mutate {
-		return blobcache.ErrTxReadOnly{}
+	if err := ltx.localSys.commit(ltx.volid, ltx.mvid, links, ltx.allowedLinks); err != nil {
+		return err
 	}
-	return lvSave(v.localSys.db, v.volInfo.ID, v.mvid, root)
-}
-
-func (v *localTxn) Load(ctx context.Context, dst *[]byte) error {
+	ltx.finished = true
 	return nil
 }
 
-func (v *localTxn) Delete(ctx context.Context, cids []blobcache.CID) error {
+func (v *localTxnMut) Abort(ctx context.Context) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.finished {
+		return nil
+	}
+	if err := v.localSys.abortMut(v.volid, v.mvid); err != nil {
+		return err
+	}
+	v.finished = true
 	return nil
 }
 
-func (v *localTxn) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
-	if salt != nil && !v.volInfo.Salted {
-		return blobcache.CID{}, blobcache.ErrCannotSalt{}
-	}
-	return v.Hash(salt, data), nil
-}
-
-func (v *localTxn) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
-	return 0, nil
-}
-
-func (v *localTxn) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	panic("not implemented")
-}
-
-func (v *localTxn) MaxSize() int {
-	return int(v.volInfo.MaxSize)
-}
-
-func (v *localTxn) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
-	hf := v.volInfo.HashAlgo.HashFunc()
-	return hf(salt, data)
-}
-
-func (v *localTxn) Info() blobcache.VolumeInfo {
-	return *v.volInfo
-}
-
-func (v *localTxn) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
-	if !v.txInfo.Params.Mutate {
-		return blobcache.ErrTxReadOnly{}
-	}
-	if _, ok := v.schema.(schema.Container); !ok {
-		return fmt.Errorf("schema %T for volume %s is not a container", v.schema, v.volInfo.ID)
-	}
-	link, err := v.localSys.handleToLink(subvol)
+func (v *localTxnMut) Save(ctx context.Context, root []byte) error {
+	unlock, err := v.checkFinished()
 	if err != nil {
 		return err
+	}
+	defer unlock()
+	return lvSave(v.localSys.db, v.volid, v.mvid, root)
+}
+
+func (v *localTxnMut) Load(ctx context.Context, dst *[]byte) error {
+	unlock, err := v.checkFinished()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return lvLoad(v.localSys.db, v.volid, v.mvid, dst)
+}
+
+func (v *localTxnMut) Delete(ctx context.Context, cids []blobcache.CID) error {
+	unlock, err := v.checkFinished()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return v.localSys.deleteBlob(v.volid, v.mvid, cids)
+}
+
+func (v *localTxnMut) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+	unlock, err := v.checkFinished()
+	if err != nil {
+		return blobcache.CID{}, err
+	}
+	defer unlock()
+	if salt != nil && !v.volParams.Salted {
+		return blobcache.CID{}, blobcache.ErrCannotSalt{}
+	}
+	cid := v.Hash(salt, data)
+	if err := v.localSys.postBlob(ctx, v.volid, v.mvid, cid, salt, data); err != nil {
+		return blobcache.CID{}, err
+	}
+	return cid, nil
+}
+
+func (v *localTxnMut) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+	unlock, err := v.checkFinished()
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	return v.localSys.getBlob(v.volid, v.mvid, cid, buf)
+}
+
+func (v *localTxnMut) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	unlock, err := v.checkFinished()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return v.localSys.blobExists(v.volid, v.mvid, cids, dst)
+}
+
+func (v *localTxnMut) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
+	if _, ok := v.schema.(schema.Container); !ok {
+		return fmt.Errorf("schema %T for volume %s is not a container", v.schema, oidFromLocalID(v.volid))
+	}
+	subvolOID, subvolRights := v.localSys.hsys.Resolve(subvol)
+	if subvolRights == 0 {
+		return blobcache.ErrInvalidHandle{Handle: subvol}
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.allowedLinks == nil {
 		v.allowedLinks = make(map[blobcache.OID]blobcache.ActionSet)
 	}
-	v.allowedLinks[link.Target] |= link.Rights
+	v.allowedLinks[subvolOID] |= subvolRights
 	return nil
 }
 
-func (v *localTxn) Visit(ctx context.Context, cids []blobcache.CID) error {
-	if !v.txInfo.Params.GC {
+func (v *localTxnMut) Visit(ctx context.Context, cids []blobcache.CID) error {
+	unlock, err := v.checkFinished()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if !v.txParams.GC {
 		return fmt.Errorf("Visit called on non-GC transaction")
 	}
 	return nil
 }
 
-func (v *localTxn) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (v *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	unlock, err := v.checkFinished()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	panic("not implemented")
 }
 
@@ -390,22 +784,22 @@ var _ volumes.Tx = &localTxnRO{}
 
 // localTxnRO is a read-only transaction on a local volume.
 type localTxnRO struct {
-	sys     *localSystem
-	sp      *pebble.Snapshot
-	txInfo  *blobcache.TxInfo
-	volInfo *blobcache.VolumeInfo
+	sys       *localSystem
+	volid     LocalVolumeID
+	sp        *pebble.Snapshot
+	volParams blobcache.VolumeParams
 
 	// activeTxns is the set of active transactions for the volume.
 	mu         sync.Mutex
-	activeTxns map[pdb.MVID]struct{}
+	activeTxns map[pdb.MVTag]struct{}
 }
 
-func newLocalTxnRO(sys *localSystem, sp *pebble.Snapshot, txInfo *blobcache.TxInfo, volInfo *blobcache.VolumeInfo) *localTxnRO {
+func newLocalTxnRO(sys *localSystem, volid LocalVolumeID, sp *pebble.Snapshot, volParams blobcache.VolumeParams) *localTxnRO {
 	return &localTxnRO{
-		sys:     sys,
-		sp:      sp,
-		txInfo:  txInfo,
-		volInfo: volInfo,
+		sys:       sys,
+		volid:     volid,
+		sp:        sp,
+		volParams: volParams,
 	}
 }
 
@@ -422,7 +816,7 @@ func (v *localTxnRO) Load(ctx context.Context, dst *[]byte) error {
 	if err != nil {
 		return err
 	}
-	mvr, closer, err := pdb.MVGet(v.sp, tid_LOCAL_VOLUME_CELLS, v.volInfo.ID[:], activeTxns)
+	mvr, closer, err := pdb.MVGet(v.sp, tid_LOCAL_VOLUME_CELLS, v.volid.Marshal(nil), activeTxns)
 	if err != nil {
 		return err
 	}
@@ -454,7 +848,7 @@ func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, salt *blobcache
 	} else if !exists[0] {
 		return 0, cadata.ErrNotFound{Key: cid}
 	}
-	return readBlobData(v.sp, cid, buf)
+	return readBlobData(v.sp, cidPrefix(cid[:16]), buf)
 }
 
 func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
@@ -463,7 +857,7 @@ func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []boo
 		return err
 	}
 	for i, cid := range cids {
-		exists, err := blobExists(v.sp, v.volInfo.ID, cid, activeTxns)
+		exists, err := volumeBlobExists(v.sp, v.volid, cid, activeTxns)
 		if err != nil {
 			return err
 		}
@@ -477,19 +871,15 @@ func (v *localTxnRO) AllowLink(ctx context.Context, subvol blobcache.Handle) err
 }
 
 func (v *localTxnRO) MaxSize() int {
-	return int(v.volInfo.MaxSize)
+	return int(v.volParams.MaxSize)
 }
 
 func (v *localTxnRO) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
-	return v.volInfo.HashAlgo.HashFunc()(salt, data)
-}
-
-func (v *localTxnRO) Info() blobcache.VolumeInfo {
-	return *v.volInfo
+	return v.volParams.HashAlgo.HashFunc()(salt, data)
 }
 
 func (v *localTxnRO) Volume() volumes.Volume {
-	return newLocalVolume(v.sys, v.volInfo.ID)
+	return newLocalVolume(v.sys, v.volid)
 }
 
 func (v *localTxnRO) Visit(ctx context.Context, cids []blobcache.CID) error {
@@ -500,11 +890,11 @@ func (v *localTxnRO) IsVisited(ctx context.Context, cids []blobcache.CID, dst []
 	return fmt.Errorf("IsVisited called on non-GC transaction")
 }
 
-func (v *localTxnRO) getExcluded() (func(pdb.MVID) bool, error) {
+func (v *localTxnRO) getExcluded() (func(pdb.MVTag) bool, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.activeTxns == nil {
-		activeTxns := make(map[pdb.MVID]struct{})
+		activeTxns := make(map[pdb.MVTag]struct{})
 		if err := v.sys.txSys.readActive(v.sp, activeTxns); err != nil {
 			return nil, err
 		}
@@ -515,7 +905,7 @@ func (v *localTxnRO) getExcluded() (func(pdb.MVID) bool, error) {
 
 // isExcluded returns true if the given transaction is excluded from the snapshot.
 // Do not call this directly, use getExcluded instead.
-func (v *localTxnRO) isExcluded(mvid pdb.MVID) bool {
+func (v *localTxnRO) isExcluded(mvid pdb.MVTag) bool {
 	_, ok := v.activeTxns[mvid]
 	return ok
 }

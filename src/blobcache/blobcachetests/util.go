@@ -50,6 +50,12 @@ func Exists(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcac
 	return yes
 }
 
+func Delete(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID) {
+	t.Helper()
+	ctx := testutil.Context(t)
+	require.NoError(t, s.Delete(ctx, txh, []blobcache.CID{cid}))
+}
+
 func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx *blobcache.Tx) ([]byte, error)) {
 	ctx := testutil.Context(t)
 	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{Mutate: true})

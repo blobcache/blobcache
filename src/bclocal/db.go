@@ -5,8 +5,6 @@ import (
 	"crypto/aes"
 	"encoding/binary"
 	"fmt"
-	"slices"
-	"sync"
 
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
@@ -23,6 +21,8 @@ const (
 
 	// tid_BLOB_DATA holds blob contents.
 	tid_BLOB_DATA
+	// tid_BLOB_REF_COUNT holds the reference count for a blob.
+	tid_BLOB_REF_COUNT
 	// tid_BLOB_META holds blob metadata.
 	tid_BLOB_META
 
@@ -67,103 +67,7 @@ func doRWBatch(db *pebble.DB, fn func(*pebble.Batch) error) error {
 	return ba.Commit(pebble.Sync)
 }
 
-// seqLastTx is the key for the last transaction committed.
-var seqLastTx = pdb.TKey{
-	TableID: tid_SYS_TXNS,
-	Key:     binary.BigEndian.AppendUint64(nil, 0),
-}.Marshal(nil)
-
-// txSystem manages the transaction sequence number, and the set of active transactions.
-type txSystem struct {
-	db *pebble.DB
-	mu sync.Mutex
-}
-
-func newTxSystem(db *pebble.DB) txSystem {
-	return txSystem{
-		db: db,
-	}
-}
-
-// allocateTxID allocates a new transaction ID.
-// It is guaranteed to be unique.
-// If the ID is lost and never used, that's fine.
-func (txs *txSystem) allocateTxID() (pdb.MVID, error) {
-	txs.mu.Lock()
-	defer txs.mu.Unlock()
-	ba := txs.db.NewIndexedBatch()
-	defer ba.Close()
-	txid, err := pdb.IncrUint64(ba, seqLastTx, 1)
-	if err != nil {
-		return 0, err
-	}
-	if err := ba.Commit(pebble.Sync); err != nil {
-		return 0, err
-	}
-	return pdb.MVID(txid), nil
-}
-
-// markActive marks a transaction as active.
-func (txs *txSystem) markActive(ba pdb.WO, txid pdb.MVID) error {
-	k := pdb.TKey{
-		TableID: tid_SYS_TXNS,
-		Key:     binary.BigEndian.AppendUint64(nil, uint64(txid)),
-	}
-	return ba.Set(k.Marshal(nil), nil, pebble.Sync)
-}
-
-// removeActive removes a transaction from the active set.
-// For unsuccessful transactions (rollback): any rows written, must be removed from the database before calling this.
-func (txs *txSystem) removeActive(ba pdb.WO, txid pdb.MVID) error {
-	return removeActive(ba, txid)
-}
-
-func removeActive(ba pdb.WO, txid pdb.MVID) error {
-	k := pdb.TKey{
-		TableID: tid_SYS_TXNS,
-		Key:     binary.BigEndian.AppendUint64(nil, uint64(txid)),
-	}
-	return ba.Delete(k.Marshal(nil), nil)
-}
-
-func (txs *txSystem) readActive(sp pdb.RO, dst map[pdb.MVID]struct{}) error {
-	return readActive(sp, dst)
-}
-
-// readActiveSysTxns reads the active transactions
-// The caller should clear(dst) before calling.
-func readActive(sp pdb.RO, dst map[pdb.MVID]struct{}) error {
-	iter, err := sp.NewIter(&pebble.IterOptions{
-		LowerBound: pdb.TKey{TableID: tid_SYS_TXNS, Key: binary.BigEndian.AppendUint64(nil, 1)}.Marshal(nil),
-		UpperBound: pdb.TableUpperBound(tid_SYS_TXNS),
-	})
-	if err != nil {
-		return err
-	}
-	defer iter.Close()
-	for iter.First(); iter.Valid(); iter.Next() {
-		k, err := pdb.ParseTKey(iter.Key())
-		if err != nil {
-			return err
-		}
-		if len(k.Key) != 8 {
-			return fmt.Errorf("active transaction key is not a valid MVID: %d", len(k.Key))
-		}
-		mvid := pdb.MVID(binary.BigEndian.Uint64(k.Key))
-		dst[mvid] = struct{}{}
-	}
-	return nil
-}
-
 var allOnesOID = blobcache.OID(bytes.Repeat([]byte{0xff}, blobcache.OIDSize))
-
-func volumeBlobKey(volID blobcache.OID, cid blobcache.CID, mvc pdb.MVID) pdb.MVKey {
-	return pdb.MVKey{
-		TableID: tid_LOCAL_VOLUME_BLOBS,
-		Key:     slices.Concat(volID[:], cid[:]),
-		Version: mvc,
-	}
-}
 
 func aesEncrypt(key *[16]byte, src, dst []byte) {
 	ciph, err := aes.NewCipher(key[:])
@@ -181,22 +85,39 @@ func aesDecrypt(key *[16]byte, src, dst []byte) {
 	ciph.Decrypt(dst, src)
 }
 
-func oidFromUint64(x uint64) blobcache.OID {
+func oidFromLocalID(x LocalVolumeID) blobcache.OID {
+	if x == 0 {
+		// return the root volume ID.
+		return blobcache.OID{}
+	}
 	var buf [16]byte
-	binary.BigEndian.PutUint64(buf[0:8], x)
-	binary.BigEndian.PutUint64(buf[8:16], x)
+	binary.BigEndian.PutUint64(buf[0:8], uint64(x))
+	binary.BigEndian.PutUint64(buf[8:16], uint64(x))
 
 	var key [16]byte
 	aesEncrypt(&key, buf[:], buf[:])
 	return blobcache.OID(buf)
 }
 
-func uint64FromOID(oid blobcache.OID) (uint64, error) {
+func localVolumeIDFromOID(oid blobcache.OID) (LocalVolumeID, error) {
+	if oid == (blobcache.OID{}) {
+		return 0, nil
+	}
 	var buf [16]byte
 	var key [16]byte
 	aesDecrypt(&key, oid[:], buf[:])
 	if !bytes.Equal(buf[:8], buf[8:16]) {
 		return 0, fmt.Errorf("OID is not for a local volume")
 	}
-	return binary.BigEndian.Uint64(buf[0:8]), nil
+	return LocalVolumeID(binary.BigEndian.Uint64(buf[0:8])), nil
+}
+
+// putLocalVolumeTxn adds an entry to the LOCAL_VOLUME_TXNS table.
+func putLocalVolumeTxn(ba pdb.WO, volID LocalVolumeID, txid pdb.MVTag) error {
+	return pdb.TablePut(ba, tid_LOCAL_VOLUME_TXNS, volID.Marshal(nil), binary.BigEndian.AppendUint64(nil, uint64(txid)))
+}
+
+// deleteLocalVolumeTxn deletes from the LOCAL_VOLUME_TXNS table.
+func deleteLocalVolumeTxn(ba pdb.WO, volID LocalVolumeID, txid pdb.MVTag) error {
+	return pdb.TableDelete(ba, tid_LOCAL_VOLUME_TXNS, volID.Marshal(nil))
 }

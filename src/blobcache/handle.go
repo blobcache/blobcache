@@ -112,16 +112,24 @@ func (hi *HandleInfo) Unmarshal(data []byte) error {
 type ActionSet uint64
 
 const (
-	Action_Inspect = (1 << iota)
+	// Action_ACK is set on any valid handle.
+	Action_ACK = (1 << iota)
+
+	Action_Tx_Inspect
 
 	Action_Tx_Load
 	Action_Tx_Post
 	Action_Tx_Get
 	Action_Tx_Exists
 	Action_Tx_Delete
+	Action_Tx_AddFrom
+	Action_Tx_AllowLink
+	Action_Tx_Visited
+	Action_Tx_IsVisited
 
 	Action_Volume_BeginTx
 	Action_Volume_Await
+	Action_Volume_Inspect
 )
 
 const Action_ALL = ^ActionSet(0)
@@ -144,13 +152,17 @@ func (r *ActionSet) Scan(x any) error {
 func (r ActionSet) String() string {
 	parts := []string{}
 	rs := map[ActionSet]string{
-		Action_Inspect: "INSPECT",
+		Action_Tx_Inspect: "INSPECT",
 
-		Action_Tx_Load:   "LOAD",
-		Action_Tx_Post:   "POST",
-		Action_Tx_Get:    "GET",
-		Action_Tx_Exists: "EXISTS",
-		Action_Tx_Delete: "DELETE",
+		Action_Tx_Load:      "LOAD",
+		Action_Tx_Post:      "POST",
+		Action_Tx_Get:       "GET",
+		Action_Tx_Exists:    "EXISTS",
+		Action_Tx_Delete:    "DELETE",
+		Action_Tx_AddFrom:   "ADD_FROM",
+		Action_Tx_AllowLink: "ALLOW_LINK",
+		Action_Tx_Visited:   "VISITED",
+		Action_Tx_IsVisited: "IS_VISITED",
 
 		Action_Volume_BeginTx: "BEGIN_TX",
 		Action_Volume_Await:   "AWAIT",
