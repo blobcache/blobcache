@@ -1,3 +1,4 @@
+// bcnet implements the Blobcache Protocol (BCP).
 package bcnet
 
 import (
@@ -302,7 +303,10 @@ func (n *Node) makeTlsConfig() *tls.Config {
 }
 
 func (qt *Node) makeQuicConfig() *quic.Config {
-	return &quic.Config{}
+	return &quic.Config{
+		MaxIncomingStreams:    1 << 20,
+		MaxIncomingUniStreams: 1 << 20,
+	}
 }
 
 func peerIDFromTLSState(tlsState tls.ConnectionState) (*blobcache.PeerID, error) {

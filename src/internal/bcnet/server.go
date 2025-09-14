@@ -88,6 +88,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &CreateVolumeResp{Handle: *h, Info: *info}, nil
 		})
+	case MT_VOLUME_CLONE:
+		handleAsk(req, resp, &CloneVolumeReq{}, func(req *CloneVolumeReq) (*CloneVolumeResp, error) {
+			h, err := svc.CloneVolume(ctx, &ep.Peer, req.Volume)
+			if err != nil {
+				return nil, err
+			}
+			return &CloneVolumeResp{Handle: *h}, nil
+		})
 	case MT_VOLUME_INSPECT:
 		handleAsk(req, resp, &InspectVolumeReq{}, func(req *InspectVolumeReq) (*InspectVolumeResp, error) {
 			info, err := svc.InspectVolume(ctx, req.Volume)
@@ -129,6 +137,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 				return nil, err
 			}
 			return &CommitResp{}, nil
+		})
+	case MT_TX_INSPECT:
+		handleAsk(req, resp, &InspectTxReq{}, func(req *InspectTxReq) (*InspectTxResp, error) {
+			info, err := svc.InspectTx(ctx, req.Tx)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectTxResp{Info: *info}, nil
 		})
 	case MT_TX_ABORT:
 		handleAsk(req, resp, &AbortReq{}, func(req *AbortReq) (*AbortResp, error) {
@@ -193,6 +209,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		}
 		resp.SetCode(MT_OK)
 		resp.SetBody(cid[:])
+	case MT_TX_ADD_FROM:
+		handleAsk(req, resp, &AddFromReq{}, func(req *AddFromReq) (*AddFromResp, error) {
+			success := make([]bool, len(req.CIDs))
+			if err := svc.AddFrom(ctx, req.Tx, req.CIDs, req.Srcs, success); err != nil {
+				return nil, err
+			}
+			return &AddFromResp{Added: success}, nil
+		})
 	case MT_TX_GET:
 		h, body, err := readHandle(req.Body())
 		if err != nil {
@@ -225,6 +249,21 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 				return nil, err
 			}
 			return &AllowLinkResp{}, nil
+		})
+	case MT_TX_VISIT:
+		handleAsk(req, resp, &VisitReq{}, func(req *VisitReq) (*VisitResp, error) {
+			if err := svc.Visit(ctx, req.Tx, req.CIDs); err != nil {
+				return nil, err
+			}
+			return &VisitResp{}, nil
+		})
+	case MT_TX_IS_VISITED:
+		handleAsk(req, resp, &IsVisitedReq{}, func(req *IsVisitedReq) (*IsVisitedResp, error) {
+			visited := make([]bool, len(req.CIDs))
+			if err := svc.IsVisited(ctx, req.Tx, req.CIDs, visited); err != nil {
+				return nil, err
+			}
+			return &IsVisitedResp{Visited: visited}, nil
 		})
 	// END TX
 

@@ -40,6 +40,7 @@ const (
 	MT_VOLUME_INSPECT
 	MT_VOLUME_AWAIT
 	MT_VOLUME_BEGIN_TX
+	MT_VOLUME_CLONE
 )
 
 // Tx messages
@@ -57,12 +58,15 @@ const (
 	MT_TX_GET
 	MT_TX_EXISTS
 	MT_TX_DELETE
+	MT_TX_ADD_FROM
 	MT_TX_ALLOW_LINK
+	MT_TX_VISIT
+	MT_TX_IS_VISITED
 )
 
 const (
 	// MT_LAYER2_TELL is used for volume implementations to communicate with other volumes.
-	MT_LAYER2_TELL MessageType = 64 + iota
+	MT_LAYER2_TELL MessageType = 96 + iota
 	// MT_LAYER2_ASK is used for volume implementations to communicate with other volumes.
 	MT_LAYER2_ASK
 )
