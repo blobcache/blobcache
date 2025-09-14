@@ -4,6 +4,7 @@ package bcremote
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"github.com/cloudflare/circl/sign/ed25519"
@@ -33,6 +34,8 @@ func New(privateKey ed25519.PrivateKey, pc net.PacketConn, ep blobcache.Endpoint
 		cache: cache,
 	}
 }
+
+var _ blobcache.Service = &Service{}
 
 type Service struct {
 	ep    blobcache.Endpoint
@@ -81,6 +84,9 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobca
 
 // CreateVolume creates a new volume.
 func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	if caller != nil && *caller != s.node.LocalID() {
+		return nil, fmt.Errorf("bcremote: caller cannot be different from the node ID")
+	}
 	return bcnet.CreateVolume(ctx, s.node, s.ep, caller, vspec)
 }
 
@@ -125,8 +131,12 @@ func (s *Service) Exists(ctx context.Context, tx blobcache.Handle, cid blobcache
 }
 
 // Delete deletes a CID from the volume
-func (s *Service) Delete(ctx context.Context, tx blobcache.Handle, cid blobcache.CID) error {
-	return bcnet.Delete(ctx, s.node, s.ep, tx, cid)
+func (s *Service) Delete(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID) error {
+	return bcnet.Delete(ctx, s.node, s.ep, tx, cids)
+}
+
+func (s *Service) AddFrom(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
+	return bcnet.AddFrom(ctx, s.node, s.ep, tx, cids, srcTxns, success)
 }
 
 // Get returns the data for a CID.
@@ -141,6 +151,14 @@ func (s *Service) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CI
 // AllowLink allows the Volume to reference another volume.
 func (s *Service) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle) error {
 	return bcnet.AllowLink(ctx, s.node, s.ep, tx, subvol)
+}
+
+func (s *Service) Visit(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID) error {
+	return bcnet.Visit(ctx, s.node, s.ep, tx, cids)
+}
+
+func (s *Service) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	return bcnet.IsVisited(ctx, s.node, s.ep, tx, cids, dst)
 }
 
 // getHashFunc finds the hash function for a transaction.
