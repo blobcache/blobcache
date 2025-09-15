@@ -68,6 +68,20 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			})
 		}
 	})
+	t.Run("PostTooLarge", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s := mk(t)
+		spec := defaultLocalSpec()
+		spec.Local.MaxSize = 1024
+		volh, err := s.CreateVolume(ctx, nil, spec)
+		require.NoError(t, err)
+
+		txh := BeginTx(t, s, *volh, blobcache.TxParams{Mutate: true})
+		defer s.Abort(ctx, txh)
+		data := make([]byte, 1025)
+		_, err = s.Post(ctx, txh, nil, data)
+		require.Error(t, err)
+	})
 	t.Run("SimpleNS", func(t *testing.T) {
 		SimpleNS(t, mk)
 	})

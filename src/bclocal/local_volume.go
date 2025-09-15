@@ -791,6 +791,9 @@ func (v *localTxnMut) Post(ctx context.Context, salt *blobcache.CID, data []byte
 		return blobcache.CID{}, err
 	}
 	defer unlock()
+	if len(data) > int(v.volParams.MaxSize) {
+		return blobcache.CID{}, cadata.ErrTooLarge
+	}
 	if salt != nil && !v.volParams.Salted {
 		return blobcache.CID{}, blobcache.ErrCannotSalt{}
 	}
