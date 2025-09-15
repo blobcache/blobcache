@@ -18,24 +18,33 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// NewTestService creates a service scoped to the life of the test.
+// NewTestEnv creates a test environment.
 // It uses:
 // - t.TempDir() to create a temporary directory
 // - creates a UDP socket on a random port.
-func NewTestService(t testing.TB) *Service {
-	ctx := testutil.Context(t)
+// All the resources are cleaned up when the test is done.
+func NewTestEnv(t testing.TB) Env {
 	stateDir := t.TempDir()
+	pebbleDirPath := filepath.Join(stateDir, "pebble")
+	blobDirPath := filepath.Join(stateDir, "blob")
+	for _, dir := range []string{pebbleDirPath, blobDirPath} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
 
-	pebbleDB, err := pebble.Open(filepath.Join(stateDir, "pebble"), &pebble.Options{})
+	pebbleDB, err := pebble.Open(pebbleDirPath, &pebble.Options{})
 	require.NoError(t, err)
-	blobPath := filepath.Join(stateDir, "blob")
-	require.NoError(t, os.MkdirAll(blobPath, 0o755))
-	blobDir, err := os.OpenRoot(blobPath)
+	t.Cleanup(func() {
+		require.NoError(t, pebbleDB.Close())
+	})
+	blobDir, err := os.OpenRoot(blobDirPath)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, blobDir.Close())
+	})
 
 	_, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
-	svc := New(Env{
+	return Env{
 		PrivateKey: privateKey,
 		PacketConn: testutil.PacketConn(t),
 		DB:         pebbleDB,
@@ -43,7 +52,15 @@ func NewTestService(t testing.TB) *Service {
 		Policy:     &allowAllPolicy{},
 		Schemas:    DefaultSchemas(),
 		Root:       DefaultRoot(),
-	})
+	}
+}
+
+// NewTestServiceFromEnv creates a service from an environment.
+// It runs the service in the background and forcibly aborts all transactions when the test is done.
+func NewTestServiceFromEnv(t testing.TB, env Env) *Service {
+	svc := New(env)
+
+	ctx := testutil.Context(t)
 	var eg errgroup.Group
 	ctx, cf := context.WithCancel(ctx)
 	eg.Go(func() error {
@@ -53,10 +70,14 @@ func NewTestService(t testing.TB) *Service {
 		cf()
 		require.NoError(t, eg.Wait())
 		require.NoError(t, svc.AbortAll(ctx))
-		require.NoError(t, blobDir.Close())
-		require.NoError(t, pebbleDB.Close())
 	})
 	return svc
+}
+
+// NewTestService creates a service scoped to the life of the test.
+// It calls NewTestEnv and NewTestServiceFromEnv
+func NewTestService(t testing.TB) *Service {
+	return NewTestServiceFromEnv(t, NewTestEnv(t))
 }
 
 func DefaultSchemas() map[blobcache.Schema]schema.Schema {
