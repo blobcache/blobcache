@@ -285,6 +285,74 @@ func (s *localSystem) commit(volID LocalVolumeID, mvid pdb.MVTag, links linkSet,
 	return nil
 }
 
+// gc walks the VOLUME_BLOBS table, and deletes any blobs that are not marked as visited.
+func (s *localSystem) gc(ctx context.Context, volID LocalVolumeID, mvid pdb.MVTag) error {
+	return s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
+		iter := ba.NewIterWithContext(ctx, &pebble.IterOptions{
+			LowerBound: pdb.TKey{TableID: tid_LOCAL_VOLUME_BLOBS, Key: volID.Marshal(nil)}.Marshal(nil),
+			UpperBound: pdb.TKey{TableID: tid_LOCAL_VOLUME_BLOBS, Key: pdb.PrefixUpperBound(volID.Marshal(nil))}.Marshal(nil),
+			SkipPoint: func(k []byte) bool {
+				mvk, err := pdb.ParseMVKey(k)
+				if err != nil {
+					return false
+				}
+				// Exclude other active transactions, but include the current transaction even if active.
+				return mvk.Version != mvid && excluding != nil && excluding(mvk.Version)
+			},
+		})
+		defer iter.Close()
+
+		// Iterate grouped by cidPrefix. For each group, if the latest included row is non-tombstoned
+		// and this transaction did not mark VISITED, then write a tombstone at mvid.
+		var (
+			curCID    cidPrefix
+			curInit   bool
+			latestLen int
+			visited   bool
+		)
+		flush := func() error {
+			if !curInit {
+				return nil
+			}
+			if latestLen > 0 && !visited {
+				if err := unsetVolumeBlob(ba, volID, mvid, curCID); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		for iter.First(); iter.Valid(); iter.Next() {
+			mvk, err := pdb.ParseMVKey(iter.Key())
+			if err != nil {
+				return err
+			}
+			var cidp cidPrefix
+			copy(cidp[:], mvk.Key[8:])
+
+			// New group
+			if !curInit || cidp != curCID {
+				if err := flush(); err != nil {
+					return err
+				}
+				curCID = cidp
+				curInit = true
+				latestLen = -1
+				visited = false
+			}
+
+			v := iter.Value()
+			// Track VISITED in this transaction only
+			if mvk.Version == mvid && len(v) > 0 && (v[0]&volumeBlobFlag_VISITED) != 0 {
+				visited = true
+			}
+			// Latest row among included versions is the last encountered in ascending iteration
+			latestLen = len(v)
+		}
+		return flush()
+	})
+}
+
 // postBlob adds a blob to a local volume.
 func (s *localSystem) postBlob(ctx context.Context, volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID, salt *blobcache.CID, data []byte) error {
 	// if the blob has already been added in the current transaction, then we don't need to do anything.
@@ -369,7 +437,7 @@ func (s *localSystem) deleteBlob(volID LocalVolumeID, mvid pdb.MVTag, cids []blo
 	// but that's the callers fault, and any order is valid.
 	return s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 		for _, cid := range cids {
-			if err := unsetVolumeBlob(ba, volID, mvid, cid); err != nil {
+			if err := unsetVolumeBlob(ba, volID, mvid, cidPrefix(cid[:16])); err != nil {
 				return err
 			}
 		}
@@ -519,11 +587,10 @@ func setVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cid bl
 
 // unsetVolumeBlob writes an empty value to the LOCAL_VOLUME_BLOBS table.
 // empty values are tombstones, which will eventually be cleaned up by the vacuum process.
-func unsetVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID) error {
-	cidPrefix := cid[:16]
+func unsetVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cidp cidPrefix) error {
 	k := pdb.MVKey{
 		TableID: tid_LOCAL_VOLUME_BLOBS,
-		Key:     slices.Concat(volID.Marshal(nil), cidPrefix),
+		Key:     slices.Concat(volID.Marshal(nil), cidp[:]),
 		Version: mvid,
 	}
 	return ba.Set(k.Marshal(nil), nil, nil)
@@ -663,6 +730,11 @@ func (ltx *localTxnMut) Commit(ctx context.Context) error {
 		ltx2.mu = sync.RWMutex{}
 		var store cadata.Getter = volumes.NewUnsaltedStore(&ltx2)
 		if err := contSch.ReadLinks(ctx, store, root, links); err != nil {
+			return err
+		}
+	}
+	if ltx.txParams.GC {
+		if err := ltx.localSys.gc(ctx, ltx.volid, ltx.mvid); err != nil {
 			return err
 		}
 	}

@@ -1,6 +1,7 @@
 package blobcachetests
 
 import (
+	"fmt"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -153,5 +154,98 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		require.Equal(t, []bool{false}, IsVisited(t, s, txh, []blobcache.CID{cid1}))
 		Visit(t, s, txh, []blobcache.CID{cid1})
 		require.Equal(t, []bool{true}, IsVisited(t, s, txh, []blobcache.CID{cid1}))
+	})
+	t.Run("GCHalf", func(t *testing.T) {
+		// This test performs 3 transactions.
+		// 1. Open a transaction, add 20 blobs to a volume, then commit.
+		// 2. Open a GC transaction, visit half of the blobs, then commit.
+		// 3. Open a read only transaction and ensure each of the visited blobs exist, and none of the unvisited blobs exist.
+		ctx := testutil.Context(t)
+		s, volh := mk(t)
+		// 1.
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		defer s.Abort(ctx, txh)
+		var cids []blobcache.CID
+		for i := 0; i < 20; i++ {
+			data := fmt.Appendf(nil, "some data %d", i)
+			cid := Post(t, s, txh, nil, data)
+			cids = append(cids, cid)
+		}
+		Commit(t, s, txh)
+		// 2.
+		txh = BeginTx(t, s, volh, blobcache.TxParams{Mutate: true, GC: true})
+		defer s.Abort(ctx, txh)
+		for i, cid := range cids {
+			if i%2 > 0 {
+				continue // odd blobs are unvisited.
+			}
+			IsVisited(t, s, txh, []blobcache.CID{cid})
+			Visit(t, s, txh, []blobcache.CID{cid})
+		}
+		Commit(t, s, txh)
+		// 3.
+		txh = BeginTx(t, s, volh, blobcache.TxParams{})
+		defer s.Abort(ctx, txh)
+		for i, cid := range cids {
+			if i%2 == 0 {
+				// check that the even blobs are visited.
+				require.True(t, Exists(t, s, txh, cid))
+				Get(t, s, txh, cid, nil, 100)
+			} else {
+				// check that the odd blobs are unvisited.
+				require.False(t, Exists(t, s, txh, cid))
+			}
+		}
+	})
+	t.Run("GCVisitResets", func(t *testing.T) {
+		// This test checks that the visited set is reset every time a GC transaction is opened.
+		ctx := testutil.Context(t)
+		s, volh := mk(t)
+		// Open a transaction add 20 blobs, the commit.
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		defer s.Abort(ctx, txh)
+		var cids []blobcache.CID
+		for i := 0; i < 20; i++ {
+			data := fmt.Appendf(nil, "some data %d", i)
+			cid := Post(t, s, txh, nil, data)
+			cids = append(cids, cid)
+		}
+		Commit(t, s, txh)
+
+		// Visited should reset at the start of each GC transaction.
+		for i := 0; i < 3; i++ {
+			// Open a GC transaction, for each blob, check that it is unvisited, then mark it visited.
+			// This transaction should be a no-op.
+			txh = BeginTx(t, s, volh, blobcache.TxParams{Mutate: true, GC: true})
+			defer s.Abort(ctx, txh)
+			for _, cid := range cids {
+				vis := IsVisited(t, s, txh, []blobcache.CID{cid})
+				require.False(t, vis[0])
+				Visit(t, s, txh, []blobcache.CID{cid})
+				vis = IsVisited(t, s, txh, []blobcache.CID{cid})
+				require.True(t, vis[0])
+			}
+			Commit(t, s, txh)
+		}
+	})
+	t.Run("GCPostUnvisited", func(t *testing.T) {
+		// This test checks that blobs posted, but not visited, are still removed by GC.
+		ctx := testutil.Context(t)
+		s, volh := mk(t)
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true, GC: true})
+		defer s.Abort(ctx, txh)
+		var cids []blobcache.CID
+		for i := 0; i < 20; i++ {
+			data := fmt.Appendf(nil, "some data %d", i)
+			cid := Post(t, s, txh, nil, data)
+			cids = append(cids, cid)
+		}
+		Commit(t, s, txh)
+
+		txh = BeginTx(t, s, volh, blobcache.TxParams{})
+		defer s.Abort(ctx, txh)
+		for _, cid := range cids {
+			require.False(t, Exists(t, s, txh, cid))
+		}
 	})
 }
