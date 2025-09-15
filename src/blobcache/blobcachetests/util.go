@@ -94,3 +94,15 @@ func Endpoint(t testing.TB, s blobcache.Service) blobcache.Endpoint {
 	require.NoError(t, err)
 	return ep
 }
+
+func IsVisited(t testing.TB, s blobcache.Service, txh blobcache.Handle, cids []blobcache.CID) []bool {
+	ctx := testutil.Context(t)
+	visited := make([]bool, len(cids))
+	require.NoError(t, s.IsVisited(ctx, txh, cids, visited))
+	return visited
+}
+
+func Visit(t testing.TB, s blobcache.Service, txh blobcache.Handle, cids []blobcache.CID) {
+	ctx := testutil.Context(t)
+	require.NoError(t, s.Visit(ctx, txh, cids))
+}

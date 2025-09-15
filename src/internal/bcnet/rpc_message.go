@@ -787,6 +787,19 @@ func (ir *IsVisitedReq) Unmarshal(data []byte) error {
 	if err := ir.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
 	}
+	// read number of CIDs, then parse fixed-size CID entries
+	numCIDs, rest, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
+	if err != nil {
+		return err
+	}
+	ir.CIDs = make([]blobcache.CID, numCIDs)
+	for i := range ir.CIDs {
+		if len(rest) < blobcache.CIDSize {
+			return fmt.Errorf("cannot unmarshal IsVisitedReq, too short: %d", len(rest))
+		}
+		ir.CIDs[i] = blobcache.CID(rest[:blobcache.CIDSize])
+		rest = rest[blobcache.CIDSize:]
+	}
 	return nil
 }
 

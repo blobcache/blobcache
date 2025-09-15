@@ -198,6 +198,26 @@ func (tx *Tx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
 	return err
 }
 
+func (tx *Tx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	if len(cids) != len(dst) {
+		return fmt.Errorf("cids and dst must have the same length")
+	}
+	resp, err := doAsk(ctx, tx.n, tx.ep, MT_TX_IS_VISITED, IsVisitedReq{
+		Tx:   tx.h,
+		CIDs: cids,
+	}, &IsVisitedResp{})
+	copy(dst, resp.Visited)
+	return err
+}
+
+func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
+	_, err := doAsk(ctx, tx.n, tx.ep, MT_TX_VISIT, VisitReq{
+		Tx:   tx.h,
+		CIDs: cids,
+	}, &VisitResp{})
+	return err
+}
+
 func OpenVolumeFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
 	resp, err := doAsk(ctx, tp, ep, MT_OPEN_FROM, OpenFromReq{
 		Base:   base,

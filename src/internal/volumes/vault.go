@@ -171,6 +171,18 @@ func (v *VaultTx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) 
 	return nil
 }
 
+func (v *VaultTx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	// TODO: these CIDs only exist in the plaintext space, we need to transform them to the ciphertext space.
+	// and then mark those as visited.
+	// Additionally, and blobs that we access along the path from the root to the key-value entry
+	// must also be marked as visited.
+	panic("not implemented")
+}
+
+func (v *VaultTx) Visit(ctx context.Context, cids []blobcache.CID) error {
+	panic("not implemented")
+}
+
 func (v *VaultTx) MaxSize() int {
 	return v.inner.MaxSize()
 }

@@ -237,10 +237,14 @@ func Visit(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcach
 }
 
 func IsVisited(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	if len(cids) != len(dst) {
+		return fmt.Errorf("cids and dst must have the same length")
+	}
 	var resp IsVisitedResp
 	if _, err := doAsk(ctx, tp, ep, MT_TX_IS_VISITED, IsVisitedReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
+	copy(dst, resp.Visited)
 	return nil
 }
 

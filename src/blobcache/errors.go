@@ -86,3 +86,11 @@ type ErrTxReadOnly struct {
 func (e ErrTxReadOnly) Error() string {
 	return fmt.Sprintf("transaction %v is read-only, cannot perform %v", e.Tx, e.Op)
 }
+
+type ErrTxNotGC struct {
+	Op string
+}
+
+func (e ErrTxNotGC) Error() string {
+	return fmt.Sprintf("transaction is not a GC transaction, cannot perform %v", e.Op)
+}

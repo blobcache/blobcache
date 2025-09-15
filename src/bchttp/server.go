@@ -243,6 +243,21 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			}
 			return &ExistsResp{Exists: exists}, nil
 		})
+	case "Visit":
+		handleRequest(w, r, func(ctx context.Context, req VisitReq) (*VisitResp, error) {
+			if err := s.Service.Visit(ctx, h, req.CIDs); err != nil {
+				return nil, err
+			}
+			return &VisitResp{}, nil
+		})
+	case "IsVisited":
+		handleRequest(w, r, func(ctx context.Context, req IsVisitedReq) (*IsVisitedResp, error) {
+			visited := make([]bool, len(req.CIDs))
+			if err := s.Service.IsVisited(ctx, h, req.CIDs, visited); err != nil {
+				return nil, err
+			}
+			return &IsVisitedResp{Visited: visited}, nil
+		})
 	case "AllowLink":
 		handleRequest(w, r, func(ctx context.Context, req AllowLinkReq) (*AllowLinkResp, error) {
 			if err := s.Service.AllowLink(ctx, h, req.Target); err != nil {

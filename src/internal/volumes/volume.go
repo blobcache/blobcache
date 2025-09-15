@@ -6,6 +6,13 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
+type System[K any] interface {
+	Create(ctx context.Context, k K, spec blobcache.VolumeSpec) error
+	Open(ctx context.Context, k K) (Volume, error)
+	Drop(ctx context.Context, k K) error
+	Clone(ctx context.Context, k K) (Volume, error)
+}
+
 type Volume interface {
 	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error)
 	// Await blocks until the volume root changes away from prev to something else.
@@ -25,6 +32,8 @@ type Tx interface {
 	Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error)
 	Delete(ctx context.Context, cids []blobcache.CID) error
 	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
+	IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error
+	Visit(ctx context.Context, cids []blobcache.CID) error
 
 	MaxSize() int
 	Hash(salt *blobcache.CID, data []byte) blobcache.CID

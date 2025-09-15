@@ -750,22 +750,22 @@ func (s *Service) AllowLink(ctx context.Context, txh blobcache.Handle, subvolh b
 }
 
 func (s *Service) Visit(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
-	_, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return err
 	}
-	return fmt.Errorf("Visit not implemented")
+	return txn.backend.Visit(ctx, cids)
 }
 
 func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and out must have the same length")
 	}
-	_, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return err
 	}
-	return fmt.Errorf("IsVisited not implemented")
+	return txn.backend.IsVisited(ctx, cids, dst)
 }
 
 // handleKey computes a map key from a handle.

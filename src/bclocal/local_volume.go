@@ -434,13 +434,7 @@ func (s *localSystem) visit(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcach
 			if !exists {
 				return fmt.Errorf("cannot visit, blob %s does not exist", cid)
 			}
-			cidPrefix := cid[:16]
-			k := pdb.MVKey{
-				TableID: tid_LOCAL_VOLUME_BLOBS,
-				Key:     slices.Concat(volID.Marshal(nil), cidPrefix),
-				Version: mvid,
-			}
-			if err := ba.Set(k.Marshal(nil), nil, nil); err != nil {
+			if err := setVolumeBlob(ba, volID, mvid, cid, volumeBlobFlag_VISITED); err != nil {
 				return err
 			}
 		}
@@ -449,30 +443,26 @@ func (s *localSystem) visit(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcach
 }
 
 func (s *localSystem) isVisited(volID LocalVolumeID, mvid pdb.MVTag, cids []blobcache.CID, dst []bool) error {
-	sn := s.db.NewSnapshot()
-	defer sn.Close()
-	active := make(pdb.MVSet)
-	if err := s.txSys.readActive(sn, active); err != nil {
-		return err
-	}
-	for i, cid := range cids {
-		// we only have to check for a specific version.
-		cidPrefix := cid[:16]
-		k := pdb.MVKey{
-			TableID: tid_LOCAL_VOLUME_BLOBS,
-			Key:     slices.Concat(volID.Marshal(nil), cidPrefix),
-			Version: mvid,
+	return s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
+		for i, cid := range cids {
+			// we only have to check for a specific version.
+			cidPrefix := cid[:16]
+			k := pdb.MVKey{
+				TableID: tid_LOCAL_VOLUME_BLOBS,
+				Key:     slices.Concat(volID.Marshal(nil), cidPrefix),
+				Version: mvid,
+			}
+			// if the (volume, blob) association has the 2nd bit of the value set, then the blob is visited.
+			isVisit, err := pdb.Exists(ba, k.Marshal(nil), func(v []byte) bool {
+				return len(v) > 0 && v[0]&volumeBlobFlag_VISITED > 0
+			})
+			if err != nil {
+				return err
+			}
+			dst[i] = isVisit
 		}
-		// if the (volume, blob) association has the 2nd bit of the value set, then the blob is visited.
-		isVisit, err := pdb.Exists(sn, k.Marshal(nil), func(v []byte) bool {
-			return len(v) > 0 && v[0]&0x2 > 0
-		})
-		if err != nil {
-			return err
-		}
-		dst[i] = isVisit
-	}
-	return nil
+		return nil
+	})
 }
 
 // getVolumeBlob gets a row from the LOCAL_VOLUME_BLOBS table.
@@ -781,9 +771,9 @@ func (v *localTxnMut) Visit(ctx context.Context, cids []blobcache.CID) error {
 	}
 	defer unlock()
 	if !v.txParams.GC {
-		return fmt.Errorf("Visit called on non-GC transaction")
+		return blobcache.ErrTxNotGC{Op: "Visit"}
 	}
-	return nil
+	return v.localSys.visit(v.volid, v.mvid, cids)
 }
 
 func (v *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
@@ -792,7 +782,10 @@ func (v *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst [
 		return err
 	}
 	defer unlock()
-	panic("not implemented")
+	if !v.txParams.GC {
+		return blobcache.ErrTxNotGC{Op: "IsVisited"}
+	}
+	return v.localSys.isVisited(v.volid, v.mvid, cids, dst)
 }
 
 var _ volumes.Tx = &localTxnRO{}
