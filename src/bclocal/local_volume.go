@@ -315,7 +315,7 @@ func (s *localSystem) gc(ctx context.Context, volID LocalVolumeID, mvid pdb.MVTa
 				return nil
 			}
 			if latestLen > 0 && !visited {
-				if err := unsetVolumeBlob(ba, volID, mvid, curCID); err != nil {
+				if err := tombVolumeBlob(ba, volID, mvid, curCID); err != nil {
 					return err
 				}
 			}
@@ -437,7 +437,7 @@ func (s *localSystem) deleteBlob(volID LocalVolumeID, mvid pdb.MVTag, cids []blo
 	// but that's the callers fault, and any order is valid.
 	return s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 		for _, cid := range cids {
-			if err := unsetVolumeBlob(ba, volID, mvid, cidPrefix(cid[:16])); err != nil {
+			if err := tombVolumeBlob(ba, volID, mvid, cidPrefix(cid[:16])); err != nil {
 				return err
 			}
 		}
@@ -559,7 +559,7 @@ func (s *localSystem) getVolumeBlob(db pdb.RO, volID LocalVolumeID, cid blobcach
 }
 
 // setVolumeBlob associates a volume with a blob according to the flags.
-// setVolumeBlob requires an IndexedBatch because it increments the ref count.
+// setVolumeBlob requires an IndexedBatch because it may increment the ref count.
 func setVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID, flags uint8) error {
 	k := pdb.MVKey{
 		TableID: tid_LOCAL_VOLUME_BLOBS,
@@ -573,11 +573,21 @@ func setVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cid bl
 	if closer != nil {
 		defer closer.Close()
 	}
-	needUpdateRC := len(val) == 0
-	if err := ba.Set(k.Marshal(nil), []byte{flags}, nil); err != nil {
+
+	var prevFlags uint8
+	if len(val) > 0 {
+		prevFlags = val[0]
+	}
+	nextFlags := prevFlags | flags
+	if len(val) > 0 && prevFlags == nextFlags {
+		// the flags match, so we can return early.
+		return nil
+	}
+	if err := ba.Set(k.Marshal(nil), []byte{nextFlags}, nil); err != nil {
 		return err
 	}
-	if needUpdateRC {
+	if len(val) == 0 {
+		// anytime we add a (non-tombstone) reference to a blob in the VOLUME_BLOBS table, we have to increment the ref count.
 		if _, err := blobRefCountIncr(ba, cidPrefix(cid[:16]), 1); err != nil {
 			return err
 		}
@@ -587,7 +597,7 @@ func setVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cid bl
 
 // unsetVolumeBlob writes an empty value to the LOCAL_VOLUME_BLOBS table.
 // empty values are tombstones, which will eventually be cleaned up by the vacuum process.
-func unsetVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cidp cidPrefix) error {
+func tombVolumeBlob(ba *pebble.Batch, volID LocalVolumeID, mvid pdb.MVTag, cidp cidPrefix) error {
 	k := pdb.MVKey{
 		TableID: tid_LOCAL_VOLUME_BLOBS,
 		Key:     slices.Concat(volID.Marshal(nil), cidp[:]),

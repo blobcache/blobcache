@@ -16,28 +16,6 @@ import (
 
 type cidPrefix [16]byte
 
-// putBlobData puts a blob into the database.
-// It must be called with a lock on the blob.
-func putBlobData(ba *pebble.Batch, cidp cidPrefix, data []byte) error {
-	return ba.Set(pdb.TKey{TableID: tid_BLOB_DATA, Key: cidp[:]}.Marshal(nil), data, nil)
-}
-
-// deleteBlobData deletes a blob from the database.
-// It must be called with a lock on the blob.
-func deleteBlobData(ba *pebble.Batch, cidp cidPrefix) error {
-	return ba.Delete(pdb.TKey{TableID: tid_BLOB_DATA, Key: cidp[:]}.Marshal(nil), nil)
-}
-
-// readBlobData reads a blob from the database into buf.
-func readBlobData(r pdb.RO, cidp cidPrefix, buf []byte) (int, error) {
-	data, closer, err := r.Get(pdb.TKey{TableID: tid_BLOB_DATA, Key: cidp[:]}.Marshal(nil))
-	if err != nil {
-		return 0, fmt.Errorf("readBlobData: %w", err)
-	}
-	defer closer.Close()
-	return copy(buf, data), nil
-}
-
 // blobMeta is a row in the BLOB_META table.
 type blobMeta struct {
 	cid blobcache.CID
@@ -104,10 +82,12 @@ func existsBlobMeta(ba *pebble.Batch, cid blobcache.CID) (bool, error) {
 }
 
 // blobPath returns the path to store the blob at in the filesystem.
-func blobPath(cid blobcache.CID) string {
+func blobPath(cidp cidPrefix) string {
 	return filepath.Join(
-		hex.EncodeToString(cid[:1]),
-		hex.EncodeToString(cid[1:]),
+		hex.EncodeToString(cidp[0:1]),
+		hex.EncodeToString(cidp[1:2]),
+
+		hex.EncodeToString(cidp[2:]),
 	)
 }
 
@@ -154,8 +134,8 @@ func downloadBlob(blobDir *os.Root, cid blobcache.CID, buf []byte) (int, error) 
 }
 
 // dropExternalBlob drops a blob from the filesystem.
-func dropExternalBlob(blobDir *os.Root, cid blobcache.CID) error {
-	p := blobPath(cid)
+func dropBlobData(blobDir *os.Root, cidp cidPrefix) error {
+	p := blobPath(cidp)
 	return blobDir.Remove(p)
 }
 
