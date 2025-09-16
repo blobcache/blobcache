@@ -291,6 +291,7 @@ func putVolumeLinks(ba *pebble.Batch, fromVolID blobcache.OID, links linkSet) er
 			return err
 		}
 	}
+
 	// add the new links
 	for toID, rights := range links {
 		if err := putVolumeLink(ba, fromVolID, toID, rights); err != nil {
@@ -319,7 +320,7 @@ func readVolumeLinks(sp pdb.RO, fromVolID blobcache.OID, dst linkSet) error {
 	}
 	defer iter.Close()
 
-	for iter.Last(); iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); iter.Next() {
 		volLink, err := parseVolumeLink(iter.Key(), iter.Value())
 		if err != nil {
 			return err
@@ -350,7 +351,7 @@ func readVolumeLinksTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]s
 	}
 	defer iter.Close()
 
-	for iter.Last(); iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); iter.Next() {
 		if len(iter.Key()) < 2*blobcache.OIDSize {
 			return fmt.Errorf("volume link inverse key too short: %d", len(iter.Key()))
 		}
@@ -416,7 +417,7 @@ func readVolumeDepsTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]st
 	}
 	defer iter.Close()
 
-	for iter.Last(); iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); iter.Next() {
 		if len(iter.Key()) < 2*blobcache.OIDSize {
 			return fmt.Errorf("volume dep inverse key too short: %d", len(iter.Key()))
 		}

@@ -64,7 +64,7 @@ func doRWBatch(db *pebble.DB, fn func(*pebble.Batch) error) error {
 	if err := fn(ba); err != nil {
 		return err
 	}
-	return ba.Commit(pebble.Sync)
+	return ba.Commit(nil)
 }
 
 var allOnesOID = blobcache.OID(bytes.Repeat([]byte{0xff}, blobcache.OIDSize))

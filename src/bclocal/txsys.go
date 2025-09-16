@@ -34,7 +34,7 @@ func (txs *txSystem) allocateTxID() (pdb.MVTag, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := ba.Commit(pebble.Sync); err != nil {
+	if err := ba.Commit(nil); err != nil {
 		return 0, err
 	}
 	return pdb.MVTag(txid), nil
@@ -46,7 +46,7 @@ func (txs *txSystem) start(ba pdb.WO, txid pdb.MVTag) error {
 		TableID: tid_SYS_TXNS,
 		Key:     binary.BigEndian.AppendUint64(nil, uint64(txid)),
 	}
-	return ba.Set(k.Marshal(nil), nil, pebble.Sync)
+	return ba.Set(k.Marshal(nil), nil, nil)
 }
 
 // success marks a transaction as finished and removes the row from the active set.

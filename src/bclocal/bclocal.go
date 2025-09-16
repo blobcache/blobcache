@@ -258,16 +258,13 @@ func (s *Service) mountAllInContainer(ctx context.Context, sch schema.Container,
 	}
 	// constrain according to allowedLinks
 	for target, rights := range links {
-		links[target] |= allowedLinks[target] & rights
+		links[target] = allowedLinks[target] & rights
 		if links[target] == 0 {
 			delete(links, target)
 		}
 	}
 	for target := range links {
 		volInfo, err := inspectVolume(s.env.DB, target)
-		if err != nil {
-			return err
-		}
 		if err != nil {
 			return err
 		}
@@ -321,7 +318,6 @@ type volume struct {
 }
 
 type transaction struct {
-	info    blobcache.TxInfo
 	backend volumes.Tx
 	volume  *volume
 }
@@ -455,9 +451,6 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 		if err != nil {
 			return nil, err
 		}
-		if err != nil {
-			return nil, err
-		}
 		if err := s.mountVolume(ctx, target, *volInfo); err != nil {
 			return nil, err
 		}
@@ -539,10 +532,7 @@ func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, vol
 		return nil, err
 	}
 
-	h, err := s.handles.Create(vol.info.ID, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL)), nil
-	if err != nil {
-		return nil, err
-	}
+	h := s.handles.Create(vol.info.ID, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL))
 	return &h, nil
 }
 

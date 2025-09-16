@@ -135,9 +135,28 @@ func SimpleNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 
 		ns1h = *rootNSh
 		for i := 0; i < 10; i++ {
+			require.NotZero(t, ns1h.Secret) // This would cause simplens to call OpenAs instead of OpenFrom.
 			ns2h, err := nsc.OpenAt(ctx, ns1h, "nested", blobcache.Action_ALL)
 			require.NoError(t, err)
 			ns1h = *ns2h
+		}
+	})
+	t.Run("MultiOpen", func(t *testing.T) {
+		t.Parallel()
+		ctx := testutil.Context(t)
+		s := mk(t)
+		nsc := simplens.Client{Service: s}
+		rootNSh, err := s.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+
+		for i := 0; i < 10; i++ {
+			_, err := nsc.CreateAt(ctx, *rootNSh, fmt.Sprintf("subvol-%d", i), defaultLocalSpec())
+			require.NoError(t, err)
+		}
+
+		for i := 0; i < 10; i++ {
+			_, err := nsc.OpenAt(ctx, *rootNSh, fmt.Sprintf("subvol-%d", i), blobcache.Action_ALL)
+			require.NoError(t, err)
 		}
 	})
 }
