@@ -15,8 +15,8 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/glfsport"
+	"blobcache.io/blobcache/src/schema/basicns"
 	glfsschema "blobcache.io/blobcache/src/schema/glfs"
-	"blobcache.io/blobcache/src/schema/simplens"
 )
 
 var glfsCmd = star.NewDir(star.Metadata{
@@ -38,7 +38,7 @@ var glfsInitCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := simplens.Client{Service: svc}
+		nsc := basicns.Client{Service: svc}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
@@ -81,7 +81,7 @@ var glfsLookCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := simplens.Client{Service: svc}
+		nsc := basicns.Client{Service: svc}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
@@ -133,7 +133,7 @@ var glfsImportCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := simplens.Client{Service: svc}
+		nsc := basicns.Client{Service: svc}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
@@ -175,7 +175,7 @@ var glfsReadCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := simplens.Client{Service: svc}
+		nsc := basicns.Client{Service: svc}
 		volh, err := nsc.OpenAt(c, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
@@ -210,7 +210,7 @@ var glfsSyncCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := simplens.Client{Service: svc}
+		nsc := basicns.Client{Service: svc}
 
 		srcVolh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, srcVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {

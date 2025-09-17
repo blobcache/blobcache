@@ -1,5 +1,5 @@
-// Package simplecont implements a simple container for volumes.
-package simplecont
+// Package basiccont implements a simple container for volumes.
+package basiccont
 
 import (
 	"context"

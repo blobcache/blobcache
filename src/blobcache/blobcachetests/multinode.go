@@ -5,7 +5,7 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema/simplens"
+	"blobcache.io/blobcache/src/schema/basicns"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,7 +21,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		require.NoError(t, err)
 		nsh, err := s1.OpenAs(ctx, nil, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
-		nsc := simplens.Client{Service: s1}
+		nsc := basicns.Client{Service: s1}
 		require.NoError(t, nsc.PutEntry(ctx, *nsh, "name1", *volh))
 
 		// creating a remote volume on the second node should turn into a call to OpenAs on the first node

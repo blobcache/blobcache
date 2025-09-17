@@ -82,8 +82,8 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		_, err = s.Post(ctx, txh, nil, data)
 		require.Error(t, err)
 	})
-	t.Run("SimpleNS", func(t *testing.T) {
-		SimpleNS(t, mk)
+	t.Run("BasicNS", func(t *testing.T) {
+		BasicNS(t, mk)
 	})
 	// Run Tx test suite on local volume.
 	t.Run("Local/Tx", func(t *testing.T) {

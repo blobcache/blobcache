@@ -1,6 +1,6 @@
-// Package simplens provides a simple namespace implementation.
+// Package basicns provides a simple namespace implementation.
 // All entries are stored in the root of the volume.
-package simplens
+package basicns
 
 import (
 	"bytes"

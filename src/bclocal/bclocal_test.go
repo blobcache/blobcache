@@ -11,7 +11,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema/simplens"
+	"blobcache.io/blobcache/src/schema/basicns"
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 	"lukechampine.com/blake3"
@@ -64,11 +64,11 @@ func TestDefaultNoAccess(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	nsc1 := simplens.Client{Service: svc1}
+	nsc1 := basicns.Client{Service: svc1}
 	require.NoError(t, err)
 	require.NoError(t, nsc1.PutEntry(ctx, blobcache.Handle{}, "name1", *volh))
 
-	nsc2 := simplens.Client{Service: svc2}
+	nsc2 := basicns.Client{Service: svc2}
 	entry, err := nsc2.GetEntry(ctx, blobcache.Handle{}, "name1")
 	require.NoError(t, err)
 	require.Nil(t, entry)

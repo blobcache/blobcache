@@ -12,7 +12,7 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema/simplens"
+	"blobcache.io/blobcache/src/schema/basicns"
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
@@ -65,7 +65,7 @@ var lsCmd = star.Command{
 			return err
 		}
 		defer close()
-		nsc := simplens.Client{Service: s}
+		nsc := basicns.Client{Service: s}
 		names, err := nsc.ListNames(c, blobcache.Handle{})
 		if err != nil {
 			return err

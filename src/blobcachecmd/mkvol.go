@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/schema/simplens"
+	"blobcache.io/blobcache/src/schema/basicns"
 	"go.brendoncarroll.net/star"
 )
 
@@ -20,7 +20,7 @@ var mkVolLocalCmd = star.Command{
 			return err
 		}
 		defer close()
-		nsc := simplens.Client{Service: s}
+		nsc := basicns.Client{Service: s}
 		volh, err := nsc.CreateAt(c, blobcache.Handle{}, nameParam.Load(c), blobcache.DefaultLocalSpec())
 		if err != nil {
 			return err

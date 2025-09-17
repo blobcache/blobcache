@@ -1,4 +1,4 @@
-package simplens
+package basicns
 
 import (
 	"context"

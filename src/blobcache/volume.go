@@ -167,9 +167,9 @@ type Schema string
 
 const (
 	Schema_NONE Schema = ""
-	// Schema_SimpleNS is the schema name for the simple namespace.
-	Schema_SimpleNS        Schema = "blobcache/simplens"
-	Schema_SimpleContainer Schema = "blobcache/simplecontainer"
+	// Schema_BasicNS is the schema name for the basic namespace.
+	Schema_BasicNS        Schema = "blobcache/basicns"
+	Schema_BasicContainer Schema = "blobcache/basiccontainer"
 )
 
 type VolumeParams struct {

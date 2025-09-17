@@ -5,7 +5,7 @@ import (
 	"blobcache.io/blobcache/src/bcfuse/scheme_glfs"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/sqlutil"
-	"blobcache.io/blobcache/src/schema/simplens"
+	"blobcache.io/blobcache/src/schema/basicns"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -27,7 +27,7 @@ var fuseMountCmd = star.Command{
 			return err
 		}
 		volName := volumeNameParam.Load(c)
-		nsc := simplens.Client{Service: svc}
+		nsc := basicns.Client{Service: svc}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volName, blobcache.Action_ALL)
 		if err != nil {
 			return err

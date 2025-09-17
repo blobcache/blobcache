@@ -10,8 +10,8 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema"
-	"blobcache.io/blobcache/src/schema/simplecont"
-	"blobcache.io/blobcache/src/schema/simplens"
+	"blobcache.io/blobcache/src/schema/basiccont"
+	"blobcache.io/blobcache/src/schema/basicns"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
@@ -82,19 +82,19 @@ func NewTestService(t testing.TB) *Service {
 
 func DefaultSchemas() map[blobcache.Schema]schema.Schema {
 	return map[blobcache.Schema]schema.Schema{
-		blobcache.Schema_NONE:            schema.None{},
-		blobcache.Schema_SimpleNS:        simplens.Schema{},
-		blobcache.Schema_SimpleContainer: simplecont.Schema{},
+		blobcache.Schema_NONE:           schema.None{},
+		blobcache.Schema_BasicNS:        basicns.Schema{},
+		blobcache.Schema_BasicContainer: basiccont.Schema{},
 	}
 }
 
 // DefaultRoot returns the default root volume spec.
-// It uses the SimpleNS schema and a 2MB byte max size.
+// It uses the basicns schema and a 2MB byte max size.
 func DefaultRoot() blobcache.VolumeSpec {
 	return blobcache.VolumeSpec{
 		Local: &blobcache.VolumeBackend_Local{
 			VolumeParams: blobcache.VolumeParams{
-				Schema:   blobcache.Schema_SimpleNS,
+				Schema:   blobcache.Schema_BasicNS,
 				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 				MaxSize:  1 << 22,
 			},
