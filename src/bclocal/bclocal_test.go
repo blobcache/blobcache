@@ -1,9 +1,6 @@
 package bclocal
 
 import (
-	"encoding/binary"
-	"math/rand/v2"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -14,7 +11,6 @@ import (
 	"blobcache.io/blobcache/src/schema/simplens"
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
-	"lukechampine.com/blake3"
 )
 
 func TestNewService(t *testing.T) {
@@ -79,38 +75,6 @@ func TestDefaultNoAccess(t *testing.T) {
 	names, err := nsc2.ListNames(ctx, *volh)
 	require.Error(t, err)
 	require.Empty(t, names)
-}
-
-func TestUploadDownload(t *testing.T) {
-	t.SkipNow() // this test is slow.
-	blobDir, err := os.OpenRoot(t.TempDir())
-	require.NoError(t, err)
-	defer blobDir.Close()
-
-	const blobSize = 1 << 16
-	var cids []blobcache.CID
-
-	var buf []byte
-	for i := 0; i < 512; i++ {
-		buf = buf[:0]
-		rng := rand.NewPCG(uint64(i), uint64(i))
-		for len(buf) < blobSize {
-			buf = binary.LittleEndian.AppendUint64(buf, rng.Uint64())
-		}
-
-		cid := blake3.Sum256(buf)
-		require.NoError(t, uploadBlob(blobDir, cid, buf))
-		cids = append(cids, cid)
-	}
-
-	t.Log(len(buf))
-	for _, cid := range cids {
-		n, err := downloadBlob(blobDir, cid, buf)
-		require.NoError(t, err)
-		data := buf[:n]
-		h := blake3.Sum256(data)
-		require.Equal(t, cid, blobcache.CID(h))
-	}
 }
 
 func TestTxSystem(t *testing.T) {

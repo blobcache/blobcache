@@ -166,3 +166,46 @@ func TestStore_LongestPrefix_UsesExistingChild(t *testing.T) {
 	require.Equal(t, uint32(0), st.shard.tab.Len())
 	require.Equal(t, uint32(1), child.tab.Len())
 }
+
+func TestStore_Reopen_LazyLoad_AllDataAccessible(t *testing.T) {
+	dir := t.TempDir()
+	root1, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+
+	st1 := New(root1)
+
+	const N = 1024
+	keys := make([]Key, N)
+	vals := make([][]byte, N)
+	for i := 0; i < N; i++ {
+		keys[i] = randKey(t)
+		vals[i] = []byte(fmt.Sprintf("val-%d", i))
+		ok, err := st1.Put(keys[i], vals[i])
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+
+	// Simulate shutdown
+	require.NoError(t, st1.Close())
+	require.NoError(t, root1.Close())
+
+	// Reopen a new store on the same directory
+	root2, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	defer root2.Close()
+
+	st2 := New(root2)
+
+	// On fresh startup, nothing should be eagerly loaded
+	// (sanity: the root shard reports not loaded before first access)
+	require.False(t, st2.shard.loaded)
+
+	// Access all keys; this should trigger lazy loading as needed and all values must be retrievable
+	for i := 0; i < N; i++ {
+		var got []byte
+		ok, err := st2.Get(keys[i], nil, func(data []byte) { got = append([]byte(nil), data...) })
+		require.NoError(t, err)
+		require.True(t, ok, "missing key %d after reopen", i)
+		require.Equal(t, vals[i], got)
+	}
+}

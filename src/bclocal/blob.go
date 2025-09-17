@@ -2,19 +2,14 @@ package bclocal
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 
+	"blobcache.io/blobcache/src/bclocal/internal/blobman"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"github.com/cockroachdb/pebble"
 )
-
-type cidPrefix [16]byte
 
 // blobMeta is a row in the BLOB_META table.
 type blobMeta struct {
@@ -81,70 +76,12 @@ func existsBlobMeta(ba *pebble.Batch, cid blobcache.CID) (bool, error) {
 	return pdb.Exists(ba, pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil), nil)
 }
 
-// blobPath returns the path to store the blob at in the filesystem.
-func blobPath(cidp cidPrefix) string {
-	return filepath.Join(
-		hex.EncodeToString(cidp[0:1]),
-		hex.EncodeToString(cidp[1:2]),
-
-		hex.EncodeToString(cidp[2:]),
-	)
-}
-
-// uploadBlob writes a blob to the filesystem.
-// cid is not checked, and is assumed to be correct for data, possible with a salt.
-func uploadBlob(blobDir *os.Root, cid blobcache.CID, data []byte) error {
-	p := blobPath(cid)
-	if err := blobDir.Mkdir(filepath.Dir(p), 0o755); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return err
-		}
-	}
-	f, err := blobDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return nil
-		}
-		return err
-	}
-	defer f.Close()
-	_, err = f.Write(data)
-	if err != nil {
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
-	return f.Close()
-}
-
-// downloadBlob reads a blob from the filesystem.
-func downloadBlob(blobDir *os.Root, cid blobcache.CID, buf []byte) (int, error) {
-	p := blobPath(cid)
-	f, err := blobDir.OpenFile(p, os.O_RDONLY, 0644)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-	n, err := io.ReadFull(f, buf)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return 0, err
-	}
-	return n, nil
-}
-
-// dropExternalBlob drops a blob from the filesystem.
-func dropBlobData(blobDir *os.Root, cidp cidPrefix) error {
-	p := blobPath(cidp)
-	return blobDir.Remove(p)
-}
-
 type RefCount uint32
 
 // blobRefCountIncr must be called with a lock on the blob.
 // blob ref counts are the number of times a blob is referenced (excluding delete operations) in the LOCAL_VOLUME_BLOBS table.
-func blobRefCountIncr(ba *pebble.Batch, cidp cidPrefix, delta int32) (RefCount, error) {
-	k := pdb.TKey{TableID: tid_BLOB_REF_COUNT, Key: cidp[:]}.Marshal(nil)
+func blobRefCountIncr(ba *pebble.Batch, cidp blobman.Key, delta int32) (RefCount, error) {
+	k := pdb.TKey{TableID: tid_BLOB_REF_COUNT, Key: cidp.Bytes()}.Marshal(nil)
 	n, err := pdb.IncrUint32(ba, k, delta, false)
 	if err != nil {
 		return 0, err
@@ -153,8 +90,8 @@ func blobRefCountIncr(ba *pebble.Batch, cidp cidPrefix, delta int32) (RefCount, 
 }
 
 // blobRefCountGet gets the reference count for a blob.
-func blobRefCountGet(ba pdb.RO, cidp cidPrefix) (RefCount, error) {
-	k := pdb.TKey{TableID: tid_BLOB_REF_COUNT, Key: cidp[:]}.Marshal(nil)
+func blobRefCountGet(ba pdb.RO, cidp blobman.Key) (RefCount, error) {
+	k := pdb.TKey{TableID: tid_BLOB_REF_COUNT, Key: cidp.Bytes()}.Marshal(nil)
 	v, closer, err := ba.Get(k)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
@@ -173,3 +110,9 @@ const (
 	volumeBlobFlag_ADDED   = 1 << 0
 	volumeBlobFlag_VISITED = 1 << 1
 )
+
+func blobKey(cid blobcache.CID) blobman.Key {
+	first := binary.LittleEndian.Uint64(cid[:8])
+	second := binary.LittleEndian.Uint64(cid[8:16])
+	return blobman.Key{first, second}
+}

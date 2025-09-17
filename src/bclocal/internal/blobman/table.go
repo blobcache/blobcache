@@ -95,8 +95,6 @@ type IndexEntry struct {
 	Prefix Prefix121
 	Offset uint32
 	Len    uint32
-	Prev   uint32 // row+1 of previous head in bucket, 0 if none
-	Bucket uint16
 }
 
 func (ent *IndexEntry) save(buf *[TableEntrySize]byte) {
@@ -105,8 +103,6 @@ func (ent *IndexEntry) save(buf *[TableEntrySize]byte) {
 	buf[15] = ent.Prefix.numBits
 	binary.LittleEndian.PutUint32(buf[16:16+4], ent.Offset)
 	binary.LittleEndian.PutUint32(buf[20:20+4], ent.Len)
-	binary.LittleEndian.PutUint32(buf[24:24+4], ent.Prev)
-	binary.LittleEndian.PutUint16(buf[28:28+2], ent.Bucket)
 }
 
 func (ent *IndexEntry) load(buf *[TableEntrySize]byte) {
@@ -116,6 +112,4 @@ func (ent *IndexEntry) load(buf *[TableEntrySize]byte) {
 	ent.Prefix = NewPrefix121(data, nb)
 	ent.Offset = binary.LittleEndian.Uint32(buf[16 : 16+4])
 	ent.Len = binary.LittleEndian.Uint32(buf[20 : 20+4])
-	ent.Prev = binary.LittleEndian.Uint32(buf[24 : 24+4])
-	ent.Bucket = binary.LittleEndian.Uint16(buf[28 : 28+2])
 }

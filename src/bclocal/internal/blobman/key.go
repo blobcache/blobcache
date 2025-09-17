@@ -1,0 +1,126 @@
+package blobman
+
+import (
+	"encoding/binary"
+	"encoding/hex"
+	"math/big"
+	"strings"
+)
+
+// Key is a 128 bit key.
+// The 0th bit is considered the first bit, and that is at k[0] & (1 << 0).
+type Key [2]uint64
+
+func KeyFromBytes(b []byte) Key {
+	return Key{
+		binary.LittleEndian.Uint64(b[:8]),
+		binary.LittleEndian.Uint64(b[8:]),
+	}
+}
+
+// ShiftIn shifts the key into 0.
+// The lowest bits are discarded, zeros are shifted in to the highest bits.
+func (k Key) ShiftIn(i int) Key {
+	return Key{k[0]>>i | k[1]<<(64-i), k[0]<<i | k[1]>>(64-i)}
+}
+
+func (k Key) Uint8(i int) uint8 {
+	return byte(k[i>>6] >> (i & 0x3f))
+}
+
+func (k Key) Uint16(i int) uint16 {
+	return uint16(k[i>>4] >> (i & 0x0f))
+}
+
+// Uint64 returns the 64 bit integer at the given index.
+// The index is 0 or 1.
+func (k Key) Uint64(i int) uint64 {
+	if i&1 == 0 {
+		return k[0]
+	} else {
+		return k[1]
+	}
+}
+
+func (k Key) IsZero() bool {
+	return k == Key{}
+}
+
+func (k Key) Data() (ret [16]byte) {
+	binary.LittleEndian.PutUint64(ret[:8], k[0])
+	binary.LittleEndian.PutUint64(ret[8:], k[1])
+	return ret
+}
+
+func (k Key) Bytes() []byte {
+	d := k.Data()
+	return d[:]
+}
+
+// ToPrefix takes the first numBits bits of the key and includes those in a prefix.
+// The last 7 bits of the key must be dropped.
+// ToPrefix will panic, the same as NewPrefix121, if numBits is greater than 121.
+func (k Key) ToPrefix(numBits uint8) Prefix121 {
+	data := k.Data()
+	return NewPrefix121([15]byte(data[:15]), numBits)
+}
+
+// Prefix121 is a prefix of at most 121 bits.
+// Prefix121 takes up 128 bits.
+// A prefix refers to a set of keys.
+type Prefix121 struct {
+	data    [15]byte
+	numBits uint8
+}
+
+func NewPrefix121(data [15]byte, numBits uint8) Prefix121 {
+	if numBits > 121 {
+		numBits = 121
+	}
+	return Prefix121{data: data, numBits: numBits}
+}
+
+func (p Prefix121) ShiftIn(i int) Prefix121 {
+	shiftInBytes(p.data[:], i)
+	return Prefix121{data: p.data, numBits: p.numBits + uint8(i)}
+}
+
+// shiftInBytes performs a logical shift towards zero.
+func shiftInBytes(data []byte, i int) {
+	bi := big.NewInt(0)
+	bi.SetBytes(data)
+	bi.Rsh(bi, uint(i))
+}
+
+func (p Prefix121) Data() (ret [15]byte) {
+	return p.data
+}
+
+func (p Prefix121) Len() int {
+	return int(p.numBits)
+}
+
+func (p Prefix121) Path() string {
+	if p.Len() > 0 {
+		data := p.Data()
+		hexData := hex.AppendEncode(nil, data[:p.Len()/8])
+		sb := strings.Builder{}
+		for i := 0; i < len(hexData); i += 2 {
+			if i > 0 {
+				sb.WriteString("/")
+			}
+			sb.Write(hexData[i : i+2])
+		}
+		return sb.String()
+	} else {
+		return "_"
+	}
+}
+
+func (p Prefix121) PackPath() string {
+	return p.Path() + ".pack"
+}
+
+func (p Prefix121) TablePath() string {
+	return p.Path() + ".tab"
+}

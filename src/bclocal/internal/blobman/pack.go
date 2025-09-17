@@ -27,7 +27,7 @@ func CreatePackFile(root *os.Root, prefix Prefix121, maxSize uint32) (*os.File, 
 	if prefix.Len()%8 != 0 {
 		return nil, fmt.Errorf("bitLen must be a multiple of 8")
 	}
-	p := prefix.Path()
+	p := prefix.PackPath()
 	if strings.Contains(p, "/") {
 		if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil {
 			return nil, err
