@@ -3,6 +3,8 @@ package blobman
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
+	"math"
 	"math/big"
 	"os"
 	"sync"
@@ -106,7 +108,10 @@ type Store struct {
 }
 
 func New(root *os.Root) *Store {
-	return &Store{root: root}
+	st := &Store{root: root}
+	st.shard.root = root
+	st.shard.prefix = NewPrefix121([15]byte{}, 0)
+	return st
 }
 
 // Put finds a spot for key, and writes data to it.
@@ -118,7 +123,7 @@ func (db *Store) Put(key Key, data []byte) bool {
 // Get finds key if it exists and calls fn with the data.
 // The data must not be used outside the callback.
 func (db *Store) Get(key Key, buf []byte, fn func(data []byte)) bool {
-	return false
+	return db.shard.get(key, buf, fn)
 }
 
 // Delete overwrites any tables containing key with a tombstone.
@@ -126,33 +131,56 @@ func (db *Store) Delete(key Key) {
 }
 
 type shard struct {
+	root     *os.Root
 	mu       sync.Mutex
 	loaded   bool
 	tab      Table
 	pack     Pack
 	idx      [1 << 16]uint32
 	children [256]atomic.Pointer[shard]
+	prefix   Prefix121
 }
 
-func (s *shard) load(root *os.Root, prefix Prefix121, numRows uint32) error {
+func (s *shard) load(numRows uint32) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.loaded {
 		return nil
 	}
-	pf, err := LoadPackFile(root, prefix)
+	// Open or create table/pack files for this shard's prefix.
+	pf, err := LoadPackFile(s.root, s.prefix)
 	if err != nil {
-		return err
+		if errors.Is(err, os.ErrNotExist) {
+			pf, err = CreatePackFile(s.root, s.prefix, MaxPackSize)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
-	tf, err := LoadTableFile(root, prefix)
+	tf, err := LoadTableFile(s.root, s.prefix)
 	if err != nil {
-		return err
+		if errors.Is(err, os.ErrNotExist) {
+			tf, err = CreateTableFile(s.root, s.prefix, DefaultMaxIndexSize)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 	table, err := NewTable(tf, numRows)
 	if err != nil {
 		return err
 	}
-	pack, err := NewPack(pf, table.Slot(table.Len()).Offset)
+	// Determine next pack offset. If table is empty, 0.
+	var nextOffset uint32
+	if table.Len() > 0 {
+		last := table.Slot(table.Len() - 1)
+		nextOffset = last.Offset + last.Len
+	}
+	pack, err := NewPack(pf, nextOffset)
 	if err != nil {
 		return err
 	}
@@ -162,6 +190,120 @@ func (s *shard) load(root *os.Root, prefix Prefix121, numRows uint32) error {
 	return nil
 }
 
-func newShard(idx Table, pack Pack) *shard {
-	return &shard{idx: idx, pack: pack}
+func (s *shard) maxRows() uint32 {
+	return uint32(len(s.tab.mm)) / TableEntrySize
+}
+
+func fingerprintFromKey(k Key) Prefix121 {
+	kd := k.Data()
+	var p15 [15]byte
+	copy(p15[:], kd[:15])
+	return NewPrefix121(p15, 121)
+}
+
+func (s *shard) bucketForKey(k Key) uint16 {
+	return k.Uint16(s.prefix.Len())
+}
+
+func prefixFromKeyAtLen(k Key, bitLen int) Prefix121 {
+	kd := k.Data()
+	var p15 [15]byte
+	copy(p15[:], kd[:15])
+	return NewPrefix121(p15, uint8(bitLen))
+}
+
+func (s *shard) put(key Key, data []byte) bool {
+	if err := s.load(0); err != nil {
+		return false
+	}
+	fp := fingerprintFromKey(key)
+	b := s.bucketForKey(key)
+	head := atomic.LoadUint32(&s.idx[b])
+	// Walk chain at this node to check for existing key
+	row := head
+	for row != 0 {
+		ent := s.tab.Slot(row - 1)
+		if ent.Prefix == fp {
+			return false
+		}
+		if ent.Prev == 0 {
+			break
+		}
+		row = ent.Prev
+	}
+	// Try deeper child first if it exists (longest prefix available)
+	childIdx := key.Uint8(s.prefix.Len())
+	if child := s.children[childIdx].Load(); child != nil {
+		if child.put(key, data) {
+			return true
+		}
+		// If child could not accept (full further down), fall back to this node below.
+	}
+	// Prepare data record: length prefix + bytes
+	var hdr [4]byte
+	binary.LittleEndian.PutUint32(hdr[:], uint32(len(data)))
+	buf := append(hdr[:], data...)
+	off := s.pack.Append(buf)
+	if off == math.MaxUint32 {
+		// Node full; create child and insert there
+		childPrefix := prefixFromKeyAtLen(key, s.prefix.Len()+8)
+		child := s.children[childIdx].Load()
+		if child == nil {
+			newChild := &shard{root: s.root, prefix: childPrefix}
+			s.children[childIdx].CompareAndSwap(nil, newChild)
+			child = s.children[childIdx].Load()
+		}
+		return child.put(key, data)
+	}
+	// Check table capacity
+	if s.tab.Len() >= s.maxRows() {
+		// Create child and insert there
+		childPrefix := prefixFromKeyAtLen(key, s.prefix.Len()+8)
+		child := s.children[childIdx].Load()
+		if child == nil {
+			newChild := &shard{root: s.root, prefix: childPrefix}
+			s.children[childIdx].CompareAndSwap(nil, newChild)
+			child = s.children[childIdx].Load()
+		}
+		return child.put(key, data)
+	}
+	// Append index entry
+	ent := IndexEntry{
+		Prefix: fp,
+		Offset: off + 4,
+		Len:    uint32(len(data)),
+		Prev:   head,
+		Bucket: b,
+	}
+	newRow := s.tab.Append(ent)
+	atomic.StoreUint32(&s.idx[b], newRow+1)
+	return true
+}
+
+func (s *shard) get(key Key, buf []byte, fn func(data []byte)) bool {
+	if err := s.load(0); err != nil {
+		return false
+	}
+	fp := fingerprintFromKey(key)
+	// Try deeper child first if it exists
+	childIdx := key.Uint8(s.prefix.Len())
+	if child := s.children[childIdx].Load(); child != nil {
+		if child.get(key, buf, fn) {
+			return true
+		}
+	}
+	b := s.bucketForKey(key)
+	row := atomic.LoadUint32(&s.idx[b])
+	for row != 0 {
+		ent := s.tab.Slot(row - 1)
+		if ent.Prefix == fp {
+			// Found
+			return s.pack.Get(ent.Offset, ent.Len, fn)
+		}
+		if ent.Prev == 0 {
+			break
+		}
+		row = ent.Prev
+	}
+	return false
 }
