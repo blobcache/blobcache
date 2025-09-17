@@ -5,6 +5,7 @@ import (
 	"context"
 	goed25519 "crypto/ed25519"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -304,16 +305,22 @@ func (n *Node) makeTlsConfig() *tls.Config {
 
 func (qt *Node) makeQuicConfig() *quic.Config {
 	return &quic.Config{
-		MaxIncomingStreams:    1 << 20,
-		MaxIncomingUniStreams: 1 << 20,
+		MaxIncomingStreams:    1 << 16,
+		MaxIncomingUniStreams: 1 << 16,
 	}
 }
 
 func peerIDFromTLSState(tlsState tls.ConnectionState) (*blobcache.PeerID, error) {
-	if len(tlsState.PeerCertificates) < 1 {
-		return nil, errors.New("no certificates")
+	var cert *x509.Certificate
+	switch len(tlsState.PeerCertificates) {
+	case 0:
+		return nil, errors.New("peer provided no certificates")
+	case 1:
+		cert = tlsState.PeerCertificates[0]
+	default:
+		return nil, errors.New("peer provided too many certificates")
 	}
-	cert := tlsState.PeerCertificates[0]
+
 	switch pubKey := cert.PublicKey.(type) {
 	case goed25519.PublicKey:
 		peerID := inet256.NewID(ed25519.PublicKey(pubKey))
