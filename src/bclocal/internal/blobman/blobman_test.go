@@ -72,18 +72,21 @@ func TestStore_PutGet_Single(t *testing.T) {
 	key := randKey(t)
 	val := []byte("hello-world")
 
-	ok := st.Put(key, val)
+	ok, err := st.Put(key, val)
+	require.NoError(t, err)
 	require.True(t, ok)
 
 	// duplicate put should be ignored
-	ok2 := st.Put(key, []byte("hello-world-2"))
+	ok2, err := st.Put(key, []byte("hello-world-2"))
+	require.NoError(t, err)
 	require.False(t, ok2)
 
 	// get should return original value
 	got := make([]byte, 0, len(val))
-	found := st.Get(key, nil, func(data []byte) {
+	found, err := st.Get(key, nil, func(data []byte) {
 		got = append(got[:0], data...)
 	})
+	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, val, got)
 }
@@ -102,11 +105,14 @@ func TestStore_PutGet_Batch(t *testing.T) {
 	for i := 0; i < N; i++ {
 		keys[i] = randKey(t)
 		vals[i] = []byte(fmt.Sprintf("val-%d", i))
-		require.True(t, st.Put(keys[i], vals[i]))
+		ok, err := st.Put(keys[i], vals[i])
+		require.NoError(t, err)
+		require.True(t, ok)
 	}
 	for i := 0; i < N; i++ {
 		var got []byte
-		ok := st.Get(keys[i], nil, func(data []byte) { got = append([]byte(nil), data...) })
+		ok, err := st.Get(keys[i], nil, func(data []byte) { got = append([]byte(nil), data...) })
+		require.NoError(t, err)
 		require.True(t, ok)
 		require.Equal(t, vals[i], got)
 	}
@@ -120,7 +126,8 @@ func TestStore_Get_Missing(t *testing.T) {
 
 	st := New(root)
 	missing := randKey(t)
-	ok := st.Get(missing, nil, func(data []byte) {})
+	ok, err := st.Get(missing, nil, func(data []byte) {})
+	require.NoError(t, err)
 	require.False(t, ok)
 }
 
@@ -134,25 +141,28 @@ func TestStore_LongestPrefix_UsesExistingChild(t *testing.T) {
 
 	key := randKey(t)
 	childIdx := key.Uint8(0)
-	childPrefix := NewPrefix121([15]byte{}, 0).ShiftIn(8)
-
 	// Pre-create a child shard so Put will use longest available prefix
-	child := &shard{root: root, prefix: childPrefix}
+	child := &shard{}
 	swapped := st.shard.children[childIdx].CompareAndSwap(nil, child)
 	require.True(t, swapped)
 
 	val := []byte("child-route")
-	require.True(t, st.Put(key, val))
+	ok, err := st.Put(key, val)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, err)
 
 	// Read back
 	var got []byte
-	ok := st.Get(key, nil, func(data []byte) { got = append([]byte(nil), data...) })
+	ok, err = st.Get(key, nil, func(data []byte) { got = append([]byte(nil), data...) })
+	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, val, got)
 
 	// Ensure inserted into child, not root
-	require.NoError(t, st.shard.load(0))
-	require.NoError(t, child.load(0))
+	sctx := &storeCtx{root: root}
+	require.NoError(t, st.shard.load(sctx, NewPrefix121([15]byte{}, 0), 0))
+	require.NoError(t, child.load(sctx, NewPrefix121([15]byte{}, 0), 0))
 	require.Equal(t, uint32(0), st.shard.tab.Len())
 	require.Equal(t, uint32(1), child.tab.Len())
 }

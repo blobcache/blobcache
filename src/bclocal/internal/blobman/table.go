@@ -2,10 +2,10 @@ package blobman
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 
 	mmap "github.com/edsrzf/mmap-go"
@@ -16,34 +16,24 @@ const (
 	DefaultMaxIndexSize = 1 << 20
 )
 
-func tablePath(prefix Prefix121) string {
-	if prefix.Len() == 0 {
-		return "_.table"
-	}
-	data := prefix.Data()
-	return hex.EncodeToString(data[:prefix.Len()/8]) + ".table"
-}
-
 func CreateTableFile(root *os.Root, prefix Prefix121, maxSize uint32) (*os.File, error) {
-	f, err := root.OpenFile(tablePath(prefix), os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
+	p := prefix.TablePath()
+	if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+		return nil, err
+	}
+	f, err := root.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}
 	if err := f.Truncate(int64(maxSize)); err != nil {
 		return nil, err
 	}
-	mm, err := mmap.Map(f, mmap.RDWR, 0)
-	if err != nil {
-		return nil, err
-	}
-	if len(mm) != int(maxSize) {
-		return nil, fmt.Errorf("mmaped region does not match max size: %d != %d", len(mm), maxSize)
-	}
 	return f, nil
 }
 
 func LoadTableFile(root *os.Root, prefix Prefix121) (*os.File, error) {
-	return root.OpenFile(tablePath(prefix), os.O_RDWR, 0o644)
+	p := prefix.TablePath()
+	return root.OpenFile(p, os.O_RDWR, 0o644)
 }
 
 // Table is an unordered append-only list of entries.

@@ -1,11 +1,12 @@
 package blobman
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"unsafe"
 
@@ -27,6 +28,11 @@ func CreatePackFile(root *os.Root, prefix Prefix121, maxSize uint32) (*os.File, 
 		return nil, fmt.Errorf("bitLen must be a multiple of 8")
 	}
 	p := prefix.Path()
+	if strings.Contains(p, "/") {
+		if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil {
+			return nil, err
+		}
+	}
 	f, err := root.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
@@ -41,11 +47,7 @@ func LoadPackFile(root *os.Root, prefix Prefix121) (*os.File, error) {
 	if prefix.Len()%8 != 0 {
 		return nil, fmt.Errorf("bitLen must be a multiple of 8")
 	}
-	data := prefix.Data()
-	p := "_.pack"
-	if prefix.Len() > 0 {
-		p = hex.EncodeToString(data[:prefix.Len()/8]) + ".pack"
-	}
+	p := prefix.PackPath()
 	return root.OpenFile(p, os.O_RDWR, 0o644)
 }
 
