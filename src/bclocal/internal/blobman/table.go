@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 
 	mmap "github.com/edsrzf/mmap-go"
@@ -16,17 +17,24 @@ const (
 	// TableEntrySize is the size of a row in the table.
 	// It actually uses less space than this, but we want to align to 4096 bytes.
 	TableEntrySize  = 32
-	TableHeaderSize = TableEntrySize
+	TableHeaderSize = 32
 	PageSize        = 4096
 	EntriesPerPage  = PageSize / TableEntrySize
 	// DefaultMaxTableLen is the maximum length of a table in rows.
 	DefaultMaxTableLen = (1<<20 - TableHeaderSize) / TableEntrySize
 )
 
+// CreateTableFile creates a file configured for a table in the filesystem, and returns it.
+// maxSize is the maximum size of the table in bytes, NOT the number of rows.
 func CreateTableFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File, error) {
-	p := prefix.TablePath()
-	if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+	p, err := prefix.TablePath()
+	if err != nil {
 		return nil, err
+	}
+	if strings.Contains(p, "/") {
+		if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+			return nil, err
+		}
 	}
 	f, err := root.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 	if err != nil {
@@ -39,17 +47,21 @@ func CreateTableFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File,
 }
 
 func LoadTableFile(root *os.Root, prefix Prefix120) (*os.File, error) {
-	p := prefix.TablePath()
+	p, err := prefix.TablePath()
+	if err != nil {
+		return nil, err
+	}
 	return root.OpenFile(p, os.O_RDWR, 0o644)
 }
 
 // Table is an unordered append-only list of entries.
 // Each entry points into a pack, and all entries are the same size.
 type Table struct {
-	f       *os.File
-	gen     uint64
-	nextRow uint32
-	mm      mmap.MMap
+	f      *os.File
+	gen    uint64
+	len    uint32
+	maxLen uint32
+	mm     mmap.MMap
 }
 
 // NewTable mmaps a file and returns a Table.
@@ -70,12 +82,12 @@ func NewTable(f *os.File) (Table, error) {
 	}
 	gen := binary.LittleEndian.Uint64(mm[0:8])
 	count := binary.LittleEndian.Uint32(mm[8:12])
-	return Table{f: f, gen: gen, nextRow: count, mm: mm}, nil
+	return Table{f: f, gen: gen, len: count, mm: mm, maxLen: uint32(maxLen)}, nil
 }
 
 // Len returns the number of rows in the table.
 func (idx *Table) Len() uint32 {
-	return atomic.LoadUint32(&idx.nextRow)
+	return atomic.LoadUint32(&idx.len)
 }
 
 // SlotOffset returns the offset of the i-th slot in the table.
@@ -84,8 +96,15 @@ func (idx *Table) SlotOffset(i uint32) uint32 {
 	return TableHeaderSize + i*TableEntrySize
 }
 
+func (idx *Table) CanAppend() bool {
+	return atomic.LoadUint32(&idx.len) < idx.maxLen
+}
+
 func (idx *Table) Append(ent TableEntry) uint32 {
-	rowIdx := atomic.AddUint32(&idx.nextRow, 1) - 1
+	rowIdx := atomic.AddUint32(&idx.len, 1) - 1
+	if rowIdx >= idx.maxLen {
+		return math.MaxUint32
+	}
 	idx.SetSlot(rowIdx, ent)
 	// set the next row in the table header
 	binary.LittleEndian.PutUint32(idx.mm[8:12], rowIdx+1)
@@ -133,6 +152,10 @@ type TableEntry struct {
 
 	Offset uint32
 	Len    uint32
+}
+
+func (ent *TableEntry) IsTombstone() bool {
+	return ent.Offset == math.MaxUint32
 }
 
 func (ent *TableEntry) save(buf *[TableEntrySize]byte) {

@@ -39,13 +39,13 @@ func (db *Store) Put(key Key, data []byte) (bool, error) {
 
 // Get finds key if it exists and calls fn with the data.
 // The data must not be used outside the callback.
-func (db *Store) Get(key Key, buf []byte, fn func(data []byte)) (bool, error) {
-	return db.get(&db.shard, key, 0, buf, fn)
+func (db *Store) Get(key Key, fn func(data []byte)) (bool, error) {
+	return db.get(&db.shard, key, 0, fn)
 }
 
 // Delete overwrites any tables containing key with a tombstone.
 func (db *Store) Delete(key Key) error {
-	return nil
+	return db.delete(&db.shard, key, 0)
 }
 
 func (db *Store) Flush() error {
@@ -53,6 +53,9 @@ func (db *Store) Flush() error {
 }
 
 func (db *Store) flushShard(sh *shard) error {
+	if sh == nil {
+		return nil
+	}
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
 	if !sh.loaded {
@@ -135,6 +138,15 @@ func (db *Store) loadShard(dst *shard, shardID Prefix120) error {
 	}
 	dst.tab = table
 	dst.pack = pack
+	// need to add all the entries to the bloom filters
+	for i := uint32(0); i < table.Len(); i++ {
+		ent := table.Slot(i)
+		bfIdx := filterIndex(i)
+		if len(dst.bfs) <= bfIdx {
+			dst.bfs = append(dst.bfs, bloom2048{})
+		}
+		dst.bfs[bfIdx].add(ent.Key)
+	}
 	dst.loaded = true
 	return nil
 }
@@ -150,6 +162,12 @@ func (db *Store) put(sh *shard, key Key, numBits uint8, data []byte) (bool, erro
 	if done, changed := func() (changed bool, done bool) {
 		sh.mu.RLock()
 		defer sh.mu.RUnlock()
+		if !sh.pack.CanAppend(uint32(len(data))) {
+			return false, false
+		}
+		if !sh.tab.CanAppend() {
+			return false, false
+		}
 		if found := sh.localExists(key); found {
 			// alread exists, nothing to do.
 			return true, false
@@ -177,7 +195,7 @@ func (db *Store) put(sh *shard, key Key, numBits uint8, data []byte) (bool, erro
 	return db.put(child, key, numBits+8, data)
 }
 
-func (db *Store) get(sh *shard, key Key, numBits uint8, buf []byte, fn func(data []byte)) (bool, error) {
+func (db *Store) get(sh *shard, key Key, numBits uint8, fn func(data []byte)) (bool, error) {
 	if err := db.loadShard(sh, key.ToPrefix(numBits)); err != nil {
 		return false, err
 	}
@@ -201,7 +219,30 @@ func (db *Store) get(sh *shard, key Key, numBits uint8, buf []byte, fn func(data
 	if child == nil {
 		return false, nil
 	}
-	return db.get(child, key, numBits+8, buf, fn)
+	return db.get(child, key, numBits+8, fn)
+}
+
+func (db *Store) delete(sh *shard, key Key, numBits uint8) error {
+	if err := db.loadShard(sh, key.ToPrefix(numBits)); err != nil {
+		return err
+	}
+
+	if done := func() bool {
+		sh.mu.RLock()
+		defer sh.mu.RUnlock()
+		return sh.localDelete(key)
+	}(); done {
+		return nil
+	}
+
+	childIdx := key.Uint8(int(numBits / 8))
+	sh.mu.RLock()
+	child := sh.children[childIdx]
+	sh.mu.RUnlock()
+	if child == nil {
+		return nil
+	}
+	return db.delete(child, key, numBits+8)
 }
 
 type shard struct {
@@ -209,6 +250,7 @@ type shard struct {
 	loaded bool // structural load completed (children presence discovered)
 	tab    Table
 	pack   Pack
+	bfs    []bloom2048
 
 	children [256]*shard
 }
@@ -220,10 +262,19 @@ func (s *shard) localExists(key Key) bool {
 }
 
 func (s *shard) localScan(key Key) (TableEntry, bool) {
-	for i := uint32(0); i < s.tab.Len(); i++ {
-		ent := s.tab.Slot(i)
-		if ent.Key == key {
-			return ent, true
+	for i := range s.bfs {
+		if s.bfs[i].contains(key) {
+			beg := slotBeg(i)
+			end := slotEnd(i)
+			for j := beg; j < end && j < s.tab.Len(); j++ {
+				ent := s.tab.Slot(j)
+				if ent.IsTombstone() {
+					continue
+				}
+				if ent.Key == key {
+					return ent, true
+				}
+			}
 		}
 	}
 	return TableEntry{}, false
@@ -243,7 +294,30 @@ func (s *shard) localAppend(key Key, data []byte) bool {
 		Len:    uint32(len(data)),
 	}
 	slotIdx := s.tab.Append(ent)
-	return slotIdx != math.MaxUint32
+	if slotIdx == math.MaxUint32 {
+		return false
+	}
+	bfIdx := filterIndex(slotIdx)
+	if len(s.bfs) <= bfIdx {
+		s.bfs = append(s.bfs, bloom2048{})
+	}
+	s.bfs[bfIdx].add(key)
+	if !s.bfs[bfIdx].contains(key) {
+		// TODO: remove this check
+		panic("bloom filter does not contain key")
+	}
+	return true
+}
+
+func (s *shard) localDelete(key Key) bool {
+	for i := uint32(0); i < s.tab.Len(); i++ {
+		ent := s.tab.Slot(i)
+		if ent.Key == key {
+			s.tab.Tombstone(i)
+			return true
+		}
+	}
+	return false
 }
 
 // getOrCreateChild gets the child if it exists, otherwise creates it.
@@ -259,4 +333,18 @@ func (s *shard) getOrCreateChild(childIdx uint8) *shard {
 
 func (s *shard) close() error {
 	return errors.Join(s.tab.Close(), s.pack.Close())
+}
+
+// filterIndex returns the index of the filter that contains the slot.
+// The first slot is taken up by the header, so [0, 126] is the first filter.
+func filterIndex(slotIdx uint32) int {
+	return int(slotIdx) / 128
+}
+
+func slotBeg(filterIdx int) uint32 {
+	return uint32(filterIdx) * 128
+}
+
+func slotEnd(filterIdx int) uint32 {
+	return uint32(filterIdx+1) * 128
 }

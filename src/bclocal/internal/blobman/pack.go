@@ -17,19 +17,20 @@ const DefaultMaxPackSize = 1 << 26
 
 // Pack is an append-only file on disk.
 type Pack struct {
-	f      *os.File
-	offset uint32
-	mm     mmap.MMap
+	f       *os.File
+	maxSize uint32
+	offset  uint32
+	mm      mmap.MMap
 }
 
 // CreatePackFile creates a file configured for a pack in the filesystem, and returns it.
 func CreatePackFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File, error) {
-	if prefix.Len()%8 != 0 {
-		return nil, fmt.Errorf("bitLen must be a multiple of 8")
+	p, err := prefix.PackPath()
+	if err != nil {
+		return nil, err
 	}
-	p := prefix.PackPath()
 	if strings.Contains(p, "/") {
-		if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil {
+		if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil && !errors.Is(err, os.ErrExist) {
 			return nil, err
 		}
 	}
@@ -44,10 +45,10 @@ func CreatePackFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File, 
 }
 
 func LoadPackFile(root *os.Root, prefix Prefix120) (*os.File, error) {
-	if prefix.Len()%8 != 0 {
-		return nil, fmt.Errorf("bitLen must be a multiple of 8")
+	p, err := prefix.PackPath()
+	if err != nil {
+		return nil, err
 	}
-	p := prefix.PackPath()
 	return root.OpenFile(p, os.O_RDWR, 0o644)
 }
 
@@ -66,18 +67,22 @@ func NewPack(f *os.File, nextOffset uint32) (Pack, error) {
 	if len(mm) != int(maxSize) {
 		return Pack{}, fmt.Errorf("file size does not match max size: %d != %d", len(mm), maxSize)
 	}
-	return Pack{f: f, mm: mm, offset: nextOffset}, nil
+	return Pack{f: f, mm: mm, offset: nextOffset, maxSize: uint32(maxSize)}, nil
 }
 
 func (pk Pack) Close() error {
 	return errors.Join(pk.mm.Unmap(), pk.f.Close())
 }
 
+func (pk *Pack) CanAppend(dataLen uint32) bool {
+	return atomic.LoadUint32(&pk.offset)+dataLen <= pk.maxSize
+}
+
 // Append appends data to the pack and returns the offset of the data.
 func (pk *Pack) Append(data []byte) uint32 {
 	offsetPtr := &pk.offset
 	// check if it would exceed the max size.
-	if offset := atomic.LoadUint32(offsetPtr); offset+uint32(len(data)) > DefaultMaxPackSize {
+	if offset := atomic.LoadUint32(offsetPtr); offset+uint32(len(data)) > pk.maxSize {
 		return math.MaxUint32 // the pack is full.
 	}
 	// otherwise, allocate space and copy the data.

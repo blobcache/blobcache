@@ -275,6 +275,9 @@ func (s *localSystem) commit(volID LocalVolumeID, mvid pdb.MVTag, links linkSet,
 	if err := s.txSys.success(ba, mvid); err != nil {
 		return err
 	}
+	if err := s.blobs.Flush(); err != nil {
+		return err
+	}
 	if err := ba.Commit(nil); err != nil {
 		return err
 	}
@@ -558,13 +561,11 @@ func (s *localSystem) getVolumeBlob(db pdb.RO, volID LocalVolumeID, cid blobcach
 
 func (s *localSystem) readBlobData(cid blobcache.CID, buf []byte) (int, error) {
 	var n int
-	found, err := s.blobs.Get(blobKey(cid), buf, func(data []byte) {
+	if found, err := s.blobs.Get(blobKey(cid), func(data []byte) {
 		n = copy(buf, data)
-	})
-	if err != nil {
+	}); err != nil {
 		return 0, err
-	}
-	if !found {
+	} else if !found {
 		return 0, cadata.ErrNotFound{Key: cid}
 	}
 	return n, nil

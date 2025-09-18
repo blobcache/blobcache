@@ -3,6 +3,7 @@ package blobman
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"strings"
 )
@@ -68,7 +69,7 @@ func (k Key) Bytes() []byte {
 
 // ToPrefix takes the first numBits bits of the key and includes those in a prefix.
 // The last 7 bits of the key must be dropped.
-// ToPrefix will panic, the same as NewPrefix121, if numBits is greater than 121.
+// ToPrefix will panic, the same as NewPrefix120, if numBits is greater than 120.
 func (k Key) ToPrefix(numBits uint8) Prefix120 {
 	data := k.Data()
 	return NewPrefix121([15]byte(data[:15]), numBits)
@@ -83,8 +84,8 @@ type Prefix120 struct {
 }
 
 func NewPrefix121(data [15]byte, numBits uint8) Prefix120 {
-	if numBits > 121 {
-		numBits = 121
+	if numBits > 120 {
+		numBits = 120
 	}
 	return Prefix120{data: data, numBits: numBits}
 }
@@ -109,7 +110,10 @@ func (p Prefix120) Len() int {
 	return int(p.numBits)
 }
 
-func (p Prefix120) Path() string {
+func (p Prefix120) Path() (string, error) {
+	if p.Len()%8 != 0 {
+		return "", fmt.Errorf("bitLen must be a multiple of 8. have %d", p.Len())
+	}
 	if p.Len() > 0 {
 		data := p.Data()
 		hexData := hex.AppendEncode(nil, data[:p.Len()/8])
@@ -120,16 +124,24 @@ func (p Prefix120) Path() string {
 			}
 			sb.Write(hexData[i : i+2])
 		}
-		return sb.String()
+		return sb.String(), nil
 	} else {
-		return "_"
+		return "_", nil
 	}
 }
 
-func (p Prefix120) PackPath() string {
-	return p.Path() + ".pack"
+func (p Prefix120) PackPath() (string, error) {
+	path, err := p.Path()
+	if err != nil {
+		return "", err
+	}
+	return path + ".pack", nil
 }
 
-func (p Prefix120) TablePath() string {
-	return p.Path() + ".slot"
+func (p Prefix120) TablePath() (string, error) {
+	path, err := p.Path()
+	if err != nil {
+		return "", err
+	}
+	return path + ".slot", nil
 }
