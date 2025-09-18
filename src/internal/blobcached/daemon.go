@@ -62,7 +62,7 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 		PrivateKey: privateKey,
 		Schemas:    bclocal.DefaultSchemas(),
 		Root:       bclocal.DefaultRoot(),
-	})
+	}, bclocal.Config{})
 
 	eg, ctx := errgroup.WithContext(ctx)
 	// if we have been given a listener for the API, serve it

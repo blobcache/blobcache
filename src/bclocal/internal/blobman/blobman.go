@@ -61,7 +61,10 @@ func (db *Store) flushShard(sh *shard) error {
 	if !sh.loaded {
 		return nil
 	}
-	if err := errors.Join(sh.tab.Flush(), sh.pack.Flush()); err != nil {
+	if err := sh.pack.Flush(); err != nil {
+		return err
+	}
+	if err := sh.tab.Flush(); err != nil {
 		return err
 	}
 	for _, child := range sh.children {
@@ -73,7 +76,7 @@ func (db *Store) flushShard(sh *shard) error {
 }
 
 func (db *Store) Close() error {
-	return db.shard.close()
+	return db.flushShard(&db.shard)
 }
 
 func (db *Store) maxTableSize() uint32 {

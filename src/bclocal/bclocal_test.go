@@ -18,6 +18,7 @@ func TestNewService(t *testing.T) {
 }
 
 func TestAPI(t *testing.T) {
+	t.Parallel()
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
 		svc := NewTestService(t)
 		return svc
@@ -25,6 +26,7 @@ func TestAPI(t *testing.T) {
 }
 
 func TestMultiNode(t *testing.T) {
+	t.Parallel()
 	blobcachetests.TestMultiNode(t, func(t testing.TB, n int) []blobcache.Service {
 		svcs := make([]blobcache.Service, n)
 		for i := range svcs {

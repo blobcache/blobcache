@@ -26,6 +26,7 @@ func (lvid LocalVolumeID) Marshal(out []byte) []byte {
 
 // localSystem manages the local volumes and transactions on those volumes.
 type localSystem struct {
+	cfg       Config
 	db        *pebble.DB
 	blobs     *blobman.Store
 	hsys      *handleSystem
@@ -46,8 +47,9 @@ type localSystem struct {
 	blobLocks mapOfLocks[blobcache.CID]
 }
 
-func newLocalSystem(db *pebble.DB, blobDir *os.Root, hsys *handleSystem, getSchema func(blobcache.Schema) schema.Schema) localSystem {
+func newLocalSystem(cfg Config, db *pebble.DB, blobDir *os.Root, hsys *handleSystem, getSchema func(blobcache.Schema) schema.Schema) localSystem {
 	return localSystem{
+		cfg:       cfg,
 		db:        db,
 		hsys:      hsys,
 		blobs:     blobman.New(blobDir),
@@ -275,8 +277,10 @@ func (s *localSystem) commit(volID LocalVolumeID, mvid pdb.MVTag, links linkSet,
 	if err := s.txSys.success(ba, mvid); err != nil {
 		return err
 	}
-	if err := s.blobs.Flush(); err != nil {
-		return err
+	if !s.cfg.NoSync {
+		if err := s.blobs.Flush(); err != nil {
+			return err
+		}
 	}
 	if err := ba.Commit(nil); err != nil {
 		return err
