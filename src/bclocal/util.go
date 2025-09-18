@@ -102,6 +102,19 @@ func DefaultRoot() blobcache.VolumeSpec {
 	}
 }
 
+// DefaultPebbleOptions
+func DefaultPebbleOptions() *pebble.Options {
+	return &pebble.Options{
+		Logger: noOpLogger{},
+	}
+}
+
+type noOpLogger struct{}
+
+func (l noOpLogger) Infof(msg string, args ...interface{}) {}
+
+func (l noOpLogger) Fatalf(msg string, args ...interface{}) {}
+
 // allowAllPolicy is a policy that allows all actions for all peers.
 // this is useful for testing, but is otherwise a bad idea.
 // Do not make this public.

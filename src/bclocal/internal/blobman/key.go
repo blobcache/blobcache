@@ -18,6 +18,10 @@ func KeyFromBytes(b []byte) Key {
 	}
 }
 
+func (k Key) Rotate(i int) Key {
+	return Key{k[0]>>i | k[1]<<(64-i), k[0]<<i | k[1]>>(64-i)}
+}
+
 // ShiftIn shifts the key into 0.
 // The lowest bits are discarded, zeros are shifted in to the highest bits.
 func (k Key) ShiftIn(i int) Key {
@@ -26,6 +30,11 @@ func (k Key) ShiftIn(i int) Key {
 
 func (k Key) Uint8(i int) uint8 {
 	return byte(k[i>>6] >> (i & 0x3f))
+}
+
+// Uint8Len returns the number of 8 bit integers in the key.
+func (k Key) Uint8Len() int {
+	return 16
 }
 
 func (k Key) Uint16(i int) uint16 {
@@ -60,29 +69,29 @@ func (k Key) Bytes() []byte {
 // ToPrefix takes the first numBits bits of the key and includes those in a prefix.
 // The last 7 bits of the key must be dropped.
 // ToPrefix will panic, the same as NewPrefix121, if numBits is greater than 121.
-func (k Key) ToPrefix(numBits uint8) Prefix121 {
+func (k Key) ToPrefix(numBits uint8) Prefix120 {
 	data := k.Data()
 	return NewPrefix121([15]byte(data[:15]), numBits)
 }
 
-// Prefix121 is a prefix of at most 121 bits.
-// Prefix121 takes up 128 bits.
+// Prefix120 is a prefix of at most 120 bits.
+// Prefix120 takes up 128 bits.
 // A prefix refers to a set of keys.
-type Prefix121 struct {
+type Prefix120 struct {
 	data    [15]byte
 	numBits uint8
 }
 
-func NewPrefix121(data [15]byte, numBits uint8) Prefix121 {
+func NewPrefix121(data [15]byte, numBits uint8) Prefix120 {
 	if numBits > 121 {
 		numBits = 121
 	}
-	return Prefix121{data: data, numBits: numBits}
+	return Prefix120{data: data, numBits: numBits}
 }
 
-func (p Prefix121) ShiftIn(i int) Prefix121 {
+func (p Prefix120) ShiftIn(i int) Prefix120 {
 	shiftInBytes(p.data[:], i)
-	return Prefix121{data: p.data, numBits: p.numBits + uint8(i)}
+	return Prefix120{data: p.data, numBits: p.numBits + uint8(i)}
 }
 
 // shiftInBytes performs a logical shift towards zero.
@@ -92,15 +101,15 @@ func shiftInBytes(data []byte, i int) {
 	bi.Rsh(bi, uint(i))
 }
 
-func (p Prefix121) Data() (ret [15]byte) {
+func (p Prefix120) Data() (ret [15]byte) {
 	return p.data
 }
 
-func (p Prefix121) Len() int {
+func (p Prefix120) Len() int {
 	return int(p.numBits)
 }
 
-func (p Prefix121) Path() string {
+func (p Prefix120) Path() string {
 	if p.Len() > 0 {
 		data := p.Data()
 		hexData := hex.AppendEncode(nil, data[:p.Len()/8])
@@ -117,10 +126,10 @@ func (p Prefix121) Path() string {
 	}
 }
 
-func (p Prefix121) PackPath() string {
+func (p Prefix120) PackPath() string {
 	return p.Path() + ".pack"
 }
 
-func (p Prefix121) TablePath() string {
-	return p.Path() + ".tab"
+func (p Prefix120) TablePath() string {
+	return p.Path() + ".slot"
 }

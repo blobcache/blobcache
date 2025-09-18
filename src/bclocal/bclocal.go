@@ -24,8 +24,13 @@ import (
 )
 
 const (
+	// DefaultVolumeTTL is the default time to live for a volume handle.
 	DefaultVolumeTTL = 5 * time.Minute
-	DefaultTxTTL     = 1 * time.Minute
+	// DefaultTxTTL is the default time to live for a transaction handle.
+	DefaultTxTTL = 1 * time.Minute
+
+	// MaxMaxBlobSize is the maximum value that a Volume's max size can be set to.
+	MaxMaxBlobSize = 1 << 24
 )
 
 var _ blobcache.Service = &Service{}
@@ -64,6 +69,13 @@ type Service struct {
 }
 
 func New(env Env) *Service {
+	if env.BlobDir == nil {
+		panic("BlobDir is required")
+	}
+	if env.DB == nil {
+		panic("DB is required")
+	}
+
 	var node *bcnet.Node
 	if env.PacketConn != nil {
 		node = bcnet.New(env.PrivateKey, env.PacketConn)

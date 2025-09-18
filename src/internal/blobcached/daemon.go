@@ -37,6 +37,15 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 		return err
 	}
 	defer db.Close()
+	blobDirPath := filepath.Join(stateDir, "blob")
+	if err := os.MkdirAll(blobDirPath, 0o755); err != nil {
+		return err
+	}
+	blobDir, err := os.OpenRoot(blobDirPath)
+	if err != nil {
+		return err
+	}
+	defer blobDir.Close()
 
 	var privateKey ed25519.PrivateKey
 	if pc != nil {
@@ -49,6 +58,7 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 	svc := bclocal.New(bclocal.Env{
 		PacketConn: pc,
 		DB:         db,
+		BlobDir:    blobDir,
 		PrivateKey: privateKey,
 		Schemas:    bclocal.DefaultSchemas(),
 		Root:       bclocal.DefaultRoot(),

@@ -410,7 +410,7 @@ func (s *localSystem) getBlob(volID LocalVolumeID, mvid pdb.MVTag, cid blobcache
 			return cadata.ErrNotFound{Key: cid}
 		}
 		// read into buffer
-		n, err = s.readBlobData(s.db.NewSnapshot(), cid, buf)
+		n, err = s.readBlobData(cid, buf)
 		if err != nil {
 			return err
 		}
@@ -556,7 +556,7 @@ func (s *localSystem) getVolumeBlob(db pdb.RO, volID LocalVolumeID, cid blobcach
 	return val[0], true, nil
 }
 
-func (s *localSystem) readBlobData(sp *pebble.Snapshot, cid blobcache.CID, buf []byte) (int, error) {
+func (s *localSystem) readBlobData(cid blobcache.CID, buf []byte) (int, error) {
 	var n int
 	found, err := s.blobs.Get(blobKey(cid), buf, func(data []byte) {
 		n = copy(buf, data)
@@ -981,7 +981,7 @@ func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, salt *blobcache
 		return 0, err
 	}
 	defer unlock()
-	return v.sys.readBlobData(v.sp, cid, buf)
+	return v.sys.readBlobData(cid, buf)
 }
 
 func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {

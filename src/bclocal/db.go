@@ -18,17 +18,19 @@ const (
 	// This is for database-wide transactions, rather than Volume transactions
 	// although one is implemented using the other.
 	tid_SYS_TXNS
+)
 
-	// tid_BLOB_DATA holds blob contents.
-	tid_BLOB_DATA
+const (
+	// tid_BLOB_META holds blob metadata.
+	tid_BLOB_META = pdb.TableID(1*256 + iota)
 	// tid_BLOB_REF_COUNT holds the reference count for a blob.
 	tid_BLOB_REF_COUNT
-	// tid_BLOB_META holds blob metadata.
-	tid_BLOB_META
+)
 
+const (
 	// tid_VOLUMES holds volume information.
 	// This includes all volume information, not just local volumes.
-	tid_VOLUMES
+	tid_VOLUMES = pdb.TableID(2*256 + iota)
 	// tid_VOLUME_DEPS holds the dependencies for a volume.
 	// These are not user-defined relationships
 	// Volumes that wrap other volumes will reference those volumes as dependencies.
@@ -36,12 +38,15 @@ const (
 	// tid_VOLUME_DEPS_INV holds the inverse of the VOLUME_DEPS table.
 	tid_VOLUME_DEPS_INV
 	// tid_VOLUME_LINKS holds links from one volume to another.
+	// These are user-defined relationships, provided through the AllowLink method on transactions.
 	tid_VOLUME_LINKS
 	// tid_VOLUME_LINKS_INV holds the inverse of the VOLUME_LINKS table.
 	tid_VOLUME_LINKS_INV
+)
 
+const (
 	// tid_LOCAL_VOLUME_TXNS holds active transactions on local volumes.
-	tid_LOCAL_VOLUME_TXNS
+	tid_LOCAL_VOLUME_TXNS = pdb.TableID(3*256 + iota)
 	// tid_LOCAL_VOLUME_CELLS holds the root data for a local volume.
 	// This table uses the MVCC keys
 	tid_LOCAL_VOLUME_CELLS

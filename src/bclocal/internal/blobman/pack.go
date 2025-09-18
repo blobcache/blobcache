@@ -13,7 +13,7 @@ import (
 	mmap "github.com/edsrzf/mmap-go"
 )
 
-const MaxPackSize = 1 << 26
+const DefaultMaxPackSize = 1 << 26
 
 // Pack is an append-only file on disk.
 type Pack struct {
@@ -23,7 +23,7 @@ type Pack struct {
 }
 
 // CreatePackFile creates a file configured for a pack in the filesystem, and returns it.
-func CreatePackFile(root *os.Root, prefix Prefix121, maxSize uint32) (*os.File, error) {
+func CreatePackFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File, error) {
 	if prefix.Len()%8 != 0 {
 		return nil, fmt.Errorf("bitLen must be a multiple of 8")
 	}
@@ -43,7 +43,7 @@ func CreatePackFile(root *os.Root, prefix Prefix121, maxSize uint32) (*os.File, 
 	return f, nil
 }
 
-func LoadPackFile(root *os.Root, prefix Prefix121) (*os.File, error) {
+func LoadPackFile(root *os.Root, prefix Prefix120) (*os.File, error) {
 	if prefix.Len()%8 != 0 {
 		return nil, fmt.Errorf("bitLen must be a multiple of 8")
 	}
@@ -77,7 +77,7 @@ func (pk Pack) Close() error {
 func (pk *Pack) Append(data []byte) uint32 {
 	offsetPtr := &pk.offset
 	// check if it would exceed the max size.
-	if offset := atomic.LoadUint32(offsetPtr); offset+uint32(len(data)) > MaxPackSize {
+	if offset := atomic.LoadUint32(offsetPtr); offset+uint32(len(data)) > DefaultMaxPackSize {
 		return math.MaxUint32 // the pack is full.
 	}
 	// otherwise, allocate space and copy the data.

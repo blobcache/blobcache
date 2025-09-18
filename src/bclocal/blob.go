@@ -107,10 +107,12 @@ func blobRefCountGet(ba pdb.RO, cidp blobman.Key) (RefCount, error) {
 }
 
 const (
-	volumeBlobFlag_ADDED   = 1 << 0
-	volumeBlobFlag_VISITED = 1 << 1
+	volumeBlobFlag_OBSERVED = 1 << 0
+	volumeBlobFlag_ADDED    = 1 << 0
+	volumeBlobFlag_VISITED  = 1 << 1
 )
 
+// blobKey returns the key used by the blob manager to access the blob.
 func blobKey(cid blobcache.CID) blobman.Key {
 	first := binary.LittleEndian.Uint64(cid[:8])
 	second := binary.LittleEndian.Uint64(cid[8:16])

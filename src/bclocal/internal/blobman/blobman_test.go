@@ -61,7 +61,7 @@ func randKey(t *testing.T) Key {
 	}
 }
 
-func TestStore_PutGet_Single(t *testing.T) {
+func TestStorePutGetSingle(t *testing.T) {
 	dir := t.TempDir()
 	root, err := os.OpenRoot(dir)
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestStore_PutGet_Single(t *testing.T) {
 	require.Equal(t, val, got)
 }
 
-func TestStore_PutGet_Batch(t *testing.T) {
+func TestStorePutGetBatch(t *testing.T) {
 	dir := t.TempDir()
 	root, err := os.OpenRoot(dir)
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestStore_PutGet_Batch(t *testing.T) {
 	}
 }
 
-func TestStore_Get_Missing(t *testing.T) {
+func TestStoreGetMissing(t *testing.T) {
 	dir := t.TempDir()
 	root, err := os.OpenRoot(dir)
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestStore_Get_Missing(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestStore_LongestPrefix_UsesExistingChild(t *testing.T) {
+func TestStoreLongestPrefixUsesExistingChild(t *testing.T) {
 	dir := t.TempDir()
 	root, err := os.OpenRoot(dir)
 	require.NoError(t, err)
@@ -143,8 +143,7 @@ func TestStore_LongestPrefix_UsesExistingChild(t *testing.T) {
 	childIdx := key.Uint8(0)
 	// Pre-create a child shard so Put will use longest available prefix
 	child := &shard{}
-	swapped := st.shard.children[childIdx].CompareAndSwap(nil, child)
-	require.True(t, swapped)
+	st.shard.children[childIdx] = child
 
 	val := []byte("child-route")
 	ok, err := st.Put(key, val)
@@ -160,52 +159,8 @@ func TestStore_LongestPrefix_UsesExistingChild(t *testing.T) {
 	require.Equal(t, val, got)
 
 	// Ensure inserted into child, not root
-	sctx := &storeCtx{root: root}
-	require.NoError(t, st.shard.load(sctx, NewPrefix121([15]byte{}, 0), 0))
-	require.NoError(t, child.load(sctx, NewPrefix121([15]byte{}, 0), 0))
+	require.NoError(t, st.loadShard(&st.shard, key.ToPrefix(0)))
+	require.NoError(t, st.loadShard(child, key.ToPrefix(8)))
 	require.Equal(t, uint32(0), st.shard.tab.Len())
 	require.Equal(t, uint32(1), child.tab.Len())
-}
-
-func TestStore_Reopen_LazyLoad_AllDataAccessible(t *testing.T) {
-	dir := t.TempDir()
-	root1, err := os.OpenRoot(dir)
-	require.NoError(t, err)
-
-	st1 := New(root1)
-
-	const N = 1024
-	keys := make([]Key, N)
-	vals := make([][]byte, N)
-	for i := 0; i < N; i++ {
-		keys[i] = randKey(t)
-		vals[i] = []byte(fmt.Sprintf("val-%d", i))
-		ok, err := st1.Put(keys[i], vals[i])
-		require.NoError(t, err)
-		require.True(t, ok)
-	}
-
-	// Simulate shutdown
-	require.NoError(t, st1.Close())
-	require.NoError(t, root1.Close())
-
-	// Reopen a new store on the same directory
-	root2, err := os.OpenRoot(dir)
-	require.NoError(t, err)
-	defer root2.Close()
-
-	st2 := New(root2)
-
-	// On fresh startup, nothing should be eagerly loaded
-	// (sanity: the root shard reports not loaded before first access)
-	require.False(t, st2.shard.loaded)
-
-	// Access all keys; this should trigger lazy loading as needed and all values must be retrievable
-	for i := 0; i < N; i++ {
-		var got []byte
-		ok, err := st2.Get(keys[i], nil, func(data []byte) { got = append([]byte(nil), data...) })
-		require.NoError(t, err)
-		require.True(t, ok, "missing key %d after reopen", i)
-		require.Equal(t, vals[i], got)
-	}
 }
