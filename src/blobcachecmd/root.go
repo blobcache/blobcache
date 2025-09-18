@@ -106,7 +106,7 @@ func openLocal(c star.Context) (*bclocal.Service, func(), error) {
 
 		Schemas: bclocal.DefaultSchemas(),
 		Root:    bclocal.DefaultRoot(),
-	}), close, nil
+	}, bclocal.Config{}), close, nil
 }
 
 // openService opens a service

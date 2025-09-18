@@ -24,8 +24,13 @@ import (
 )
 
 const (
+	// DefaultVolumeTTL is the default time to live for a volume handle.
 	DefaultVolumeTTL = 5 * time.Minute
-	DefaultTxTTL     = 1 * time.Minute
+	// DefaultTxTTL is the default time to live for a transaction handle.
+	DefaultTxTTL = 1 * time.Minute
+
+	// MaxMaxBlobSize is the maximum value that a Volume's max size can be set to.
+	MaxMaxBlobSize = 1 << 24
 )
 
 var _ blobcache.Service = &Service{}
@@ -47,9 +52,18 @@ type Env struct {
 	Root blobcache.VolumeSpec
 }
 
+// Config contains configuration for the service.
+// Config{} works fine.
+// You don't need to worry about anything in here.
+type Config struct {
+	// When set to true, the service will not sync the database and blob directory.
+	NoSync bool
+}
+
 // Service implements a blobcache.Service.
 type Service struct {
 	env  Env
+	cfg  Config
 	node *bcnet.Node
 
 	handles  handleSystem
@@ -63,7 +77,14 @@ type Service struct {
 	txns    map[blobcache.OID]transaction
 }
 
-func New(env Env) *Service {
+func New(env Env, cfg Config) *Service {
+	if env.BlobDir == nil {
+		panic("BlobDir is required")
+	}
+	if env.DB == nil {
+		panic("DB is required")
+	}
+
 	var node *bcnet.Node
 	if env.PacketConn != nil {
 		node = bcnet.New(env.PrivateKey, env.PacketConn)
@@ -71,9 +92,10 @@ func New(env Env) *Service {
 
 	s := &Service{
 		env:  env,
+		cfg:  cfg,
 		node: node,
 	}
-	s.localSys = newLocalSystem(env.DB, env.BlobDir, &s.handles, func(s blobcache.Schema) schema.Schema {
+	s.localSys = newLocalSystem(cfg, env.DB, env.BlobDir, &s.handles, func(s blobcache.Schema) schema.Schema {
 		return env.Schemas[s]
 	})
 

@@ -6,10 +6,12 @@ require (
 	blobcache.io/glfs v0.0.0-20250706163801-7fe8f5eb8ba4
 	github.com/cloudflare/circl v1.6.1
 	github.com/cockroachdb/pebble v1.1.5
+	github.com/edsrzf/mmap-go v1.2.0
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/golang/protobuf v1.5.4
 	github.com/hanwen/go-fuse/v2 v2.8.0
 	github.com/hashicorp/golang-lru v1.0.2
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.48.2
@@ -56,7 +58,6 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.16.0 // indirect
