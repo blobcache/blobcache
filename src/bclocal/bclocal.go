@@ -10,10 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/bcnet"
-	"blobcache.io/blobcache/src/internal/volumes"
-	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
 	"go.brendoncarroll.net/stdctx/logctx"
@@ -21,6 +17,11 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"lukechampine.com/blake3"
+
+	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/bcnet"
+	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/schema"
 )
 
 const (
@@ -501,6 +502,9 @@ func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vs
 	vp, err := s.findVolumeParams(ctx, vspec)
 	if err != nil {
 		return nil, err
+	}
+	if vp.MaxSize > MaxMaxBlobSize {
+		return nil, fmt.Errorf("bclocal: only supports blobs up to %d, requested %d", MaxMaxBlobSize, vp.MaxSize)
 	}
 	lvid, err := s.localSys.GenerateLocalID()
 	if err != nil {

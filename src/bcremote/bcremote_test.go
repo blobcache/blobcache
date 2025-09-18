@@ -12,6 +12,7 @@ import (
 )
 
 func TestService(t *testing.T) {
+	t.Parallel()
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
 		server := bclocal.NewTestService(t)
 		_, privateKey, err := ed25519.GenerateKey(nil)

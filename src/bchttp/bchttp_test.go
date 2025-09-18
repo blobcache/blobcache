@@ -12,6 +12,7 @@ import (
 )
 
 func TestService(t *testing.T) {
+	t.Parallel()
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
 		srv := Server{
 			Service: bclocal.NewTestService(t),
