@@ -142,7 +142,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	})
 }
 
-func TestManyBlobs(t *testing.T, mk func(t testing.TB) blobcache.Service) {
+func TestManyBlobs(t *testing.T, singleTx bool, mk func(t testing.TB) blobcache.Service) {
 	ctx := testutil.Context(t)
 	s := mk(t)
 	volh := CreateVolume(t, s, nil, defaultLocalSpec())
@@ -171,13 +171,17 @@ func TestManyBlobs(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	}
 	wg.Wait()
 	close(cids)
-	Commit(t, s, txh)
+	if !singleTx {
+		Commit(t, s, txh)
+	}
 
 	t.Logf("posted %d blobs", int(N))
 
 	// check that all the blobs exist
-	txh = BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
-	defer s.Abort(ctx, txh)
+	if !singleTx {
+		txh = BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		defer s.Abort(ctx, txh)
+	}
 	for w := 0; w < numWorkers; w++ {
 		wg.Add(1)
 		go func() {

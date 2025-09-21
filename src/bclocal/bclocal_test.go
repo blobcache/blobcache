@@ -47,7 +47,7 @@ func TestMultiNode(t *testing.T) {
 
 func TestManyBlobs(t *testing.T) {
 	t.Parallel()
-	blobcachetests.TestManyBlobs(t, func(t testing.TB) blobcache.Service {
+	blobcachetests.TestManyBlobs(t, false, func(t testing.TB) blobcache.Service {
 		return NewTestService(t)
 	})
 }

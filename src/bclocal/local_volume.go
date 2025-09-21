@@ -407,7 +407,8 @@ func (s *localSystem) postBlob(ctx context.Context, volID LocalVolumeID, mvid pd
 func (s *localSystem) getBlob(volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID, buf []byte) (int, error) {
 	var n int
 	if err := s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
-		mvr, closer, err := pdb.MVGet(ba, tid_LOCAL_VOLUME_BLOBS, slices.Concat(volID.Marshal(nil), cid[:16]), excluding)
+		excluding2 := excludeExcluding(excluding, mvid)
+		mvr, closer, err := pdb.MVGet(ba, tid_LOCAL_VOLUME_BLOBS, slices.Concat(volID.Marshal(nil), cid[:16]), excluding2)
 		if err != nil {
 			return err
 		}
@@ -570,7 +571,7 @@ func (s *localSystem) readBlobData(cid blobcache.CID, buf []byte) (int, error) {
 	}); err != nil {
 		return 0, err
 	} else if !found {
-		return 0, cadata.ErrNotFound{Key: cid}
+		return 0, fmt.Errorf("blob metadata exists, but blob data was not found. cid=%v", cid)
 	}
 	return n, nil
 }
@@ -1046,4 +1047,11 @@ func (v *localTxnRO) getExcluded() (func(pdb.MVTag) bool, error) {
 func (v *localTxnRO) isExcluded(mvid pdb.MVTag) bool {
 	_, ok := v.activeTxns[mvid]
 	return ok
+}
+
+// excludeExcluding returns a function that returns an excluding function but adds a special case for the given mvid.
+func excludeExcluding(excluding func(pdb.MVTag) bool, mvid pdb.MVTag) func(pdb.MVTag) bool {
+	return func(x pdb.MVTag) bool {
+		return x != mvid && excluding(x)
+	}
 }
