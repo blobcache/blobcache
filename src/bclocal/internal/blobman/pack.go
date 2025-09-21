@@ -74,6 +74,10 @@ func (pk Pack) Close() error {
 	return errors.Join(pk.mm.Unmap(), pk.f.Close())
 }
 
+func (pk Pack) FreeSpace() uint32 {
+	return pk.maxSize - atomic.LoadUint32(&pk.offset)
+}
+
 func (pk *Pack) CanAppend(dataLen uint32) bool {
 	return atomic.LoadUint32(&pk.offset)+dataLen <= pk.maxSize
 }
@@ -95,12 +99,12 @@ func (pk *Pack) Append(data []byte) uint32 {
 }
 
 // Get reads data from the pack by offset and size.
-func (pk *Pack) Get(offset, size uint32, fn func(data []byte)) bool {
-	if offset+size > uint32(len(pk.mm)) || offset > uint32(len(pk.mm)) {
-		return false
+func (pk *Pack) Get(offset, length uint32, fn func(data []byte)) error {
+	if offset+length > uint32(len(pk.mm)) || offset > uint32(len(pk.mm)) {
+		return fmt.Errorf("blobman.Pack: offset and length out of bounds offset=%d length=%d len(mm)=%d", offset, length, len(pk.mm))
 	}
-	fn(pk.mm[offset : offset+size])
-	return true
+	fn(pk.mm[offset : offset+length])
+	return nil
 }
 
 func (pk *Pack) Flush() error {

@@ -44,7 +44,7 @@ type localSystem struct {
 	// - Post could potentially increment the refCount, and ingest blob data.
 	// - Delete could potentially decrement the refCount, and delete blob data.
 	// - Add could potentially increment the refCount, but does not ingest blob data.
-	blobLocks mapOfLocks[blobcache.CID]
+	blobLocks mapOfLocks[blobman.Key]
 }
 
 func newLocalSystem(cfg Config, db *pebble.DB, blobDir *os.Root, hsys *handleSystem, getSchema func(blobcache.Schema) schema.Schema) localSystem {
@@ -95,10 +95,11 @@ func (ls *localSystem) GCBlobs(ctx context.Context, lvid LocalVolumeID) error {
 		}
 
 		if err := func() error {
-			if err := ls.blobLocks.Lock(ctx, cid); err != nil {
+			k := blobKey(cid)
+			if err := ls.blobLocks.Lock(ctx, k); err != nil {
 				return err
 			}
-			defer ls.blobLocks.Unlock(cid)
+			defer ls.blobLocks.Unlock(k)
 			return ls.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 				return ls.blobs.Delete(blobKey(cid))
 			})
@@ -369,27 +370,24 @@ func (s *localSystem) postBlob(ctx context.Context, volID LocalVolumeID, mvid pd
 		return nil
 	}
 
-	if err := s.blobLocks.Lock(ctx, cid); err != nil {
+	k := blobKey(cid)
+	if err := s.blobLocks.Lock(ctx, k); err != nil {
 		return err
 	}
-	defer s.blobLocks.Unlock(cid)
+	defer s.blobLocks.Unlock(k)
 	if err := s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 		if yes, err := existsBlobMeta(ba, cid); err != nil {
 			return err
 		} else if !yes {
 			// need to add the blob
-			if _, err := s.blobs.Put(blobKey(cid), data); err != nil {
+			if _, err := s.blobs.Put(k, data); err != nil {
 				return err
 			}
 
-			bmFlags := uint8(0)
-			if salt != nil {
-				bmFlags |= 1 << 0
-			}
 			if err := putBlobMeta(ba, blobMeta{
 				cid: cid,
 
-				flags: bmFlags,
+				flags: mkBlobMetaFlags(salt != nil),
 				size:  uint32(len(data)),
 				salt:  salt,
 			}); err != nil {
@@ -405,10 +403,11 @@ func (s *localSystem) postBlob(ctx context.Context, volID LocalVolumeID, mvid pd
 
 // getBlob is the main entry point for the Get operation.
 func (s *localSystem) getBlob(volID LocalVolumeID, mvid pdb.MVTag, cid blobcache.CID, buf []byte) (int, error) {
+	k := blobKey(cid)
 	var n int
 	if err := s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 		excluding2 := excludeExcluding(excluding, mvid)
-		mvr, closer, err := pdb.MVGet(ba, tid_LOCAL_VOLUME_BLOBS, slices.Concat(volID.Marshal(nil), cid[:16]), excluding2)
+		mvr, closer, err := pdb.MVGet(ba, tid_LOCAL_VOLUME_BLOBS, slices.Concat(volID.Marshal(nil), k.Bytes()), excluding2)
 		if err != nil {
 			return err
 		}
@@ -418,7 +417,7 @@ func (s *localSystem) getBlob(volID LocalVolumeID, mvid pdb.MVTag, cid blobcache
 			return cadata.ErrNotFound{Key: cid}
 		}
 		// read into buffer
-		n, err = s.readBlobData(cid, buf)
+		n, err = s.readBlobData(k, buf)
 		if err != nil {
 			return err
 		}
@@ -493,7 +492,6 @@ func (s *localSystem) load(volID LocalVolumeID, mvid pdb.MVTag, dst *[]byte) err
 		*dst = append((*dst)[:0], mvr.Value...)
 		return nil
 	})
-
 }
 
 // visit marks all the cids as visited.
@@ -545,33 +543,36 @@ func (s *localSystem) isVisited(volID LocalVolumeID, mvid pdb.MVTag, cids []blob
 // If the record exists, then the flags and true and returned.
 // If any error occurs, then (0, false, err) is returned.
 func (s *localSystem) getVolumeBlob(db pdb.RO, volID LocalVolumeID, cid blobcache.CID, mvid pdb.MVTag) (uint8, bool, error) {
-	cidPrefix := cid[:16]
+	bk := blobKey(cid)
 	k := pdb.TKey{
 		TableID: tid_LOCAL_VOLUME_BLOBS,
-		Key:     slices.Concat(volID.Marshal(nil), cidPrefix, mvid.Marshal(nil)),
+		Key:     slices.Concat(volID.Marshal(nil), bk.Bytes(), mvid.Marshal(nil)),
 	}
 	val, closer, err := db.Get(k.Marshal(nil))
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
+			// not set
 			return 0, false, nil
 		}
 		return 0, false, err
 	}
 	defer closer.Close()
 	if len(val) == 0 {
+		// tombstone
 		return 0, false, nil
 	}
+	// observed, added, or visited
 	return val[0], true, nil
 }
 
-func (s *localSystem) readBlobData(cid blobcache.CID, buf []byte) (int, error) {
+func (s *localSystem) readBlobData(k blobman.Key, buf []byte) (int, error) {
 	var n int
-	if found, err := s.blobs.Get(blobKey(cid), func(data []byte) {
+	if found, err := s.blobs.Get(k, func(data []byte) {
 		n = copy(buf, data)
 	}); err != nil {
 		return 0, err
 	} else if !found {
-		return 0, fmt.Errorf("blob metadata exists, but blob data was not found. cid=%v", cid)
+		return 0, fmt.Errorf("blob metadata exists, but blob data was not found. key=%v", k)
 	}
 	return n, nil
 }
@@ -987,7 +988,7 @@ func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, salt *blobcache
 		return 0, err
 	}
 	defer unlock()
-	return v.sys.readBlobData(cid, buf)
+	return v.sys.readBlobData(blobKey(cid), buf)
 }
 
 func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {

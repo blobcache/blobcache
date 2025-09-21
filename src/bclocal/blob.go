@@ -76,6 +76,14 @@ func existsBlobMeta(ba *pebble.Batch, cid blobcache.CID) (bool, error) {
 	return pdb.Exists(ba, pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil), nil)
 }
 
+func mkBlobMetaFlags(hasSalt bool) uint8 {
+	flags := uint8(0)
+	if hasSalt {
+		flags |= 1 << 0
+	}
+	return flags
+}
+
 type RefCount uint32
 
 // blobRefCountIncr must be called with a lock on the blob.

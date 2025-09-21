@@ -58,10 +58,12 @@ func LoadTableFile(root *os.Root, prefix Prefix120) (*os.File, error) {
 // Each entry points into a pack, and all entries are the same size.
 type Table struct {
 	f      *os.File
-	gen    uint64
-	len    uint32
 	maxLen uint32
-	mm     mmap.MMap
+
+	gen       uint64
+	len       uint32
+	sortedLen uint32
+	mm        mmap.MMap
 }
 
 // NewTable mmaps a file and returns a Table.
@@ -71,18 +73,19 @@ func NewTable(f *os.File) (Table, error) {
 	if err != nil {
 		return Table{}, err
 	}
-	maxLen := finfo.Size() / TableEntrySize
+	maxLen := (finfo.Size() - TableHeaderSize) / TableEntrySize
 
 	mm, err := mmap.Map(f, mmap.RDWR, 0)
 	if err != nil {
 		return Table{}, err
 	}
-	if len(mm) != int(maxLen*TableEntrySize) {
+	if len(mm) != int(maxLen*TableEntrySize+TableHeaderSize) {
 		return Table{}, fmt.Errorf("mmaped region does not match max size: %d != %d", len(mm), maxLen*TableEntrySize)
 	}
 	gen := binary.LittleEndian.Uint64(mm[0:8])
 	count := binary.LittleEndian.Uint32(mm[8:12])
-	return Table{f: f, gen: gen, len: count, mm: mm, maxLen: uint32(maxLen)}, nil
+	sortedLen := binary.LittleEndian.Uint32(mm[12:16])
+	return Table{f: f, gen: gen, len: count, mm: mm, maxLen: uint32(maxLen), sortedLen: sortedLen}, nil
 }
 
 // Len returns the number of rows in the table.
@@ -106,13 +109,20 @@ func (idx *Table) Append(ent TableEntry) uint32 {
 		return math.MaxUint32
 	}
 	idx.SetSlot(rowIdx, ent)
+
+	// update the sorted length if necessary
+	if rowIdx >= idx.sortedLen {
+		// if the new key is >= the previous key, then the sorted length is incremented
+		if rowIdx == 0 || KeyCompare(ent.Key, idx.Slot(rowIdx-1).Key) >= 0 {
+			atomic.AddUint32(&idx.sortedLen, 1)
+		}
+	}
 	// set the next row in the table header
 	binary.LittleEndian.PutUint32(idx.mm[8:12], rowIdx+1)
 	return rowIdx
 }
 
 func (idx *Table) Slot(i uint32) (ret TableEntry) {
-	// skip the row count at the beginning
 	beg := idx.SlotOffset(i)
 	end := beg + TableEntrySize
 	ret.load((*[TableEntrySize]byte)(idx.mm[beg:end]))
@@ -123,6 +133,10 @@ func (idx *Table) SetSlot(slot uint32, ent TableEntry) {
 	beg := idx.SlotOffset(slot)
 	end := beg + TableEntrySize
 	ent.save((*[TableEntrySize]byte)(idx.mm[beg:end]))
+}
+
+func (idx *Table) SlotsLeft() uint32 {
+	return idx.maxLen - idx.Len()
 }
 
 func (idx *Table) Flush() error {

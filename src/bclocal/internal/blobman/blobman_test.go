@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"lukechampine.com/blake3"
 )
 
 func TestPack(t *testing.T) {
@@ -50,26 +51,21 @@ func TestPack(t *testing.T) {
 	}
 }
 
-func randKey(t testing.TB) Key {
+func mkKey(t testing.TB, i int) Key {
 	t.Helper()
-	var b [16]byte
-	_, err := rand.Read(b[:])
-	require.NoError(t, err)
+	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:8], uint64(i))
+	h := blake3.Sum256(b[:])
 	return Key{
-		binary.LittleEndian.Uint64(b[:8]),
-		binary.LittleEndian.Uint64(b[8:]),
+		binary.LittleEndian.Uint64(h[:8]),
+		binary.LittleEndian.Uint64(h[8:]),
 	}
 }
 
 func TestStorePutGetSingle(t *testing.T) {
-	dir := t.TempDir()
-	root, err := os.OpenRoot(dir)
-	require.NoError(t, err)
-	defer root.Close()
+	st := setup(t, 256, 1024)
 
-	st := New(root)
-
-	key := randKey(t)
+	key := mkKey(t, 0)
 	val := []byte("hello-world")
 
 	ok, err := st.Put(key, val)
@@ -92,24 +88,19 @@ func TestStorePutGetSingle(t *testing.T) {
 }
 
 func TestStorePutGetBatch(t *testing.T) {
-	dir := t.TempDir()
-	root, err := os.OpenRoot(dir)
-	require.NoError(t, err)
-	defer root.Close()
-
-	st := New(root)
+	st := setup(t, 256, 1024)
 
 	const N = 2000
 	keys := make([]Key, N)
 	vals := make([][]byte, N)
-	for i := 0; i < N; i++ {
-		keys[i] = randKey(t)
+	for i := range N {
+		keys[i] = mkKey(t, i)
 		vals[i] = []byte(fmt.Sprintf("val-%d", i))
 		ok, err := st.Put(keys[i], vals[i])
 		require.NoError(t, err)
 		require.True(t, ok)
 	}
-	for i := 0; i < N; i++ {
+	for i := range N {
 		var got []byte
 		ok, err := st.Get(keys[i], func(data []byte) { got = append([]byte(nil), data...) })
 		require.NoError(t, err)
@@ -119,27 +110,18 @@ func TestStorePutGetBatch(t *testing.T) {
 }
 
 func TestStoreGetMissing(t *testing.T) {
-	dir := t.TempDir()
-	root, err := os.OpenRoot(dir)
-	require.NoError(t, err)
-	defer root.Close()
+	st := setup(t, 256, 1024)
 
-	st := New(root)
-	missing := randKey(t)
+	missing := mkKey(t, 0)
 	ok, err := st.Get(missing, func(data []byte) {})
 	require.NoError(t, err)
 	require.False(t, ok)
 }
 
 func TestStoreLongestPrefixUsesExistingChild(t *testing.T) {
-	dir := t.TempDir()
-	root, err := os.OpenRoot(dir)
-	require.NoError(t, err)
-	defer root.Close()
+	st := setup(t, 256, 1024)
 
-	st := New(root)
-
-	key := randKey(t)
+	key := mkKey(t, 0)
 	childIdx := key.Uint8(0)
 	// Pre-create a child shard so Put will use longest available prefix
 	child := &shard{}
@@ -166,16 +148,11 @@ func TestStoreLongestPrefixUsesExistingChild(t *testing.T) {
 }
 
 func TestPutDelete(t *testing.T) {
-	dir := t.TempDir()
-	root, err := os.OpenRoot(dir)
-	require.NoError(t, err)
-	defer root.Close()
-
-	st := New(root)
+	st := setup(t, 256, 1024)
 
 	var keys []Key
 	for i := 0; i < 10; i++ {
-		key := randKey(t)
+		key := mkKey(t, i)
 		val := []byte("hello-world")
 		_, err := st.Put(key, val)
 		require.NoError(t, err)
@@ -205,7 +182,7 @@ func TestPutReloadGet(t *testing.T) {
 
 	var keys []Key
 	for i := 0; i < 10; i++ {
-		key := randKey(t)
+		key := mkKey(t, i)
 		ok, err := st.Put(key, val)
 		require.NoError(t, err)
 		require.True(t, ok)
@@ -222,17 +199,53 @@ func TestPutReloadGet(t *testing.T) {
 	require.NoError(t, st2.Close())
 }
 
-func BenchmarkGet(b *testing.B) {
-	dir := b.TempDir()
-	root, err := os.OpenRoot(dir)
-	require.NoError(b, err)
-	defer root.Close()
-	st := New(root)
+func TestExceedMaxPackSize(t *testing.T) {
+	st := setup(t, 256, 1024)
 
-	const numKeys = 1e6
+	key := mkKey(t, 0)
+	val := make([]byte, 1025)
+	_, err := rand.Read(val)
+	require.NoError(t, err)
+
+	ok, err := st.Put(key, val)
+	require.Error(t, err)
+	require.False(t, ok)
+
+	ok, err = st.Put(key, val[:10])
+	require.NoError(t, err)
+	require.True(t, ok)
+}
+
+func TestPutLarge(t *testing.T) {
+	// make sure we run out of pack space not table space
+	st := setup(t, 1024, 1024)
+
+	for i := range 10 {
+		key := mkKey(t, i)
+		val := make([]byte, 500)
+		ok, err := st.Put(key, val)
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+
+	for i := range 10 {
+		key := mkKey(t, i)
+		ok, err := st.Get(key, func(data []byte) {})
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+	if st.shard.tab.Len() > 2 {
+		t.Fatalf("table len is %d", st.shard.tab.Len())
+	}
+}
+
+func BenchmarkGet(b *testing.B) {
+	st := setup(b, DefaultMaxTableLen, DefaultMaxPackSize)
+
+	const numKeys = 1e5
 	var keys []Key
 	for i := 0; i < numKeys; i++ {
-		key := randKey(b)
+		key := mkKey(b, i)
 		_, err := st.Put(key, []byte("hello-world"))
 		require.NoError(b, err)
 		if i%100 == 0 {
@@ -248,4 +261,28 @@ func BenchmarkGet(b *testing.B) {
 			require.NoError(b, err)
 		}
 	}
+}
+
+func TestFilterIndex(t *testing.T) {
+	require.Equal(t, 0, filterIndex(0))
+	require.Equal(t, 0, filterIndex(126))
+	require.Equal(t, 1, filterIndex(127))
+	require.Equal(t, 1, filterIndex(126+128))
+	require.Equal(t, 2, filterIndex(127+128))
+
+	require.Equal(t, uint32(0), slotBeg(0))
+	require.Equal(t, uint32(127), slotEnd(0))
+}
+
+func setup(t testing.TB, maxTabLen uint32, maxPackSize uint32) *Store {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, root.Close())
+	})
+	st := New(root)
+	st.maxTableLen = maxTabLen
+	st.maxPackSize = maxPackSize
+	return st
 }

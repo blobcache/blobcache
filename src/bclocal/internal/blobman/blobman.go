@@ -2,8 +2,10 @@ package blobman
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"os"
+	"slices"
 	"sync"
 )
 
@@ -29,12 +31,31 @@ func New(root *os.Root) *Store {
 
 // Put finds a spot for key, and writes data to it.
 // If the key already exists, then the write is ignored and false is returned.
+// If some data with key does not exist in the system after this call, then an error is returned.
 func (db *Store) Put(key Key, data []byte) (bool, error) {
-	ok, err := db.put(&db.shard, key, 0, data)
-	if err != nil {
-		return false, err
+	if len(data) > int(db.maxPackSize) {
+		return false, fmt.Errorf("data is too large to fit in a pack maxPackSize=%d len(data)=%d", db.maxPackSize, len(data))
 	}
-	return ok, nil
+	sh := &db.shard
+	return db.putLoop(sh, key, 0, data)
+}
+
+func (db *Store) putLoop(sh *shard, key Key, depth uint8, data []byte) (bool, error) {
+	for range 128 {
+		inserted, next, err := db.put(sh, key, depth, data)
+		if err != nil {
+			return false, err
+		}
+		if next == nil {
+			return inserted, nil
+		}
+		// If we are moving to a different shard, it will be a child, increment the depth.
+		if next != sh {
+			depth++
+		}
+		sh = next
+	}
+	return false, fmt.Errorf("blobman.Put: the trie iteration limit was reached.  This is a bug, and this error is prefferable to spinning forever")
 }
 
 // Get finds key if it exists and calls fn with the data.
@@ -50,6 +71,28 @@ func (db *Store) Delete(key Key) error {
 
 func (db *Store) Flush() error {
 	return db.flushShard(&db.shard)
+}
+
+// Maintain performs background maintenance tasks on the trie.
+func (db *Store) Maintain() error {
+	return db.maintainShard(&db.shard)
+}
+
+func (db *Store) maintainShard(sh *shard) error {
+	moveOutTableThreshold := uint32(float64(db.maxTableLen) * 0.85)
+	moveOutPackThreshold := uint32(float64(db.maxPackSize) * 0.85)
+	if sh.tab.Len() > moveOutTableThreshold || sh.pack.FreeSpace() > moveOutPackThreshold {
+		return db.moveOutward(sh, 0)
+	}
+	sh.mu.RLock()
+	children := sh.children
+	sh.mu.RUnlock()
+	for _, child := range children {
+		if err := db.maintainShard(child); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (db *Store) flushShard(sh *shard) error {
@@ -155,74 +198,94 @@ func (db *Store) loadShard(dst *shard, shardID Prefix120) error {
 }
 
 // put recursively traverses the trie, and inserts key and data into the appropriate shard.
-func (db *Store) put(sh *shard, key Key, numBits uint8, data []byte) (bool, error) {
-	if err := db.loadShard(sh, key.ToPrefix(numBits)); err != nil {
-		return false, err
+// the next shard to visit is returned.
+func (db *Store) put(sh *shard, key Key, depth uint8, data []byte) (changed bool, next *shard, _ error) {
+	if err := db.loadShard(sh, key.ToPrefix(depth*8)); err != nil {
+		return false, nil, err
 	}
+	childIdx := key.Uint8(int(depth))
 
-	childIdx := key.Uint8(int(numBits / 8))
-	var child *shard
-	if done, changed := func() (changed bool, done bool) {
-		sh.mu.RLock()
-		defer sh.mu.RUnlock()
-		if !sh.pack.CanAppend(uint32(len(data))) {
-			return false, false
-		}
-		if !sh.tab.CanAppend() {
-			return false, false
-		}
-		if found := sh.localExists(key); found {
-			// alread exists, nothing to do.
-			return true, false
-		}
-		// check if there is the child exists
-		child = sh.children[childIdx]
-		if child == nil {
-			// doesn't exist, so append to the local table.
-			if ok := sh.localAppend(key, data); ok {
-				return true, true
-			}
-		}
-		// was not able to append locally, so return false.
-		return false, false
-	}(); done {
-		return changed, nil
+	// check if the key already exists in this shard.
+	sh.mu.RLock()
+	found := sh.localExists(key)
+	child := sh.children[childIdx]
+	sh.mu.RUnlock()
+	if found {
+		// already exists, nothing to do, return false and nil.
+		return false, nil, nil
 	}
 	if child != nil {
-		return db.put(child, key, numBits+8, data)
+		// found a child, continue
+		return false, child, nil
 	}
 
+	// at this point, we might need to append to this shard, check if that is possible.
+	// if the pack or table is full, then we need to go to a new child.
+	if !sh.pack.CanAppend(uint32(len(data))) || !sh.tab.CanAppend() {
+		// first check if the child exists
+		sh.mu.RLock()
+		child := sh.children[childIdx]
+		sh.mu.RUnlock()
+		if child != nil {
+			// found a child, continue
+			return false, child, nil
+		}
+		// if it doesn't exist, then create it, but get the write lock first.
+		sh.mu.Lock()
+		defer sh.mu.Unlock()
+		child = sh.getOrCreateChild(childIdx)
+		// continue to the child.
+		return false, child, nil
+	}
+
+	// at this point, we can *probably* append to the shard.
 	sh.mu.Lock()
-	child = sh.getOrCreateChild(childIdx)
-	sh.mu.Unlock()
-	return db.put(child, key, numBits+8, data)
+	defer sh.mu.Unlock()
+	if found := sh.localExists(key); found {
+		// already exists, nothing to do.
+		return false, nil, nil
+	}
+	if child = sh.children[childIdx]; child != nil {
+		// found a child, better place to insert key, continue on.
+		return false, child, nil
+	}
+	if ok := sh.localAppend(key, data); ok {
+		// data was appended successfully, return true and nil.
+		return true, nil, nil
+	} else {
+		// we lost a race, and the shard became full.
+		// rerun this function on this shard.
+		return false, sh, nil
+	}
 }
 
-func (db *Store) get(sh *shard, key Key, numBits uint8, fn func(data []byte)) (bool, error) {
-	if err := db.loadShard(sh, key.ToPrefix(numBits)); err != nil {
+func (db *Store) get(sh *shard, key Key, depth uint8, fn func(data []byte)) (bool, error) {
+	if err := db.loadShard(sh, key.ToPrefix(depth*8)); err != nil {
 		return false, err
 	}
 
-	if found := func() bool {
+	if found, err := func() (bool, error) {
 		sh.mu.RLock()
 		defer sh.mu.RUnlock()
 		ent, found := sh.localScan(key)
 		if found {
-			return sh.pack.Get(ent.Offset, ent.Len, fn)
+			return true, sh.pack.Get(ent.Offset, ent.Len, fn)
 		}
-		return false
-	}(); found {
+		return false, nil
+	}(); err != nil {
+		return false, err
+	} else if found {
 		return true, nil
 	}
 
-	childIdx := key.Uint8(int(numBits / 8))
+	childIdx := key.Uint8(int(depth))
 	sh.mu.RLock()
 	child := sh.children[childIdx]
 	sh.mu.RUnlock()
 	if child == nil {
 		return false, nil
 	}
-	return db.get(child, key, numBits+8, fn)
+	return db.get(child, key, depth+1, fn)
 }
 
 func (db *Store) delete(sh *shard, key Key, numBits uint8) error {
@@ -248,6 +311,43 @@ func (db *Store) delete(sh *shard, key Key, numBits uint8) error {
 	return db.delete(child, key, numBits+8)
 }
 
+func (db *Store) moveOutward(sh *shard, depth uint8) error {
+	// for all the entries in this shard,
+	// move them to a child shard, and then tombstone the entry in this shard.
+	sh.mu.Lock()
+	children := make([]*shard, 256)
+	for i := range 256 {
+		children[i] = sh.getOrCreateChild(uint8(i))
+	}
+	sh.mu.Unlock()
+
+	// lock the shard for reading until we are done
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	for i := uint32(0); i < sh.tab.Len(); i++ {
+		ent := sh.tab.Slot(i)
+		if ent.IsTombstone() {
+			continue
+		}
+		childIdx := ent.Key.Uint8(int(depth + 1))
+		child := children[childIdx]
+		if err := func() error {
+			var putErr error
+			if err := sh.pack.Get(ent.Offset, ent.Len, func(data []byte) {
+				_, putErr = db.putLoop(child, ent.Key, depth+1, data)
+			}); err != nil {
+				return err
+			}
+			return putErr
+		}(); err != nil {
+			return err
+		}
+		// after a successful move, tombstone the entry in the source shard.
+		sh.tab.Tombstone(i)
+	}
+	return nil
+}
+
 type shard struct {
 	mu     sync.RWMutex
 	loaded bool // structural load completed (children presence discovered)
@@ -259,24 +359,29 @@ type shard struct {
 }
 
 // localExists checks if the key is in this shard.
+// localExists must be called with the shard read lock held.
 func (s *shard) localExists(key Key) bool {
 	_, found := s.localScan(key)
 	return found
 }
 
+// localScan must be called with the shard read lock held.
+// localScan iterates through each bloom filter, if it gets a hit, then it iterates through the corresponding
+// range in the table.
 func (s *shard) localScan(key Key) (TableEntry, bool) {
-	for i := range s.bfs {
-		if s.bfs[i].contains(key) {
-			beg := slotBeg(i)
-			end := slotEnd(i)
-			for j := beg; j < end && j < s.tab.Len(); j++ {
-				ent := s.tab.Slot(j)
-				if ent.IsTombstone() {
-					continue
-				}
-				if ent.Key == key {
-					return ent, true
-				}
+	for filterIdx := range s.bfs {
+		if !s.bfs[filterIdx].contains(key) {
+			continue
+		}
+		beg := slotBeg(filterIdx)
+		end := slotEnd(filterIdx)
+		for slot := beg; slot < end && slot < s.tab.Len(); slot++ {
+			ent := s.tab.Slot(slot)
+			if ent.IsTombstone() {
+				continue
+			}
+			if ent.Key == key {
+				return ent, true
 			}
 		}
 	}
@@ -286,6 +391,7 @@ func (s *shard) localScan(key Key) (TableEntry, bool) {
 // localAppend appends the key and data to the table.
 // this function does not check if the key already exists, the caller must do that.
 // It returns false if the table is full or the pack is full.
+// localAppend must be called with the shard write lock held.
 func (s *shard) localAppend(key Key, data []byte) bool {
 	off := s.pack.Append(data)
 	if off == math.MaxUint32 {
@@ -305,10 +411,6 @@ func (s *shard) localAppend(key Key, data []byte) bool {
 		s.bfs = append(s.bfs, bloom2048{})
 	}
 	s.bfs[bfIdx].add(key)
-	if !s.bfs[bfIdx].contains(key) {
-		// TODO: remove this check
-		panic("bloom filter does not contain key")
-	}
 	return true
 }
 
@@ -341,13 +443,69 @@ func (s *shard) close() error {
 // filterIndex returns the index of the filter that contains the slot.
 // The first slot is taken up by the header, so [0, 126] is the first filter.
 func filterIndex(slotIdx uint32) int {
-	return int(slotIdx) / 128
+	return int((slotIdx + 1) / 128)
 }
 
 func slotBeg(filterIdx int) uint32 {
-	return uint32(filterIdx) * 128
+	if filterIdx == 0 {
+		return 0
+	}
+	return uint32(filterIdx*128 - 1)
 }
 
 func slotEnd(filterIdx int) uint32 {
-	return uint32(filterIdx+1) * 128
+	return uint32(filterIdx*128 + 127)
+}
+
+// Copy copies entries from src{Tab,Pack} to dst{Tab,Pack}.
+// If there is not enough space available in either the table or the pack, then an error is returned.
+// Copy will not copy tombstones, and will sort all the entries by key before copying.
+func Copy(srcTab Table, srcPack Pack, dstTab Table, dstPack Pack) (int, error) {
+	// todo are the slots that need to be copied, in sorted order by key.
+	var todo []uint32
+	var cumSize uint32
+	for i := uint32(0); i < srcTab.Len(); i++ {
+		ent := srcTab.Slot(i)
+		if ent.IsTombstone() {
+			continue
+		}
+		todo = append(todo, i)
+		cumSize += ent.Len
+	}
+	if len(todo) > int(dstTab.SlotsLeft()) {
+		return 0, fmt.Errorf("dstTab has %d slots, but %d are needed", dstTab.SlotsLeft(), len(todo))
+	}
+	if cumSize > dstPack.FreeSpace() {
+		return 0, fmt.Errorf("dstPack has %d free space, but %d is needed", dstPack.FreeSpace(), cumSize)
+	}
+	slices.SortFunc(todo, func(a, b uint32) int {
+		return KeyCompare(srcTab.Slot(a).Key, srcTab.Slot(b).Key)
+	})
+	for _, slot := range todo {
+		ent := srcTab.Slot(slot)
+		var newOffset uint32
+		if err := srcPack.Get(ent.Offset, ent.Len, func(data []byte) {
+			newOffset = dstPack.Append(data)
+		}); err != nil {
+			return 0, fmt.Errorf("while copying: %w", err)
+		}
+		if newOffset == math.MaxUint32 {
+			return 0, fmt.Errorf("dstPack is full")
+		}
+		newSlot := dstTab.Append(TableEntry{
+			Key:    ent.Key,
+			Offset: newOffset,
+			Len:    ent.Len,
+		})
+		if newSlot == math.MaxUint32 {
+			return 0, fmt.Errorf("dstTab is full")
+		}
+	}
+	return len(todo), nil
+}
+
+func KeyCompare(a, b Key) int {
+	dataA := a.Data()
+	dataB := b.Data()
+	return slices.Compare(dataA[:], dataB[:])
 }
