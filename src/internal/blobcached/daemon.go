@@ -14,7 +14,6 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/ed25519"
-	"github.com/cockroachdb/pebble"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
@@ -32,20 +31,6 @@ var pki = inet256.PKI{
 // If the context is cancelled, Run returns nil.  Run returns an error if it returns for any other reason.
 func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.Listener) error {
 	d := Daemon{StateDir: stateDir}
-	db, err := pebble.Open(filepath.Join(stateDir, "pebble"), &pebble.Options{})
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	blobDirPath := filepath.Join(stateDir, "blob")
-	if err := os.MkdirAll(blobDirPath, 0o755); err != nil {
-		return err
-	}
-	blobDir, err := os.OpenRoot(blobDirPath)
-	if err != nil {
-		return err
-	}
-	defer blobDir.Close()
 
 	var privateKey ed25519.PrivateKey
 	if pc != nil {
@@ -55,14 +40,17 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 		}
 		privateKey = privKey.(ed25519.PrivateKey)
 	}
-	svc := bclocal.New(bclocal.Env{
+	svc, err := bclocal.New(bclocal.Env{
+		Background: ctx,
 		PacketConn: pc,
-		DB:         db,
-		BlobDir:    blobDir,
+		StateDir:   stateDir,
 		PrivateKey: privateKey,
 		Schemas:    bclocal.DefaultSchemas(),
 		Root:       bclocal.DefaultRoot(),
 	}, bclocal.Config{})
+	if err != nil {
+		return err
+	}
 
 	eg, ctx := errgroup.WithContext(ctx)
 	// if we have been given a listener for the API, serve it
@@ -83,27 +71,21 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 	}
 	// always run the local service in the background
 	eg.Go(func() error {
-		return svc.Run(ctx)
+		return svc.Serve(ctx)
 	})
 	if err := eg.Wait(); errors.Is(err, context.Canceled) {
-		return nil
-	} else {
+		err = nil
+	} else if err != nil {
 		return err
 	}
+	if err := svc.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 type Daemon struct {
 	StateDir string
-}
-
-// GetDB opens the database file, runs any migrations, and returns the database.
-func (d *Daemon) GetDB() (*pebble.DB, error) {
-	dbPath := filepath.Join(d.StateDir, "pebble")
-	db, err := pebble.Open(dbPath, &pebble.Options{})
-	if err != nil {
-		return nil, err
-	}
-	return db, nil
 }
 
 // EnsurePrivateKey generates a private key if it doesn't exist, and returns it.

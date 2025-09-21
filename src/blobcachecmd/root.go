@@ -13,7 +13,6 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema/basicns"
-	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
 )
@@ -60,11 +59,11 @@ var lsCmd = star.Command{
 	},
 	Flags: []star.AnyParam{stateDirParam},
 	F: func(c star.Context) error {
-		s, close, err := openLocal(c)
+		s, err := openLocal(c)
 		if err != nil {
 			return err
 		}
-		defer close()
+		defer s.Close()
 		nsc := basicns.Client{Service: s}
 		names, err := nsc.ListNames(c, blobcache.Handle{})
 		if err != nil {
@@ -82,31 +81,23 @@ var nameParam = star.Param[string]{
 	Parse: star.ParseString,
 }
 
-func openLocal(c star.Context) (*bclocal.Service, func(), error) {
+func openLocal(c star.Context) (*bclocal.Service, error) {
 	for _, d := range []string{"pebble", "blob"} {
 		if err := os.MkdirAll(filepath.Join(stateDirParam.Load(c), d), 0755); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
-	db, err := pebble.Open(filepath.Join(stateDirParam.Load(c), "pebble"), &pebble.Options{})
-	if err != nil {
-		return nil, nil, err
-	}
-	blobDir, err := os.OpenRoot(filepath.Join(stateDirParam.Load(c), "blob"))
-	if err != nil {
-		return nil, nil, err
-	}
-	close := func() {
-		db.Close()
-		blobDir.Close()
-	}
-	return bclocal.New(bclocal.Env{
-		DB:      db,
-		BlobDir: blobDir,
+	svc, err := bclocal.New(bclocal.Env{
+		Background: c.Context,
+		StateDir:   stateDirParam.Load(c),
 
 		Schemas: bclocal.DefaultSchemas(),
 		Root:    bclocal.DefaultRoot(),
-	}, bclocal.Config{}), close, nil
+	}, bclocal.Config{})
+	if err != nil {
+		return nil, err
+	}
+	return svc, nil
 }
 
 // openService opens a service

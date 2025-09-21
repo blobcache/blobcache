@@ -6,13 +6,11 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/internal/blobcached"
-	"github.com/cockroachdb/pebble"
 	"go.brendoncarroll.net/exp/maybe"
 	"go.brendoncarroll.net/star"
 	"go.brendoncarroll.net/stdctx/logctx"
@@ -38,29 +36,22 @@ var daemonEphemeralCmd = star.Command{
 	},
 	Flags: []star.AnyParam{serveAPIParam, listenParam},
 	F: func(ctx star.Context) error {
-		stateDir, err := os.MkdirTemp(os.TempDir(), "blobcache")
+		stateDir, err := os.MkdirTemp("", "blobcache")
 		if err != nil {
 			return err
 		}
 		defer os.RemoveAll(stateDir)
-		db, err := pebble.Open(filepath.Join(stateDir, "pebble"), &pebble.Options{})
-		if err != nil {
-			return err
-		}
-		defer db.Close()
-		blobDir, err := os.OpenRoot(filepath.Join(stateDir, "blob"))
-		if err != nil {
-			return err
-		}
-		defer blobDir.Close()
 		pc := listenParam.Load(ctx)
-		svc := bclocal.New(bclocal.Env{
-			DB:         db,
-			BlobDir:    blobDir,
+		svc, err := bclocal.New(bclocal.Env{
+			Background: ctx,
+			StateDir:   stateDir,
 			PacketConn: pc.X,
 			Schemas:    bclocal.DefaultSchemas(),
 			Root:       bclocal.DefaultRoot(),
 		}, bclocal.Config{})
+		if err != nil {
+			return err
+		}
 
 		apiLis := serveAPIParam.Load(ctx)
 		defer apiLis.Close()

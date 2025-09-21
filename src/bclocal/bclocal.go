@@ -3,9 +3,11 @@ package bclocal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -15,11 +17,11 @@ import (
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.brendoncarroll.net/tai64"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"lukechampine.com/blake3"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
+	"blobcache.io/blobcache/src/internal/svcgroup"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 )
@@ -37,10 +39,9 @@ const (
 var _ blobcache.Service = &Service{}
 
 type Env struct {
-	// DB is the main database to store metadata in.
-	DB *pebble.DB
-	// BlobDir is the directory to store blobs in.
-	BlobDir *os.Root
+	Background context.Context
+	// StateDir is the directory where all the state is stored.
+	StateDir string
 	// PrivateKey determines the node's identity.
 	// It must be provided if PacketConn is set.
 	PrivateKey ed25519.PrivateKey
@@ -63,10 +64,14 @@ type Config struct {
 
 // Service implements a blobcache.Service.
 type Service struct {
-	env  Env
-	cfg  Config
-	node *bcnet.Node
+	env Env
+	cfg Config
 
+	node    *bcnet.Node
+	db      *pebble.DB
+	blobDir *os.Root
+
+	svcs     svcgroup.Group
 	handles  handleSystem
 	localSys localSystem
 
@@ -78,12 +83,27 @@ type Service struct {
 	txns    map[blobcache.OID]transaction
 }
 
-func New(env Env, cfg Config) *Service {
-	if env.BlobDir == nil {
-		panic("BlobDir is required")
+func New(env Env, cfg Config) (*Service, error) {
+	if env.Background == nil {
+		return nil, fmt.Errorf("bclocal.New: Background cannot be nil")
 	}
-	if env.DB == nil {
-		panic("DB is required")
+	if env.StateDir == "" {
+		return nil, fmt.Errorf("bclocal.New: StateDir cannot be empty")
+	}
+	dbPath := filepath.Join(env.StateDir, "pebble")
+	blobDirPath := filepath.Join(env.StateDir, "blob")
+	for _, dir := range []string{dbPath, blobDirPath} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	db, err := pebble.Open(dbPath, &pebble.Options{})
+	if err != nil {
+		return nil, err
+	}
+	blobDir, err := os.OpenRoot(blobDirPath)
+	if err != nil {
+		return nil, err
 	}
 
 	var node *bcnet.Node
@@ -92,44 +112,62 @@ func New(env Env, cfg Config) *Service {
 	}
 
 	s := &Service{
-		env:  env,
-		cfg:  cfg,
-		node: node,
+		env: env,
+		cfg: cfg,
+
+		db:      db,
+		blobDir: blobDir,
+		node:    node,
+		svcs:    svcgroup.New(env.Background),
 	}
-	s.localSys = newLocalSystem(cfg, env.DB, env.BlobDir, &s.handles, func(s blobcache.Schema) schema.Schema {
+	s.localSys = newLocalSystem(cfg, db, blobDir, &s.handles, func(s blobcache.Schema) schema.Schema {
 		return env.Schemas[s]
 	})
-
-	return s
-}
-
-// Run performs background tasks for the service.
-// This includes cleaning up expired handles, and garbage collecting volumes and transactions.
-// If a PacketConn and PrivateKey were provided, then the Service will also listen for peers.
-// Cancelling the context will cause Run to return without an error.
-func (s *Service) Run(ctx context.Context) error {
-	eg, ctx := errgroup.WithContext(ctx)
-	if s.node != nil {
-		eg.Go(func() error {
-			return s.node.Serve(ctx, bcnet.Server{
-				Access: func(peer blobcache.PeerID) blobcache.Service {
-					if policyMentions(s.env.Policy, peer) {
-						return s
-					} else {
-						return nil
-					}
-				},
-			})
-		})
-	}
-	eg.Go(func() error {
+	s.svcs.Always(func(ctx context.Context) error {
 		s.cleanupLoop(ctx)
 		return nil
 	})
-	if err := eg.Wait(); ctx.Err() == err && err == context.Canceled {
-		return nil
+
+	return s, nil
+}
+
+func (s *Service) Close() error {
+	ctx := context.TODO()
+	// stop background services.
+	s.svcs.Shutdown()
+	return errors.Join(
+		// abort all transactions.
+		s.AbortAll(ctx),
+		// flush the blobs to disk.
+		s.localSys.blobs.Flush(),
+		// close the blob directory.
+		s.blobDir.Close(),
+		// close the database.
+		s.db.Close(),
+	)
+}
+
+// Serve performs background tasks for the service.
+// This includes cleaning up expired handles, and garbage collecting volumes and transactions.
+// If a PacketConn and PrivateKey were provided, then the Service will also listen for peers.
+// Cancelling the context will cause Run to return without an error.
+func (s *Service) Serve(ctx context.Context) error {
+	if s.node == nil {
+		return fmt.Errorf("bclocal.Serve: node is nil")
 	}
-	return nil
+	err := s.node.Serve(ctx, bcnet.Server{
+		Access: func(peer blobcache.PeerID) blobcache.Service {
+			if policyMentions(s.env.Policy, peer) {
+				return s
+			} else {
+				return nil
+			}
+		},
+	})
+	if errors.Is(err, context.Canceled) {
+		err = nil
+	}
+	return err
 }
 
 // AbortAll aborts all transactions.
@@ -179,7 +217,7 @@ func (s *Service) Cleanup(ctx context.Context) error {
 	s.mu.Unlock()
 
 	// cleanup volumes.
-	if err := cleanupVolumes(ctx, s.env.DB, func(oid blobcache.OID) bool {
+	if err := cleanupVolumes(ctx, s.db, func(oid blobcache.OID) bool {
 		if oid == (blobcache.OID{}) {
 			return true
 		}
@@ -287,7 +325,7 @@ func (s *Service) mountAllInContainer(ctx context.Context, sch schema.Container,
 		}
 	}
 	for target := range links {
-		volInfo, err := inspectVolume(s.env.DB, target)
+		volInfo, err := inspectVolume(s.db, target)
 		if err != nil {
 			return err
 		}
@@ -313,7 +351,7 @@ func (s *Service) mountRoot(ctx context.Context) error {
 	rootOID := blobcache.OID{}
 	allowedLinks := make(map[blobcache.OID]blobcache.ActionSet)
 	var volInfo *blobcache.VolumeInfo
-	if err := doRWBatch(s.env.DB, func(ba *pebble.Batch) error {
+	if err := doRWBatch(s.db, func(ba *pebble.Batch) error {
 		clear(allowedLinks)
 		if err := readVolumeLinks(ba, rootOID, allowedLinks); err != nil {
 			return err
@@ -458,7 +496,7 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 	}
 
 	links := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := doSnapshot(s.env.DB, func(sp *pebble.Snapshot) error {
+	if err := doSnapshot(s.db, func(sp *pebble.Snapshot) error {
 		return readVolumeLinks(sp, base.OID, links)
 	}); err != nil {
 		return nil, err
@@ -467,7 +505,7 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 		return nil, blobcache.ErrNoLink{Base: base.OID, Target: x}
 	}
 
-	sp := s.env.DB.NewSnapshot()
+	sp := s.db.NewSnapshot()
 	defer sp.Close()
 	for target := range links {
 		volInfo, err := inspectVolume(sp, target)
@@ -517,7 +555,7 @@ func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vs
 		Backend:      blobcache.VolumeBackendToOID(vspec),
 	}
 
-	if err := doRWBatch(s.env.DB, func(ba *pebble.Batch) error {
+	if err := doRWBatch(s.db, func(ba *pebble.Batch) error {
 		return putVolume(ba, info)
 	}); err != nil {
 		return nil, err
@@ -541,7 +579,7 @@ func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, vol
 		return nil, fmt.Errorf("only local volumes can be cloned")
 	}
 
-	ba := s.env.DB.NewIndexedBatch()
+	ba := s.db.NewIndexedBatch()
 	defer ba.Close()
 	vinfo, err := inspectVolume(ba, vol.info.ID)
 	if err != nil {

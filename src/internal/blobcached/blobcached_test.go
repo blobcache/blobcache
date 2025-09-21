@@ -23,7 +23,7 @@ func TestRun(t *testing.T) {
 	done := make(chan struct{})
 	lis := testutil.Listen(t)
 	go func() {
-		err := Run(ctx, dir, nil, lis)
+		err := Run(ctx, dir, testutil.PacketConn(t), lis)
 		require.NoError(t, err)
 		close(done)
 	}()

@@ -15,11 +15,11 @@ var mkVolLocalCmd = star.Command{
 	Flags: []star.AnyParam{stateDirParam},
 	Pos:   []star.AnyParam{nameParam},
 	F: func(c star.Context) error {
-		s, close, err := openLocal(c)
+		s, err := openLocal(c)
 		if err != nil {
 			return err
 		}
-		defer close()
+		defer s.Close()
 		nsc := basicns.Client{Service: s}
 		volh, err := nsc.CreateAt(c, blobcache.Handle{}, nameParam.Load(c), blobcache.DefaultLocalSpec())
 		if err != nil {
