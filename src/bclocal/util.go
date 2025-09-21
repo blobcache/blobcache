@@ -3,8 +3,6 @@ package bclocal
 import (
 	"context"
 	"iter"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -14,7 +12,6 @@ import (
 	"blobcache.io/blobcache/src/schema/basicns"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -26,28 +23,12 @@ import (
 // All the resources are cleaned up when the test is done.
 func NewTestEnv(t testing.TB) Env {
 	stateDir := t.TempDir()
-	pebbleDirPath := filepath.Join(stateDir, "pebble")
-	blobDirPath := filepath.Join(stateDir, "blob")
-	for _, dir := range []string{pebbleDirPath, blobDirPath} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-
-	pebbleDB, err := pebble.Open(pebbleDirPath, &pebble.Options{FS: vfs.Default})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, pebbleDB.Close())
-	})
-	blobDir, err := os.OpenRoot(blobDirPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, blobDir.Close())
-	})
 
 	_, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	return Env{
-		DB:      pebbleDB,
-		BlobDir: blobDir,
+		Background: testutil.Context(t),
+		StateDir:   stateDir,
 
 		PacketConn: testutil.PacketConn(t),
 		PrivateKey: privateKey,
@@ -61,18 +42,19 @@ func NewTestEnv(t testing.TB) Env {
 // NewTestServiceFromEnv creates a service from an environment.
 // It runs the service in the background and forcibly aborts all transactions when the test is done.
 func NewTestServiceFromEnv(t testing.TB, env Env) *Service {
-	svc := New(env, Config{NoSync: true})
+	svc, err := New(env, Config{NoSync: true})
+	require.NoError(t, err)
 
 	ctx := testutil.Context(t)
 	var eg errgroup.Group
 	ctx, cf := context.WithCancel(ctx)
 	eg.Go(func() error {
-		return svc.Run(ctx)
+		return svc.Serve(ctx)
 	})
 	t.Cleanup(func() {
 		cf()
 		require.NoError(t, eg.Wait())
-		require.NoError(t, svc.AbortAll(ctx))
+		require.NoError(t, svc.Close())
 	})
 	return svc
 }
