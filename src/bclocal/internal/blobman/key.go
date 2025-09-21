@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"strings"
 )
 
@@ -120,7 +121,7 @@ func (p Prefix120) Path() (string, error) {
 		sb := strings.Builder{}
 		for i := 0; i < len(hexData); i += 2 {
 			if i > 0 {
-				sb.WriteString("/")
+				sb.WriteRune(filepath.Separator)
 			}
 			sb.Write(hexData[i : i+2])
 		}
@@ -130,12 +131,22 @@ func (p Prefix120) Path() (string, error) {
 	}
 }
 
+// ChildrenDir returns the directory that contains all the children of this prefix.
+func (prefix Prefix120) ChildrenDir() (string, error) {
+	p, _ := prefix.Path()
+	if !strings.ContainsRune(p, filepath.Separator) {
+		return ".", nil
+	} else {
+		return filepath.Dir(p), nil
+	}
+}
+
 func (p Prefix120) PackPath() (string, error) {
 	path, err := p.Path()
 	if err != nil {
 		return "", err
 	}
-	return path + ".pack", nil
+	return path + PackFileExt, nil
 }
 
 func (p Prefix120) TablePath() (string, error) {
@@ -143,5 +154,10 @@ func (p Prefix120) TablePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return path + ".slot", nil
+	return path + TableFileExt, nil
 }
+
+const (
+	TableFileExt = ".slot"
+	PackFileExt  = ".pack"
+)

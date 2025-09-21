@@ -1,11 +1,15 @@
 package blobman
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -126,6 +130,38 @@ func (db *Store) maxTableSize() uint32 {
 	return TableHeaderSize + db.maxTableLen*TableEntrySize
 }
 
+// findChildren looks for child shards in the filesystem beneath the given shardID.
+func (db *Store) findChildren(shardID Prefix120) ([256]*shard, error) {
+	var children [256]*shard
+	childrenDir, err := shardID.ChildrenDir()
+	if err != nil {
+		return children, err
+	}
+	entries, err := fs.ReadDir(db.root.FS(), childrenDir)
+	if err != nil {
+		return children, err
+	}
+	for _, ent := range entries {
+		name := ent.Name()
+		if filepath.Ext(name) != TableFileExt {
+			continue
+		}
+		shardName := strings.TrimSuffix(name, TableFileExt)
+		if shardName == "_" {
+			continue
+		}
+		if hex.DecodedLen(len(shardName)) != 1 {
+			continue
+		}
+		data, err := hex.DecodeString(shardName)
+		if err != nil {
+			return children, err
+		}
+		children[data[0]] = &shard{}
+	}
+	return children, nil
+}
+
 // loadShard ensures that the shard is loaded and ready to use.
 func (db *Store) loadShard(dst *shard, shardID Prefix120) error {
 	// quick check with the read lock
@@ -193,6 +229,13 @@ func (db *Store) loadShard(dst *shard, shardID Prefix120) error {
 		}
 		dst.bfs[bfIdx].add(ent.Key)
 	}
+	// load the children
+	children, err := db.findChildren(shardID)
+	if err != nil {
+		return err
+	}
+	dst.children = children
+
 	dst.loaded = true
 	return nil
 }

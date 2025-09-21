@@ -125,6 +125,7 @@ func TestStoreLongestPrefixUsesExistingChild(t *testing.T) {
 	childIdx := key.Uint8(0)
 	// Pre-create a child shard so Put will use longest available prefix
 	child := &shard{}
+	st.shard.loaded = true
 	st.shard.children[childIdx] = child
 
 	val := []byte("child-route")
@@ -237,6 +238,46 @@ func TestPutLarge(t *testing.T) {
 	if st.shard.tab.Len() > 2 {
 		t.Fatalf("table len is %d", st.shard.tab.Len())
 	}
+}
+
+func TestGetAfterRestartWithChildShard(t *testing.T) {
+	// Create store with tiny pack to trigger child shard writes.
+	st := setup(t, 256, 1024)
+
+	key0 := mkKey(t, 0)
+	key1 := mkKey(t, 1)
+	key2 := mkKey(t, 2)
+	val := make([]byte, 500)
+	_, _ = rand.Read(val)
+
+	for _, k := range []Key{key0, key1, key2} {
+		ok, err := st.Put(k, val)
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+	// Verify all are readable before restart.
+	for _, k := range []Key{key0, key1, key2} {
+		found, err := st.Get(k, func([]byte) {})
+		require.NoError(t, err)
+		require.True(t, found)
+	}
+	require.NoError(t, st.Close())
+
+	// Reopen the same root and try to read again.
+	// Rebuild like setup() but without writing any children pointers.
+	dir := st.root.Name() // if setup exposes path; otherwise refactor setup to return the dir.
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	defer root.Close()
+	st2 := New(root)
+	defer st2.Close()
+
+	found0, _ := st2.Get(key0, func([]byte) {})
+	found1, _ := st2.Get(key1, func([]byte) {})
+	found2, _ := st2.Get(key2, func([]byte) {})
+	require.True(t, found0)
+	require.True(t, found1)
+	require.True(t, found2) // This was the bug.
 }
 
 func BenchmarkGet(b *testing.B) {
