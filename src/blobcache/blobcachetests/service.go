@@ -2,6 +2,9 @@
 package blobcachetests
 
 import (
+	"encoding/binary"
+	"runtime"
+	"sync"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -12,12 +15,14 @@ import (
 // ServiceAPI tests an implementation of blobcache.Service.
 func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 	t.Run("Endpoint", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
 		_, err := s.Endpoint(ctx)
 		require.NoError(t, err)
 	})
 	t.Run("CreateVolume", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
 		h, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
@@ -25,6 +30,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NotNil(t, h)
 	})
 	t.Run("VolumeEmpty", func(t *testing.T) {
+		t.Parallel()
 		// Check that an initial volume is empty.
 		ctx := testutil.Context(t)
 		s := mk(t)
@@ -40,6 +46,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.Equal(t, 0, len(buf))
 	})
 	t.Run("HashAlgo", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
 		for _, algo := range []blobcache.HashAlgo{
@@ -69,6 +76,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		}
 	})
 	t.Run("PostTooLarge", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
 		spec := defaultLocalSpec()
@@ -83,10 +91,12 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.Error(t, err)
 	})
 	t.Run("BasicNS", func(t *testing.T) {
+		t.Parallel()
 		BasicNS(t, mk)
 	})
 	// Run Tx test suite on local volume.
 	t.Run("Local/Tx", func(t *testing.T) {
+		t.Parallel()
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			s := mk(t)
@@ -130,4 +140,58 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			return s, *volh
 		})
 	})
+}
+
+func TestManyBlobs(t *testing.T, mk func(t testing.TB) blobcache.Service) {
+	ctx := testutil.Context(t)
+	s := mk(t)
+	volh := CreateVolume(t, s, nil, defaultLocalSpec())
+	require.NotNil(t, volh)
+
+	const N = 1e4
+	const dataSize = 128
+	numWorkers := runtime.GOMAXPROCS(0)
+	cids := make(chan blobcache.CID, N)
+
+	// post all the blobs
+	txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+	defer s.Abort(ctx, txh)
+	wg := sync.WaitGroup{}
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			data := make([]byte, dataSize)
+			for i := 0; i < N/numWorkers; i++ {
+				binary.LittleEndian.PutUint64(data, uint64(i))
+				cid := Post(t, s, txh, nil, data)
+				cids <- cid
+			}
+		}()
+	}
+	wg.Wait()
+	close(cids)
+	Commit(t, s, txh)
+
+	t.Logf("posted %d blobs", int(N))
+
+	// check that all the blobs exist
+	txh = BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+	defer s.Abort(ctx, txh)
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			buf := make([]byte, dataSize)
+			for i := 0; i < N/numWorkers; i++ {
+				for cid := range cids {
+					require.True(t, Exists(t, s, txh, cid))
+					n := Get(t, s, txh, cid, nil, buf)
+					require.Equal(t, dataSize, n)
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }

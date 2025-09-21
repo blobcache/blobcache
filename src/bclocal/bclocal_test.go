@@ -45,6 +45,13 @@ func TestMultiNode(t *testing.T) {
 	})
 }
 
+func TestManyBlobs(t *testing.T) {
+	t.Parallel()
+	blobcachetests.TestManyBlobs(t, func(t testing.TB) blobcache.Service {
+		return NewTestService(t)
+	})
+}
+
 // TestDefaultNoAccess tests that a remote peer cannot perform any
 // actions on the local service by default.
 func TestDefaultNoAccess(t *testing.T) {

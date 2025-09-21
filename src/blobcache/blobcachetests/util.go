@@ -35,7 +35,14 @@ func Post(t testing.TB, s blobcache.Service, txh blobcache.Handle, salt *blobcac
 	return cid
 }
 
-func Get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, maxLen int) []byte {
+func Get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) int {
+	ctx := testutil.Context(t)
+	n, err := s.Get(ctx, txh, cid, salt, buf)
+	require.NoError(t, err)
+	return n
+}
+
+func GetBytes(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, maxLen int) []byte {
 	ctx := testutil.Context(t)
 	buf := make([]byte, maxLen)
 	n, err := s.Get(ctx, txh, cid, salt, buf)

@@ -81,7 +81,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 
 		data1 := []byte("hello world")
 		cid := Post(t, s, txh, nil, data1)
-		data2 := Get(t, s, txh, cid, nil, 100)
+		data2 := GetBytes(t, s, txh, cid, nil, 100)
 		require.Equal(t, data1, data2)
 	})
 	t.Run("Exists", func(t *testing.T) {
@@ -190,7 +190,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 			if i%2 == 0 {
 				// check that the even blobs are visited.
 				require.True(t, Exists(t, s, txh, cid))
-				Get(t, s, txh, cid, nil, 100)
+				GetBytes(t, s, txh, cid, nil, 100)
 			} else {
 				// check that the odd blobs are unvisited.
 				require.False(t, Exists(t, s, txh, cid))
