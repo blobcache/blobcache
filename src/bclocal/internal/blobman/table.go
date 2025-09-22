@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync/atomic"
 
 	mmap "github.com/edsrzf/mmap-go"
@@ -24,19 +22,17 @@ const (
 	DefaultMaxTableLen = (1<<20 - TableHeaderSize) / TableEntrySize
 )
 
+// TableFilename returns the filename for a table.
+// This is just the filename, the directory will contain the shard prefix.
+func TableFilename(gen uint64) string {
+	return fmt.Sprintf("%08x"+TableFileExt, gen)
+}
+
 // CreateTableFile creates a file configured for a table in the filesystem, and returns it.
 // maxSize is the maximum size of the table in bytes, NOT the number of rows.
-func CreateTableFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File, error) {
-	p, err := prefix.TablePath()
-	if err != nil {
-		return nil, err
-	}
-	if strings.Contains(p, "/") {
-		if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil && !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-	}
-	f, err := root.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
+func CreateTableFile(shardRoot *os.Root, gen uint64, maxSize uint32) (*os.File, error) {
+	p := TableFilename(gen)
+	f, err := shardRoot.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -46,12 +42,9 @@ func CreateTableFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File,
 	return f, nil
 }
 
-func LoadTableFile(root *os.Root, prefix Prefix120) (*os.File, error) {
-	p, err := prefix.TablePath()
-	if err != nil {
-		return nil, err
-	}
-	return root.OpenFile(p, os.O_RDWR, 0o644)
+func LoadTableFile(shardRoot *os.Root, gen uint64) (*os.File, error) {
+	p := TableFilename(gen)
+	return shardRoot.OpenFile(p, os.O_RDWR, 0o644)
 }
 
 // Table is an unordered append-only list of entries.

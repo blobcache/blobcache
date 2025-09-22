@@ -20,7 +20,7 @@ func TestPack(t *testing.T) {
 	defer root.Close()
 
 	maxSize := uint32(1 << 20)
-	pf, err := CreatePackFile(root, NewPrefix121([15]byte{}, 0), maxSize)
+	pf, err := CreatePackFile(root, 0, maxSize)
 	require.NoError(t, err)
 	defer pf.Close()
 
@@ -124,9 +124,10 @@ func TestStoreLongestPrefixUsesExistingChild(t *testing.T) {
 	key := mkKey(t, 0)
 	childIdx := key.Uint8(0)
 	// Pre-create a child shard so Put will use longest available prefix
-	child := &shard{}
-	st.shard.loaded = true
+	child, err := st.shard.getOrCreateChild(childIdx)
+	require.NoError(t, err)
 	st.shard.children[childIdx] = child
+	st.shard.loaded = true
 
 	val := []byte("child-route")
 	ok, err := st.Put(key, val)
@@ -142,8 +143,8 @@ func TestStoreLongestPrefixUsesExistingChild(t *testing.T) {
 	require.Equal(t, val, got)
 
 	// Ensure inserted into child, not root
-	require.NoError(t, st.loadShard(&st.shard, key.ToPrefix(0)))
-	require.NoError(t, st.loadShard(child, key.ToPrefix(8)))
+	require.NoError(t, st.shard.load(st.maxTableSize(), st.maxPackSize))
+	require.NoError(t, child.load(st.maxTableSize(), st.maxPackSize))
 	require.Equal(t, uint32(0), st.shard.tab.Len())
 	require.Equal(t, uint32(1), child.tab.Len())
 }
@@ -265,7 +266,7 @@ func TestGetAfterRestartWithChildShard(t *testing.T) {
 
 	// Reopen the same root and try to read again.
 	// Rebuild like setup() but without writing any children pointers.
-	dir := st.root.Name() // if setup exposes path; otherwise refactor setup to return the dir.
+	dir := st.shard.rootDir.Name() // if setup exposes path; otherwise refactor setup to return the dir.
 	root, err := os.OpenRoot(dir)
 	require.NoError(t, err)
 	defer root.Close()
