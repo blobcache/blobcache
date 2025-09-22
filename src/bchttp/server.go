@@ -207,7 +207,7 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cid, err := s.Service.Post(r.Context(), h, salt, data)
+		cid, err := s.Service.Post(r.Context(), h, data, blobcache.PostOpts{Salt: salt})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -221,7 +221,7 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		buf := make([]byte, 1<<21)
-		n, err := s.Service.Get(r.Context(), h, req.CID, req.Salt, buf)
+		n, err := s.Service.Get(r.Context(), h, req.CID, buf, blobcache.GetOpts{Salt: req.Salt})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

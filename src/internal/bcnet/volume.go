@@ -142,20 +142,20 @@ func (tx *Tx) Save(ctx context.Context, src []byte) error {
 	return nil
 }
 
-func (tx *Tx) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
-	theirCID, err := Post(ctx, tx.n, tx.ep, tx.h, salt, data)
+func (tx *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
+	theirCID, err := Post(ctx, tx.n, tx.ep, tx.h, opts.Salt, data)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	ourCID := tx.Hash(salt, data)
+	ourCID := tx.Hash(opts.Salt, data)
 	if theirCID != ourCID {
 		return blobcache.CID{}, fmt.Errorf("hash mismatch: ourCID=%s, theirCID=%s", ourCID, theirCID)
 	}
 	return theirCID, nil
 }
 
-func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
-	return Get(ctx, tx.n, tx.ep, tx.h, tx.Hash, cid, salt, buf)
+func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
+	return Get(ctx, tx.n, tx.ep, tx.h, tx.Hash, cid, opts.Salt, buf)
 }
 
 func (tx *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {

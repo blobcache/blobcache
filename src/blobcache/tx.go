@@ -74,7 +74,7 @@ func (tx *Tx) KeepAlive(ctx context.Context) error {
 }
 
 func (tx *Tx) Post(ctx context.Context, data []byte) (CID, error) {
-	return tx.s.Post(ctx, tx.h, nil, data)
+	return tx.s.Post(ctx, tx.h, data, PostOpts{})
 }
 
 func (tx *Tx) Exists(ctx context.Context, cid CID) (bool, error) {
@@ -86,7 +86,7 @@ func (tx *Tx) Delete(ctx context.Context, cid CID) error {
 }
 
 func (tx *Tx) Get(ctx context.Context, cid CID, buf []byte) (int, error) {
-	return tx.s.Get(ctx, tx.h, cid, nil, buf)
+	return tx.s.Get(ctx, tx.h, cid, buf, GetOpts{})
 }
 
 func (tx *Tx) Hash(data []byte) CID {
@@ -171,8 +171,8 @@ func (tx *TxSalt) KeepAlive(ctx context.Context) error {
 	return tx.s.KeepAlive(ctx, []Handle{tx.h})
 }
 
-func (tx *TxSalt) Post(ctx context.Context, salt *CID, data []byte) (CID, error) {
-	return tx.s.Post(ctx, tx.h, salt, data)
+func (tx *TxSalt) Post(ctx context.Context, data []byte, opts PostOpts) (CID, error) {
+	return tx.s.Post(ctx, tx.h, data, opts)
 }
 
 func (tx *TxSalt) Exists(ctx context.Context, cid CID) (bool, error) {
@@ -183,8 +183,8 @@ func (tx *TxSalt) Delete(ctx context.Context, cid CID) error {
 	return tx.s.Delete(ctx, tx.h, []CID{cid})
 }
 
-func (tx *TxSalt) Get(ctx context.Context, cid CID, buf []byte) (int, error) {
-	return tx.s.Get(ctx, tx.h, cid, nil, buf)
+func (tx *TxSalt) Get(ctx context.Context, cid CID, buf []byte, opts GetOpts) (int, error) {
+	return tx.s.Get(ctx, tx.h, cid, buf, opts)
 }
 
 func (tx *TxSalt) Hash(salt *CID, data []byte) CID {

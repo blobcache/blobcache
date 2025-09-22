@@ -28,24 +28,24 @@ func BeginTx(t testing.TB, s blobcache.Service, volh blobcache.Handle, params bl
 	return *txh
 }
 
-func Post(t testing.TB, s blobcache.Service, txh blobcache.Handle, salt *blobcache.CID, data []byte) blobcache.CID {
+func Post(t testing.TB, s blobcache.Service, txh blobcache.Handle, data []byte, opts blobcache.PostOpts) blobcache.CID {
 	ctx := testutil.Context(t)
-	cid, err := s.Post(ctx, txh, salt, data)
+	cid, err := s.Post(ctx, txh, data, opts)
 	require.NoError(t, err)
 	return cid
 }
 
-func Get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) int {
+func Get(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) int {
 	ctx := testutil.Context(t)
-	n, err := s.Get(ctx, txh, cid, salt, buf)
+	n, err := s.Get(ctx, txh, cid, buf, opts)
 	require.NoError(t, err)
 	return n
 }
 
-func GetBytes(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, maxLen int) []byte {
+func GetBytes(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID, opts blobcache.GetOpts, maxSize int) []byte {
 	ctx := testutil.Context(t)
-	buf := make([]byte, maxLen)
-	n, err := s.Get(ctx, txh, cid, salt, buf)
+	buf := make([]byte, maxSize)
+	n, err := s.Get(ctx, txh, cid, buf, opts)
 	require.NoError(t, err)
 	return buf[:n]
 }

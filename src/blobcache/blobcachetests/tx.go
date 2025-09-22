@@ -58,7 +58,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 
-		cid, err := s.Post(ctx, *txh, nil, []byte{1, 2, 3})
+		cid, err := s.Post(ctx, *txh, []byte{1, 2, 3}, blobcache.PostOpts{})
 		require.Error(t, err)
 		err = s.Delete(ctx, *txh, []blobcache.CID{cid})
 		require.Error(t, err)
@@ -72,7 +72,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 
 		data := []byte{1, 2, 3}
 		require.False(t, Exists(t, s, *txh, blake3.Sum256(data)), "should not exist before post")
-		cid := Post(t, s, *txh, nil, data)
+		cid := Post(t, s, *txh, data, blobcache.PostOpts{})
 		require.True(t, Exists(t, s, *txh, cid), "should exist after post")
 	})
 	t.Run("PostGet", func(t *testing.T) {
@@ -80,8 +80,8 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
 
 		data1 := []byte("hello world")
-		cid := Post(t, s, txh, nil, data1)
-		data2 := GetBytes(t, s, txh, cid, nil, 100)
+		cid := Post(t, s, txh, data1, blobcache.PostOpts{})
+		data2 := GetBytes(t, s, txh, cid, blobcache.GetOpts{}, 100)
 		require.Equal(t, data1, data2)
 	})
 	t.Run("Exists", func(t *testing.T) {
@@ -91,7 +91,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
 		data1 := []byte("hello world")
 		require.False(t, Exists(t, s, txh, hf(nil, data1)))
-		Post(t, s, txh, nil, data1)
+		Post(t, s, txh, data1, blobcache.PostOpts{})
 		require.True(t, Exists(t, s, txh, hf(nil, data1)))
 		Delete(t, s, txh, hf(nil, data1))
 		require.False(t, Exists(t, s, txh, hf(nil, data1)))
@@ -150,7 +150,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		cid1 := hf(nil, data1)
 		// should not be visited yet.
 		require.Equal(t, []bool{false}, IsVisited(t, s, txh, []blobcache.CID{cid1}))
-		Post(t, s, txh, nil, data1)
+		Post(t, s, txh, data1, blobcache.PostOpts{})
 		require.Equal(t, []bool{false}, IsVisited(t, s, txh, []blobcache.CID{cid1}))
 		Visit(t, s, txh, []blobcache.CID{cid1})
 		require.Equal(t, []bool{true}, IsVisited(t, s, txh, []blobcache.CID{cid1}))
@@ -168,7 +168,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		var cids []blobcache.CID
 		for i := 0; i < 20; i++ {
 			data := fmt.Appendf(nil, "some data %d", i)
-			cid := Post(t, s, txh, nil, data)
+			cid := Post(t, s, txh, data, blobcache.PostOpts{})
 			cids = append(cids, cid)
 		}
 		Commit(t, s, txh)
@@ -190,7 +190,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 			if i%2 == 0 {
 				// check that the even blobs are visited.
 				require.True(t, Exists(t, s, txh, cid))
-				GetBytes(t, s, txh, cid, nil, 100)
+				GetBytes(t, s, txh, cid, blobcache.GetOpts{}, 100)
 			} else {
 				// check that the odd blobs are unvisited.
 				require.False(t, Exists(t, s, txh, cid))
@@ -207,7 +207,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		var cids []blobcache.CID
 		for i := 0; i < 20; i++ {
 			data := fmt.Appendf(nil, "some data %d", i)
-			cid := Post(t, s, txh, nil, data)
+			cid := Post(t, s, txh, data, blobcache.PostOpts{})
 			cids = append(cids, cid)
 		}
 		Commit(t, s, txh)
@@ -237,7 +237,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		var cids []blobcache.CID
 		for i := 0; i < 20; i++ {
 			data := fmt.Appendf(nil, "some data %d", i)
-			cid := Post(t, s, txh, nil, data)
+			cid := Post(t, s, txh, data, blobcache.PostOpts{})
 			cids = append(cids, cid)
 		}
 		Commit(t, s, txh)

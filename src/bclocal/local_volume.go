@@ -814,7 +814,7 @@ func (v *localTxnMut) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return v.localSys.deleteBlob(v.volid, v.mvid, cids)
 }
 
-func (v *localTxnMut) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+func (v *localTxnMut) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
 	unlock, err := v.checkFinished()
 	if err != nil {
 		return blobcache.CID{}, err
@@ -823,6 +823,7 @@ func (v *localTxnMut) Post(ctx context.Context, salt *blobcache.CID, data []byte
 	if len(data) > int(v.volParams.MaxSize) {
 		return blobcache.CID{}, cadata.ErrTooLarge
 	}
+	salt := opts.Salt
 	if salt != nil && !v.volParams.Salted {
 		return blobcache.CID{}, blobcache.ErrCannotSalt{}
 	}
@@ -833,7 +834,7 @@ func (v *localTxnMut) Post(ctx context.Context, salt *blobcache.CID, data []byte
 	return cid, nil
 }
 
-func (v *localTxnMut) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+func (v *localTxnMut) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	unlock, err := v.checkFinished()
 	if err != nil {
 		return 0, err
@@ -972,11 +973,11 @@ func (v *localTxnRO) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return blobcache.ErrTxReadOnly{Op: "Delete"}
 }
 
-func (v *localTxnRO) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+func (v *localTxnRO) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
 	return blobcache.CID{}, blobcache.ErrTxReadOnly{Op: "Post"}
 }
 
-func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	var exists [1]bool
 	if err := v.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
 		return 0, err

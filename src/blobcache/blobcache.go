@@ -95,7 +95,6 @@ func (h HashAlgo) HashFunc() HashFunc {
 	case HashAlgo_BLAKE3_256:
 		return func(salt *CID, x []byte) CID {
 			if salt == nil {
-
 				return blake3.Sum256(x)
 			}
 			h := blake3.New(32, salt[:])
@@ -244,6 +243,21 @@ func (ti *TxInfo) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, ti)
 }
 
+// PostOpts contains options for the Post method.
+type PostOpts struct {
+	Salt *CID
+}
+
+// GetOpts contains options for the Get method.
+type GetOpts struct {
+	// Salt is required to verify the data, if the volume uses salts.
+	Salt *CID
+	// SkipVerify causes the retrieved data not to be verified against the CID.
+	// This should only be done if you are going to verify the data at a higher level
+	// or if you consider the specific volume backend to be inside your security perimeter.
+	SkipVerify bool
+}
+
 type Service interface {
 	// Endpoint returns the endpoint of the service.
 	// If the endpoint is the zero value, the service is not listening for peers.
@@ -303,9 +317,9 @@ type Service interface {
 	// Like all operations in a transaction, Save will not be visible until Commit is called.
 	Save(ctx context.Context, tx Handle, src []byte) error
 	// Post posts data to the volume
-	Post(ctx context.Context, tx Handle, salt *CID, data []byte) (CID, error)
+	Post(ctx context.Context, tx Handle, data []byte, opts PostOpts) (CID, error)
 	// Get returns the data for a CID.
-	Get(ctx context.Context, tx Handle, cid CID, salt *CID, buf []byte) (int, error)
+	Get(ctx context.Context, tx Handle, cid CID, buf []byte, opts GetOpts) (int, error)
 	// Exists checks if several CID exists in the volume
 	// len(dst) must be equal to len(cids), or Exists will return an error.
 	Exists(ctx context.Context, tx Handle, cids []CID, dst []bool) error

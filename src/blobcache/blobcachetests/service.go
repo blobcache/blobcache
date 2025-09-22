@@ -69,7 +69,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 
 				data := []byte("hello world")
 				expected := hf(nil, data)
-				cid, err := s.Post(ctx, *txh, nil, data)
+				cid, err := s.Post(ctx, *txh, data, blobcache.PostOpts{})
 				require.NoError(t, err)
 				require.Equal(t, expected, cid)
 			})
@@ -87,7 +87,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		txh := BeginTx(t, s, *volh, blobcache.TxParams{Mutate: true})
 		defer s.Abort(ctx, txh)
 		data := make([]byte, 1025)
-		_, err = s.Post(ctx, txh, nil, data)
+		_, err = s.Post(ctx, txh, data, blobcache.PostOpts{})
 		require.Error(t, err)
 	})
 	t.Run("BasicNS", func(t *testing.T) {
@@ -164,7 +164,7 @@ func TestManyBlobs(t *testing.T, singleTx bool, mk func(t testing.TB) blobcache.
 			data := make([]byte, dataSize)
 			for i := 0; i < N/numWorkers; i++ {
 				binary.LittleEndian.PutUint64(data, uint64(i))
-				cid := Post(t, s, txh, nil, data)
+				cid := Post(t, s, txh, data, blobcache.PostOpts{})
 				cids <- cid
 			}
 		}()
@@ -191,7 +191,7 @@ func TestManyBlobs(t *testing.T, singleTx bool, mk func(t testing.TB) blobcache.
 			for i := 0; i < N/numWorkers; i++ {
 				for cid := range cids {
 					require.True(t, Exists(t, s, txh, cid))
-					n := Get(t, s, txh, cid, nil, buf)
+					n := Get(t, s, txh, cid, buf, blobcache.GetOpts{})
 					require.Equal(t, dataSize, n)
 				}
 			}

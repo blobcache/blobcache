@@ -120,17 +120,17 @@ func (v *VaultTx) Abort(ctx context.Context) error {
 	return v.inner.Abort(ctx)
 }
 
-func (v *VaultTx) Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+func (v *VaultTx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
 	ref, err := v.crypto.Post(ctx, UnsaltedStore{v.inner}, data)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	ptextCID := v.inner.Hash(salt, data)
+	ptextCID := v.inner.Hash(opts.Salt, data)
 	v.blobs[ptextCID] = ref
 	return ptextCID, nil
 }
 
-func (v *VaultTx) Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+func (v *VaultTx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	if ref, ok := v.blobs[cid]; ok && !ref.IsZero() {
 		return v.crypto.Get(ctx, UnsaltedStore{v.inner}, ref, buf)
 	} else if ok {

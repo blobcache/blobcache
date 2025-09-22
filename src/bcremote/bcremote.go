@@ -148,8 +148,8 @@ func (s *Service) Save(ctx context.Context, tx blobcache.Handle, src []byte) err
 }
 
 // Post posts data to the volume
-func (s *Service) Post(ctx context.Context, tx blobcache.Handle, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
-	return bcnet.Post(ctx, s.node, s.ep, tx, salt, data)
+func (s *Service) Post(ctx context.Context, tx blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
+	return bcnet.Post(ctx, s.node, s.ep, tx, opts.Salt, data)
 }
 
 // Exists checks if a CID exists in the volume
@@ -170,12 +170,12 @@ func (s *Service) AddFrom(ctx context.Context, tx blobcache.Handle, cids []blobc
 }
 
 // Get returns the data for a CID.
-func (s *Service) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+func (s *Service) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	hf, err := s.getHashFunc(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
-	return bcnet.Get(ctx, s.node, s.ep, tx, hf, cid, salt, buf)
+	return bcnet.Get(ctx, s.node, s.ep, tx, hf, cid, opts.Salt, buf)
 }
 
 // AllowLink allows the Volume to reference another volume.

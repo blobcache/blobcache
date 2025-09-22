@@ -28,8 +28,8 @@ type Tx interface {
 	Save(ctx context.Context, src []byte) error
 	Load(ctx context.Context, dst *[]byte) error
 
-	Post(ctx context.Context, salt *blobcache.CID, data []byte) (blobcache.CID, error)
-	Get(ctx context.Context, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error)
+	Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error)
+	Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error)
 	Delete(ctx context.Context, cids []blobcache.CID) error
 	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
 	IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error
@@ -60,11 +60,11 @@ func NewUnsaltedStore(inner Tx) *UnsaltedStore {
 }
 
 func (v UnsaltedStore) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
-	return v.inner.Post(ctx, nil, data)
+	return v.inner.Post(ctx, data, blobcache.PostOpts{})
 }
 
 func (v UnsaltedStore) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error) {
-	return v.inner.Get(ctx, cid, nil, buf)
+	return v.inner.Get(ctx, cid, buf, blobcache.GetOpts{})
 }
 
 func (v UnsaltedStore) Delete(ctx context.Context, cid blobcache.CID) error {

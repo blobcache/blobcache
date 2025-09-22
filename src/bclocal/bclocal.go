@@ -743,12 +743,12 @@ func (s *Service) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) e
 	return txn.backend.Load(ctx, dst)
 }
 
-func (s *Service) Post(ctx context.Context, txh blobcache.Handle, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
 	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	return txn.backend.Post(ctx, salt, data)
+	return txn.backend.Post(ctx, data, opts)
 }
 
 func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
@@ -762,12 +762,27 @@ func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobc
 	return txn.backend.Exists(ctx, cids, dst)
 }
 
-func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	txn, err := s.resolveTx(txh, true)
 	if err != nil {
 		return 0, err
 	}
-	return txn.backend.Get(ctx, cid, salt, buf)
+	n, err := txn.backend.Get(ctx, cid, buf, opts)
+	if err != nil {
+		return 0, err
+	}
+	if !opts.SkipVerify {
+		cid2 := txn.backend.Hash(opts.Salt, buf[:n])
+		if cid2 != cid {
+			return -1, blobcache.ErrBadData{
+				Salt:     opts.Salt,
+				Expected: cid,
+				Actual:   cid2,
+				Len:      n,
+			}
+		}
+	}
+	return n, nil
 }
 
 func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {

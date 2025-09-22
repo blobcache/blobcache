@@ -162,12 +162,12 @@ func (c *Client) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) err
 	return nil
 }
 
-func (c *Client) Post(ctx context.Context, tx blobcache.Handle, salt *blobcache.CID, data []byte) (blobcache.CID, error) {
+func (c *Client) Post(ctx context.Context, tx blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
 	headers := map[string]string{
 		"X-Secret": hex.EncodeToString(tx.Secret[:]),
 	}
-	if salt != nil {
-		headers["X-Salt"] = salt.String()
+	if opts.Salt != nil {
+		headers["X-Salt"] = opts.Salt.String()
 	}
 	respBody, err := c.do(ctx, "POST", c.mkTxURL(tx, "Post"), headers, data)
 	if err != nil {
@@ -197,7 +197,7 @@ func (c *Client) Delete(ctx context.Context, tx blobcache.Handle, cids []blobcac
 	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Delete"), &tx.Secret, req, &resp)
 }
 
-func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	req := GetReq{CID: cid}
 	reqBody, err := json.Marshal(req)
 	if err != nil {

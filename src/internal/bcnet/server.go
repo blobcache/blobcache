@@ -189,7 +189,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			resp.SetError(err)
 			return
 		}
-		cid, err := svc.Post(ctx, *h, nil, body)
+		cid, err := svc.Post(ctx, *h, body, blobcache.PostOpts{})
 		if err != nil {
 			resp.SetError(err)
 			return
@@ -202,7 +202,13 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			resp.SetError(err)
 			return
 		}
-		cid, err := svc.Post(ctx, *h, nil, body)
+		if len(body) < blobcache.CIDSize {
+			resp.SetError(fmt.Errorf("invalid request body length: %d", len(body)))
+			return
+		}
+		salt := blobcache.CID(body[:blobcache.CIDSize])
+		body = body[blobcache.CIDSize:]
+		cid, err := svc.Post(ctx, *h, body, blobcache.PostOpts{Salt: &salt})
 		if err != nil {
 			resp.SetError(err)
 			return
@@ -236,7 +242,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return
 		}
 		buf := make([]byte, info.MaxSize)
-		n, err := svc.Get(ctx, *h, cid, nil, buf)
+		n, err := svc.Get(ctx, *h, cid, buf, blobcache.GetOpts{SkipVerify: true})
 		if err != nil {
 			resp.SetError(err)
 			return
