@@ -192,7 +192,10 @@ func TestPutReloadGet(t *testing.T) {
 	}
 	require.NoError(t, st.Close())
 
-	st2 := New(root)
+	root2, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	defer root2.Close()
+	st2 := New(root2)
 	for i := range keys {
 		ok, err := st2.Get(keys[i], func(data []byte) {})
 		require.NoError(t, err)
@@ -226,8 +229,8 @@ func TestPutLarge(t *testing.T) {
 		key := mkKey(t, i)
 		val := make([]byte, 500)
 		ok, err := st.Put(key, val)
-		require.NoError(t, err)
-		require.True(t, ok)
+		require.NoError(t, err, i)
+		require.True(t, ok, i)
 	}
 
 	for i := range 10 {
@@ -303,17 +306,6 @@ func BenchmarkGet(b *testing.B) {
 			require.NoError(b, err)
 		}
 	}
-}
-
-func TestFilterIndex(t *testing.T) {
-	require.Equal(t, 0, filterIndex(0))
-	require.Equal(t, 0, filterIndex(126))
-	require.Equal(t, 1, filterIndex(127))
-	require.Equal(t, 1, filterIndex(126+128))
-	require.Equal(t, 2, filterIndex(127+128))
-
-	require.Equal(t, uint32(0), slotBeg(0))
-	require.Equal(t, uint32(127), slotEnd(0))
 }
 
 func setup(t testing.TB, maxTabLen uint32, maxPackSize uint32) *Store {

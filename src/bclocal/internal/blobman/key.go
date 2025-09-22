@@ -35,7 +35,11 @@ func (k Key) ShiftIn(i int) Key {
 // Indexes are interpretted modulo 16.
 // Uint8(0) is bits [0, 7], Uint8(1) is bits [8, 15].
 func (k Key) Uint8(i int) uint8 {
-	return byte(k[i>>6] >> (i & 0x3f))
+	idx := i % 16
+	if idx < 8 {
+		return uint8(k[0] >> (idx * 8))
+	}
+	return uint8(k[1] >> ((idx - 8) * 8))
 }
 
 // Uint8Len returns the number of 8 bit integers in the key.
@@ -47,7 +51,11 @@ func (k Key) Uint8Len() int {
 // Indexes are interpretted modulo 8.
 // Uint16(0) is bits [0, 15], Uint16(1) is bits [16, 31].
 func (k Key) Uint16(i int) uint16 {
-	return uint16(k[i>>4] >> (i & 0x0f))
+	idx := i % 8
+	if idx < 4 {
+		return uint16(k[0] >> (idx * 16))
+	}
+	return uint16(k[1] >> ((idx - 4) * 16))
 }
 
 // Uint64 returns the 64 bit integer at the given index.
@@ -75,9 +83,9 @@ func (k Key) Bytes() []byte {
 	return d[:]
 }
 
-func (k Key) ShardID(numBits uint8) ShardID {
+func (k Key) ShardID(numBits int) ShardID {
 	d := k.Data()
-	return NewShardID([15]byte(d[:15]), numBits)
+	return NewShardID([15]byte(d[:15]), uint8(numBits))
 }
 
 // ShardID is a prefix of at most 120 bits.
@@ -95,7 +103,16 @@ func NewShardID(data [15]byte, numBits uint8) ShardID {
 	if numBits > 120 {
 		numBits = 120
 	}
+	// TODO: zero out the extra bits
 	return ShardID{data: data, numBits: numBits}
+}
+
+// Child appends the given index to the shard id and returns the new shard id.
+func (sh ShardID) Child(k uint8) ShardID {
+	sh2 := sh
+	sh2.numBits += 8
+	sh2.data[sh2.numBits/8] = k
+	return sh2
 }
 
 func (p ShardID) ShiftIn(i int) ShardID {
@@ -121,6 +138,9 @@ func (p ShardID) Len() int {
 func (p ShardID) Path() string {
 	if p.Len()%8 != 0 {
 		panic(fmt.Errorf("bitLen must be a multiple of 8. have %d", p.Len()))
+	}
+	if p.Len() == 0 {
+		return "."
 	}
 	data := p.Data()
 	hexData := hex.AppendEncode(nil, data[:p.Len()/8])

@@ -11,7 +11,8 @@ import (
 // Each row in the table file is allocated 32 bytes.
 // So that is 128 rows per bloom filter.
 // The bloom filter is lock free, and safe for concurrent use.
-// Params: https://hur.st/bloomfilter/?n=128&p&m=2048&k=8
+//
+// Parameter Choices: https://hur.st/bloomfilter/?n=128&p&m=2048&k=8
 type bloom2048 struct {
 	data [32]uint64
 }

@@ -1,12 +1,10 @@
 package blobman
 
 import (
-	"encoding/hex"
+	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"runtime"
-	"sync"
 	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
@@ -28,7 +26,7 @@ func New(root *os.Root) *Store {
 		root:        root,
 		maxTableLen: DefaultMaxTableLen,
 		maxPackSize: DefaultMaxPackSize,
-		trie:        trie{},
+		trie:        trie{shard: newShard(root)},
 	}
 	return st
 }
@@ -46,7 +44,7 @@ func (db *Store) Put(key Key, data []byte) (bool, error) {
 	return db.putLoop(&db.trie, key, 0, data)
 }
 
-func (db *Store) putLoop(tr *trie, key Key, depth uint8, data []byte) (bool, error) {
+func (db *Store) putLoop(tr *trie, key Key, depth int, data []byte) (bool, error) {
 	for range 128 {
 		inserted, next, err := db.put(tr, key, depth, data)
 		if err != nil {
@@ -119,69 +117,52 @@ func (db *Store) maxTableSize() uint32 {
 	return db.maxTableLen * TableEntrySize
 }
 
-// loadTrie must be called before all operations
-// it searches the filesystem for children and creates shards for them.
-func (db *Store) loadTrie(dst *trie, shardID ShardID) error {
-	shard := dst.shard
-	if shard != nil {
-		return nil
+// trieChild loads a child from the trie.
+// tr is the parent trie to look in.
+func (db *Store) trieChild(tr *trie, parentID ShardID, childIdx uint8, create bool) (*trie, error) {
+	child := tr.children[childIdx].Load()
+	if child != nil {
+		return child, nil
 	}
-	children, err := db.findChildren(shardID)
+	if !create && tr.isChecked(childIdx) {
+		// we have checked, it doesn't exist, and we aren't creating it, so return nil.
+		return nil, nil
+	}
+	childID := parentID.Child(childIdx)
+	childShard, err := OpenShard(db.root, childID, db.maxTableSize(), db.maxPackSize)
 	if err != nil {
-		return err
-	}
-	for i, childShard := range children {
-		childTrie := newTrie(childShard)
-		dst.children[i].Store(childTrie)
-	}
-	return nil
-}
-
-// findChildren looks for child shards in the filesystem.
-func (db *Store) findChildren(shardID ShardID) ([256]*Shard, error) {
-	var children [256]*Shard
-	p := shardID.Path()
-	entries, err := fs.ReadDir(db.root.FS(), p)
-	if err != nil {
-		return children, err
-	}
-	for _, ent := range entries {
-		if !ent.IsDir() {
-			continue
-		}
-		childIdx, err := func() (uint8, error) {
-			data, err := hex.DecodeString(ent.Name())
-			if err != nil {
-				return 0, err
+		if errors.Is(err, os.ErrNotExist) {
+			if !create {
+				tr.markChecked(childIdx)
+				return nil, nil
+			} else {
+				childShard, err = CreateShard(db.root, childID, db.maxTableSize(), db.maxPackSize)
+				if err != nil {
+					return nil, err
+				}
 			}
-			if len(data) != 1 {
-				return 0, fmt.Errorf("child shard must be 1 byte decoded")
-			}
-			return uint8(data[0]), nil
-		}()
-		if err != nil {
-			return children, fmt.Errorf("invalid shard filename %s: %w", ent.Name(), err)
+		} else {
+			return nil, err
 		}
-		childRoot, err := db.root.OpenRoot(ent.Name())
-		if err != nil {
-			return children, err
-		}
-		children[childIdx] = &Shard{rootDir: childRoot}
 	}
-	return children, nil
-}
-
-func (db *Store) createShard(shardID ShardID) (*Shard, error) {
-	return CreateShard(db.root, shardID)
+	child = newTrie(childShard)
+	if tr.children[childIdx].CompareAndSwap(nil, child) {
+		return child, nil
+	} else {
+		// we lost the race, close the shard.
+		child.shard.Close()
+		return tr.children[childIdx].Load(), nil
+	}
 }
 
 // put recursively traverses the trie, and inserts key and data into the appropriate shard.
 // the next shard to visit is returned.
-func (db *Store) put(tr *trie, key Key, depth uint8, data []byte) (changed bool, next *trie, _ error) {
-	if err := db.loadTrie(tr, key.ShardID(depth*8)); err != nil {
+func (db *Store) put(tr *trie, key Key, depth int, data []byte) (changed bool, next *trie, _ error) {
+	sh := tr.shard
+	if err := sh.load(db.maxTableSize(), db.maxPackSize); err != nil {
 		return false, nil, err
 	}
-	sh := tr.shard
+	shardID := key.ShardID(depth * 8)
 
 	// first check if the key already exists in this shard.
 	if sh.LocalExists(key) {
@@ -189,14 +170,20 @@ func (db *Store) put(tr *trie, key Key, depth uint8, data []byte) (changed bool,
 		return false, nil, nil
 	}
 	// then check if the child exists
-	child := tr.children[key.Uint8(int(depth))].Load()
+	childIdx := key.Uint8(depth)
+	child, err := db.trieChild(tr, shardID, childIdx, false)
+	if err != nil {
+		return false, nil, err
+	}
 	if child != nil {
 		// found a child, continue
 		return false, child, nil
 	}
-	// at this point, we might need to append to this shard, check if that is possible.
+
+	// No child, so this is the best shard.
+	// See if this shard has space.
 	// if the pack or table is full, then we need to go to a new child.
-	if sh.HasSpace() {
+	if sh.HasSpace(len(data)) {
 		// The shard does have space, try appending to it.
 		ok, err := sh.LocalAppend(key, data)
 		if err != nil {
@@ -209,30 +196,21 @@ func (db *Store) put(tr *trie, key Key, depth uint8, data []byte) (changed bool,
 		}
 		return ok, nil, nil
 	}
-	// at this point, the shard does not have space, and there wasn't a child.
-	// so we need to create a new child, and continue to it.
-	childIdx := key.Uint8(int(depth))
-	for range 128 {
-		child = tr.children[childIdx].Load()
-		if child != nil {
-			// continue to the child.
-			return false, child, nil
-		}
-		// create a shard.
-		sh, err := db.createShard(key.ShardID((depth + 1) * 8))
-		if err != nil {
-			return false, nil, err
-		}
-		if !tr.children[childIdx].CompareAndSwap(nil, newTrie(sh)) {
-			// we lost the race, close the shard.
-			sh.Close()
-		}
+	// the shard does not have space even though it was the best.
+	// Now we need to create an even better shard.
+	child, err = db.trieChild(tr, shardID, childIdx, true)
+	if err != nil {
+		return false, nil, err
 	}
-	return false, nil, fmt.Errorf("spun too long trying to create a shard")
+	return false, child, nil
 }
 
-func (db *Store) get(tr *trie, key Key, depth uint8, fn func(data []byte)) (bool, error) {
+func (db *Store) get(tr *trie, key Key, depth int, fn func(data []byte)) (bool, error) {
 	sh := tr.shard
+	if err := sh.load(db.maxTableSize(), db.maxPackSize); err != nil {
+		return false, err
+	}
+	shardID := key.ShardID(depth * 8)
 
 	if found, err := sh.LocalGet(key, fn); err != nil {
 		return false, err
@@ -240,7 +218,11 @@ func (db *Store) get(tr *trie, key Key, depth uint8, fn func(data []byte)) (bool
 		return true, nil
 	}
 
-	child := tr.children[key.Uint8(int(depth))].Load()
+	childIdx := key.Uint8(depth)
+	child, err := db.trieChild(tr, shardID, childIdx, false)
+	if err != nil {
+		return false, err
+	}
 	if child == nil {
 		return false, nil
 	}
@@ -249,48 +231,45 @@ func (db *Store) get(tr *trie, key Key, depth uint8, fn func(data []byte)) (bool
 
 func (db *Store) delete(tr *trie, key Key, depth int) (*trie, error) {
 	sh := tr.shard
+	if err := sh.load(db.maxTableSize(), db.maxPackSize); err != nil {
+		return nil, err
+	}
+	shardID := key.ShardID(depth * 8)
 	if _, err := sh.LocalDelete(key); err != nil {
 		return nil, err
 	}
-	child := tr.children[key.Uint8(depth)].Load()
-	return child, nil
-}
-
-// filterIndex returns the index of the filter that contains the slot.
-// The first slot is taken up by the header, so [0, 126] is the first filter.
-func filterIndex(slotIdx uint32) int {
-	return int((slotIdx + 1) / 128)
-}
-
-func slotBeg(filterIdx int) uint32 {
-	if filterIdx == 0 {
-		return 0
+	childIdx := key.Uint8(int(depth))
+	child, err := db.trieChild(tr, shardID, childIdx, false)
+	if err != nil {
+		return nil, err
 	}
-	return uint32(filterIdx*128 - 1)
-}
-
-func slotEnd(filterIdx int) uint32 {
-	return uint32(filterIdx*128 + 127)
+	return child, nil
 }
 
 // trie is used to index the shards
 type trie struct {
 	children [256]atomic.Pointer[trie]
-	shard    *Shard
-	loadMu   sync.Mutex
+	// checked is a bitmap for when children have been checked in the filesystem.
+	checked [4]atomic.Uint64
+
+	shard *Shard
 }
 
 func newTrie(shard *Shard) *trie {
 	return &trie{shard: shard}
 }
 
-// find finds the trie node closest to the key.
-func (t *trie) find(key Key, depth uint8) *trie {
-	child := t.children[key.Uint8(int(depth))].Load()
-	if child == nil {
-		return t
+func (t *trie) isChecked(childIdx uint8) bool {
+	return t.checked[childIdx/64].Load()&(1<<(childIdx%64)) != 0
+}
+
+func (t *trie) markChecked(childIdx uint8) {
+	for {
+		old := t.checked[childIdx/64].Load()
+		if t.checked[childIdx/64].CompareAndSwap(old, old|(1<<(childIdx%64))) {
+			break
+		}
 	}
-	return child.find(key, depth+1)
 }
 
 func (t *trie) walk(fn func(shard *Shard)) {
@@ -304,4 +283,14 @@ func (t *trie) walk(fn func(shard *Shard)) {
 			child.walk(fn)
 		}
 	}
+}
+
+func ensureDir(root *os.Root, path string) error {
+	if err := root.Mkdir(path, 0o755); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }

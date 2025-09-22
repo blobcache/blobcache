@@ -68,7 +68,7 @@ func SaveManifest(shardRoot *os.Root, manifest Manifest) error {
 	if err := f.Sync(); err != nil {
 		return err
 	}
-	return f.Close()
+	return nil
 }
 
 func LoadManifest(shardRoot *os.Root) (Manifest, error) {
@@ -85,7 +85,7 @@ func LoadManifest(shardRoot *os.Root) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, err
 	}
-	if finfo.Size() != ManifestSize {
+	if finfo.Size() < fileSize {
 		return Manifest{}, fmt.Errorf("manifest file size is wrong %d", finfo.Size())
 	}
 	var data [fileSize]byte

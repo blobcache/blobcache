@@ -102,6 +102,8 @@ func (idx *Table) Flush() error {
 	return idx.mm.Flush()
 }
 
+// Close unmaps the table and closes the file.
+// It DOES NOT flush the mmap to disk.
 func (idx *Table) Close() error {
 	return errors.Join(idx.mm.Unmap(), idx.f.Close())
 }
@@ -123,6 +125,9 @@ type Entry struct {
 
 	Offset uint32
 	Len    uint32
+
+	CRC    uint32
+	CRCNeg uint32
 }
 
 func (ent *Entry) IsTombstone() bool {
