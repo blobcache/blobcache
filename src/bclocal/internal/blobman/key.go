@@ -20,7 +20,8 @@ func KeyFromBytes(b []byte) Key {
 	}
 }
 
-func (k Key) Rotate(i int) Key {
+// RotateAway specifies the amount of bits to rotate the key away from the 0th bit.
+func (k Key) RotateAway(i int) Key {
 	return Key{k[0]>>i | k[1]<<(64-i), k[0]<<i | k[1]>>(64-i)}
 }
 
@@ -30,6 +31,9 @@ func (k Key) ShiftIn(i int) Key {
 	return Key{k[0]>>i | k[1]<<(64-i), k[0]<<i | k[1]>>(64-i)}
 }
 
+// Uint8 returns the 8 bit integer at the given index.
+// Indexes are interpretted modulo 16.
+// Uint8(0) is bits [0, 7], Uint8(1) is bits [8, 15].
 func (k Key) Uint8(i int) uint8 {
 	return byte(k[i>>6] >> (i & 0x3f))
 }
@@ -39,6 +43,9 @@ func (k Key) Uint8Len() int {
 	return 16
 }
 
+// Uint16 returns the 16 bit integer at the given index.
+// Indexes are interpretted modulo 8.
+// Uint16(0) is bits [0, 15], Uint16(1) is bits [16, 31].
 func (k Key) Uint16(i int) uint16 {
 	return uint16(k[i>>4] >> (i & 0x0f))
 }
@@ -66,6 +73,11 @@ func (k Key) Data() (ret [16]byte) {
 func (k Key) Bytes() []byte {
 	d := k.Data()
 	return d[:]
+}
+
+func (k Key) ShardID(numBits uint8) ShardID {
+	d := k.Data()
+	return NewShardID([15]byte(d[:15]), numBits)
 }
 
 // ShardID is a prefix of at most 120 bits.
@@ -106,9 +118,9 @@ func (p ShardID) Len() int {
 	return int(p.numBits)
 }
 
-func (p ShardID) Path() (string, error) {
+func (p ShardID) Path() string {
 	if p.Len()%8 != 0 {
-		return "", fmt.Errorf("bitLen must be a multiple of 8. have %d", p.Len())
+		panic(fmt.Errorf("bitLen must be a multiple of 8. have %d", p.Len()))
 	}
 	data := p.Data()
 	hexData := hex.AppendEncode(nil, data[:p.Len()/8])
@@ -119,7 +131,7 @@ func (p ShardID) Path() (string, error) {
 		}
 		sb.Write(hexData[i : i+2])
 	}
-	return sb.String(), nil
+	return sb.String()
 }
 
 const (
@@ -132,21 +144,15 @@ type FileKey struct {
 	// Shard uniquely identifies the shard
 	ShardID ShardID
 	// Gen uniquely identifies the generation of the file within the shard
-	Gen uint64
+	Gen uint32
 }
 
-func (fk FileKey) PackPath() (string, error) {
-	p, err := fk.ShardID.Path()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(p, PackFilename(fk.Gen)), nil
+func (fk FileKey) PackPath() string {
+	p := fk.ShardID.Path()
+	return filepath.Join(p, PackFilename(fk.Gen))
 }
 
-func (fk FileKey) TablePath() (string, error) {
-	p, err := fk.ShardID.Path()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(p, TableFilename(fk.Gen)), nil
+func (fk FileKey) TablePath() string {
+	p := fk.ShardID.Path()
+	return filepath.Join(p, TableFilename(fk.Gen))
 }

@@ -61,7 +61,7 @@ func (bf *bloom2048) contains(k Key) bool {
 
 func bloomHash(k Key, out *[8]uint64) {
 	for i := range *out {
-		k := k.Rotate(i * 8)
+		k := k.RotateAway(i * 8)
 		out[i] = k.Uint64(0) ^ k.Uint64(1)
 	}
 }

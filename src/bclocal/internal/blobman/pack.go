@@ -21,12 +21,12 @@ type Pack struct {
 	mm      mmap.MMap
 }
 
-func PackFilename(gen uint64) string {
+func PackFilename(gen uint32) string {
 	return fmt.Sprintf("%08x"+PackFileExt, gen)
 }
 
 // CreatePackFile creates a file configured for a pack in the filesystem, and returns it.
-func CreatePackFile(root *os.Root, gen uint64, maxSize uint32) (*os.File, error) {
+func CreatePackFile(root *os.Root, gen uint32, maxSize uint32) (*os.File, error) {
 	p := PackFilename(gen)
 	f, err := root.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 	if err != nil {
@@ -38,7 +38,7 @@ func CreatePackFile(root *os.Root, gen uint64, maxSize uint32) (*os.File, error)
 	return f, nil
 }
 
-func LoadPackFile(root *os.Root, gen uint64) (*os.File, error) {
+func LoadPackFile(root *os.Root, gen uint32) (*os.File, error) {
 	p := PackFilename(gen)
 	return root.OpenFile(p, os.O_RDWR, 0o644)
 }

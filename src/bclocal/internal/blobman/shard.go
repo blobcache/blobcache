@@ -4,20 +4,20 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
 	"math"
 	"os"
+	"slices"
 	"sync"
+	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // CreateShard creates a new shard in the filesystem.
 // If the shard already exists, than os.ErrExist is returned.
 // The root should be the global root.
 func CreateShard(root *os.Root, prefix ShardID) (*Shard, error) {
-	p, err := prefix.Path()
-	if err != nil {
-		return nil, err
-	}
+	p := prefix.Path()
 	if err := root.Mkdir(p, 0o755); err != nil {
 		return nil, err
 	}
@@ -31,10 +31,7 @@ func CreateShard(root *os.Root, prefix ShardID) (*Shard, error) {
 // OpenShard opens a shard that already exists in the filesystem.
 // The root should be the global root.
 func OpenShard(root *os.Root, prefix ShardID) (*Shard, error) {
-	p, err := prefix.Path()
-	if err != nil {
-		return nil, err
-	}
+	p := prefix.Path()
 	root2, err := root.OpenRoot(p)
 	if err != nil {
 		return nil, err
@@ -51,14 +48,12 @@ type Shard struct {
 	// everything else will be set during load.
 	rootDir *os.Root
 
-	mu     sync.RWMutex
-	gen    uint64
-	loaded bool // structural load completed (children presence discovered)
-	tab    Table
-	pack   Pack
-	bfs    []bloom2048
-
-	children [256]*Shard
+	mu   sync.RWMutex
+	mf   Manifest
+	tab  Table
+	pack Pack
+	bfMu sync.RWMutex
+	bfs  []bloom2048
 }
 
 func newShard(rootDir *os.Root) *Shard {
@@ -75,10 +70,14 @@ func (s *Shard) Close() error {
 	return s.rootDir.Close()
 }
 
+func (dst *Shard) isLoaded() bool {
+	return dst.mf.Nonce > 0
+}
+
 func (dst *Shard) load(maxTableSize, maxPackSize uint32) error {
 	// quick check with the read lock
 	dst.mu.RLock()
-	loaded := dst.loaded
+	loaded := dst.isLoaded()
 	dst.mu.RUnlock()
 	if loaded {
 		return nil
@@ -86,20 +85,24 @@ func (dst *Shard) load(maxTableSize, maxPackSize uint32) error {
 	// now get the write lock
 	dst.mu.Lock()
 	defer dst.mu.Unlock()
-	if dst.loaded {
+	if dst.isLoaded() {
 		// check one more time
 		return nil
 	}
 
-	var createdTable bool
-	tf, err := LoadTableFile(dst.rootDir, dst.gen)
+	mf, err := LoadManifest(dst.rootDir)
+	if err != nil {
+		return err
+	}
+	mf.Nonce++
+
+	tf, err := LoadTableFile(dst.rootDir, mf.Gen)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			tf, err = CreateTableFile(dst.rootDir, dst.gen, maxTableSize)
+			tf, err = CreateTableFile(dst.rootDir, mf.Gen, maxTableSize)
 			if err != nil {
 				return err
 			}
-			createdTable = true
 		} else {
 			return err
 		}
@@ -108,32 +111,33 @@ func (dst *Shard) load(maxTableSize, maxPackSize uint32) error {
 	if err != nil {
 		return err
 	}
-	var packFile *os.File
-	if createdTable {
-		packFile, err = CreatePackFile(dst.rootDir, dst.gen, maxPackSize)
-		if err != nil {
-			return err
-		}
-	} else {
-		packFile, err = LoadPackFile(dst.rootDir, dst.gen)
-		if err != nil {
+	packFile, err := LoadPackFile(dst.rootDir, mf.Gen)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			packFile, err = CreatePackFile(dst.rootDir, mf.Gen, maxPackSize)
+			if err != nil {
+				return err
+			}
+		} else {
 			return err
 		}
 	}
-	// Determine next pack offset. If table is empty, 0.
-	var nextOffset uint32
-	if table.Len() > 0 {
-		last := table.Slot(table.Len() - 1)
-		nextOffset = last.Offset + last.Len
+
+	// Determine next pack offset
+	// Maximum of all Offset + Len in the table.
+	var offset uint32
+	for i := uint32(0); i < mf.TableLen; i++ {
+		ent := table.Slot(i)
+		offset = max(offset, ent.Offset+ent.Len)
 	}
-	pack, err := NewPack(packFile, nextOffset)
+	pack, err := NewPack(packFile, offset)
 	if err != nil {
 		return err
 	}
 	dst.tab = table
 	dst.pack = pack
 	// need to add all the entries to the bloom filters
-	for i := uint32(0); i < table.Len(); i++ {
+	for i := uint32(0); i < mf.TableLen; i++ {
 		ent := table.Slot(i)
 		bfIdx := filterIndex(i)
 		if len(dst.bfs) <= bfIdx {
@@ -141,48 +145,81 @@ func (dst *Shard) load(maxTableSize, maxPackSize uint32) error {
 		}
 		dst.bfs[bfIdx].add(ent.Key)
 	}
-	// load the children
-	children, err := dst.findChildren()
-	if err != nil {
-		return err
-	}
-	dst.children = children
 
-	dst.loaded = true
+	// this causes the shard to be considered loaded
+	dst.mf = mf
 	return nil
 }
 
-// findChildren looks for child shards in the filesystem.
-func (dst *Shard) findChildren() ([256]*Shard, error) {
-	var children [256]*Shard
-	entries, err := fs.ReadDir(dst.rootDir.FS(), ".")
-	if err != nil {
-		return children, err
+func (s *Shard) HasSpace() bool {
+	tableLen := atomic.LoadUint32(&s.mf.TableLen)
+	return s.pack.FreeSpace() > 0 && tableLen < s.tab.Capacity()
+}
+
+// LocalExists checks if the key exists in this shards local data.
+// Local means that the children and grandchildren are not checked.
+func (sh *Shard) LocalExists(key Key) bool {
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	_, found := sh.localScan(key)
+	return found
+}
+
+func (sh *Shard) LocalGet(key Key, fn func(data []byte)) (bool, error) {
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	ent, found := sh.localScan(key)
+	if found {
+		return true, sh.pack.Get(ent.Offset, ent.Len, fn)
 	}
-	for _, ent := range entries {
-		if !ent.IsDir() {
-			continue
-		}
-		childIdx, err := func() (uint8, error) {
-			data, err := hex.DecodeString(ent.Name())
-			if err != nil {
-				return 0, err
-			}
-			if len(data) != 1 {
-				return 0, fmt.Errorf("child shard must be 1 byte decoded")
-			}
-			return uint8(data[0]), nil
-		}()
-		if err != nil {
-			return children, fmt.Errorf("invalid shard filename %s: %w", ent.Name(), err)
-		}
-		childRoot, err := dst.rootDir.OpenRoot(ent.Name())
-		if err != nil {
-			return children, err
-		}
-		children[childIdx] = &Shard{rootDir: childRoot}
+	return false, nil
+}
+
+// LocalAppend appends the key and data to the table.
+// It returns an error if the table is full or the pack is full.
+// It returns (false, nil) if the data already exists.
+// It returns (true, nil) if the data was appended successfully.
+func (s *Shard) LocalAppend(key Key, data []byte) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, found := s.localScan(key)
+	if found {
+		return false, nil
 	}
-	return children, nil
+	return s.localAppend(key, data), nil
+}
+
+// LocalDelete deletes the key from the table.
+// It returns (true, nil) if the key was deleted successfully.
+func (s *Shard) LocalDelete(key Key) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.localDelete(key), nil
+}
+
+// Flush causes the Shard's current state to be written to disk.
+// First the pack and table are flushed concurrently.
+// Then once both of them have flushed successfully, the manifest is saved.
+func (sh *Shard) Flush() error {
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	mf := sh.mf
+	sh.mf.Nonce++
+
+	var eg errgroup.Group
+	eg.Go(func() error {
+		return sh.pack.Flush()
+	})
+	eg.Go(func() error {
+		return sh.tab.Flush()
+	})
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	if err := SaveManifest(sh.rootDir, mf); err != nil {
+		return err
+	}
+	return nil
 }
 
 // localExists checks if the key is in this shard.
@@ -195,14 +232,14 @@ func (s *Shard) localExists(key Key) bool {
 // localScan must be called with the shard read lock held.
 // localScan iterates through each bloom filter, if it gets a hit, then it iterates through the corresponding
 // range in the table.
-func (s *Shard) localScan(key Key) (TableEntry, bool) {
+func (s *Shard) localScan(key Key) (Entry, bool) {
 	for filterIdx := range s.bfs {
 		if !s.bfs[filterIdx].contains(key) {
 			continue
 		}
 		beg := slotBeg(filterIdx)
 		end := slotEnd(filterIdx)
-		for slot := beg; slot < end && slot < s.tab.Len(); slot++ {
+		for slot := beg; slot < end && slot < s.mf.TableLen; slot++ {
 			ent := s.tab.Slot(slot)
 			if ent.IsTombstone() {
 				continue
@@ -212,7 +249,7 @@ func (s *Shard) localScan(key Key) (TableEntry, bool) {
 			}
 		}
 	}
-	return TableEntry{}, false
+	return Entry{}, false
 }
 
 // localAppend appends the key and data to the table.
@@ -224,25 +261,30 @@ func (s *Shard) localAppend(key Key, data []byte) bool {
 	if off == math.MaxUint32 {
 		return false
 	}
-	ent := TableEntry{
+	ent := Entry{
 		Key:    key,
 		Offset: off,
 		Len:    uint32(len(data)),
 	}
-	slotIdx := s.tab.Append(ent)
+	slotIdx := s.reserveSlot()
 	if slotIdx == math.MaxUint32 {
 		return false
 	}
+	s.tab.SetSlot(slotIdx, ent)
+
+	s.bfMu.Lock()
 	bfIdx := filterIndex(slotIdx)
 	if len(s.bfs) <= bfIdx {
 		s.bfs = append(s.bfs, bloom2048{})
 	}
 	s.bfs[bfIdx].add(key)
+	s.bfMu.Unlock()
+
 	return true
 }
 
 func (s *Shard) localDelete(key Key) bool {
-	for i := uint32(0); i < s.tab.Len(); i++ {
+	for i := uint32(0); i < s.mf.TableLen; i++ {
 		ent := s.tab.Slot(i)
 		if ent.Key == key {
 			s.tab.Tombstone(i)
@@ -250,6 +292,14 @@ func (s *Shard) localDelete(key Key) bool {
 		}
 	}
 	return false
+}
+
+func (s *Shard) reserveSlot() uint32 {
+	slot := atomic.AddUint32(&s.mf.TableLen, 1) - 1
+	if slot >= s.tab.Capacity() {
+		return math.MaxUint32
+	}
+	return slot
 }
 
 func (s *Shard) createChild(childIdx uint8) (*Shard, error) {
@@ -264,16 +314,65 @@ func (s *Shard) createChild(childIdx uint8) (*Shard, error) {
 	return newShard(childRoot), nil
 }
 
-// getOrCreateChild gets the child if it exists, otherwise creates it.
-// it does not lock the shard.
-func (s *Shard) getOrCreateChild(childIdx uint8) (*Shard, error) {
-	if child := s.children[childIdx]; child != nil {
-		return child, nil
+// Copy copies entries from src{Tab,Pack} to dst{Tab,Pack}.
+// If there is not enough space available in either the table or the pack, then an error is returned.
+// Copy will not copy tombstones, and will sort all the entries by key before copying.
+func Copy(srcLen uint32, srcTab Table, srcPack Pack, dstTab Table, dstPack Pack) (int, error) {
+	// todo are the slots that need to be copied, in sorted order by key.
+	var todo []uint32
+	var cumSize uint32
+	for i := uint32(0); i < srcLen; i++ {
+		ent := srcTab.Slot(i)
+		if ent.IsTombstone() {
+			continue
+		}
+		todo = append(todo, i)
+		cumSize += ent.Len
 	}
-	child, err := s.createChild(childIdx)
-	if err != nil {
-		return nil, err
+	if len(todo) > int(dstTab.Capacity()-srcLen) {
+		return 0, fmt.Errorf("dstTab has %d slots, but %d are needed", dstTab.Capacity()-srcLen, len(todo))
 	}
-	s.children[childIdx] = child
-	return child, nil
+	if cumSize > dstPack.FreeSpace() {
+		return 0, fmt.Errorf("dstPack has %d free space, but %d is needed", dstPack.FreeSpace(), cumSize)
+	}
+	slices.SortFunc(todo, func(a, b uint32) int {
+		return KeyCompare(srcTab.Slot(a).Key, srcTab.Slot(b).Key)
+	})
+	for newSlot, oldSlot := range todo {
+		if uint32(newSlot) >= dstTab.Capacity() {
+			return 0, fmt.Errorf("dstTab is full")
+		}
+		ent := srcTab.Slot(oldSlot)
+		var newOffset uint32
+		if err := srcPack.Get(ent.Offset, ent.Len, func(data []byte) {
+			newOffset = dstPack.Append(data)
+		}); err != nil {
+			return 0, fmt.Errorf("while copying: %w", err)
+		}
+		if newOffset == math.MaxUint32 {
+			return 0, fmt.Errorf("dstPack is full")
+		}
+		dstTab.SetSlot(uint32(newSlot), Entry{
+			Key:    ent.Key,
+			Offset: newOffset,
+			Len:    ent.Len,
+		})
+	}
+	return len(todo), nil
+}
+
+func KeyCompare(a, b Key) int {
+	dataA := a.Data()
+	dataB := b.Data()
+	return slices.Compare(dataA[:], dataB[:])
+}
+
+type ErrShardFull struct{}
+
+func (e ErrShardFull) Error() string {
+	return "shard is full"
+}
+
+func IsErrShardFull(err error) bool {
+	return errors.As(err, &ErrShardFull{})
 }
