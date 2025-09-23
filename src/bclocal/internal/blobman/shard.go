@@ -29,7 +29,7 @@ func CreateShard(root *os.Root, prefix ShardID, maxTableSize, maxPackSize uint32
 	if err := sh.load(maxTableSize, maxPackSize); err != nil {
 		return nil, err
 	}
-	return newShard(root2), nil
+	return sh, nil
 }
 
 // OpenShard opens a shard that already exists in the filesystem.
@@ -44,7 +44,7 @@ func OpenShard(root *os.Root, prefix ShardID, maxTableSize, maxPackSize uint32) 
 	if err := sh.load(maxTableSize, maxPackSize); err != nil {
 		return nil, err
 	}
-	return newShard(root2), nil
+	return sh, nil
 }
 
 // Shard is a directory on disk containing table and pack files, potentially across multiple generations.
@@ -226,6 +226,9 @@ func (s *Shard) LocalDelete(key Key) (bool, error) {
 func (sh *Shard) Flush() error {
 	sh.accessMu.Lock()
 	defer sh.accessMu.Unlock()
+	if !sh.isLoaded() {
+		return nil
+	}
 	mf := sh.mf
 	sh.mf.Nonce++
 
@@ -239,6 +242,7 @@ func (sh *Shard) Flush() error {
 	if err := eg.Wait(); err != nil {
 		return err
 	}
+
 	if err := SaveManifest(sh.rootDir, mf); err != nil {
 		return err
 	}

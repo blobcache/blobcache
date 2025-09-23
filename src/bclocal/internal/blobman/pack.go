@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"sync/atomic"
-	"unsafe"
 
 	mmap "github.com/edsrzf/mmap-go"
 )
@@ -61,6 +60,8 @@ func NewPack(f *os.File, nextOffset uint32) (Pack, error) {
 	return Pack{f: f, mm: mm, offset: nextOffset, maxSize: uint32(maxSize)}, nil
 }
 
+// Close unmaps the pack and closes the file.
+// It DOES NOT flush the mmap to disk.
 func (pk Pack) Close() error {
 	return errors.Join(pk.mm.Unmap(), pk.f.Close())
 }
@@ -100,25 +101,4 @@ func (pk *Pack) Get(offset, length uint32, fn func(data []byte)) error {
 
 func (pk *Pack) Flush() error {
 	return pk.mm.Flush()
-}
-
-func ptrUint32(buf *[4]byte) *uint32 {
-	return (*uint32)(unsafe.Pointer(buf))
-}
-
-type BitMap []uint64
-
-func (bm BitMap) Get(i int) bool {
-	return bm[i/64]&(1<<(i%64)) != 0
-}
-
-func (bm *BitMap) Set(i int, v bool) {
-	for len(*bm) <= i/64 {
-		*bm = append(*bm, 0)
-	}
-	if v {
-		(*bm)[i/64] |= 1 << (i % 64)
-	} else {
-		(*bm)[i/64] &= ^(1 << (i % 64))
-	}
 }

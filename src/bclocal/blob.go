@@ -115,9 +115,15 @@ func blobRefCountGet(ba pdb.RO, cidp blobman.Key) (RefCount, error) {
 }
 
 const (
-	volumeBlobFlag_OBSERVED = 1 << 0
-	volumeBlobFlag_ADDED    = 1 << 0
-	volumeBlobFlag_VISITED  = 1 << 1
+	// volumeBlobFlag_OBSERVED means the blob was observed during the transaction and needs to stay.
+	// This is set by the Exists and Get operations.
+	volumeBlobFlag_OBSERVED = 0
+	// volumeBlobFlag_ADDED means the blob was added during the transaction.
+	// This is set by the Post and AddFrom operations.
+	volumeBlobFlag_ADDED = 1 << 0
+	// volumeBlobFlag_VISITED means the blob was visited during the transaction.
+	// This is set by the Visit operation, and is only valid during a GC transaction.
+	volumeBlobFlag_VISITED = 1 << 1
 )
 
 // blobKey returns the key used by the blob manager to access the blob.

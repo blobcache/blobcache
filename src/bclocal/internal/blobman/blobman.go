@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
@@ -18,7 +19,8 @@ type Store struct {
 	// maxPackSize is the maximum size of a pack in bytes.
 	maxPackSize uint32
 
-	trie trie
+	trie      trie
+	closeOnce sync.Once
 }
 
 func New(root *os.Root) *Store {
@@ -251,7 +253,7 @@ type trie struct {
 	children [256]atomic.Pointer[trie]
 	// checked is a bitmap for when children have been checked in the filesystem.
 	checked [4]atomic.Uint64
-
+	// shard should always be set to a non-nil value.
 	shard *Shard
 }
 
