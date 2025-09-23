@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync/atomic"
-	"unsafe"
 
 	mmap "github.com/edsrzf/mmap-go"
 )
@@ -23,17 +20,13 @@ type Pack struct {
 	mm      mmap.MMap
 }
 
+func PackFilename(gen uint32) string {
+	return fmt.Sprintf("%08x"+PackFileExt, gen)
+}
+
 // CreatePackFile creates a file configured for a pack in the filesystem, and returns it.
-func CreatePackFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File, error) {
-	p, err := prefix.PackPath()
-	if err != nil {
-		return nil, err
-	}
-	if strings.Contains(p, "/") {
-		if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil && !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-	}
+func CreatePackFile(root *os.Root, gen uint32, maxSize uint32) (*os.File, error) {
+	p := PackFilename(gen)
 	f, err := root.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
@@ -44,11 +37,8 @@ func CreatePackFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File, 
 	return f, nil
 }
 
-func LoadPackFile(root *os.Root, prefix Prefix120) (*os.File, error) {
-	p, err := prefix.PackPath()
-	if err != nil {
-		return nil, err
-	}
+func LoadPackFile(root *os.Root, gen uint32) (*os.File, error) {
+	p := PackFilename(gen)
 	return root.OpenFile(p, os.O_RDWR, 0o644)
 }
 
@@ -70,6 +60,8 @@ func NewPack(f *os.File, nextOffset uint32) (Pack, error) {
 	return Pack{f: f, mm: mm, offset: nextOffset, maxSize: uint32(maxSize)}, nil
 }
 
+// Close unmaps the pack and closes the file.
+// It DOES NOT flush the mmap to disk.
 func (pk Pack) Close() error {
 	return errors.Join(pk.mm.Unmap(), pk.f.Close())
 }
@@ -109,25 +101,4 @@ func (pk *Pack) Get(offset, length uint32, fn func(data []byte)) error {
 
 func (pk *Pack) Flush() error {
 	return pk.mm.Flush()
-}
-
-func ptrUint32(buf *[4]byte) *uint32 {
-	return (*uint32)(unsafe.Pointer(buf))
-}
-
-type BitMap []uint64
-
-func (bm BitMap) Get(i int) bool {
-	return bm[i/64]&(1<<(i%64)) != 0
-}
-
-func (bm *BitMap) Set(i int, v bool) {
-	for len(*bm) <= i/64 {
-		*bm = append(*bm, 0)
-	}
-	if v {
-		(*bm)[i/64] |= 1 << (i % 64)
-	} else {
-		(*bm)[i/64] &= ^(1 << (i % 64))
-	}
 }

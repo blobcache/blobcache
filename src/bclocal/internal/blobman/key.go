@@ -20,7 +20,8 @@ func KeyFromBytes(b []byte) Key {
 	}
 }
 
-func (k Key) Rotate(i int) Key {
+// RotateAway specifies the amount of bits to rotate the key away from the 0th bit.
+func (k Key) RotateAway(i int) Key {
 	return Key{k[0]>>i | k[1]<<(64-i), k[0]<<i | k[1]>>(64-i)}
 }
 
@@ -30,8 +31,15 @@ func (k Key) ShiftIn(i int) Key {
 	return Key{k[0]>>i | k[1]<<(64-i), k[0]<<i | k[1]>>(64-i)}
 }
 
+// Uint8 returns the 8 bit integer at the given index.
+// Indexes are interpretted modulo 16.
+// Uint8(0) is bits [0, 7], Uint8(1) is bits [8, 15].
 func (k Key) Uint8(i int) uint8 {
-	return byte(k[i>>6] >> (i & 0x3f))
+	idx := i % 16
+	if idx < 8 {
+		return uint8(k[0] >> (idx * 8))
+	}
+	return uint8(k[1] >> ((idx - 8) * 8))
 }
 
 // Uint8Len returns the number of 8 bit integers in the key.
@@ -39,8 +47,15 @@ func (k Key) Uint8Len() int {
 	return 16
 }
 
+// Uint16 returns the 16 bit integer at the given index.
+// Indexes are interpretted modulo 8.
+// Uint16(0) is bits [0, 15], Uint16(1) is bits [16, 31].
 func (k Key) Uint16(i int) uint16 {
-	return uint16(k[i>>4] >> (i & 0x0f))
+	idx := i % 8
+	if idx < 4 {
+		return uint16(k[0] >> (idx * 16))
+	}
+	return uint16(k[1] >> ((idx - 4) * 16))
 }
 
 // Uint64 returns the 64 bit integer at the given index.
@@ -68,32 +83,41 @@ func (k Key) Bytes() []byte {
 	return d[:]
 }
 
-// ToPrefix takes the first numBits bits of the key and includes those in a prefix.
-// The last 7 bits of the key must be dropped.
-// ToPrefix will panic, the same as NewPrefix120, if numBits is greater than 120.
-func (k Key) ToPrefix(numBits uint8) Prefix120 {
-	data := k.Data()
-	return NewPrefix121([15]byte(data[:15]), numBits)
+func (k Key) ShardID(numBits int) ShardID {
+	d := k.Data()
+	return NewShardID([15]byte(d[:15]), uint8(numBits))
 }
 
-// Prefix120 is a prefix of at most 120 bits.
-// Prefix120 takes up 128 bits.
+// ShardID is a prefix of at most 120 bits.
+// ShardID takes up 128 bits.
 // A prefix refers to a set of keys.
-type Prefix120 struct {
+type ShardID struct {
 	data    [15]byte
 	numBits uint8
 }
 
-func NewPrefix121(data [15]byte, numBits uint8) Prefix120 {
+func NewShardID(data [15]byte, numBits uint8) ShardID {
+	if numBits%8 != 0 {
+		panic("numBits must be a multiple of 8")
+	}
 	if numBits > 120 {
 		numBits = 120
 	}
-	return Prefix120{data: data, numBits: numBits}
+	// TODO: zero out the extra bits
+	return ShardID{data: data, numBits: numBits}
 }
 
-func (p Prefix120) ShiftIn(i int) Prefix120 {
+// Child appends the given index to the shard id and returns the new shard id.
+func (sh ShardID) Child(k uint8) ShardID {
+	sh2 := sh
+	sh2.numBits += 8
+	sh2.data[sh2.numBits/8] = k
+	return sh2
+}
+
+func (p ShardID) ShiftIn(i int) ShardID {
 	shiftInBytes(p.data[:], i)
-	return Prefix120{data: p.data, numBits: p.numBits + uint8(i)}
+	return ShardID{data: p.data, numBits: p.numBits + uint8(i)}
 }
 
 // shiftInBytes performs a logical shift towards zero.
@@ -103,61 +127,52 @@ func shiftInBytes(data []byte, i int) {
 	bi.Rsh(bi, uint(i))
 }
 
-func (p Prefix120) Data() (ret [15]byte) {
+func (p ShardID) Data() (ret [15]byte) {
 	return p.data
 }
 
-func (p Prefix120) Len() int {
+func (p ShardID) Len() int {
 	return int(p.numBits)
 }
 
-func (p Prefix120) Path() (string, error) {
+func (p ShardID) Path() string {
 	if p.Len()%8 != 0 {
-		return "", fmt.Errorf("bitLen must be a multiple of 8. have %d", p.Len())
+		panic(fmt.Errorf("bitLen must be a multiple of 8. have %d", p.Len()))
 	}
-	if p.Len() > 0 {
-		data := p.Data()
-		hexData := hex.AppendEncode(nil, data[:p.Len()/8])
-		sb := strings.Builder{}
-		for i := 0; i < len(hexData); i += 2 {
-			if i > 0 {
-				sb.WriteRune(filepath.Separator)
-			}
-			sb.Write(hexData[i : i+2])
+	if p.Len() == 0 {
+		return "."
+	}
+	data := p.Data()
+	hexData := hex.AppendEncode(nil, data[:p.Len()/8])
+	sb := strings.Builder{}
+	for i := 0; i < len(hexData); i += 2 {
+		if i > 0 {
+			sb.WriteRune(filepath.Separator)
 		}
-		return sb.String(), nil
-	} else {
-		return "_", nil
+		sb.Write(hexData[i : i+2])
 	}
-}
-
-// ChildrenDir returns the directory that contains all the children of this prefix.
-func (prefix Prefix120) ChildrenDir() (string, error) {
-	p, _ := prefix.Path()
-	if !strings.ContainsRune(p, filepath.Separator) {
-		return ".", nil
-	} else {
-		return filepath.Dir(p), nil
-	}
-}
-
-func (p Prefix120) PackPath() (string, error) {
-	path, err := p.Path()
-	if err != nil {
-		return "", err
-	}
-	return path + PackFileExt, nil
-}
-
-func (p Prefix120) TablePath() (string, error) {
-	path, err := p.Path()
-	if err != nil {
-		return "", err
-	}
-	return path + TableFileExt, nil
+	return sb.String()
 }
 
 const (
 	TableFileExt = ".slot"
 	PackFileExt  = ".pack"
 )
+
+// FileKey uniquely identifies a {Table, Pack} file within the system.
+type FileKey struct {
+	// Shard uniquely identifies the shard
+	ShardID ShardID
+	// Gen uniquely identifies the generation of the file within the shard
+	Gen uint32
+}
+
+func (fk FileKey) PackPath() string {
+	p := fk.ShardID.Path()
+	return filepath.Join(p, PackFilename(fk.Gen))
+}
+
+func (fk FileKey) TablePath() string {
+	p := fk.ShardID.Path()
+	return filepath.Join(p, TableFilename(fk.Gen))
+}

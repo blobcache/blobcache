@@ -139,7 +139,12 @@ func (s *Service) Close() error {
 		// abort all transactions.
 		s.AbortAll(ctx),
 		// flush the blobs to disk.
-		s.localSys.blobs.Flush(),
+		func() error {
+			if !s.cfg.NoSync {
+				return s.localSys.blobs.Flush()
+			}
+			return nil
+		}(),
 		// close the blob directory.
 		s.blobDir.Close(),
 		// close the database.

@@ -4,11 +4,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"math"
 	"os"
-	"path/filepath"
-	"strings"
-	"sync/atomic"
 
 	mmap "github.com/edsrzf/mmap-go"
 )
@@ -16,27 +14,24 @@ import (
 const (
 	// TableEntrySize is the size of a row in the table.
 	// It actually uses less space than this, but we want to align to 4096 bytes.
-	TableEntrySize  = 32
-	TableHeaderSize = 32
-	PageSize        = 4096
-	EntriesPerPage  = PageSize / TableEntrySize
+	TableEntrySize = 32
+	PageSize       = 4096
+	EntriesPerPage = PageSize / TableEntrySize
 	// DefaultMaxTableLen is the maximum length of a table in rows.
-	DefaultMaxTableLen = (1<<20 - TableHeaderSize) / TableEntrySize
+	DefaultMaxTableLen = (1 << 20) / TableEntrySize
 )
+
+// TableFilename returns the filename for a table.
+// This is just the filename, the directory will contain the shard prefix.
+func TableFilename(gen uint32) string {
+	return fmt.Sprintf("%08x"+TableFileExt, gen)
+}
 
 // CreateTableFile creates a file configured for a table in the filesystem, and returns it.
 // maxSize is the maximum size of the table in bytes, NOT the number of rows.
-func CreateTableFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File, error) {
-	p, err := prefix.TablePath()
-	if err != nil {
-		return nil, err
-	}
-	if strings.Contains(p, "/") {
-		if err := root.Mkdir(filepath.Dir(p), 0o755); err != nil && !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-	}
-	f, err := root.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
+func CreateTableFile(shardRoot *os.Root, gen uint32, maxSize uint32) (*os.File, error) {
+	p := TableFilename(gen)
+	f, err := shardRoot.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -46,12 +41,9 @@ func CreateTableFile(root *os.Root, prefix Prefix120, maxSize uint32) (*os.File,
 	return f, nil
 }
 
-func LoadTableFile(root *os.Root, prefix Prefix120) (*os.File, error) {
-	p, err := prefix.TablePath()
-	if err != nil {
-		return nil, err
-	}
-	return root.OpenFile(p, os.O_RDWR, 0o644)
+func LoadTableFile(shardRoot *os.Root, gen uint32) (*os.File, error) {
+	p := TableFilename(gen)
+	return shardRoot.OpenFile(p, os.O_RDWR, 0o644)
 }
 
 // Table is an unordered append-only list of entries.
@@ -60,10 +52,7 @@ type Table struct {
 	f      *os.File
 	maxLen uint32
 
-	gen       uint64
-	len       uint32
-	sortedLen uint32
-	mm        mmap.MMap
+	mm mmap.MMap
 }
 
 // NewTable mmaps a file and returns a Table.
@@ -73,114 +62,97 @@ func NewTable(f *os.File) (Table, error) {
 	if err != nil {
 		return Table{}, err
 	}
-	maxLen := (finfo.Size() - TableHeaderSize) / TableEntrySize
+	maxLen := (finfo.Size()) / TableEntrySize
 
 	mm, err := mmap.Map(f, mmap.RDWR, 0)
 	if err != nil {
 		return Table{}, err
 	}
-	if len(mm) != int(maxLen*TableEntrySize+TableHeaderSize) {
+	if len(mm) != int(maxLen*TableEntrySize) {
 		return Table{}, fmt.Errorf("mmaped region does not match max size: %d != %d", len(mm), maxLen*TableEntrySize)
 	}
-	gen := binary.LittleEndian.Uint64(mm[0:8])
-	count := binary.LittleEndian.Uint32(mm[8:12])
-	sortedLen := binary.LittleEndian.Uint32(mm[12:16])
-	return Table{f: f, gen: gen, len: count, mm: mm, maxLen: uint32(maxLen), sortedLen: sortedLen}, nil
-}
-
-// Len returns the number of rows in the table.
-func (idx *Table) Len() uint32 {
-	return atomic.LoadUint32(&idx.len)
+	return Table{f: f, mm: mm, maxLen: uint32(maxLen)}, nil
 }
 
 // SlotOffset returns the offset of the i-th slot in the table.
 // Slot 0 starts at 4 bytes, to make room for the row count at the beginning.
 func (idx *Table) SlotOffset(i uint32) uint32 {
-	return TableHeaderSize + i*TableEntrySize
+	return i * TableEntrySize
 }
 
-func (idx *Table) CanAppend() bool {
-	return atomic.LoadUint32(&idx.len) < idx.maxLen
-}
-
-func (idx *Table) Append(ent TableEntry) uint32 {
-	rowIdx := atomic.AddUint32(&idx.len, 1) - 1
-	if rowIdx >= idx.maxLen {
-		return math.MaxUint32
-	}
-	idx.SetSlot(rowIdx, ent)
-
-	// update the sorted length if necessary
-	if rowIdx >= idx.sortedLen {
-		// if the new key is >= the previous key, then the sorted length is incremented
-		if rowIdx == 0 || KeyCompare(ent.Key, idx.Slot(rowIdx-1).Key) >= 0 {
-			atomic.AddUint32(&idx.sortedLen, 1)
-		}
-	}
-	// set the next row in the table header
-	binary.LittleEndian.PutUint32(idx.mm[8:12], rowIdx+1)
-	return rowIdx
-}
-
-func (idx *Table) Slot(i uint32) (ret TableEntry) {
+func (idx *Table) Slot(i uint32) (ret Entry) {
 	beg := idx.SlotOffset(i)
 	end := beg + TableEntrySize
 	ret.load((*[TableEntrySize]byte)(idx.mm[beg:end]))
 	return ret
 }
 
-func (idx *Table) SetSlot(slot uint32, ent TableEntry) {
+func (idx *Table) SetSlot(slot uint32, ent Entry) {
 	beg := idx.SlotOffset(slot)
 	end := beg + TableEntrySize
 	ent.save((*[TableEntrySize]byte)(idx.mm[beg:end]))
 }
 
-func (idx *Table) SlotsLeft() uint32 {
-	return idx.maxLen - idx.Len()
+// Capacity is the total number of rows that can be stored in the table.
+func (idx Table) Capacity() uint32 {
+	return uint32(len(idx.mm)) / TableEntrySize
 }
 
 func (idx *Table) Flush() error {
 	return idx.mm.Flush()
 }
 
+// Close unmaps the table and closes the file.
+// It DOES NOT flush the mmap to disk.
 func (idx *Table) Close() error {
 	return errors.Join(idx.mm.Unmap(), idx.f.Close())
 }
 
-// Capacity is the total number of rows that can be stored in the table.
-func (idx Table) Capacity() uint32 {
-	return uint32(len(idx.mm)-TableHeaderSize) / TableEntrySize
-}
-
 // Tombstone writes a tombstone at the given slot.
 func (idx *Table) Tombstone(slot uint32) {
-	idx.SetSlot(slot, TableEntry{
+	idx.SetSlot(slot, Entry{
 		Key:    Key{},
 		Offset: math.MaxUint32,
 		Len:    0,
 	})
 }
 
-type TableEntry struct {
+var crc32Table = crc32.MakeTable(crc32.Castagnoli)
+
+// Entry is a single entry in the table.
+type Entry struct {
 	Key Key
 
 	Offset uint32
 	Len    uint32
+
+	CRC    uint32
+	CRCNeg uint32
 }
 
-func (ent *TableEntry) IsTombstone() bool {
+func (ent *Entry) IsTombstone() bool {
 	return ent.Offset == math.MaxUint32
 }
 
-func (ent *TableEntry) save(buf *[TableEntrySize]byte) {
+func (ent *Entry) save(buf *[TableEntrySize]byte) {
 	data := ent.Key.Data()
 	copy(buf[:], data[:])
 	binary.LittleEndian.PutUint32(buf[16:20], ent.Offset)
 	binary.LittleEndian.PutUint32(buf[20:24], ent.Len)
+
+	checksum := crc32.Checksum(buf[:24], crc32Table)
+	binary.LittleEndian.PutUint32(buf[24:28], checksum)
+	binary.LittleEndian.PutUint32(buf[28:32], ^checksum)
 }
 
-func (ent *TableEntry) load(buf *[TableEntrySize]byte) {
+func (ent *Entry) load(buf *[TableEntrySize]byte) bool {
 	ent.Key = KeyFromBytes(buf[:16])
 	ent.Offset = binary.LittleEndian.Uint32(buf[16:20])
 	ent.Len = binary.LittleEndian.Uint32(buf[20:24])
+
+	actual := crc32.Checksum(buf[:24], crc32Table)
+	expected := binary.LittleEndian.Uint32(buf[24:28])
+	expectedInv := binary.LittleEndian.Uint32(buf[28:32])
+
+	return actual == expected && expectedInv == ^expected
 }

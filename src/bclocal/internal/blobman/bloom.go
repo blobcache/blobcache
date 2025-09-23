@@ -11,7 +11,8 @@ import (
 // Each row in the table file is allocated 32 bytes.
 // So that is 128 rows per bloom filter.
 // The bloom filter is lock free, and safe for concurrent use.
-// Params: https://hur.st/bloomfilter/?n=128&p&m=2048&k=8
+//
+// Parameter Choices: https://hur.st/bloomfilter/?n=128&p&m=2048&k=8
 type bloom2048 struct {
 	data [32]uint64
 }
@@ -61,7 +62,7 @@ func (bf *bloom2048) contains(k Key) bool {
 
 func bloomHash(k Key, out *[8]uint64) {
 	for i := range *out {
-		k := k.Rotate(i * 8)
+		k := k.RotateAway(i * 8)
 		out[i] = k.Uint64(0) ^ k.Uint64(1)
 	}
 }

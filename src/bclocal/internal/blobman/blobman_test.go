@@ -20,7 +20,7 @@ func TestPack(t *testing.T) {
 	defer root.Close()
 
 	maxSize := uint32(1 << 20)
-	pf, err := CreatePackFile(root, NewPrefix121([15]byte{}, 0), maxSize)
+	pf, err := CreatePackFile(root, 0, maxSize)
 	require.NoError(t, err)
 	defer pf.Close()
 
@@ -118,36 +118,6 @@ func TestStoreGetMissing(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestStoreLongestPrefixUsesExistingChild(t *testing.T) {
-	st := setup(t, 256, 1024)
-
-	key := mkKey(t, 0)
-	childIdx := key.Uint8(0)
-	// Pre-create a child shard so Put will use longest available prefix
-	child := &shard{}
-	st.shard.loaded = true
-	st.shard.children[childIdx] = child
-
-	val := []byte("child-route")
-	ok, err := st.Put(key, val)
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.NoError(t, err)
-
-	// Read back
-	var got []byte
-	ok, err = st.Get(key, func(data []byte) { got = append([]byte(nil), data...) })
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.Equal(t, val, got)
-
-	// Ensure inserted into child, not root
-	require.NoError(t, st.loadShard(&st.shard, key.ToPrefix(0)))
-	require.NoError(t, st.loadShard(child, key.ToPrefix(8)))
-	require.Equal(t, uint32(0), st.shard.tab.Len())
-	require.Equal(t, uint32(1), child.tab.Len())
-}
-
 func TestPutDelete(t *testing.T) {
 	st := setup(t, 256, 1024)
 
@@ -191,7 +161,10 @@ func TestPutReloadGet(t *testing.T) {
 	}
 	require.NoError(t, st.Close())
 
-	st2 := New(root)
+	root2, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	defer root2.Close()
+	st2 := New(root2)
 	for i := range keys {
 		ok, err := st2.Get(keys[i], func(data []byte) {})
 		require.NoError(t, err)
@@ -225,8 +198,8 @@ func TestPutLarge(t *testing.T) {
 		key := mkKey(t, i)
 		val := make([]byte, 500)
 		ok, err := st.Put(key, val)
-		require.NoError(t, err)
-		require.True(t, ok)
+		require.NoError(t, err, i)
+		require.True(t, ok, i)
 	}
 
 	for i := range 10 {
@@ -235,8 +208,8 @@ func TestPutLarge(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 	}
-	if st.shard.tab.Len() > 2 {
-		t.Fatalf("table len is %d", st.shard.tab.Len())
+	if st.trie.shard.mf.TableLen > 2 {
+		t.Fatalf("table len is %d", st.trie.shard.mf.TableLen)
 	}
 }
 
@@ -302,17 +275,6 @@ func BenchmarkGet(b *testing.B) {
 			require.NoError(b, err)
 		}
 	}
-}
-
-func TestFilterIndex(t *testing.T) {
-	require.Equal(t, 0, filterIndex(0))
-	require.Equal(t, 0, filterIndex(126))
-	require.Equal(t, 1, filterIndex(127))
-	require.Equal(t, 1, filterIndex(126+128))
-	require.Equal(t, 2, filterIndex(127+128))
-
-	require.Equal(t, uint32(0), slotBeg(0))
-	require.Equal(t, uint32(127), slotEnd(0))
 }
 
 func setup(t testing.TB, maxTabLen uint32, maxPackSize uint32) *Store {
