@@ -44,7 +44,6 @@ type OpenFromResp struct {
 }
 
 type OpenAsReq struct {
-	Caller *blobcache.PeerID   `json:"caller,omitempty"`
 	Target blobcache.OID       `json:"target"`
 	Mask   blobcache.ActionSet `json:"mask"`
 }
@@ -59,8 +58,8 @@ type InspectVolumeReq struct {
 }
 
 type CreateVolumeReq struct {
-	Caller *blobcache.PeerID    `json:"caller,omitempty"`
-	Spec   blobcache.VolumeSpec `json:"spec"`
+	Host *blobcache.Endpoint  `json:"host,omitempty"`
+	Spec blobcache.VolumeSpec `json:"spec"`
 }
 
 type CreateVolumeResp struct {

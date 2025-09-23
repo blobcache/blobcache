@@ -58,8 +58,8 @@ func (c *Client) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return c.doJSON(ctx, "POST", "/KeepAlive", nil, req, &resp)
 }
 
-func (c *Client) OpenAs(ctx context.Context, caller *blobcache.PeerID, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	req := OpenAsReq{Caller: caller, Target: target, Mask: mask}
+func (c *Client) OpenAs(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	req := OpenAsReq{Target: target, Mask: mask}
 	var resp OpenAsResp
 	if err := c.doJSON(ctx, "POST", "/OpenAs", nil, req, &resp); err != nil {
 		return nil, err
@@ -76,8 +76,8 @@ func (c *Client) OpenFrom(ctx context.Context, base blobcache.Handle, target blo
 	return &resp.Handle, nil
 }
 
-func (c *Client) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	req := CreateVolumeReq{Caller: caller, Spec: vspec}
+func (c *Client) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	req := CreateVolumeReq{Host: host, Spec: vspec}
 	var resp CreateVolumeResp
 	if err := c.doJSON(ctx, "POST", "/volume/", nil, req, &resp); err != nil {
 		return nil, err

@@ -34,8 +34,8 @@ var _ schema.Container = &Schema{}
 
 type Schema struct{}
 
-func (sch Schema) Validate(ctx context.Context, s cadata.Getter, _, next []byte) error {
-	_, err := sch.ListEntries(ctx, s, next)
+func (sch Schema) Validate(ctx context.Context, s schema.RO, _, next []byte) error {
+	_, err := sch.ListEntries(ctx, s.(cadata.Getter), next)
 	if err != nil {
 		return err
 	}
@@ -62,8 +62,8 @@ func (sch Schema) ListEntries(ctx context.Context, s cadata.Getter, root []byte)
 	return ents, nil
 }
 
-func (sch Schema) ReadLinks(ctx context.Context, s cadata.Getter, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error {
-	ents, err := sch.ListEntries(ctx, s, root)
+func (sch Schema) ReadLinks(ctx context.Context, s schema.RO, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error {
+	ents, err := sch.ListEntries(ctx, s.(cadata.Getter), root)
 	if err != nil {
 		return err
 	}

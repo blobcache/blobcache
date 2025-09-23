@@ -18,7 +18,7 @@ var (
 // Schema
 type Schema struct{}
 
-func (sch Schema) Validate(ctx context.Context, s cadata.Getter, prevRoot, nextRoot []byte) error {
+func (sch Schema) Validate(ctx context.Context, s schema.RO, prevRoot, nextRoot []byte) error {
 	var prev blobcache.OID
 	return sch.WalkOIDs(ctx, s, cadata.IDFromBytes(nextRoot), func(oid blobcache.OID) error {
 		if oid.Compare(prev) < 0 {
@@ -29,7 +29,7 @@ func (sch Schema) Validate(ctx context.Context, s cadata.Getter, prevRoot, nextR
 	})
 }
 
-func (sch Schema) WalkOIDs(ctx context.Context, s cadata.Getter, cid blobcache.CID, fn func(blobcache.OID) error) error {
+func (sch Schema) WalkOIDs(ctx context.Context, s schema.RO, cid blobcache.CID, fn func(blobcache.OID) error) error {
 	buf := make([]byte, blobcache.CIDSize*2)
 	n, err := s.Get(ctx, cid, buf)
 	if err != nil {
@@ -53,7 +53,7 @@ func (sch Schema) WalkOIDs(ctx context.Context, s cadata.Getter, cid blobcache.C
 	}
 }
 
-func (sch Schema) ListOIDs(ctx context.Context, s cadata.Getter, root []byte) ([]blobcache.OID, error) {
+func (sch Schema) ListOIDs(ctx context.Context, s schema.RO, root []byte) ([]blobcache.OID, error) {
 	var ret []blobcache.OID
 	err := sch.WalkOIDs(ctx, s, cadata.IDFromBytes(root), func(oid blobcache.OID) error {
 		ret = append(ret, oid)
@@ -62,7 +62,7 @@ func (sch Schema) ListOIDs(ctx context.Context, s cadata.Getter, root []byte) ([
 	return ret, err
 }
 
-func (sch Schema) ReadLinks(ctx context.Context, s cadata.Getter, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error {
+func (sch Schema) ReadLinks(ctx context.Context, s schema.RO, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error {
 	err := sch.WalkOIDs(ctx, s, cadata.IDFromBytes(root), func(oid blobcache.OID) error {
 		dst[oid] = blobcache.Action_ALL
 		return nil

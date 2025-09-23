@@ -54,6 +54,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			blobcache.HashAlgo_BLAKE2b_256,
 			blobcache.HashAlgo_SHA2_256,
 			blobcache.HashAlgo_SHA3_256,
+			blobcache.HashAlgo_CSHAKE256,
 		} {
 			t.Run(string(algo), func(t *testing.T) {
 				spec := defaultLocalSpec()

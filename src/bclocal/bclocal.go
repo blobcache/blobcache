@@ -163,7 +163,7 @@ func (s *Service) Serve(ctx context.Context) error {
 	err := s.node.Serve(ctx, bcnet.Server{
 		Access: func(peer blobcache.PeerID) blobcache.Service {
 			if policyMentions(s.env.Policy, peer) {
-				return s
+				return &peerView{Service: s, Caller: peer}
 			} else {
 				return nil
 			}
@@ -470,18 +470,7 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	}, nil
 }
 
-func (s *Service) OpenAs(ctx context.Context, caller *blobcache.PeerID, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	if caller != nil {
-		mask2 := s.env.Policy.Open(*caller, x)
-		if mask2 == 0 {
-			return nil, ErrNotAllowed{
-				Peer:   *caller,
-				Action: "OpenAs",
-				Target: x,
-			}
-		}
-		mask &= mask2
-	}
+func (s *Service) OpenAs(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
@@ -529,19 +518,17 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 	return &h, nil
 }
 
-func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	if caller != nil {
-		if !s.env.Policy.CanCreate(*caller) {
-			return nil, ErrNotAllowed{
-				Peer:   *caller,
-				Action: "CreateVolume",
-			}
-		}
-	}
-
+func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	if err := vspec.Validate(); err != nil {
 		return nil, err
 	}
+
+	if host != nil && s.node == nil {
+		return nil, fmt.Errorf("bclocal: node is not running. Cannot call CreateVolume with a non-nil host")
+	} else if host != nil && host.Peer != s.node.LocalID() {
+		return s.createRemoteVolume(ctx, *host, vspec)
+	}
+
 	vp, err := s.findVolumeParams(ctx, vspec)
 	if err != nil {
 		return nil, err
@@ -575,6 +562,46 @@ func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vs
 	return &handle, nil
 }
 
+// createRemoteVolume calls CreateVolume on a remote node
+func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	// the request is for a remote node.
+	rvh, err := bcnet.CreateVolume(ctx, s.node, host, vspec)
+	if err != nil {
+		return nil, err
+	}
+	rvInfo, err := bcnet.InspectVolume(ctx, s.node, host, *rvh)
+	if err != nil {
+		return nil, err
+	}
+	vp, err := s.findVolumeParams(ctx, vspec)
+	if err != nil {
+		return nil, err
+	}
+	// now we have a handle to the remote volume.
+	// The handle is only valid on the remote node.
+	localInfo := blobcache.VolumeInfo{
+		ID: blobcache.RandomOID(),
+		Backend: blobcache.VolumeBackend[blobcache.OID]{
+			Remote: &blobcache.VolumeBackend_Remote{
+				Endpoint: host,
+				Volume:   blobcache.RandomOID(),
+				HashAlgo: vp.HashAlgo,
+			},
+		},
+	}
+	// insert into volumes
+	s.mu.Lock()
+	s.volumes[localInfo.ID] = volume{
+		info:    localInfo,
+		backend: bcnet.NewVolume(s.node, host, *rvh, rvInfo),
+	}
+	s.mu.Unlock()
+	// create a local handle
+	localHandle := s.handles.Create(localInfo.ID, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL))
+	return &localHandle, nil
+
+}
+
 func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	vol, _, err := s.resolveVol(volh)
 	if err != nil {
@@ -593,7 +620,7 @@ func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, vol
 	if vinfo == nil {
 		return nil, fmt.Errorf("volume not found")
 	}
-	vinfo.ID = blobcache.NewOID()
+	vinfo.ID = blobcache.RandomOID()
 	if err := putVolume(ba, *vinfo); err != nil {
 		return nil, err
 	}
@@ -630,7 +657,7 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blo
 		return nil, err
 	}
 
-	txoid := blobcache.NewOID()
+	txoid := blobcache.RandomOID()
 	s.mu.Lock()
 	if s.txns == nil {
 		s.txns = make(map[blobcache.OID]transaction)

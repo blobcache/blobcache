@@ -16,13 +16,13 @@ type Schema struct {
 	Mach *glfs.Machine
 }
 
-func (sch *Schema) Validate(ctx context.Context, src cadata.Getter, prev, next []byte) error {
+func (sch *Schema) Validate(ctx context.Context, src schema.RO, prev, next []byte) error {
 	if len(prev) == 0 {
 		nextRef, err := ParseRef(next)
 		if err != nil {
 			return err
 		}
-		return sch.Mach.WalkRefs(ctx, src, *nextRef, func(ref glfs.Ref) error {
+		return sch.Mach.WalkRefs(ctx, src.(cadata.Getter), *nextRef, func(ref glfs.Ref) error {
 			return nil
 		})
 	}
@@ -34,7 +34,7 @@ func (sch *Schema) Validate(ctx context.Context, src cadata.Getter, prev, next [
 	if err != nil {
 		return err
 	}
-	return DiffRefs(ctx, src, *prevRef, *nextRef, func(left, right *glfs.Ref) error { return nil })
+	return DiffRefs(ctx, src.(cadata.Getter), *prevRef, *nextRef, func(left, right *glfs.Ref) error { return nil })
 }
 
 func ParseRef(root []byte) (*glfs.Ref, error) {

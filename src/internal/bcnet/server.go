@@ -54,7 +54,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	// BEGIN VOLUME
 	case MT_OPEN_AS:
 		handleAsk(req, resp, &OpenAsReq{}, func(req *OpenAsReq) (*OpenAsResp, error) {
-			h, err := svc.OpenAs(ctx, &ep.Peer, req.Target, req.Mask)
+			h, err := svc.OpenAs(ctx, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -78,7 +78,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		})
 	case MT_CREATE_VOLUME:
 		handleAsk(req, resp, &CreateVolumeReq{}, func(req *CreateVolumeReq) (*CreateVolumeResp, error) {
-			h, err := svc.CreateVolume(ctx, &ep.Peer, req.Spec)
+			h, err := svc.CreateVolume(ctx, nil, req.Spec)
 			if err != nil {
 				return nil, err
 			}
