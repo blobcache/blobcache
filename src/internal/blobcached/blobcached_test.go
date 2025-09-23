@@ -42,11 +42,11 @@ func TestParseAuthnFile(t *testing.T) {
 	peer1 := mkPeerID(1)
 	tcs := []struct {
 		I string
-		O []Membership
+		O []Membership[Identity]
 	}{
 		{
 			I: "alice " + peer1.String() + "\n\n",
-			O: []Membership{{Group: "alice", Member: Identity{Peer: &peer1}}},
+			O: []Membership[Identity]{{Group: "alice", Member: Member[Identity]{Unit: &Identity{Peer: &peer1}}}},
 		},
 		{
 			I: "\n\n\n",
@@ -55,9 +55,9 @@ func TestParseAuthnFile(t *testing.T) {
 		{
 			I: "alice " + peer1.String() +
 				"\ngroup-a @alice\n\n",
-			O: []Membership{
-				{Group: "alice", Member: Identity{Peer: &peer1}},
-				{Group: "group-a", Member: Identity{Name: ptr("alice")}},
+			O: []Membership[Identity]{
+				{Group: "alice", Member: Member[Identity]{Unit: &Identity{Peer: &peer1}}},
+				{Group: "group-a", Member: Member[Identity]{SubGroup: ptr[GroupName]("alice")}},
 			},
 		},
 	}

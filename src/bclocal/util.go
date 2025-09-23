@@ -2,7 +2,6 @@ package bclocal
 
 import (
 	"context"
-	"iter"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -105,10 +104,8 @@ func (l noOpLogger) Fatalf(msg string, args ...interface{}) {}
 // Do not make this public.
 type allowAllPolicy struct{}
 
-func (p *allowAllPolicy) GrantsFor(peer blobcache.PeerID) iter.Seq[schema.Link] {
-	return func(yield func(schema.Link) bool) {
-		yield(schema.Link{Target: blobcache.OID{}, Rights: blobcache.Action_ALL})
-	}
+func (p *allowAllPolicy) CanConnect(peer blobcache.PeerID) bool {
+	return true
 }
 
 func (p *allowAllPolicy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {

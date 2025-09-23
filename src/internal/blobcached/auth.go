@@ -13,31 +13,28 @@ import (
 
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/schema"
 	"go.inet256.org/inet256/src/inet256"
+	"golang.org/x/exp/constraints"
 )
 
 const (
-	AuthnFilename = "AUTHN"
-	AuthzFilename = "AUTHZ"
+	IdentitiesFilename = "IDENTITIES"
+	ActionsFilename    = "ACTIONS"
+	ObjectsFilename    = "OBJECTS"
+	GrantsFilename     = "GRANTS"
 )
 
-type Membership struct {
-	Group  string
-	Member Identity
-}
-
 type Identity struct {
-	// Name references a group.
-	Name *string
 	// Peer is a single peer.
 	Peer *blobcache.PeerID
+	// Everyone refers to all possible peers
+	Everyone *struct{}
 }
 
 func (iden Identity) Equals(other Identity) bool {
 	switch {
-	case iden.Name != nil:
-		return other.Name != nil && *iden.Name == *other.Name
+	case iden.Everyone != nil:
+		return other.Everyone != nil
 	case iden.Peer != nil:
 		return other.Peer != nil && *iden.Peer == *other.Peer
 	}
@@ -45,15 +42,15 @@ func (iden Identity) Equals(other Identity) bool {
 }
 
 func (iden Identity) String() string {
-	if iden.Name != nil {
-		return "@" + *iden.Name
+	if iden.Everyone != nil {
+		return "EVERYONE"
 	}
 	return iden.Peer.String()
 }
 
 func ParseIdentity(x []byte) (Identity, error) {
-	if bytes.HasPrefix(x, []byte("@")) {
-		return Identity{Name: ptr(string(x[1:]))}, nil
+	if string(x) == "EVERYONE" {
+		return Identity{Everyone: &struct{}{}}, nil
 	}
 	addr, err := inet256.ParseAddrBase64(x)
 	if err != nil {
@@ -62,56 +59,97 @@ func ParseIdentity(x []byte) (Identity, error) {
 	return Identity{Peer: &addr}, nil
 }
 
-func ParseAuthnFile(r io.Reader) (ret []Membership, _ error) {
-	groups := make(map[string]struct{})
+// ParseIdentitiesFiles parses a Group file into a list of identity group memberships.
+func ParseIdentitiesFile(r io.Reader) (ret []Membership[Identity], _ error) {
+	return ParseGroupsFile(r, ParseIdentity)
+}
+
+// WriteIdentitiesFile writes the memberships to the writer, such that they can be parsed by ParseIdentitiesFile.
+// It inserts an extra newline every time the group changes from the previous membership.
+func WriteIdentitiesFile(w io.Writer, membership []Membership[Identity]) error {
+	fmtIden := func(i Identity) string { return i.String() }
+	return WriteGroupsFile(w, membership, fmtIden)
+}
+
+type Action string
+
+const (
+	Action_LOOK  Action = "LOOK"
+	Action_TOUCH Action = "TOUCH"
+	Action_OWN   Action = "OWN"
+)
+
+func ParseAction(x []byte) (Action, error) {
+	switch string(x) {
+	case "LOOK":
+		return Action_LOOK, nil
+	case "TOUCH":
+		return Action_TOUCH, nil
+	}
+	return "", fmt.Errorf("invalid action: %s", x)
+}
+
+func ParseActionsFile(r io.Reader) (ret []Action, _ error) {
 	scn := bufio.NewScanner(r)
 	for linenum := 1; scn.Scan(); linenum++ {
 		line := scn.Bytes()
 		if len(line) == 0 {
 			continue
 		}
-		parts := bytes.SplitN(line, []byte(" "), 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid authn line %d: %s", linenum, line)
-		}
-		groupName, member := parts[0], parts[1]
-		memberIden, err := ParseIdentity([]byte(member))
+		action, err := ParseAction(line)
 		if err != nil {
-			return nil, fmt.Errorf("invalid authn line %d: %w", linenum, err)
+			return nil, fmt.Errorf("invalid action line %d: %w", linenum, err)
 		}
-		if memberIden.Name != nil {
-			if _, exists := groups[*memberIden.Name]; !exists {
-				return nil, fmt.Errorf("don't know who %q is, it hasn't been defined yet", *memberIden.Name)
-			}
-		}
-		groups[string(groupName)] = struct{}{}
-		membership := Membership{
-			Group:  string(groupName),
-			Member: memberIden,
-		}
-		ret = append(ret, membership)
+		ret = append(ret, action)
+		return ret, nil
 	}
 	return ret, nil
 }
 
-// WriteAuthnFile writes the memberships to the writer, such that they can be parsed by ParseAuthnFile.
-// It inserts an extra newline every time the group changes from the previous membership.
-func WriteAuthnFile(w io.Writer, membership []Membership) error {
-	bw := bufio.NewWriter(w)
-	prevGroup := ""
-	for i, m := range membership {
-		if i > 0 && m.Group != prevGroup {
-			if err := bw.WriteByte('\n'); err != nil {
-				return err
-			}
-		}
-		_, err := fmt.Fprintf(bw, "%s %s\n", m.Group, m.Member.String())
-		if err != nil {
-			return err
-		}
-		prevGroup = m.Group
+func WriteActionsFile(w io.Writer, actions []Membership[Action]) error {
+	return WriteGroupsFile(w, actions, func(a Action) string { return string(a) })
+}
+
+// ObjectSet is something that Actions are performed on.
+// It can be a specific OID, or a set of names defined by a regular expression.
+type ObjectSet struct {
+	ByOID *blobcache.OID
+}
+
+func (o ObjectSet) Equals(other ObjectSet) bool {
+	switch {
+	case o.ByOID != nil:
+		return other.ByOID != nil && *o.ByOID == *other.ByOID
 	}
-	return bw.Flush()
+	return false
+}
+
+func (o ObjectSet) String() string {
+	switch {
+	case o.ByOID != nil:
+		return o.ByOID.String()
+	default:
+		return ""
+	}
+}
+
+func ParseObject(x []byte) (ObjectSet, error) {
+	if len(x) == hex.EncodedLen(len(blobcache.OID{})) {
+		oid, err := blobcache.ParseOID(string(x))
+		if err != nil {
+			return ObjectSet{}, fmt.Errorf("invalid object: %s", x)
+		}
+		return ObjectSet{ByOID: &oid}, nil
+	}
+	return ObjectSet{}, fmt.Errorf("could not parse object set: %s", x)
+}
+
+func ParseObjectsFile(r io.Reader) (ret []Membership[ObjectSet], _ error) {
+	return ParseGroupsFile(r, ParseObject)
+}
+
+func WriteObjectsFile(w io.Writer, objects []Membership[ObjectSet]) error {
+	return WriteGroupsFile(w, objects, func(o ObjectSet) string { return o.String() })
 }
 
 type Grant struct {
@@ -151,59 +189,7 @@ func parseGrant(line []byte) (*Grant, error) {
 	}, nil
 }
 
-type Action string
-
-const (
-	Action_LOOK  Action = "LOOK"
-	Action_TOUCH Action = "TOUCH"
-	Action_OWN   Action = "OWN"
-)
-
-func ParseAction(x []byte) (Action, error) {
-	switch string(x) {
-	case "LOOK":
-		return Action_LOOK, nil
-	case "TOUCH":
-		return Action_TOUCH, nil
-	}
-	return "", fmt.Errorf("invalid action: %s", x)
-}
-
-// ObjectSet is something that Actions are performed on.
-// It can be a specific OID, or a set of names defined by a regular expression.
-type ObjectSet struct {
-	ByOID *blobcache.OID
-}
-
-func (o ObjectSet) Equals(other ObjectSet) bool {
-	switch {
-	case o.ByOID != nil:
-		return other.ByOID != nil && *o.ByOID == *other.ByOID
-	}
-	return false
-}
-
-func (o ObjectSet) String() string {
-	switch {
-	case o.ByOID != nil:
-		return o.ByOID.String()
-	default:
-		return ""
-	}
-}
-
-func ParseObject(x []byte) (ObjectSet, error) {
-	if len(x) == hex.EncodedLen(len(blobcache.OID{})) {
-		oid, err := blobcache.ParseOID(string(x))
-		if err != nil {
-			return ObjectSet{}, fmt.Errorf("invalid object: %s", x)
-		}
-		return ObjectSet{ByOID: &oid}, nil
-	}
-	return ObjectSet{}, fmt.Errorf("could not parse object set: %s", x)
-}
-
-func ParseAuthzFile(r io.Reader) (ret []Grant, _ error) {
+func ParseGrantsFile(r io.Reader) (ret []Grant, _ error) {
 	scn := bufio.NewScanner(r)
 	for linenum := 1; scn.Scan(); linenum++ {
 		line := scn.Bytes()
@@ -232,15 +218,30 @@ func WriteAuthzFile(w io.Writer, grants []Grant) error {
 var _ bclocal.Policy = &Policy{}
 
 type Policy struct {
-	groups map[string][]Identity
+	idens   map[GroupName][]Member[Identity]
+	actions map[GroupName][]Action
+	objects map[GroupName][]Member[ObjectSet]
+
 	grants []Grant
+
+	iden2Grant     map[inet256.ID][]uint16
+	vol2Grant      map[blobcache.OID][]uint16
+	actionsClosure map[GroupName]blobcache.ActionSet
 }
 
-func (p *Policy) GrantsFor(peer blobcache.PeerID) iter.Seq[schema.Link] {
-	panic("not implemented")
+func (p *Policy) CanConnect(peer blobcache.PeerID) bool {
+	_, exists := p.iden2Grant[peer]
+	return exists
 }
 
 func (p *Policy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+	volGrants := p.vol2Grant[target]
+	idenGrants := p.iden2Grant[peer]
+	for grantIndex := range findCommon(idenGrants, volGrants) {
+		grant := p.grants[grantIndex]
+		panic(grant) // TODO
+	}
+
 	return blobcache.Action_ALL
 }
 
@@ -248,24 +249,68 @@ func (p *Policy) CanCreate(peer blobcache.PeerID) bool {
 	return false
 }
 
-type grantKey struct {
-	Object ObjectSet
-	Verb   Action
+func (p *Policy) actionGroupContains(name GroupName, action Action) bool {
+	actions := p.actions[name]
+	for _, a := range actions {
+		if a == action {
+			return true
+		}
+	}
+	return false
 }
 
-func NewPolicy(membership []Membership, grants []Grant) *Policy {
-	groups := make(map[string][]Identity)
-	for _, m := range membership {
-		groups[m.Group] = append(groups[m.Group], m.Member)
+// findCommon finds the common elements of two sorted slices.
+func findCommon[T constraints.Ordered](a, b []T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for ai, bi := 0, 0; ai < len(a) && bi < len(b); {
+			switch {
+			case a[ai] == b[bi]:
+				if !yield(a[ai]) {
+					return
+				}
+				ai++
+				bi++
+			case a[ai] < b[bi]:
+				ai++
+			case a[ai] > b[bi]:
+				bi++
+			}
+		}
 	}
+}
+
+type grantKey struct {
+	Subject Member[Identity]
+	Verb    Member[Action]
+	Object  Member[ObjectSet]
+}
+
+func buildIndex[T any](membership []Membership[T]) map[GroupName][]T {
+	idx := make(map[GroupName][]T)
+	for _, m := range membership {
+		idx[m.Group] = append(idx[m.Group], *m.Member.Unit)
+	}
+	return idx
+}
+
+func NewPolicy(idens []Membership[Identity], actions []Membership[Action], objects []Membership[ObjectSet], grants []Grant) *Policy {
+	idenIdx := buildIndex(idens)
+	actionIdx := buildIndex(actions)
+	objectIdx := buildIndex(objects)
 	grantIdx := make(map[grantKey][]Identity)
 	for _, g := range grants {
-		k := grantKey{Verb: g.Verb, Object: g.Object}
-		grantIdx[k] = append(grantIdx[k], g.Subject)
+		gk := grantKey{
+			Verb:    Member[Action]{Unit: &g.Verb},
+			Object:  Member[ObjectSet]{Unit: &g.Object},
+			Subject: Member[Identity]{Unit: &g.Subject},
+		}
+		grantIdx[gk] = append(grantIdx[gk])
 	}
 	return &Policy{
-		groups: groups,
-		grants: grants,
+		idens:   idenIdx,
+		actions: actionIdx,
+		objects: objectIdx,
+		grants:  grants,
 	}
 }
 
@@ -297,8 +342,8 @@ func (p *Policy) CanLook(subject blobcache.PeerID, oid blobcache.OID) bool {
 
 // AllMemberships returns all the memberships in topological order.
 // The order is such that a group can only be mentioned after all the groups it depends on have been mentioned.
-func (p *Policy) AllMemberships() iter.Seq[Membership] {
-	return func(yield func(Membership) bool) {
+func (p *Policy) AllMemberships() iter.Seq[Membership[Identity]] {
+	return func(yield func(Membership[Identity]) bool) {
 		seen := make(map[string]bool)
 		var visit func(string)
 		visit = func(group string) {
@@ -312,7 +357,7 @@ func (p *Policy) AllMemberships() iter.Seq[Membership] {
 				}
 			}
 			for _, member := range p.groups[group] {
-				if !yield(Membership{Group: group, Member: member}) {
+				if !yield(Membership[Identity]{Group: GroupName(group), Member: Member[Identity]{Unit: &member}}) {
 					return
 				}
 			}
@@ -416,7 +461,7 @@ func (p *Policy) RemoveGrant(grant Grant) bool {
 }
 
 // LoadAuthnFile loads the authn file from the filesystem.
-func LoadAuthnFile(p string) ([]Membership, error) {
+func LoadAuthnFile(p string) ([]Membership[Identity], error) {
 	f, err := os.Open(p)
 	if err != nil {
 		if os.IsNotExist(err) {

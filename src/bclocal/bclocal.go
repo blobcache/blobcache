@@ -162,7 +162,7 @@ func (s *Service) Serve(ctx context.Context) error {
 	}
 	err := s.node.Serve(ctx, bcnet.Server{
 		Access: func(peer blobcache.PeerID) blobcache.Service {
-			if policyMentions(s.env.Policy, peer) {
+			if s.env.Policy.CanConnect(peer) {
 				return &peerView{Service: s, Caller: peer}
 			} else {
 				return nil
