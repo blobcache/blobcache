@@ -89,8 +89,8 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	return bcnet.InspectHandle(ctx, s.node, s.ep, h)
 }
 
-func (s *Service) OpenAs(ctx context.Context, caller *blobcache.PeerID, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return bcnet.OpenAs(ctx, s.node, s.ep, caller, target, mask)
+func (s *Service) OpenAs(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	return bcnet.OpenAs(ctx, s.node, s.ep, target, mask)
 }
 
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
@@ -106,11 +106,11 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobca
 }
 
 // CreateVolume creates a new volume.
-func (s *Service) CreateVolume(ctx context.Context, caller *blobcache.PeerID, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	if caller != nil && *caller != s.node.LocalID() {
+func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	if host != nil && *host != s.ep {
 		return nil, fmt.Errorf("bcremote: caller cannot be different from the node ID")
 	}
-	return bcnet.CreateVolume(ctx, s.node, s.ep, caller, vspec)
+	return bcnet.CreateVolume(ctx, s.node, s.ep, vspec)
 }
 
 // InspectVolume returns info about a Volume.

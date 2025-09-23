@@ -36,7 +36,7 @@ func InspectHandle(ctx context.Context, tp Transport, ep blobcache.Endpoint, h b
 	return &resp.Info, nil
 }
 
-func OpenAs(ctx context.Context, tp Transport, ep blobcache.Endpoint, caller *blobcache.PeerID, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func OpenAs(ctx context.Context, tp Transport, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	var resp OpenAsResp
 	if _, err := doAsk(ctx, tp, ep, MT_OPEN_AS, OpenAsReq{Target: target, Mask: mask}, &resp); err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func Await(ctx context.Context, tp Transport, ep blobcache.Endpoint, cond blobca
 	return nil
 }
 
-func CreateVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, caller *blobcache.PeerID, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+func CreateVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	var resp CreateVolumeResp
 	if _, err := doAsk(ctx, tp, ep, MT_CREATE_VOLUME, CreateVolumeReq{Spec: vspec}, &resp); err != nil {
 		return nil, err

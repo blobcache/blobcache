@@ -757,7 +757,7 @@ func (ltx *localTxnMut) Commit(ctx context.Context) error {
 		//nolint:copylocks // see above
 		ltx2 := *ltx
 		ltx2.mu = sync.RWMutex{}
-		var store cadata.Getter = volumes.NewUnsaltedStore(&ltx2)
+		var store schema.RO = volumes.NewUnsaltedStore(&ltx2)
 		if err := contSch.ReadLinks(ctx, store, root, links); err != nil {
 			return err
 		}

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/sha3"
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -13,8 +11,6 @@ import (
 	"strings"
 
 	"go.brendoncarroll.net/state/cadata"
-	"golang.org/x/crypto/blake2b"
-	"lukechampine.com/blake3"
 )
 
 // CID is a content identifier.
@@ -33,79 +29,6 @@ func ParseCID(s string) (CID, error) {
 		return CID{}, err
 	}
 	return ret, nil
-}
-
-// HashFunc is a cryptographic hash function.
-type HashFunc func(salt *CID, data []byte) CID
-
-// HashAlgo is a cryptographic hash algorithm.
-type HashAlgo string
-
-const (
-	HashAlgo_BLAKE3_256  HashAlgo = "blake3-256"
-	HashAlgo_BLAKE2b_256 HashAlgo = "blake2b-256"
-	HashAlgo_SHA2_256    HashAlgo = "sha2-256"
-	HashAlgo_SHA3_256    HashAlgo = "sha3-256"
-)
-
-func (h HashAlgo) Validate() error {
-	switch h {
-	case HashAlgo_BLAKE3_256, HashAlgo_BLAKE2b_256, HashAlgo_SHA2_256, HashAlgo_SHA3_256:
-		return nil
-	}
-	return fmt.Errorf("unknown hash algo: %q", h)
-}
-
-func (h HashAlgo) HashFunc() HashFunc {
-	switch h {
-	case HashAlgo_SHA2_256:
-		return func(salt *CID, x []byte) CID {
-			if salt != nil {
-				panic("salt not supported for sha2-256")
-			}
-			return sha256.Sum256(x)
-		}
-	case HashAlgo_SHA3_256:
-		return func(salt *CID, x []byte) CID {
-			if salt == nil {
-				return sha3.Sum256(x)
-			}
-			h := sha3.NewCSHAKE256(nil, salt[:])
-			h.Write(x)
-			var ret CID
-			if _, err := h.Read(ret[:]); err != nil {
-				panic(err)
-			}
-			return ret
-		}
-	case HashAlgo_BLAKE2b_256:
-		return func(salt *CID, x []byte) CID {
-			if salt == nil {
-				return blake2b.Sum256(x)
-			}
-			h, err := blake2b.New(32, salt[:])
-			if err != nil {
-				panic(err)
-			}
-			h.Write(x)
-			var ret CID
-			copy(ret[:], h.Sum(nil))
-			return ret
-		}
-	case HashAlgo_BLAKE3_256:
-		return func(salt *CID, x []byte) CID {
-			if salt == nil {
-				return blake3.Sum256(x)
-			}
-			h := blake3.New(32, salt[:])
-			h.Write(x)
-			var ret CID
-			copy(ret[:], h.Sum(nil))
-			return ret
-		}
-	default:
-		panic(h)
-	}
 }
 
 // OIDSize is the number of bytes in an OID.
@@ -130,7 +53,7 @@ func (o *OID) Unmarshal(data []byte) error {
 	return nil
 }
 
-func NewOID() (ret OID) {
+func RandomOID() (ret OID) {
 	rand.Read(ret[:])
 	return ret
 }
@@ -258,15 +181,7 @@ type GetOpts struct {
 	SkipVerify bool
 }
 
-type Service interface {
-	// Endpoint returns the endpoint of the service.
-	// If the endpoint is the zero value, the service is not listening for peers.
-	Endpoint(ctx context.Context) (Endpoint, error)
-
-	////
-	// Handle methods.
-	////
-
+type HandleAPI interface {
 	// Drop causes a handle to be released immediately.
 	// If all the handles to an object are dropped, the object is deleted.
 	Drop(ctx context.Context, h Handle) error
@@ -274,23 +189,23 @@ type Service interface {
 	KeepAlive(ctx context.Context, hs []Handle) error
 	// InspectHandle returns info about a handle.
 	InspectHandle(ctx context.Context, h Handle) (*HandleInfo, error)
+}
 
-	////
-	// Volume methods.
-	////
-
+type VolumeAPI interface {
 	// CreateVolume creates a new volume.
 	// CreateVolume always creates a Volume on the local Node.
 	// CreateVolume returns a handle to the Volume.  If no other references to the Volume
 	// have been created by the time the handle expires, the Volume will be deleted.
 	// Leave caller nil to skip Authorization checks.
-	CreateVolume(ctx context.Context, caller *PeerID, vspec VolumeSpec) (*Handle, error)
+	// Host describes where the Volume should be created.
+	// If the Host is nil, the Volume will be created on the local Node.
+	CreateVolume(ctx context.Context, host *Endpoint, vspec VolumeSpec) (*Handle, error)
 	// InspectVolume returns info about a Volume.
 	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
 	// OpenAs returns a handle to an object by it's ID.
 	// PeerID is the peer that is opening the handle.
 	// This is where any Authorization checks are done.
-	OpenAs(ctx context.Context, caller *PeerID, x OID, mask ActionSet) (*Handle, error)
+	OpenAs(ctx context.Context, x OID, mask ActionSet) (*Handle, error)
 	// OpenFrom returns a handle to an object by it's ID.
 	// base is the handle of a Volume, which links to the object.
 	// the base Volume's schema must be a Container.
@@ -301,10 +216,9 @@ type Service interface {
 	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
 	// CloneVolume clones a Volume, copying it's configuration, blobs, and cell data.
 	CloneVolume(ctx context.Context, caller *PeerID, volh Handle) (*Handle, error)
+}
 
-	////
-	// Transactions methods.
-	////
+type TxAPI interface {
 	// InspectTx returns info about a transaction.
 	InspectTx(ctx context.Context, tx Handle) (*TxInfo, error)
 	// Commit commits a transaction.
@@ -337,6 +251,16 @@ type Service interface {
 	// IsVisited is only usable in a GC transaction.
 	// It checks if each CID has been visited.
 	IsVisited(ctx context.Context, tx Handle, cids []CID, yesVisited []bool) error
+}
+
+type Service interface {
+	// Endpoint returns the endpoint of the service.
+	// If the endpoint is the zero value, the service is not listening for peers.
+	Endpoint(ctx context.Context) (Endpoint, error)
+
+	HandleAPI
+	VolumeAPI
+	TxAPI
 }
 
 // CheckBlob checks that the data matches the expected CID.

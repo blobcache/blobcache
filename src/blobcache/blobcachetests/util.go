@@ -12,9 +12,9 @@ func defaultLocalSpec() blobcache.VolumeSpec {
 	return blobcache.DefaultLocalSpec()
 }
 
-func CreateVolume(t testing.TB, s blobcache.Service, caller *blobcache.PeerID, spec blobcache.VolumeSpec) blobcache.Handle {
+func CreateVolume(t testing.TB, s blobcache.Service, host *blobcache.Endpoint, spec blobcache.VolumeSpec) blobcache.Handle {
 	ctx := testutil.Context(t)
-	volh, err := s.CreateVolume(ctx, caller, spec)
+	volh, err := s.CreateVolume(ctx, host, spec)
 	require.NoError(t, err)
 	require.NotNil(t, volh)
 	return *volh

@@ -10,8 +10,6 @@ import (
 type writeStore interface {
 	Post(ctx context.Context, data []byte) (blobcache.CID, error)
 	Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error)
-	Delete(ctx context.Context, cid blobcache.CID) error
-	Exists(ctx context.Context, cid blobcache.CID) (bool, error)
 	MaxSize() int
 	Hash(data []byte) blobcache.CID
 }

@@ -11,7 +11,6 @@ import (
 type Client struct {
 	Service blobcache.Service
 	Schema  Schema
-	PeerID  *blobcache.PeerID
 }
 
 // CreateAt creates a new Volume using spec, and links it to volh.
@@ -24,7 +23,7 @@ func (c *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string
 	if err != nil {
 		return nil, err
 	}
-	volh, err := c.Service.CreateVolume(ctx, c.PeerID, spec)
+	volh, err := c.Service.CreateVolume(ctx, nil, spec)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +126,7 @@ func (c *Client) GetEntry(ctx context.Context, volh blobcache.Handle, name strin
 
 func (c *Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
 	if volh.Secret == ([16]byte{}) {
-		volh2, err := c.Service.OpenAs(ctx, c.PeerID, volh.OID, blobcache.Action_ALL)
+		volh2, err := c.Service.OpenAs(ctx, volh.OID, blobcache.Action_ALL)
 		if err != nil {
 			return blobcache.Handle{}, err
 		}

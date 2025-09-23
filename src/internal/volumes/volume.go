@@ -67,16 +67,15 @@ func (v UnsaltedStore) Get(ctx context.Context, cid blobcache.CID, buf []byte) (
 	return v.inner.Get(ctx, cid, buf, blobcache.GetOpts{})
 }
 
-func (v UnsaltedStore) Delete(ctx context.Context, cid blobcache.CID) error {
-	return v.inner.Delete(ctx, []blobcache.CID{cid})
+func (v UnsaltedStore) Delete(ctx context.Context, cids []blobcache.CID) error {
+	return v.inner.Delete(ctx, cids)
 }
 
-func (v UnsaltedStore) Exists(ctx context.Context, cid blobcache.CID) (bool, error) {
-	dst := [1]bool{}
-	if err := v.inner.Exists(ctx, []blobcache.CID{cid}, dst[:]); err != nil {
-		return false, err
+func (v UnsaltedStore) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	if err := v.inner.Exists(ctx, cids, dst[:]); err != nil {
+		return err
 	}
-	return dst[0], nil
+	return nil
 }
 
 func (v UnsaltedStore) MaxSize() int {

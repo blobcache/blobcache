@@ -36,7 +36,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/OpenAs":
 		handleRequest(w, r, func(ctx context.Context, req OpenAsReq) (*OpenAsResp, error) {
-			handle, err := s.Service.OpenAs(ctx, req.Caller, req.Target, req.Mask)
+			handle, err := s.Service.OpenAs(ctx, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -91,7 +91,7 @@ func (s *Server) handleVolume(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/volume/":
 		handleRequest(w, r, func(ctx context.Context, req CreateVolumeReq) (*CreateVolumeResp, error) {
-			vol, err := s.Service.CreateVolume(ctx, req.Caller, req.Spec)
+			vol, err := s.Service.CreateVolume(ctx, req.Host, req.Spec)
 			if err != nil {
 				return nil, err
 			}

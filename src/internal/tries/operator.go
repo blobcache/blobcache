@@ -61,7 +61,7 @@ func (o *Machine) Get(ctx context.Context, s cadata.Getter, root Root, key []byt
 }
 
 // Put returns a copy of root where key maps to value, and all other mappings are unchanged.
-func (o *Machine) Put(ctx context.Context, s cadata.Store, root Root, key, value []byte) (*Root, error) {
+func (o *Machine) Put(ctx context.Context, s writeStore, root Root, key, value []byte) (*Root, error) {
 	e := &Entry{Key: key, Value: value}
 	return o.PutBatch(ctx, s, root, []*Entry{e})
 }

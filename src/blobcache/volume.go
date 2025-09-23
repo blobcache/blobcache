@@ -239,21 +239,6 @@ func DefaultLocalSpec() VolumeSpec {
 	}
 }
 
-type AEADAlgo string
-
-const (
-	AEAD_CHACHA20POLY1305 AEADAlgo = "chacha20poly1305"
-)
-
-func (a AEADAlgo) Validate() error {
-	switch a {
-	case AEAD_CHACHA20POLY1305:
-	default:
-		return fmt.Errorf("unknown aead algo: %s", a)
-	}
-	return nil
-}
-
 func emptyIter[T any]() iter.Seq[T] {
 	return func(yield func(T) bool) {}
 }
