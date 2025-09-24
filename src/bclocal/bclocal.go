@@ -458,6 +458,10 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return nil
 }
 
+func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	return nil, fmt.Errorf("Share not implemented")
+}
+
 func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
 	hstate, exists := s.handles.Inspect(h)
 	if !exists {
@@ -825,7 +829,7 @@ func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobc
 	return txn.backend.Delete(ctx, cids)
 }
 
-func (s *Service) AddFrom(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, out []bool) error {
+func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, out []bool) error {
 	if len(cids) != len(out) {
 		return fmt.Errorf("cids and out must have the same length")
 	}

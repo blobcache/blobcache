@@ -78,6 +78,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return &DropResp{}, nil
 		})
+	case r.URL.Path == "/Share":
+		handleRequest(w, r, func(ctx context.Context, req ShareReq) (*ShareResp, error) {
+			handle, err := s.Service.Share(ctx, req.Handle, req.Peer, req.Mask)
+			if err != nil {
+				return nil, err
+			}
+			return &ShareResp{Handle: *handle}, nil
+		})
 	case strings.HasPrefix(r.URL.Path, "/volume/"):
 		s.handleVolume(w, r)
 	case strings.HasPrefix(r.URL.Path, "/tx/"):

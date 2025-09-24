@@ -46,7 +46,13 @@ func TestParseIdentitiesFile(t *testing.T) {
 	}{
 		{
 			I: "alice " + peer1.String() + "\n\n",
-			O: []Membership[Identity]{{Group: "alice", Member: Member[Identity]{Unit: &Identity{Peer: &peer1}}}},
+			O: []Membership[Identity]{{Group: "alice", Member: Member[Identity]{Unit: &peer1}}},
+		},
+		{
+			I: "everyone " + Everyone.String() + "\n\n",
+			O: []Membership[Identity]{
+				{Group: "everyone", Member: Member[Identity]{Unit: &Everyone}},
+			},
 		},
 		{
 			I: "\n\n\n",
@@ -56,7 +62,7 @@ func TestParseIdentitiesFile(t *testing.T) {
 			I: "alice " + peer1.String() +
 				"\ngroup-a @alice\n\n",
 			O: []Membership[Identity]{
-				{Group: "alice", Member: Member[Identity]{Unit: &Identity{Peer: &peer1}}},
+				{Group: "alice", Member: Member[Identity]{Unit: &peer1}},
 				{Group: "group-a", Member: Member[Identity]{GroupRef: ptr[GroupName]("alice")}},
 			},
 		},
@@ -78,32 +84,66 @@ func TestParseIdentitiesFile(t *testing.T) {
 	}
 }
 
+func TestDefaultActionsFile(t *testing.T) {
+	actions, err := ParseActionsFile(strings.NewReader(DefaultActionsFile()))
+	require.NoError(t, err)
+	require.NotEmpty(t, actions)
+}
+
+func TestParseActionsFile(t *testing.T) {
+	tcs := []struct {
+		I string
+		O []Membership[Action]
+	}{}
+	for i, tc := range tcs {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			actions, err := ParseActionsFile(strings.NewReader(tc.I))
+			require.NoError(t, err)
+			require.Equal(t, tc.O, actions)
+		})
+	}
+}
+
+func TestParseObjectsFile(t *testing.T) {
+	tcs := []struct {
+		I string
+		O []Membership[ObjectSet]
+	}{}
+	for i, tc := range tcs {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			objects, err := ParseObjectsFile(strings.NewReader(tc.I))
+			require.NoError(t, err)
+			require.Equal(t, tc.O, objects)
+		})
+	}
+}
+
 func TestParseGrantsFile(t *testing.T) {
 	tcs := []struct {
 		I string
 		O []Grant
 	}{
 		{
-			I: "@alice LOOK 00000000000000000000000000000000\n",
+			I: "@alice LOAD 00000000000000000000000000000000\n",
 			O: []Grant{
 				{
 					Subject: GroupRef[Identity]("alice"),
-					Verb:    Unit(Action_LOOK),
+					Verb:    Unit(Action_LOAD),
 					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 			},
 		},
 		{
-			I: "@alice LOOK 00000000000000000000000000000000\n@bob TOUCH 00000000000000000000000000000000\n",
+			I: "@alice LOAD 00000000000000000000000000000000\n@bob SAVE 00000000000000000000000000000000\n",
 			O: []Grant{
 				{
 					Subject: GroupRef[Identity]("alice"),
-					Verb:    Unit(Action_LOOK),
+					Verb:    Unit(Action_LOAD),
 					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 				{
 					Subject: GroupRef[Identity]("bob"),
-					Verb:    Unit(Action_TOUCH),
+					Verb:    Unit(Action_SAVE),
 					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 			},
@@ -116,7 +156,7 @@ func TestParseGrantsFile(t *testing.T) {
 			require.Equal(t, tc.O, authz)
 
 			buf := bytes.NewBuffer(nil)
-			require.NoError(t, WriteAuthzFile(buf, authz))
+			require.NoError(t, WriteGrantsFile(buf, authz))
 			authz2, err := ParseGrantsFile(buf)
 			require.NoError(t, err)
 			require.Equal(t, authz, authz2)

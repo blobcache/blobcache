@@ -26,6 +26,16 @@ type KeepAliveReq struct {
 
 type KeepAliveResp struct{}
 
+type ShareReq struct {
+	Handle blobcache.Handle    `json:"handle"`
+	Peer   blobcache.PeerID    `json:"peer"`
+	Mask   blobcache.ActionSet `json:"mask"`
+}
+
+type ShareResp struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
 type AwaitReq struct {
 	Cond blobcache.Conditions `json:"cond"`
 }

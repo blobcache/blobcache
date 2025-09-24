@@ -24,39 +24,16 @@ const (
 	GrantsFilename     = "GRANTS"
 )
 
-type Identity struct {
-	// Peer is a single peer.
-	Peer *blobcache.PeerID
-	// Everyone refers to all possible peers
-	Everyone *struct{}
-}
+var Everyone = inet256.Everyone()
 
-func (iden Identity) Equals(other Identity) bool {
-	switch {
-	case iden.Everyone != nil:
-		return other.Everyone != nil
-	case iden.Peer != nil:
-		return other.Peer != nil && *iden.Peer == *other.Peer
-	}
-	return false
-}
-
-func (iden Identity) String() string {
-	if iden.Everyone != nil {
-		return "EVERYONE"
-	}
-	return iden.Peer.String()
-}
+type Identity = blobcache.PeerID
 
 func ParseIdentity(x []byte) (Identity, error) {
-	if string(x) == "EVERYONE" {
-		return Identity{Everyone: &struct{}{}}, nil
-	}
 	addr, err := inet256.ParseAddrBase64(x)
 	if err != nil {
 		return Identity{}, err
 	}
-	return Identity{Peer: &addr}, nil
+	return addr, nil
 }
 
 // ParseIdentitiesFiles parses a Group file into a list of identity group memberships.
@@ -76,21 +53,90 @@ type Action string
 func (a Action) String() string { return string(a) }
 
 const (
-	Action_LOOK   Action = "LOOK"
-	Action_TOUCH  Action = "TOUCH"
-	Action_CREATE Action = "CREATE"
+	Action_LOAD      Action = "LOAD"
+	Action_SAVE      Action = "SAVE"
+	Action_POST      Action = "POST"
+	Action_GET       Action = "GET"
+	Action_EXISTS    Action = "EXISTS"
+	Action_DELETE    Action = "DELETE"
+	Action_COPY_FROM Action = "COPY_FROM"
+	Action_COPY_TO   Action = "COPY_TO"
+	Action_LINK_FROM Action = "LINK_FROM"
+	Action_LINK_TO   Action = "LINK_TO"
+	Action_AWAIT     Action = "AWAIT"
+	Action_CLONE     Action = "CLONE"
+	Action_CREATE    Action = "CREATE"
 )
+
+func (a Action) ToSet() blobcache.ActionSet {
+	switch a {
+	case Action_LOAD:
+		return blobcache.Action_TX_LOAD
+	case Action_SAVE:
+		return blobcache.Action_TX_SAVE
+	case Action_POST:
+		return blobcache.Action_TX_POST
+	case Action_GET:
+		return blobcache.Action_TX_GET
+	case Action_EXISTS:
+		return blobcache.Action_TX_EXISTS
+	case Action_DELETE:
+		return blobcache.Action_TX_DELETE
+	case Action_COPY_FROM:
+		return blobcache.Action_TX_COPY_FROM
+	case Action_COPY_TO:
+		return blobcache.Action_TX_COPY_TO
+	case Action_LINK_FROM:
+		return blobcache.Action_TX_LINK_FROM
+	case Action_LINK_TO:
+		return blobcache.Action_TX_LINK_FROM
+	case Action_AWAIT:
+		return blobcache.Action_VOLUME_AWAIT
+	case Action_CLONE:
+		return blobcache.Action_VOLUME_CLONE
+	case Action_CREATE:
+		return blobcache.Action_VOLUME_CREATE
+	}
+	return 0
+}
 
 func ParseAction(x []byte) (Action, error) {
 	switch string(x) {
-	case "LOOK":
-		return Action_LOOK, nil
-	case "TOUCH":
-		return Action_TOUCH, nil
+	case "LOAD":
+		return Action_LOAD, nil
+	case "SAVE":
+		return Action_SAVE, nil
+	case "POST":
+		return Action_POST, nil
+	case "GET":
+		return Action_GET, nil
+	case "EXISTS":
+		return Action_EXISTS, nil
+	case "DELETE":
+		return Action_DELETE, nil
+	case "COPY_FROM":
+		return Action_COPY_FROM, nil
+	case "COPY_TO":
+		return Action_COPY_TO, nil
+	case "LINK_FROM":
+		return Action_LINK_FROM, nil
+	case "LINK_TO":
+		return Action_LINK_TO, nil
+	case "AWAIT":
+		return Action_AWAIT, nil
+	case "CLONE":
+		return Action_CLONE, nil
 	case "CREATE":
 		return Action_CREATE, nil
 	}
 	return "", fmt.Errorf("invalid action: %s", x)
+}
+
+func DefaultActionsFile() (ret string) {
+	ret += "all LOAD SAVE POST GET EXISTS DELETE COPY_FROM COPY_TO LINK_FROM LINK_TO AWAIT CLONE CREATE\n"
+	ret += "look LOAD GET EXISTS COPY_FROM LINK_TO AWAIT\n"
+	ret += "touch @look SAVE POST DELETE COPY_TO\n"
+	return ret
 }
 
 func ParseActionsFile(r io.Reader) (ret []Membership[Action], _ error) {
@@ -104,7 +150,10 @@ func WriteActionsFile(w io.Writer, actions []Membership[Action]) error {
 // ObjectSet is something that Actions are performed on.
 // It can be a specific OID, or a set of names defined by a regular expression.
 type ObjectSet struct {
+	// ByOID is a specific OID
 	ByOID *blobcache.OID
+	// All refers to all possible objects
+	All *struct{}
 }
 
 func (o ObjectSet) Equals(other ObjectSet) bool {
@@ -125,6 +174,9 @@ func (o ObjectSet) String() string {
 }
 
 func ParseObject(x []byte) (ObjectSet, error) {
+	if string(x) == "ALL" {
+		return ObjectSet{All: &struct{}{}}, nil
+	}
 	if len(x) == hex.EncodedLen(len(blobcache.OID{})) {
 		oid, err := blobcache.ParseOID(string(x))
 		if err != nil {
@@ -230,7 +282,7 @@ func ParseGrantsFile(r io.Reader) (ret []Grant, _ error) {
 	return ret, nil
 }
 
-func WriteAuthzFile(w io.Writer, grants []Grant) error {
+func WriteGrantsFile(w io.Writer, grants []Grant) error {
 	bw := bufio.NewWriter(w)
 	for _, g := range grants {
 		if _, err := fmt.Fprintf(bw, "%s %s %s\n",
@@ -299,14 +351,12 @@ func (p *Policy) CanCreate(peer blobcache.PeerID) bool {
 	for _, gi := range idenGrants {
 		grant := p.grants[gi]
 		rights := p.expandActionMember(grant.Verb)
-		if rights&rightsForAction(Action_CREATE) != 0 {
+		if rights&Action_CREATE.ToSet() != 0 {
 			return true
 		}
 	}
 	return false
 }
-
-//
 
 // findCommon finds the common elements of two sorted slices.
 func findCommon[T constraints.Ordered](a, b []T) iter.Seq[T] {
@@ -326,12 +376,6 @@ func findCommon[T constraints.Ordered](a, b []T) iter.Seq[T] {
 			}
 		}
 	}
-}
-
-type grantKey struct {
-	Subject Member[Identity]
-	Verb    Member[Action]
-	Object  Member[ObjectSet]
 }
 
 func buildIndex[T any](membership []Membership[T]) map[GroupName][]Member[T] {
@@ -409,12 +453,10 @@ func (p *Policy) expandIdentityMember(m Member[Identity]) (bool, []inet256.ID) {
 			return
 		}
 		id := *mx.Unit
-		switch {
-		case id.Everyone != nil:
+		if id == Everyone {
 			everyone = true
-		case id.Peer != nil:
-			peers[*id.Peer] = struct{}{}
 		}
+		peers[id] = struct{}{}
 	}
 	visit(m)
 	out := make([]inet256.ID, 0, len(peers))
@@ -476,7 +518,7 @@ func (p *Policy) expandActionMember(m Member[Action]) blobcache.ActionSet {
 				if sub.GroupRef != nil {
 					ret |= visit(*sub.GroupRef)
 				} else if sub.Unit != nil {
-					ret |= rightsForAction(*sub.Unit)
+					ret |= sub.Unit.ToSet()
 				}
 			}
 			return ret
@@ -488,33 +530,7 @@ func (p *Policy) expandActionMember(m Member[Action]) blobcache.ActionSet {
 	if m.Unit == nil {
 		return 0
 	}
-	return rightsForAction(*m.Unit)
-}
-
-func rightsForAction(a Action) blobcache.ActionSet {
-	switch a {
-	case Action_LOOK:
-		return blobcache.Action_Tx_Inspect |
-			blobcache.Action_Tx_Load |
-			blobcache.Action_Tx_Get |
-			blobcache.Action_Tx_Exists |
-			blobcache.Action_Tx_IsVisited |
-			blobcache.Action_Volume_Inspect |
-			blobcache.Action_Volume_Await
-	case Action_TOUCH:
-		return rightsForAction(Action_LOOK) |
-			blobcache.Action_Volume_BeginTx |
-			blobcache.Action_Tx_Post |
-			blobcache.Action_Tx_Delete |
-			blobcache.Action_Tx_AddFrom |
-			blobcache.Action_Tx_AllowLink |
-			blobcache.Action_Tx_Visited
-	case Action_CREATE:
-		// used for CanCreate; no implicit Open rights
-		return blobcache.ActionSet(1) << 63 // sentinel bit unlikely used; ensure non-zero for detection
-	default:
-		return 0
-	}
+	return m.Unit.ToSet()
 }
 
 // Management and enumeration helpers used by admin CLI
@@ -554,7 +570,7 @@ func (p *Policy) AllGroups() iter.Seq[string] {
 // IsDefined returns true if the identity is a defined group, or a peer.
 func (p *Policy) IsIdentityDefined(iden Identity) bool {
 	switch {
-	case iden.Peer != nil:
+	case iden == Everyone:
 		return true
 	default:
 		return false
@@ -568,7 +584,7 @@ func (p *Policy) AddMember(group string, member Identity) bool {
 	members := p.idens[GroupName(group)]
 	// check for duplicate unit member
 	for _, m := range members {
-		if m.GroupRef == nil && m.Unit != nil && m.Unit.Equals(member) {
+		if m.GroupRef == nil && m.Unit != nil && *m.Unit == member {
 			return false
 		}
 	}
@@ -583,7 +599,7 @@ func (p *Policy) RemoveMember(group string, member Identity) (didChange bool) {
 	members := p.idens[g]
 	out := members[:0]
 	for _, m := range members {
-		if !(m.GroupRef == nil && m.Unit != nil && m.Unit.Equals(member)) {
+		if !(m.GroupRef == nil && m.Unit != nil && *m.Unit == member) {
 			out = append(out, m)
 		} else {
 			didChange = true
@@ -593,7 +609,7 @@ func (p *Policy) RemoveMember(group string, member Identity) (didChange bool) {
 	// update membership slice
 	ims := p.idenMemberships[:0]
 	for _, m := range p.idenMemberships {
-		if !(m.Group == g && m.Member.GroupRef == nil && m.Member.Unit != nil && m.Member.Unit.Equals(member)) {
+		if !(m.Group == g && m.Member.GroupRef == nil && m.Member.Unit != nil && *m.Member.Unit == member) {
 			ims = append(ims, m)
 		}
 	}
@@ -751,7 +767,7 @@ func SavePolicy(stateDir string, policy *Policy) error {
 		return err
 	}
 	defer grantsFile.Close()
-	if err := WriteAuthzFile(grantsFile, slices.Collect(policy.AllGrants())); err != nil {
+	if err := WriteGrantsFile(grantsFile, slices.Collect(policy.AllGrants())); err != nil {
 		return err
 	}
 	return nil

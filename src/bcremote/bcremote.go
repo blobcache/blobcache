@@ -85,6 +85,10 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return bcnet.KeepAlive(ctx, s.node, s.ep, hs)
 }
 
+func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	return bcnet.Share(ctx, s.node, s.ep, h, to, mask)
+}
+
 func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
 	return bcnet.InspectHandle(ctx, s.node, s.ep, h)
 }
@@ -165,7 +169,7 @@ func (s *Service) Delete(ctx context.Context, tx blobcache.Handle, cids []blobca
 	return bcnet.Delete(ctx, s.node, s.ep, tx, cids)
 }
 
-func (s *Service) AddFrom(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
+func (s *Service) Copy(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
 	return bcnet.AddFrom(ctx, s.node, s.ep, tx, cids, srcTxns, success)
 }
 

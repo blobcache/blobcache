@@ -8,12 +8,7 @@ import (
 	"iter"
 	"net/netip"
 	"strings"
-
-	"go.inet256.org/inet256/src/inet256"
 )
-
-// PeerID uniquely identifies a peer by hash of the public key.
-type PeerID = inet256.ID
 
 // Endpoint is somewhere that a blobcache node can be found.
 // The Zero endpoint means the node is not available on the network.

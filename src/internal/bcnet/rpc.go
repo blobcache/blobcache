@@ -28,6 +28,14 @@ func KeepAlive(ctx context.Context, tp Transport, ep blobcache.Endpoint, hs []bl
 	return nil
 }
 
+func Share(ctx context.Context, tp Transport, ep blobcache.Endpoint, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	var resp ShareResp
+	if _, err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE, ShareReq{Handle: h, Peer: to, Mask: mask}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
 func InspectHandle(ctx context.Context, tp Transport, ep blobcache.Endpoint, h blobcache.Handle) (*blobcache.HandleInfo, error) {
 	var resp InspectHandleResp
 	if _, err := doAsk(ctx, tp, ep, MT_HANDLE_INSPECT, InspectHandleReq{Handle: h}, &resp); err != nil {
