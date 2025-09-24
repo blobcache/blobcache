@@ -68,7 +68,25 @@ func TestParseActionsFile(t *testing.T) {
 	tcs := []struct {
 		I string
 		O []Membership[Action]
-	}{}
+	}{
+		{
+			I: "all LOAD SAVE\n\n",
+			O: []Membership[Action]{
+				{Group: "all", Member: Unit(Action_LOAD)},
+				{Group: "all", Member: Unit(Action_SAVE)},
+			},
+		},
+		{
+			I: "look LOAD GET\n\n" +
+				"touch @look SAVE\n\n",
+			O: []Membership[Action]{
+				{Group: "look", Member: Unit(Action_LOAD)},
+				{Group: "look", Member: Unit(Action_GET)},
+				{Group: "touch", Member: GroupRef[Action]("look")},
+				{Group: "touch", Member: Unit(Action_SAVE)},
+			},
+		},
+	}
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			actions, err := ParseActionsFile(strings.NewReader(tc.I))
@@ -82,7 +100,28 @@ func TestParseObjectsFile(t *testing.T) {
 	tcs := []struct {
 		I string
 		O []Membership[ObjectSet]
-	}{}
+	}{
+		{
+			I: "zero 00000000000000000000000000000000\n\n",
+			O: []Membership[ObjectSet]{
+				{Group: "zero", Member: Unit(ObjectSet{ByOID: ptr(blobcache.OID{})})},
+			},
+		},
+		{
+			I: "zero 00000000000000000000000000000000\n" +
+				"vols @zero\n\n",
+			O: []Membership[ObjectSet]{
+				{Group: "zero", Member: Unit(ObjectSet{ByOID: ptr(blobcache.OID{})})},
+				{Group: "vols", Member: GroupRef[ObjectSet]("zero")},
+			},
+		},
+		{
+			I: "all ALL\n\n",
+			O: []Membership[ObjectSet]{
+				{Group: "all", Member: Unit(ObjectSet{All: &struct{}{}})},
+			},
+		},
+	}
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			objects, err := ParseObjectsFile(strings.NewReader(tc.I))
@@ -102,7 +141,7 @@ func TestParseGrantsFile(t *testing.T) {
 			O: []Grant{
 				{
 					Subject: GroupRef[Identity]("alice"),
-					Verb:    Unit(Action_LOAD),
+					Action:  Unit(Action_LOAD),
 					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 			},
@@ -112,12 +151,12 @@ func TestParseGrantsFile(t *testing.T) {
 			O: []Grant{
 				{
 					Subject: GroupRef[Identity]("alice"),
-					Verb:    Unit(Action_LOAD),
+					Action:  Unit(Action_LOAD),
 					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 				{
 					Subject: GroupRef[Identity]("bob"),
-					Verb:    Unit(Action_SAVE),
+					Action:  Unit(Action_SAVE),
 					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 			},
@@ -142,4 +181,93 @@ func mkPeerID(i int) blobcache.PeerID {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(i))
 	return blobcache.PeerID(blake3.Sum256(buf))
+}
+
+func TestPolicy(t *testing.T) {
+	peer1 := mkPeerID(1)
+	vol1 := mkVolOID(1)
+
+	type Check struct {
+		Peer       blobcache.PeerID
+		Target     blobcache.OID
+		CanConnect bool
+		Open       blobcache.ActionSet
+		CanCreate  bool
+	}
+
+	tcs := []struct {
+		Name    string
+		Idens   []Membership[Identity]
+		Actions []Membership[Action]
+		Objects []Membership[ObjectSet]
+		Grants  []Grant
+
+		Checks []Check
+	}{
+		{
+			Name: "no-grants",
+			Idens: []Membership[Identity]{
+				{Group: "alice", Member: Unit(peer1)},
+			},
+			Actions: nil,
+			Objects: nil,
+			Grants:  nil,
+			Checks: []Check{
+				{Peer: peer1, Target: vol1, CanConnect: false, Open: 0, CanCreate: false},
+			},
+		},
+		{
+			Name:    "anyone-get-on-vol1",
+			Idens:   nil,
+			Actions: nil,
+			Objects: nil,
+			Grants: []Grant{
+				{Subject: Unit(Everyone), Action: Unit(Action_GET), Object: Unit(ObjectSet{ByOID: &vol1})},
+			},
+			Checks: []Check{
+				{Peer: peer1, Target: vol1, CanConnect: true, Open: blobcache.Action_TX_GET, CanCreate: false},
+			},
+		},
+		{
+			Name: "grouped-actions-closure-and-create",
+			Idens: []Membership[Identity]{
+				{Group: "alice", Member: Unit(peer1)},
+			},
+			Actions: []Membership[Action]{
+				{Group: "look", Member: Unit(Action_GET)},
+				{Group: "touch", Member: GroupRef[Action]("look")},
+				{Group: "touch", Member: Unit(Action_SAVE)},
+				{Group: "touch", Member: Unit(Action_CREATE)},
+			},
+			Objects: []Membership[ObjectSet]{
+				{Group: "vols", Member: Unit(ObjectSet{ByOID: &vol1})},
+			},
+			Grants: []Grant{
+				{Subject: GroupRef[Identity]("alice"), Action: GroupRef[Action]("touch"), Object: GroupRef[ObjectSet]("vols")},
+			},
+			Checks: []Check{
+				{Peer: peer1, Target: vol1, CanConnect: true, Open: blobcache.Action_TX_GET | blobcache.Action_TX_SAVE, CanCreate: true},
+			},
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.Name, func(t *testing.T) {
+			p, err := NewPolicy(tc.Idens, tc.Actions, tc.Objects, tc.Grants)
+			require.NoError(t, err)
+			for _, check := range tc.Checks {
+				require.Equal(t, check.CanConnect, p.CanConnect(check.Peer))
+				rights := p.Open(check.Peer, check.Target)
+				require.Equal(t, check.Open, rights)
+				require.Equal(t, check.CanCreate, p.CanCreate(check.Peer))
+			}
+		})
+	}
+}
+
+func mkVolOID(i int) blobcache.OID {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(i))
+	h := blake3.Sum256(buf)
+	return blobcache.OID(h[:blobcache.OIDSize])
 }

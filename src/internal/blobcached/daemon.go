@@ -103,9 +103,9 @@ func (d *Daemon) EnsurePolicyFiles() error {
 		return fmt.Errorf("StateDir is required")
 	}
 	files := map[string]string{
-		filepath.Join(d.StateDir, IdentitiesFilename): "",
+		filepath.Join(d.StateDir, IdentitiesFilename): DefaultIdentitiesFile(),
 		filepath.Join(d.StateDir, ActionsFilename):    DefaultActionsFile(),
-		filepath.Join(d.StateDir, ObjectsFilename):    "",
+		filepath.Join(d.StateDir, ObjectsFilename):    DefaultObjectsFile(),
 		filepath.Join(d.StateDir, GrantsFilename):     DefaultGrantsFile(),
 	}
 	for p, content := range files {

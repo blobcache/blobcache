@@ -48,6 +48,12 @@ func WriteIdentitiesFile(w io.Writer, membership []Membership[Identity]) error {
 	return WriteGroupsFile(w, membership, fmtIden)
 }
 
+func DefaultIdentitiesFile() (ret string) {
+	ret += "everyone " + Everyone.String() + "\n"
+	ret += "admin\n"
+	return ret
+}
+
 type Action string
 
 func (a Action) String() string { return string(a) }
@@ -202,14 +208,14 @@ func DefaultObjectsFile() (ret string) {
 
 type Grant struct {
 	Subject Member[Identity]
-	Verb    Member[Action]
+	Action  Member[Action]
 	Object  Member[ObjectSet]
 }
 
 func (g *Grant) Equals(other Grant) bool {
 	// Equality by string formatting of members
 	return g.Subject.Format(func(i Identity) string { return i.String() }) == other.Subject.Format(func(i Identity) string { return i.String() }) &&
-		g.Verb.Format(func(a Action) string { return string(a) }) == other.Verb.Format(func(a Action) string { return string(a) }) &&
+		g.Action.Format(func(a Action) string { return string(a) }) == other.Action.Format(func(a Action) string { return string(a) }) &&
 		g.Object.Format(func(o ObjectSet) string { return o.String() }) == other.Object.Format(func(o ObjectSet) string { return o.String() })
 }
 
@@ -266,7 +272,7 @@ func parseGrant(line []byte) (*Grant, error) {
 	}
 	return &Grant{
 		Subject: subj,
-		Verb:    verb,
+		Action:  verb,
 		Object:  obj,
 	}, nil
 }
@@ -292,7 +298,7 @@ func WriteGrantsFile(w io.Writer, grants []Grant) error {
 	for _, g := range grants {
 		if _, err := fmt.Fprintf(bw, "%s %s %s\n",
 			g.Subject.Format(func(i Identity) string { return i.String() }),
-			g.Verb.Format(func(a Action) string { return string(a) }),
+			g.Action.Format(func(a Action) string { return string(a) }),
 			g.Object.Format(func(o ObjectSet) string { return o.String() }),
 		); err != nil {
 			return err
@@ -347,7 +353,7 @@ func (p *Policy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.Act
 	var rights blobcache.ActionSet
 	for grantIndex := range findCommon(idenGrants, volGrants) {
 		grant := p.grants[grantIndex]
-		rights |= p.expandActionMember(grant.Verb)
+		rights |= p.expandActionMember(grant.Action)
 	}
 	return rights
 }
@@ -360,7 +366,7 @@ func (p *Policy) CanCreate(peer blobcache.PeerID) bool {
 	// check if any corresponding grant has CREATE in its action closure
 	for _, gi := range idenGrants {
 		grant := p.grants[gi]
-		rights := p.expandActionMember(grant.Verb)
+		rights := p.expandActionMember(grant.Action)
 		if rights&Action_CREATE.ToSet() != 0 {
 			return true
 		}
@@ -391,12 +397,16 @@ func findCommon[T constraints.Ordered](a, b []T) iter.Seq[T] {
 func buildIndex[T any](membership []Membership[T]) map[GroupName][]Member[T] {
 	idx := make(map[GroupName][]Member[T])
 	for _, m := range membership {
-		idx[m.Group] = append(idx[m.Group], m.Member)
+		if m.Member.Empty != nil {
+			idx[m.Group] = idx[m.Group] // make sure there is something there
+		} else {
+			idx[m.Group] = append(idx[m.Group], m.Member)
+		}
 	}
 	return idx
 }
 
-func NewPolicy(idens []Membership[Identity], actions []Membership[Action], objects []Membership[ObjectSet], grants []Grant) *Policy {
+func NewPolicy(idens []Membership[Identity], actions []Membership[Action], objects []Membership[ObjectSet], grants []Grant) (*Policy, error) {
 	p := &Policy{
 		idens:             buildIndex(idens),
 		actions:           buildIndex(actions),
@@ -408,6 +418,25 @@ func NewPolicy(idens []Membership[Identity], actions []Membership[Action], objec
 		iden2Grant:        make(map[inet256.ID][]uint16),
 		vol2Grant:         make(map[blobcache.OID][]uint16),
 		actionsClosure:    make(map[GroupName]blobcache.ActionSet),
+	}
+
+	// validate grants
+	for _, g := range grants {
+		if g.Subject.GroupRef != nil {
+			if _, ok := p.idens[*g.Subject.GroupRef]; !ok {
+				return nil, fmt.Errorf("subject group %v not found", *g.Subject.GroupRef)
+			}
+		}
+		if g.Action.GroupRef != nil {
+			if _, ok := p.actions[*g.Action.GroupRef]; !ok {
+				return nil, fmt.Errorf("action group %v not found", *g.Action.GroupRef)
+			}
+		}
+		if g.Object.GroupRef != nil {
+			if _, ok := p.objects[*g.Object.GroupRef]; !ok {
+				return nil, fmt.Errorf("object group %v not found", *g.Object.GroupRef)
+			}
+		}
 	}
 	// build indexes
 	for gi, g := range grants {
@@ -439,7 +468,7 @@ func NewPolicy(idens []Membership[Identity], actions []Membership[Action], objec
 		s = slices.Compact(s)
 		p.vol2Grant[k] = s
 	}
-	return p
+	return p, nil
 }
 
 // expandIdentityMember returns if EVERYONE is included and the set of peers
@@ -733,7 +762,7 @@ func LoadPolicy(stateDir string) (*Policy, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewPolicy(idens, acts, objs, grants), nil
+	return NewPolicy(idens, acts, objs, grants)
 }
 
 func SavePolicy(stateDir string, policy *Policy) error {

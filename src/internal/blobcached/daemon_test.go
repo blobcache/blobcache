@@ -3,6 +3,7 @@ package blobcached
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -12,7 +13,7 @@ import (
 
 func TestRun(t *testing.T) {
 	ctx := testutil.Context(t)
-	ctx, cf := context.WithCancel(ctx)
+	ctx, cf := context.WithTimeout(ctx, 5*time.Second)
 	dir := t.TempDir()
 
 	done := make(chan struct{})

@@ -32,6 +32,8 @@ type Member[T any] struct {
 	Unit *T
 	// GroupRef references another group by name.
 	GroupRef *GroupName
+	// Empty is used to create empty groups.
+	Empty *struct{}
 }
 
 // Unit creates a group member that references a single element.
@@ -70,7 +72,7 @@ func (m Member[T]) Format(format func(T) string) string {
 }
 
 func ParseGroupsFile[T any](r io.Reader, parse func([]byte) (T, error)) (ret []Membership[T], _ error) {
-	groups := make(map[GroupName]struct{})
+	groups := make(map[GroupName]int)
 	scn := bufio.NewScanner(r)
 	for linenum := 1; scn.Scan(); linenum++ {
 		line := scn.Bytes()
@@ -78,13 +80,11 @@ func ParseGroupsFile[T any](r io.Reader, parse func([]byte) (T, error)) (ret []M
 			continue
 		}
 		parts := bytes.Split(line, []byte(" "))
-		if len(parts) < 2 {
-			return nil, fmt.Errorf("invalid line %d: %s", linenum, line)
-		}
 		groupName, err := ParseGroupName(parts[0])
 		if err != nil {
 			return nil, fmt.Errorf("invalid line %d: %w", linenum, err)
 		}
+		groups[groupName] += 0
 
 		for _, memberData := range parts[1:] {
 			// for each remaining word on the line, try to parse it as a member
@@ -104,8 +104,16 @@ func ParseGroupsFile[T any](r io.Reader, parse func([]byte) (T, error)) (ret []M
 				Group:  groupName,
 				Member: elem,
 			})
+			groups[groupName]++
 		}
-		groups[groupName] = struct{}{}
+	}
+	for name, numMembers := range groups {
+		if numMembers == 0 {
+			ret = append(ret, Membership[T]{
+				Group:  name,
+				Member: Member[T]{Empty: &struct{}{}},
+			})
+		}
 	}
 	return ret, nil
 }
