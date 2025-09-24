@@ -246,7 +246,13 @@ func TestPolicy(t *testing.T) {
 				{Subject: GroupRef[Identity]("alice"), Action: GroupRef[Action]("touch"), Object: GroupRef[ObjectSet]("vols")},
 			},
 			Checks: []Check{
-				{Peer: peer1, Target: vol1, CanConnect: true, Open: blobcache.Action_TX_GET | blobcache.Action_TX_SAVE, CanCreate: true},
+				{
+					Peer:       peer1,
+					Target:     vol1,
+					CanConnect: true,
+					Open:       blobcache.Action_TX_GET | blobcache.Action_TX_SAVE,
+					CanCreate:  true,
+				},
 			},
 		},
 	}

@@ -322,9 +322,9 @@ type Policy struct {
 	grants []Grant
 
 	// original memberships for writing back
-	idenMemberships   []Membership[Identity]
-	actionMemberships []Membership[Action]
-	objectMemberships []Membership[ObjectSet]
+	// idenMemberships   []Membership[Identity]
+	// actionMemberships []Membership[Action]
+	// objectMemberships []Membership[ObjectSet]
 
 	// indexes
 	iden2Grant     map[inet256.ID][]uint16
@@ -355,6 +355,8 @@ func (p *Policy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.Act
 		grant := p.grants[grantIndex]
 		rights |= p.expandActionMember(grant.Action)
 	}
+	// Open should never include Action_VOLUME_CREATE in the returned handle rights.
+	rights &^= blobcache.Action_VOLUME_CREATE
 	return rights
 }
 
@@ -408,16 +410,16 @@ func buildIndex[T any](membership []Membership[T]) map[GroupName][]Member[T] {
 
 func NewPolicy(idens []Membership[Identity], actions []Membership[Action], objects []Membership[ObjectSet], grants []Grant) (*Policy, error) {
 	p := &Policy{
-		idens:             buildIndex(idens),
-		actions:           buildIndex(actions),
-		objects:           buildIndex(objects),
-		grants:            grants,
-		idenMemberships:   append([]Membership[Identity](nil), idens...),
-		actionMemberships: append([]Membership[Action](nil), actions...),
-		objectMemberships: append([]Membership[ObjectSet](nil), objects...),
-		iden2Grant:        make(map[inet256.ID][]uint16),
-		vol2Grant:         make(map[blobcache.OID][]uint16),
-		actionsClosure:    make(map[GroupName]blobcache.ActionSet),
+		idens:   buildIndex(idens),
+		actions: buildIndex(actions),
+		objects: buildIndex(objects),
+		grants:  grants,
+		// idenMemberships:   slices.Clone(idens),
+		// actionMemberships: slices.Clone(actions),
+		// objectMemberships: slices.Clone(objects),
+		iden2Grant:     make(map[inet256.ID][]uint16),
+		vol2Grant:      make(map[blobcache.OID][]uint16),
+		actionsClosure: make(map[GroupName]blobcache.ActionSet),
 	}
 
 	// validate grants
@@ -574,18 +576,6 @@ func (p *Policy) expandActionMember(m Member[Action]) blobcache.ActionSet {
 
 // Management and enumeration helpers used by admin CLI
 
-// AllMemberships returns all the memberships in topological order.
-// The order is such that a group can only be mentioned after all the groups it depends on have been mentioned.
-func (p *Policy) AllMemberships() iter.Seq[Membership[Identity]] {
-	return func(yield func(Membership[Identity]) bool) {
-		for _, m := range p.idenMemberships {
-			if !yield(m) {
-				return
-			}
-		}
-	}
-}
-
 func (p *Policy) AllGrants() iter.Seq[Grant] {
 	return func(yield func(Grant) bool) {
 		for _, g := range p.grants {
@@ -596,9 +586,29 @@ func (p *Policy) AllGrants() iter.Seq[Grant] {
 	}
 }
 
-func (p *Policy) AllGroups() iter.Seq[string] {
+func (p *Policy) AllIdentityGroups() iter.Seq[string] {
 	return func(yield func(string) bool) {
 		for group := range p.idens {
+			if !yield(string(group)) {
+				return
+			}
+		}
+	}
+}
+
+func (p *Policy) AllActionGroups() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for group := range p.actions {
+			if !yield(string(group)) {
+				return
+			}
+		}
+	}
+}
+
+func (p *Policy) AllObjectGroups() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for group := range p.objects {
 			if !yield(string(group)) {
 				return
 			}
@@ -616,47 +626,7 @@ func (p *Policy) IsIdentityDefined(iden Identity) bool {
 	}
 }
 
-func (p *Policy) AddMember(group string, member Identity) bool {
-	if !p.IsIdentityDefined(member) {
-		panic(fmt.Sprintf("identity %s is not defined", member.String()))
-	}
-	members := p.idens[GroupName(group)]
-	// check for duplicate unit member
-	for _, m := range members {
-		if m.GroupRef == nil && m.Unit != nil && *m.Unit == member {
-			return false
-		}
-	}
-	unit := member
-	p.idens[GroupName(group)] = append(members, Member[Identity]{Unit: &unit})
-	p.idenMemberships = append(p.idenMemberships, Membership[Identity]{Group: GroupName(group), Member: Member[Identity]{Unit: &unit}})
-	return true
-}
-
-func (p *Policy) RemoveMember(group string, member Identity) (didChange bool) {
-	g := GroupName(group)
-	members := p.idens[g]
-	out := members[:0]
-	for _, m := range members {
-		if !(m.GroupRef == nil && m.Unit != nil && *m.Unit == member) {
-			out = append(out, m)
-		} else {
-			didChange = true
-		}
-	}
-	p.idens[g] = out
-	// update membership slice
-	ims := p.idenMemberships[:0]
-	for _, m := range p.idenMemberships {
-		if !(m.Group == g && m.Member.GroupRef == nil && m.Member.Unit != nil && *m.Member.Unit == member) {
-			ims = append(ims, m)
-		}
-	}
-	p.idenMemberships = ims
-	return didChange
-}
-
-func (p *Policy) MembersOf(group string) iter.Seq[Identity] {
+func (p *Policy) IdentityMembersOf(group string) iter.Seq[Identity] {
 	return func(yield func(Identity) bool) {
 		for _, m := range p.idens[GroupName(group)] {
 			if m.Unit != nil && m.GroupRef == nil {
@@ -668,27 +638,8 @@ func (p *Policy) MembersOf(group string) iter.Seq[Identity] {
 	}
 }
 
-func (p *Policy) AddGrant(grant Grant) bool {
-	for _, g := range p.grants {
-		if g.Equals(grant) {
-			return false
-		}
-	}
-	p.grants = append(p.grants, grant)
-	return true
-}
-
-func (p *Policy) RemoveGrant(grant Grant) bool {
-	for i, g := range p.grants {
-		if g.Equals(grant) {
-			p.grants = slices.Delete(p.grants, i, i+1)
-			return true
-		}
-	}
-	return false
-}
-
 // LoadIdentitiesFile loads the identities file from the filesystem.
+// p should be the path to the identities file.
 func LoadIdentitiesFile(p string) ([]Membership[Identity], error) {
 	f, err := os.Open(p)
 	if err != nil {
@@ -702,6 +653,7 @@ func LoadIdentitiesFile(p string) ([]Membership[Identity], error) {
 }
 
 // LoadActionsFile loads the actions file from the filesystem.
+// p should be the path to the actions file.
 func LoadActionsFile(p string) ([]Membership[Action], error) {
 	f, err := os.Open(p)
 	if err != nil {
@@ -715,6 +667,7 @@ func LoadActionsFile(p string) ([]Membership[Action], error) {
 }
 
 // LoadObjectsFile loads the objects file from the filesystem.
+// p should be the path to the objects file.
 func LoadObjectsFile(p string) ([]Membership[ObjectSet], error) {
 	f, err := os.Open(p)
 	if err != nil {
@@ -728,6 +681,7 @@ func LoadObjectsFile(p string) ([]Membership[ObjectSet], error) {
 }
 
 // LoadGrantsFile loads the grants file from the filesystem.
+// p should be the path to the grants file.
 func LoadGrantsFile(p string) ([]Grant, error) {
 	f, err := os.Open(p)
 	if err != nil {
@@ -741,6 +695,7 @@ func LoadGrantsFile(p string) ([]Grant, error) {
 }
 
 // LoadPolicy loads the 4 policy files from the filesystem.
+// stateDir should be the path to the state directory.
 func LoadPolicy(stateDir string) (*Policy, error) {
 	idenPath := filepath.Join(stateDir, IdentitiesFilename)
 	actionPath := filepath.Join(stateDir, ActionsFilename)
@@ -763,53 +718,6 @@ func LoadPolicy(stateDir string) (*Policy, error) {
 		return nil, err
 	}
 	return NewPolicy(idens, acts, objs, grants)
-}
-
-func SavePolicy(stateDir string, policy *Policy) error {
-	// identities
-	idenPath := filepath.Join(stateDir, IdentitiesFilename)
-	authnFile, err := os.OpenFile(idenPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer authnFile.Close()
-	if err := WriteIdentitiesFile(authnFile, policy.idenMemberships); err != nil {
-		return err
-	}
-
-	// actions
-	actionPath := filepath.Join(stateDir, ActionsFilename)
-	actionFile, err := os.OpenFile(actionPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer actionFile.Close()
-	if err := WriteActionsFile(actionFile, policy.actionMemberships); err != nil {
-		return err
-	}
-
-	// objects
-	objectPath := filepath.Join(stateDir, ObjectsFilename)
-	objectFile, err := os.OpenFile(objectPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer objectFile.Close()
-	if err := WriteObjectsFile(objectFile, policy.objectMemberships); err != nil {
-		return err
-	}
-
-	// grants
-	grantsPath := filepath.Join(stateDir, GrantsFilename)
-	grantsFile, err := os.OpenFile(grantsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer grantsFile.Close()
-	if err := WriteGrantsFile(grantsFile, slices.Collect(policy.AllGrants())); err != nil {
-		return err
-	}
-	return nil
 }
 
 func ptr[T any](x T) *T {
