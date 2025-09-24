@@ -48,8 +48,9 @@ func setupTestDaemon(t testing.TB, stateDir string) (apiURL string) {
 		Net:  "unix",
 	})
 	require.NoError(t, err)
+	d := blobcached.Daemon{StateDir: stateDir}
 	go func() {
-		if err := blobcached.Run(ctx, stateDir, testutil.PacketConn(t), lis); err != nil {
+		if err := d.Run(ctx, testutil.PacketConn(t), lis); err != nil {
 			logctx.Error(ctx, "blobcached failed", zap.Error(err))
 		}
 	}()

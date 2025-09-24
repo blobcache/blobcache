@@ -26,7 +26,8 @@ var daemonCmd = star.Command{
 		stateDir := stateDirParam.Load(c)
 		serveAPI := serveAPIParam.Load(c)
 		lis, _ := listenParam.LoadOpt(c)
-		return blobcached.Run(c, stateDir, lis.X, serveAPI)
+		d := blobcached.Daemon{StateDir: stateDir}
+		return d.Run(c, lis.X, serveAPI)
 	},
 }
 
@@ -36,7 +37,7 @@ var daemonEphemeralCmd = star.Command{
 	},
 	Flags: []star.AnyParam{serveAPIParam, listenParam},
 	F: func(ctx star.Context) error {
-		stateDir, err := os.MkdirTemp("", "blobcache")
+		stateDir, err := os.MkdirTemp("", "blobcache-ephemeral")
 		if err != nil {
 			return err
 		}

@@ -195,6 +195,11 @@ func WriteObjectsFile(w io.Writer, objects []Membership[ObjectSet]) error {
 	return WriteGroupsFile(w, objects, func(o ObjectSet) string { return o.String() })
 }
 
+func DefaultObjectsFile() (ret string) {
+	ret += "all ALL\n"
+	return ret
+}
+
 type Grant struct {
 	Subject Member[Identity]
 	Verb    Member[Action]
@@ -294,6 +299,11 @@ func WriteGrantsFile(w io.Writer, grants []Grant) error {
 		}
 	}
 	return bw.Flush()
+}
+
+func DefaultGrantsFile() (ret string) {
+	ret += "@admin @all @all\n"
+	return ret
 }
 
 var _ bclocal.Policy = &Policy{}
