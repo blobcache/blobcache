@@ -38,7 +38,7 @@ func TestRun(t *testing.T) {
 	t.Log("done")
 }
 
-func TestParseAuthnFile(t *testing.T) {
+func TestParseIdentitiesFile(t *testing.T) {
 	peer1 := mkPeerID(1)
 	tcs := []struct {
 		I string
@@ -57,28 +57,28 @@ func TestParseAuthnFile(t *testing.T) {
 				"\ngroup-a @alice\n\n",
 			O: []Membership[Identity]{
 				{Group: "alice", Member: Member[Identity]{Unit: &Identity{Peer: &peer1}}},
-				{Group: "group-a", Member: Member[Identity]{SubGroup: ptr[GroupName]("alice")}},
+				{Group: "group-a", Member: Member[Identity]{GroupRef: ptr[GroupName]("alice")}},
 			},
 		},
 	}
 
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			memberships, err := ParseAuthnFile(strings.NewReader(tc.I))
+			memberships, err := ParseIdentitiesFile(strings.NewReader(tc.I))
 			require.NoError(t, err)
 			require.Equal(t, tc.O, memberships)
 
 			// also check that we can write it back and get the same result.
 			buf := bytes.NewBuffer(nil)
-			require.NoError(t, WriteAuthnFile(buf, memberships))
-			memberships2, err := ParseAuthnFile(buf)
+			require.NoError(t, WriteIdentitiesFile(buf, memberships))
+			memberships2, err := ParseIdentitiesFile(buf)
 			require.NoError(t, err)
 			require.Equal(t, memberships, memberships2)
 		})
 	}
 }
 
-func TestParseAuthzFile(t *testing.T) {
+func TestParseGrantsFile(t *testing.T) {
 	tcs := []struct {
 		I string
 		O []Grant
@@ -87,9 +87,9 @@ func TestParseAuthzFile(t *testing.T) {
 			I: "@alice LOOK 00000000000000000000000000000000\n",
 			O: []Grant{
 				{
-					Subject: Identity{Name: ptr("alice")},
-					Verb:    Action_LOOK,
-					Object:  ObjectSet{ByOID: ptr(blobcache.OID{})},
+					Subject: GroupRef[Identity]("alice"),
+					Verb:    Unit(Action_LOOK),
+					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 			},
 		},
@@ -97,27 +97,27 @@ func TestParseAuthzFile(t *testing.T) {
 			I: "@alice LOOK 00000000000000000000000000000000\n@bob TOUCH 00000000000000000000000000000000\n",
 			O: []Grant{
 				{
-					Subject: Identity{Name: ptr("alice")},
-					Verb:    Action_LOOK,
-					Object:  ObjectSet{ByOID: ptr(blobcache.OID{})},
+					Subject: GroupRef[Identity]("alice"),
+					Verb:    Unit(Action_LOOK),
+					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 				{
-					Subject: Identity{Name: ptr("bob")},
-					Verb:    Action_TOUCH,
-					Object:  ObjectSet{ByOID: ptr(blobcache.OID{})},
+					Subject: GroupRef[Identity]("bob"),
+					Verb:    Unit(Action_TOUCH),
+					Object:  Unit(ObjectSet{ByOID: ptr(blobcache.OID{})}),
 				},
 			},
 		},
 	}
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			authz, err := ParseAuthzFile(strings.NewReader(tc.I))
+			authz, err := ParseGrantsFile(strings.NewReader(tc.I))
 			require.NoError(t, err)
 			require.Equal(t, tc.O, authz)
 
 			buf := bytes.NewBuffer(nil)
 			require.NoError(t, WriteAuthzFile(buf, authz))
-			authz2, err := ParseAuthzFile(buf)
+			authz2, err := ParseGrantsFile(buf)
 			require.NoError(t, err)
 			require.Equal(t, authz, authz2)
 		})

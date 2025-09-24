@@ -30,18 +30,46 @@ type Membership[T any] struct {
 type Member[T any] struct {
 	// Unit references a single element
 	Unit *T
-	// SubGroup references another group by name.
-	SubGroup *GroupName
+	// GroupRef references another group by name.
+	GroupRef *GroupName
+}
+
+// Unit creates a group member that references a single element.
+func Unit[T any](unit T) Member[T] {
+	return Member[T]{Unit: &unit}
+}
+
+// GroupRef creates a group member that references a group by name.
+func GroupRef[T any](subGroup GroupName) Member[T] {
+	return Member[T]{GroupRef: &subGroup}
+}
+
+func ParseMember[T any](data []byte, parse func([]byte) (T, error)) (Member[T], error) {
+	var ret Member[T]
+	if bytes.HasPrefix(data, []byte("@")) {
+		subgrp, err := ParseGroupName(data[1:])
+		if err != nil {
+			return Member[T]{}, err
+		}
+		ret.GroupRef = &subgrp
+	} else {
+		unit, err := parse(data)
+		if err != nil {
+			return Member[T]{}, err
+		}
+		ret.Unit = &unit
+	}
+	return ret, nil
 }
 
 func (m Member[T]) Format(format func(T) string) string {
-	if m.SubGroup != nil {
-		return "@" + string(*m.SubGroup)
+	if m.GroupRef != nil {
+		return "@" + string(*m.GroupRef)
 	}
 	return format(*m.Unit)
 }
 
-func ParseGroupsFile[T fmt.Stringer](r io.Reader, parse func([]byte) (T, error)) (ret []Membership[T], _ error) {
+func ParseGroupsFile[T any](r io.Reader, parse func([]byte) (T, error)) (ret []Membership[T], _ error) {
 	groups := make(map[GroupName]struct{})
 	scn := bufio.NewScanner(r)
 	for linenum := 1; scn.Scan(); linenum++ {
@@ -49,33 +77,35 @@ func ParseGroupsFile[T fmt.Stringer](r io.Reader, parse func([]byte) (T, error))
 		if len(line) == 0 {
 			continue
 		}
-		parts := bytes.SplitN(line, []byte(" "), 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid authn line %d: %s", linenum, line)
+		parts := bytes.Split(line, []byte(" "))
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("invalid line %d: %s", linenum, line)
 		}
-		groupName, memberData := parts[0], parts[1]
+		groupName, err := ParseGroupName(parts[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid line %d: %w", linenum, err)
+		}
 
-		var elem Member[T]
-		if bytes.HasPrefix(memberData, []byte("@")) {
-			subgrp, err := ParseGroupName(memberData[1:])
+		for _, memberData := range parts[1:] {
+			// for each remaining word on the line, try to parse it as a member
+			elem, err := ParseMember(memberData, parse)
 			if err != nil {
-				return nil, fmt.Errorf("invalid authn line %d: %w", linenum, err)
+				return nil, fmt.Errorf("invalid line %d: %w", linenum, err)
 			}
-			if _, exists := groups[subgrp]; !exists {
-				return nil, fmt.Errorf("don't know what %q is, it hasn't been defined yet", subgrp)
+			if elem.GroupRef != nil {
+				if _, exists := groups[*elem.GroupRef]; !exists {
+					return nil, fmt.Errorf("don't know what %q is, it hasn't been defined yet", *elem.GroupRef)
+				}
+				if *elem.GroupRef == groupName {
+					return nil, fmt.Errorf("group %q cannot contain itself", groupName)
+				}
 			}
-			elem.SubGroup = &subgrp
-		} else {
-			unit, err := parse(memberData)
-			if err != nil {
-				return nil, fmt.Errorf("invalid authn line %d: %w", linenum, err)
-			}
-			elem.Unit = &unit
+			ret = append(ret, Membership[T]{
+				Group:  groupName,
+				Member: elem,
+			})
 		}
-		ret = append(ret, Membership[T]{
-			Group:  GroupName(groupName),
-			Member: elem,
-		})
+		groups[groupName] = struct{}{}
 	}
 	return ret, nil
 }

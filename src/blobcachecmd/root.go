@@ -38,15 +38,6 @@ var rootCmd = star.NewDir(
 		"mkvol.remote": mkVolRemoteCmd,
 		"mkvol.vault":  mkVolVaultCmd,
 
-		// group management
-		"addmem": addMemCmd,
-		"rmmem":  rmMemCmd,
-		"groups": groupsCmd,
-
-		// authorization management
-		"grant":  grantCmd,
-		"revoke": revokeCmd,
-
 		// applications
 		"glfs":       glfsCmd,
 		"fuse-mount": fuseMountCmd,
