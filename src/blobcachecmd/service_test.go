@@ -13,7 +13,6 @@ import (
 
 func TestAPI(t *testing.T) {
 	t.Parallel()
-	t.SkipNow()
 
 	dir := t.TempDir()
 	execPath := filepath.Join(dir, "blobcache")

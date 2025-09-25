@@ -20,7 +20,7 @@ var beginTxCmd = star.Command{
 			return err
 		}
 
-		txp := blobcache.TxParams{Mutate: true}
+		txp := blobcache.TxParams{}
 		for _, arg := range c.Extra {
 			switch arg {
 			case "--mutate":

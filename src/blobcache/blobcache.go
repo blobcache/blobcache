@@ -134,7 +134,7 @@ type TxParams struct {
 }
 
 func (tp TxParams) Validate() error {
-	if tp.Mutate && !tp.GC {
+	if tp.GC && !tp.Mutate {
 		return fmt.Errorf("mutate must be true if GC is set")
 	}
 	return nil
@@ -198,10 +198,12 @@ type VolumeAPI interface {
 	CreateVolume(ctx context.Context, host *Endpoint, vspec VolumeSpec) (*Handle, error)
 	// InspectVolume returns info about a Volume.
 	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
-	// OpenAs returns a handle to an object by it's ID.
-	// PeerID is the peer that is opening the handle.
+	// OpenFiat returns a handle to an object by it's ID.
 	// This is where any Authorization checks are done.
-	OpenAs(ctx context.Context, x OID, mask ActionSet) (*Handle, error)
+	// It's called "fiat" because it's up to the Node to say yes or no.
+	// The result is implementation dependent, unlike OpenFrom, which should behave
+	// the same way on any Node.
+	OpenFiat(ctx context.Context, x OID, mask ActionSet) (*Handle, error)
 	// OpenFrom returns a handle to an object by it's ID.
 	// base is the handle of a Volume, which links to the object.
 	// the base Volume's schema must be a Container.

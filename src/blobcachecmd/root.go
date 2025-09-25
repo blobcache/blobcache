@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"os"
 	"testing"
 
 	bcclient "blobcache.io/blobcache/client/go"
@@ -14,10 +15,17 @@ import (
 	"go.brendoncarroll.net/stdctx/logctx"
 )
 
+// Main is the main function for the blobcache CLI.
+// Usage is:
+//
+//	func main() {
+//	    blobcachecmd.Main()
+//	}
 func Main() {
 	star.Main(rootCmd)
 }
 
+// Root returns the root command for the blobcache CLI.
 func Root() star.Command {
 	return rootCmd
 }
@@ -73,7 +81,7 @@ var endpointCmd = star.Command{
 
 // openService opens a service
 func openService(c star.Context) (blobcache.Service, error) {
-	apiUrl := c.Env[bcclient.EnvBlobcacheAPI]
+	apiUrl := os.Getenv(bcclient.EnvBlobcacheAPI)
 	if apiUrl == "" {
 		logctx.Warnf(c.Context, "%s not set, using default=%s", bcclient.EnvBlobcacheAPI, bcclient.DefaultEndpoint)
 		apiUrl = bcclient.DefaultEndpoint

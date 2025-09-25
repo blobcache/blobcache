@@ -13,7 +13,7 @@ var mkVolLocalCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "create a new local volume",
 	},
-	Flags: []star.Flag{hostParam},
+	Flags: []star.Flag{hostParam, hashAlgoParam, maxSizeParam},
 	Pos:   []star.Positional{},
 	F: func(c star.Context) error {
 		s, err := openService(c)
@@ -21,7 +21,14 @@ var mkVolLocalCmd = star.Command{
 			return err
 		}
 		host, _ := hostParam.LoadOpt(c)
-		h, err := s.CreateVolume(c.Context, host, blobcache.DefaultLocalSpec())
+		spec := blobcache.DefaultLocalSpec()
+		if ha, ok := hashAlgoParam.LoadOpt(c); ok {
+			spec.Local.HashAlgo = ha
+		}
+		if maxSize, ok := maxSizeParam.LoadOpt(c); ok {
+			spec.Local.MaxSize = maxSize
+		}
+		h, err := s.CreateVolume(c.Context, host, spec)
 		if err != nil {
 			return err
 		}
@@ -35,15 +42,14 @@ var mkVolRemoteCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "create a new remote volume",
 	},
-	Flags: []star.Flag{hostParam},
+	Flags: []star.Flag{},
 	Pos:   []star.Positional{endpointParam, volOIDParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		host, _ := hostParam.LoadOpt(c)
-		h, err := svc.CreateVolume(c.Context, host, blobcache.VolumeSpec{
+		h, err := svc.CreateVolume(c.Context, nil, blobcache.VolumeSpec{
 			Remote: &blobcache.VolumeBackend_Remote{
 				Endpoint: endpointParam.Load(c),
 				Volume:   volOIDParam.Load(c),
@@ -141,7 +147,7 @@ var openFiatCmd = star.Command{
 		if !maskOK {
 			mask = blobcache.Action_ALL
 		}
-		h, err := svc.OpenAs(c.Context, oidParam.Load(c), mask)
+		h, err := svc.OpenFiat(c.Context, oidParam.Load(c), mask)
 		if err != nil {
 			return err
 		}
@@ -209,5 +215,27 @@ var maskParam = star.Optional[blobcache.ActionSet]{
 			return 0, err
 		}
 		return blobcache.ActionSet(n), err
+	},
+}
+
+var hashAlgoParam = star.Optional[blobcache.HashAlgo]{
+	Name: "hash",
+	Parse: func(s string) (blobcache.HashAlgo, error) {
+		ha := blobcache.HashAlgo(s)
+		if err := ha.Validate(); err != nil {
+			return "", err
+		}
+		return ha, nil
+	},
+}
+
+var maxSizeParam = star.Optional[int64]{
+	Name: "max-size",
+	Parse: func(s string) (int64, error) {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return n, nil
 	},
 }

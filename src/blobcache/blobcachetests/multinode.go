@@ -19,7 +19,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		// create a volume on the first node
 		volh, err := s1.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
-		nsh, err := s1.OpenAs(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		nsh, err := s1.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 		nsc := basicns.Client{Service: s1}
 		require.NoError(t, nsc.PutEntry(ctx, *nsh, "name1", *volh))

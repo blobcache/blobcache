@@ -126,7 +126,7 @@ func (c *Client) GetEntry(ctx context.Context, volh blobcache.Handle, name strin
 
 func (c *Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
 	if volh.Secret == ([16]byte{}) {
-		volh2, err := c.Service.OpenAs(ctx, volh.OID, blobcache.Action_ALL)
+		volh2, err := c.Service.OpenFiat(ctx, volh.OID, blobcache.Action_ALL)
 		if err != nil {
 			return blobcache.Handle{}, err
 		}

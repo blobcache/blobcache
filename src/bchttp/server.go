@@ -36,7 +36,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/OpenAs":
 		handleRequest(w, r, func(ctx context.Context, req OpenAsReq) (*OpenAsResp, error) {
-			handle, err := s.Service.OpenAs(ctx, req.Target, req.Mask)
+			handle, err := s.Service.OpenFiat(ctx, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}

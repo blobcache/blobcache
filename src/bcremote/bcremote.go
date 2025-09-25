@@ -93,7 +93,7 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	return bcnet.InspectHandle(ctx, s.node, s.ep, h)
 }
 
-func (s *Service) OpenAs(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service) OpenFiat(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	return bcnet.OpenAs(ctx, s.node, s.ep, target, mask)
 }
 

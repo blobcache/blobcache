@@ -62,7 +62,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	// BEGIN VOLUME
 	case MT_OPEN_AS:
 		handleAsk(req, resp, &OpenAsReq{}, func(req *OpenAsReq) (*OpenAsResp, error) {
-			h, err := svc.OpenAs(ctx, req.Target, req.Mask)
+			h, err := svc.OpenFiat(ctx, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}

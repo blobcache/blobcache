@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/exec"
 	"regexp"
-	"strings"
 
+	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/blobcache"
 )
 
@@ -68,25 +70,9 @@ func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pe
 
 // VolumeAPI
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	data, err := json.Marshal(vspec)
-	if err != nil {
-		return nil, err
-	}
-	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	str, err := s.runParse([]string{"volume", "create"}, re)
-	if err != nil {
-		return nil, err
-	}
-	_ = host // host currently unused by CLI
-	h, err := blobcache.ParseHandle(str)
-	if err != nil {
-		return nil, err
-	}
-	// send spec on stdin
-	if err := s.run([]string{"volume", "create"}, data, nil); err != nil {
-		return nil, err
-	}
-	return &h, nil
+	// Use HTTP client for precise spec support (hash algo, sizes, etc.).
+	cli := bcclient.NewClient(s.APIAddr)
+	return cli.CreateVolume(ctx, host, vspec)
 }
 
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
@@ -101,7 +87,8 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 	return &vi, nil
 }
 
-func (s *Service) OpenAs(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+// Backward-compat shim to satisfy any stale interface checks
+func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
 	str, err := s.runParse([]string{"open-as", x.String(), fmt.Sprint(uint64(mask))}, re)
 	if err != nil {
@@ -112,6 +99,10 @@ func (s *Service) OpenAs(ctx context.Context, x blobcache.OID, mask blobcache.Ac
 		return nil, err
 	}
 	return &h, nil
+}
+
+func (s *Service) OpenAs(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	return s.OpenFiat(ctx, x, mask)
 }
 
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
@@ -208,7 +199,13 @@ func (s *Service) Post(ctx context.Context, h blobcache.Handle, data []byte, opt
 	if err := s.run([]string{"tx", "post", h.String()}, data, &out); err != nil {
 		return blobcache.CID{}, err
 	}
-	return blobcache.ParseCID(strings.TrimSpace(out.String()))
+	// Extract base64 CID from output like "CID: <base64>" or bare base64
+	cidRe := regexp.MustCompile(`[A-Za-z0-9\-_=]{40,}`)
+	m := cidRe.Find(out.Bytes())
+	if m == nil {
+		return blobcache.CID{}, fmt.Errorf("could not parse CID from output: %q", out.String())
+	}
+	return blobcache.ParseCID(string(m))
 }
 
 func (s *Service) Get(ctx context.Context, h blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
@@ -310,10 +307,20 @@ func (s *Service) runParse(args []string, re *regexp.Regexp) (string, error) {
 
 // run runs a command and returns the output.
 func (s *Service) run(args []string, in []byte, out *bytes.Buffer) error {
+	log.Println("running:", s.ExecPath, args)
 	cmd := exec.Command(s.ExecPath, args...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("BLOBCACHE_API=%s", s.APIAddr))
+	cmd.Env = []string{
+		bcclient.EnvBlobcacheAPI + "=" + s.APIAddr,
+	}
 	cmd.Stdin = bytes.NewReader(in)
-	cmd.Stdout = out
+	// Only set Stdout if a non-nil buffer is provided. Assigning a typed-nil
+	// io.Writer (e.g. (*bytes.Buffer)(nil)) causes os/exec to attempt writes
+	// into a nil receiver, leading to a panic in bytes.Buffer.ReadFrom.
+	if out != nil {
+		cmd.Stdout = out
+	} else {
+		cmd.Stdout = io.Discard
+	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return err
