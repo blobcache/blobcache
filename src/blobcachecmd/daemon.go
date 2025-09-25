@@ -21,10 +21,10 @@ var daemonCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon",
 	},
-	Flags: []star.AnyParam{stateDirParam, serveAPIParam, listenParam},
+	Flags: []star.Flag{stateDirParam, serveAPIParam, listenParam},
 	F: func(c star.Context) error {
 		stateDir := stateDirParam.Load(c)
-		serveAPI := serveAPIParam.Load(c)
+		serveAPI, _ := serveAPIParam.LoadOpt(c)
 		lis, _ := listenParam.LoadOpt(c)
 		d := blobcached.Daemon{StateDir: stateDir}
 		return d.Run(c, lis.X, serveAPI)
@@ -35,14 +35,14 @@ var daemonEphemeralCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon without persistent state",
 	},
-	Flags: []star.AnyParam{serveAPIParam, listenParam},
+	Flags: []star.Flag{serveAPIParam, listenParam},
 	F: func(ctx star.Context) error {
 		stateDir, err := os.MkdirTemp("", "blobcache-ephemeral")
 		if err != nil {
 			return err
 		}
 		defer os.RemoveAll(stateDir)
-		pc := listenParam.Load(ctx)
+		pc, _ := listenParam.LoadOpt(ctx)
 		svc, err := bclocal.New(bclocal.Env{
 			Background: ctx,
 			StateDir:   stateDir,
@@ -54,7 +54,7 @@ var daemonEphemeralCmd = star.Command{
 			return err
 		}
 
-		apiLis := serveAPIParam.Load(ctx)
+		apiLis, _ := serveAPIParam.LoadOpt(ctx)
 		defer apiLis.Close()
 		logctx.Info(ctx, "serving API", zap.String("net", apiLis.Addr().Network()), zap.String("addr", apiLis.Addr().String()))
 		return http.Serve(apiLis, &bchttp.Server{
@@ -63,14 +63,13 @@ var daemonEphemeralCmd = star.Command{
 	},
 }
 
-var stateDirParam = star.Param[string]{
+var stateDirParam = star.Required[string]{
 	Name:  "state",
 	Parse: star.ParseString,
 }
 
-var serveAPIParam = star.Param[net.Listener]{
-	Name:    "serve-api",
-	Default: star.Ptr(""),
+var serveAPIParam = star.Optional[net.Listener]{
+	Name: "serve-api",
 	Parse: func(s string) (net.Listener, error) {
 		parts := strings.Split(s, "://")
 		if len(parts) != 2 {
@@ -80,9 +79,8 @@ var serveAPIParam = star.Param[net.Listener]{
 	},
 }
 
-var listenParam = star.Param[maybe.Maybe[net.PacketConn]]{
-	Name:    "listen",
-	Default: star.Ptr(""),
+var listenParam = star.Optional[maybe.Maybe[net.PacketConn]]{
+	Name: "listen",
 	Parse: func(s string) (maybe.Maybe[net.PacketConn], error) {
 		if s == "" {
 			return maybe.Nothing[net.PacketConn](), nil

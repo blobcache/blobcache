@@ -16,8 +16,8 @@ var fuseMountCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "Mount a blobcache volume as a FUSE filesystem",
 	},
-	Flags: []star.AnyParam{},
-	Pos: []star.AnyParam{
+	Flags: []star.Flag{},
+	Pos: []star.Positional{
 		volumeNameParam,
 		mountpointParam,
 	},
@@ -47,7 +47,7 @@ var fuseMountCmd = star.Command{
 	},
 }
 
-var mountpointParam = star.Param[string]{
+var mountpointParam = star.Required[string]{
 	Name:  "mp",
 	Parse: star.ParseString,
 }

@@ -18,8 +18,8 @@ import (
 
 func TestGLFS(t *testing.T) {
 	stateDir := t.TempDir()
-	runCmd(t, nil, []string{"--state", stateDir, "mkvol.local", "vol1"})
-	runCmd(t, nil, []string{"--state", stateDir, "ls"})
+	runCmd(t, nil, []string{"--state", stateDir, "basicns", "createat", "vol1"})
+	runCmd(t, nil, []string{"--state", stateDir, "basicns", "ls"})
 	apiUrl := setupTestDaemon(t, stateDir)
 	env := map[string]string{
 		bcclient.EnvBlobcacheAPI: apiUrl,
