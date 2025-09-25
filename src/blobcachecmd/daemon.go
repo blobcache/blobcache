@@ -11,7 +11,6 @@ import (
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/internal/blobcached"
-	"go.brendoncarroll.net/exp/maybe"
 	"go.brendoncarroll.net/star"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
@@ -25,9 +24,9 @@ var daemonCmd = star.Command{
 	F: func(c star.Context) error {
 		stateDir := stateDirParam.Load(c)
 		serveAPI, _ := serveAPIParam.LoadOpt(c)
-		lis, _ := listenParam.LoadOpt(c)
+		pc, _ := listenParam.LoadOpt(c)
 		d := blobcached.Daemon{StateDir: stateDir}
-		return d.Run(c, lis.X, serveAPI)
+		return d.Run(c, pc, serveAPI)
 	},
 }
 
@@ -46,7 +45,7 @@ var daemonEphemeralCmd = star.Command{
 		svc, err := bclocal.New(bclocal.Env{
 			Background: ctx,
 			StateDir:   stateDir,
-			PacketConn: pc.X,
+			PacketConn: pc,
 			Schemas:    bclocal.DefaultSchemas(),
 			Root:       bclocal.DefaultRoot(),
 		}, bclocal.Config{})
@@ -79,21 +78,18 @@ var serveAPIParam = star.Optional[net.Listener]{
 	},
 }
 
-var listenParam = star.Optional[maybe.Maybe[net.PacketConn]]{
+var listenParam = star.Optional[net.PacketConn]{
 	Name: "listen",
-	Parse: func(s string) (maybe.Maybe[net.PacketConn], error) {
-		if s == "" {
-			return maybe.Nothing[net.PacketConn](), nil
-		}
+	Parse: func(s string) (net.PacketConn, error) {
 		ap, err := netip.ParseAddrPort(s)
 		if err != nil {
-			return maybe.Nothing[net.PacketConn](), err
+			return nil, err
 		}
 		udpAddr := net.UDPAddrFromAddrPort(ap)
 		conn, err := net.ListenUDP("udp", udpAddr)
 		if err != nil {
-			return maybe.Nothing[net.PacketConn](), err
+			return nil, err
 		}
-		return maybe.Just[net.PacketConn](conn), nil
+		return conn, nil
 	},
 }
