@@ -58,6 +58,15 @@ func (c *Client) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return c.doJSON(ctx, "POST", "/KeepAlive", nil, req, &resp)
 }
 
+func (c *Client) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	req := ShareReq{Handle: h, Peer: to, Mask: mask}
+	var resp ShareResp
+	if err := c.doJSON(ctx, "POST", "/Share", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
 func (c *Client) OpenAs(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	req := OpenAsReq{Target: target, Mask: mask}
 	var resp OpenAsResp
@@ -235,7 +244,7 @@ func (c *Client) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blob
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AllowLink", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
-func (c *Client) AddFrom(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcs []blobcache.Handle, out []bool) error {
+func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcs []blobcache.Handle, out []bool) error {
 	req := AddFromReq{CIDs: cids, Srcs: srcs}
 	var resp AddFromResp
 	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AddFrom", tx.OID.String()), &tx.Secret, req, &resp); err != nil {

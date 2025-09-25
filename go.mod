@@ -18,13 +18,14 @@ require (
 	github.com/stretchr/testify v1.10.0
 	go.brendoncarroll.net/exp v0.0.0-20250112210235-9d4b62bdbd02
 	go.brendoncarroll.net/p2p v0.0.0-20241118201502-2abd1a6f58e7
-	go.brendoncarroll.net/star v0.0.0-20250812225610-1da58abd19e4
+	go.brendoncarroll.net/star v0.0.0-20250925011451-2e4a9f1390aa
 	go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901
 	go.brendoncarroll.net/stdctx v0.0.0-20241118190518-40d09f4d11e7
 	go.brendoncarroll.net/tai64 v0.0.0-20241118171318-6e12d283d5e4
 	go.inet256.org/inet256 v0.0.8
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.38.0
+	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/sync v0.14.0
 	google.golang.org/protobuf v1.35.1
 	lukechampine.com/blake3 v1.2.1
@@ -80,7 +81,6 @@ require (
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect

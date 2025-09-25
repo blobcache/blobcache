@@ -49,6 +49,14 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			}
 			return &KeepAliveResp{}, nil
 		})
+	case MT_HANDLE_SHARE:
+		handleAsk(req, resp, &ShareReq{}, func(req *ShareReq) (*ShareResp, error) {
+			h, err := svc.Share(ctx, req.Handle, req.Peer, req.Mask)
+			if err != nil {
+				return nil, err
+			}
+			return &ShareResp{Handle: *h}, nil
+		})
 	// END HANDLE
 
 	// BEGIN VOLUME
@@ -218,7 +226,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	case MT_TX_ADD_FROM:
 		handleAsk(req, resp, &AddFromReq{}, func(req *AddFromReq) (*AddFromResp, error) {
 			success := make([]bool, len(req.CIDs))
-			if err := svc.AddFrom(ctx, req.Tx, req.CIDs, req.Srcs, success); err != nil {
+			if err := svc.Copy(ctx, req.Tx, req.CIDs, req.Srcs, success); err != nil {
 				return nil, err
 			}
 			return &AddFromResp{Added: success}, nil

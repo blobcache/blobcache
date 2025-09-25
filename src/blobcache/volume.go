@@ -8,12 +8,7 @@ import (
 	"iter"
 	"net/netip"
 	"strings"
-
-	"go.inet256.org/inet256/src/inet256"
 )
-
-// PeerID uniquely identifies a peer by hash of the public key.
-type PeerID = inet256.ID
 
 // Endpoint is somewhere that a blobcache node can be found.
 // The Zero endpoint means the node is not available on the network.
@@ -162,15 +157,6 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 	}
 	return ret
 }
-
-type Schema string
-
-const (
-	Schema_NONE Schema = ""
-	// Schema_BasicNS is the schema name for the basic namespace.
-	Schema_BasicNS        Schema = "blobcache/basicns"
-	Schema_BasicContainer Schema = "blobcache/basiccontainer"
-)
 
 type VolumeParams struct {
 	Schema   Schema   `json:"schema"`

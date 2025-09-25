@@ -92,6 +92,45 @@ func (kr *KeepAliveResp) Unmarshal(data []byte) error {
 	return nil
 }
 
+type ShareReq struct {
+	Handle blobcache.Handle
+	Peer   blobcache.PeerID
+	Mask   blobcache.ActionSet
+}
+
+func (sr ShareReq) Marshal(out []byte) []byte {
+	out = sr.Handle.Marshal(out)
+	out = append(out, sr.Peer[:]...)
+	out = binary.BigEndian.AppendUint64(out, uint64(sr.Mask))
+	return out
+}
+
+func (sr *ShareReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize+blobcache.PeerIDSize+8 {
+		return fmt.Errorf("cannot unmarshal ShareReq, too short: %d", len(data))
+	}
+	if err := sr.Handle.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	data = data[blobcache.HandleSize:]
+	sr.Peer = blobcache.PeerID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.PeerIDSize])
+	sr.Mask = blobcache.ActionSet(binary.BigEndian.Uint64(data[blobcache.HandleSize+blobcache.PeerIDSize:]))
+	return nil
+}
+
+type ShareResp struct {
+	Handle blobcache.Handle
+}
+
+func (sr ShareResp) Marshal(out []byte) []byte {
+	out = sr.Handle.Marshal(out)
+	return out
+}
+
+func (sr *ShareResp) Unmarshal(data []byte) error {
+	return sr.Handle.Unmarshal(data)
+}
+
 type OpenAsReq struct {
 	Target blobcache.OID
 	Mask   blobcache.ActionSet

@@ -3,6 +3,7 @@ package blobcached
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -29,9 +30,14 @@ var pki = inet256.PKI{
 
 // Run runs the blobcache daemon, until the context is cancelled.
 // If the context is cancelled, Run returns nil.  Run returns an error if it returns for any other reason.
-func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.Listener) error {
-	d := Daemon{StateDir: stateDir}
-
+func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listener) error {
+	if err := d.EnsurePolicyFiles(); err != nil {
+		return err
+	}
+	pol, err := d.GetPolicy()
+	if err != nil {
+		return err
+	}
 	var privateKey ed25519.PrivateKey
 	if pc != nil {
 		privKey, err := d.EnsurePrivateKey()
@@ -43,8 +49,9 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 	svc, err := bclocal.New(bclocal.Env{
 		Background: ctx,
 		PacketConn: pc,
-		StateDir:   stateDir,
+		StateDir:   d.StateDir,
 		PrivateKey: privateKey,
+		Policy:     pol,
 		Schemas:    bclocal.DefaultSchemas(),
 		Root:       bclocal.DefaultRoot(),
 	}, bclocal.Config{})
@@ -69,10 +76,13 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 			return serveAPI.Close()
 		})
 	}
-	// always run the local service in the background
-	eg.Go(func() error {
-		return svc.Serve(ctx)
-	})
+	if pc != nil {
+		// if a PacketConn is provided, then run the Serve loop.
+		eg.Go(func() error {
+			return svc.Serve(ctx)
+		})
+	}
+
 	if err := eg.Wait(); errors.Is(err, context.Canceled) {
 		err = nil
 	} else if err != nil {
@@ -84,8 +94,42 @@ func Run(ctx context.Context, stateDir string, pc net.PacketConn, serveAPI net.L
 	return nil
 }
 
+// Daemon manages the state and configuration for running a Blobache node.
 type Daemon struct {
 	StateDir string
+}
+
+// EnsurePolicyFiles ensures that the policy files exist.
+// Creating default files if they don't exist.
+func (d *Daemon) EnsurePolicyFiles() error {
+	if d.StateDir == "" {
+		return fmt.Errorf("StateDir is required")
+	}
+	files := map[string]string{
+		filepath.Join(d.StateDir, IdentitiesFilename): DefaultIdentitiesFile(),
+		filepath.Join(d.StateDir, ActionsFilename):    DefaultActionsFile(),
+		filepath.Join(d.StateDir, ObjectsFilename):    DefaultObjectsFile(),
+		filepath.Join(d.StateDir, GrantsFilename):     DefaultGrantsFile(),
+	}
+	for p, content := range files {
+		if err := func() error {
+			f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+			if err != nil {
+				if os.IsExist(err) {
+					return nil
+				}
+				return err
+			}
+			defer f.Close()
+			if _, err := f.Write([]byte(content)); err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // EnsurePrivateKey generates a private key if it doesn't exist, and returns it.

@@ -11,7 +11,6 @@ import (
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/internal/blobcached"
-	"go.brendoncarroll.net/exp/maybe"
 	"go.brendoncarroll.net/star"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
@@ -21,12 +20,13 @@ var daemonCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon",
 	},
-	Flags: []star.AnyParam{stateDirParam, serveAPIParam, listenParam},
+	Flags: []star.Flag{stateDirParam, serveAPIParam, listenParam},
 	F: func(c star.Context) error {
 		stateDir := stateDirParam.Load(c)
-		serveAPI := serveAPIParam.Load(c)
-		lis, _ := listenParam.LoadOpt(c)
-		return blobcached.Run(c, stateDir, lis.X, serveAPI)
+		serveAPI, _ := serveAPIParam.LoadOpt(c)
+		pc, _ := listenParam.LoadOpt(c)
+		d := blobcached.Daemon{StateDir: stateDir}
+		return d.Run(c, pc, serveAPI)
 	},
 }
 
@@ -34,18 +34,18 @@ var daemonEphemeralCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon without persistent state",
 	},
-	Flags: []star.AnyParam{serveAPIParam, listenParam},
+	Flags: []star.Flag{serveAPIParam, listenParam},
 	F: func(ctx star.Context) error {
-		stateDir, err := os.MkdirTemp("", "blobcache")
+		stateDir, err := os.MkdirTemp("", "blobcache-ephemeral")
 		if err != nil {
 			return err
 		}
 		defer os.RemoveAll(stateDir)
-		pc := listenParam.Load(ctx)
+		pc, _ := listenParam.LoadOpt(ctx)
 		svc, err := bclocal.New(bclocal.Env{
 			Background: ctx,
 			StateDir:   stateDir,
-			PacketConn: pc.X,
+			PacketConn: pc,
 			Schemas:    bclocal.DefaultSchemas(),
 			Root:       bclocal.DefaultRoot(),
 		}, bclocal.Config{})
@@ -53,7 +53,7 @@ var daemonEphemeralCmd = star.Command{
 			return err
 		}
 
-		apiLis := serveAPIParam.Load(ctx)
+		apiLis, _ := serveAPIParam.LoadOpt(ctx)
 		defer apiLis.Close()
 		logctx.Info(ctx, "serving API", zap.String("net", apiLis.Addr().Network()), zap.String("addr", apiLis.Addr().String()))
 		return http.Serve(apiLis, &bchttp.Server{
@@ -62,14 +62,13 @@ var daemonEphemeralCmd = star.Command{
 	},
 }
 
-var stateDirParam = star.Param[string]{
+var stateDirParam = star.Required[string]{
 	Name:  "state",
 	Parse: star.ParseString,
 }
 
-var serveAPIParam = star.Param[net.Listener]{
-	Name:    "serve-api",
-	Default: star.Ptr(""),
+var serveAPIParam = star.Optional[net.Listener]{
+	Name: "serve-api",
 	Parse: func(s string) (net.Listener, error) {
 		parts := strings.Split(s, "://")
 		if len(parts) != 2 {
@@ -79,22 +78,18 @@ var serveAPIParam = star.Param[net.Listener]{
 	},
 }
 
-var listenParam = star.Param[maybe.Maybe[net.PacketConn]]{
-	Name:    "listen",
-	Default: star.Ptr(""),
-	Parse: func(s string) (maybe.Maybe[net.PacketConn], error) {
-		if s == "" {
-			return maybe.Nothing[net.PacketConn](), nil
-		}
+var listenParam = star.Optional[net.PacketConn]{
+	Name: "listen",
+	Parse: func(s string) (net.PacketConn, error) {
 		ap, err := netip.ParseAddrPort(s)
 		if err != nil {
-			return maybe.Nothing[net.PacketConn](), err
+			return nil, err
 		}
 		udpAddr := net.UDPAddrFromAddrPort(ap)
 		conn, err := net.ListenUDP("udp", udpAddr)
 		if err != nil {
-			return maybe.Nothing[net.PacketConn](), err
+			return nil, err
 		}
-		return maybe.Just[net.PacketConn](conn), nil
+		return conn, nil
 	},
 }

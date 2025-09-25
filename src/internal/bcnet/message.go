@@ -30,6 +30,7 @@ const (
 	MT_HANDLE_INSPECT MessageType = 16 + iota
 	MT_HANDLE_DROP
 	MT_HANDLE_KEEP_ALIVE
+	MT_HANDLE_SHARE
 )
 
 // Volume messages

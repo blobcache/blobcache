@@ -30,8 +30,8 @@ var glfsCmd = star.NewDir(star.Metadata{
 })
 
 var glfsInitCmd = star.Command{
-	Flags: []star.AnyParam{},
-	Pos:   []star.AnyParam{volumeNameParam},
+	Flags: []star.Flag{},
+	Pos:   []star.Positional{volumeNameParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
@@ -73,8 +73,8 @@ var glfsInitCmd = star.Command{
 }
 
 var glfsLookCmd = star.Command{
-	Flags: []star.AnyParam{},
-	Pos:   []star.AnyParam{volumeNameParam, srcPathParam},
+	Flags: []star.Flag{},
+	Pos:   []star.Positional{volumeNameParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
@@ -125,8 +125,8 @@ var glfsImportCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "import data from the local filesystem into a GLFS volume",
 	},
-	Flags: []star.AnyParam{},
-	Pos:   []star.AnyParam{volumeNameParam, dstPathParam, srcPathParam},
+	Flags: []star.Flag{},
+	Pos:   []star.Positional{volumeNameParam, dstPathParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
@@ -167,8 +167,8 @@ var glfsReadCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "Read a file from a GLFS volume and write it to stdout",
 	},
-	Flags: []star.AnyParam{},
-	Pos:   []star.AnyParam{volumeNameParam, srcPathParam},
+	Flags: []star.Flag{},
+	Pos:   []star.Positional{volumeNameParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
@@ -202,8 +202,8 @@ var glfsSyncCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "sync efficiently sets the contents of the dst volume to the content of the src volume",
 	},
-	Flags: []star.AnyParam{},
-	Pos:   []star.AnyParam{srcVolumeParam, dstVolumeParam},
+	Flags: []star.Flag{},
+	Pos:   []star.Positional{srcVolumeParam, dstVolumeParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
@@ -224,28 +224,27 @@ var glfsSyncCmd = star.Command{
 	},
 }
 
-var dstPathParam = star.Param[string]{
-	Name:    "dst",
-	Default: star.Ptr(""),
-	Parse:   star.ParseString,
+var dstPathParam = star.Required[string]{
+	Name:  "dst",
+	Parse: star.ParseString,
 }
 
-var srcPathParam = star.Param[string]{
+var srcPathParam = star.Required[string]{
 	Name:  "src",
 	Parse: star.ParseString,
 }
 
-var volumeNameParam = star.Param[string]{
+var volumeNameParam = star.Required[string]{
 	Name:  "volume",
 	Parse: star.ParseString,
 }
 
-var srcVolumeParam = star.Param[string]{
+var srcVolumeParam = star.Required[string]{
 	Name:  "src",
 	Parse: star.ParseString,
 }
 
-var dstVolumeParam = star.Param[string]{
+var dstVolumeParam = star.Required[string]{
 	Name:  "dst",
 	Parse: star.ParseString,
 }

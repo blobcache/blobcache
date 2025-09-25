@@ -12,7 +12,6 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema/basicns"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
 )
@@ -32,54 +31,18 @@ var rootCmd = star.NewDir(
 		"daemon":           daemonCmd,
 		"daemon-ephemeral": daemonEphemeralCmd,
 
-		// volume management
-		"ls":           lsCmd,
+		// basicns management
+		"basicns": basicnsCmd,
+
 		"mkvol.local":  mkVolLocalCmd,
 		"mkvol.remote": mkVolRemoteCmd,
 		"mkvol.vault":  mkVolVaultCmd,
-
-		// group management
-		"addmem": addMemCmd,
-		"rmmem":  rmMemCmd,
-		"groups": groupsCmd,
-
-		// authorization management
-		"grant":  grantCmd,
-		"revoke": revokeCmd,
 
 		// applications
 		"glfs":       glfsCmd,
 		"fuse-mount": fuseMountCmd,
 	},
 )
-
-var lsCmd = star.Command{
-	Metadata: star.Metadata{
-		Short: "lists volumes",
-	},
-	Flags: []star.AnyParam{stateDirParam},
-	F: func(c star.Context) error {
-		s, err := openLocal(c)
-		if err != nil {
-			return err
-		}
-		defer s.Close()
-		nsc := basicns.Client{Service: s}
-		names, err := nsc.ListNames(c, blobcache.Handle{})
-		if err != nil {
-			return err
-		}
-		for _, name := range names {
-			c.Printf("%v\n", name)
-		}
-		return nil
-	},
-}
-
-var nameParam = star.Param[string]{
-	Name:  "name",
-	Parse: star.ParseString,
-}
 
 func openLocal(c star.Context) (*bclocal.Service, error) {
 	for _, d := range []string{"pebble", "blob"} {

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"go.brendoncarroll.net/state/cadata"
+	"go.inet256.org/inet256/src/inet256"
 )
 
 // CID is a content identifier.
@@ -92,6 +93,11 @@ func (o *OID) Scan(src interface{}) error {
 	}
 	return fmt.Errorf("OID: cannot scan %T", src)
 }
+
+// PeerID uniquely identifies a peer by hash of the public key.
+type PeerID = inet256.ID
+
+const PeerIDSize = inet256.AddrSize
 
 // Conditions is a set of conditions to await.
 type Conditions struct {
@@ -181,16 +187,6 @@ type GetOpts struct {
 	SkipVerify bool
 }
 
-type HandleAPI interface {
-	// Drop causes a handle to be released immediately.
-	// If all the handles to an object are dropped, the object is deleted.
-	Drop(ctx context.Context, h Handle) error
-	// KeepAlive extends the TTL for some handles.
-	KeepAlive(ctx context.Context, hs []Handle) error
-	// InspectHandle returns info about a handle.
-	InspectHandle(ctx context.Context, h Handle) (*HandleInfo, error)
-}
-
 type VolumeAPI interface {
 	// CreateVolume creates a new volume.
 	// CreateVolume always creates a Volume on the local Node.
@@ -239,9 +235,13 @@ type TxAPI interface {
 	Exists(ctx context.Context, tx Handle, cids []CID, dst []bool) error
 	// Delete deletes a CID from the volume
 	Delete(ctx context.Context, tx Handle, cids []CID) error
-	// AddFrom has the same effect as Post, but it does not require sending the data to Blobcache.
+	// Copy has the same effect as Post, but it does not require sending the data to Blobcache.
 	// It returns a slice of booleans, indicating if the CID could be added.
-	AddFrom(ctx context.Context, tx Handle, cids []CID, srcTxns []Handle, success []bool) error
+	// srcTxns are the transactions to copy from.  They will be checked in random order.
+	// If none of them have the blob to copy, then false is written to success for that blob.
+	// Error is only returned if there is an internal error, otherwise the success slice is used to signal
+	// whether a CID was successfully copied.
+	Copy(ctx context.Context, tx Handle, cids []CID, srcTxns []Handle, success []bool) error
 	// AllowLink allows the Volume to reference another volume.
 	// The volume must still have a recognized Container Schema for the volumes to be persisted.
 	AllowLink(ctx context.Context, tx Handle, subvol Handle) error

@@ -152,17 +152,17 @@ func (s *Service) Close() error {
 	)
 }
 
-// Serve performs background tasks for the service.
-// This includes cleaning up expired handles, and garbage collecting volumes and transactions.
-// If a PacketConn and PrivateKey were provided, then the Service will also listen for peers.
+// Serve handles requests from the network.
+// Serve blocks untilt the context is cancelled, or Close is called.
 // Cancelling the context will cause Run to return without an error.
+// If Serve is *not* running, then remote volumes will not work, hosted on this Node or other Nodes.
 func (s *Service) Serve(ctx context.Context) error {
 	if s.node == nil {
 		return fmt.Errorf("bclocal.Serve: node is nil")
 	}
 	err := s.node.Serve(ctx, bcnet.Server{
 		Access: func(peer blobcache.PeerID) blobcache.Service {
-			if policyMentions(s.env.Policy, peer) {
+			if s.env.Policy.CanConnect(peer) {
 				return &peerView{Service: s, Caller: peer}
 			} else {
 				return nil
@@ -456,6 +456,10 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 		s.handles.KeepAlive(h, expiresAt)
 	}
 	return nil
+}
+
+func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	return nil, fmt.Errorf("Share not implemented")
 }
 
 func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
@@ -825,7 +829,7 @@ func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobc
 	return txn.backend.Delete(ctx, cids)
 }
 
-func (s *Service) AddFrom(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, out []bool) error {
+func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, out []bool) error {
 	if len(cids) != len(out) {
 		return fmt.Errorf("cids and out must have the same length")
 	}

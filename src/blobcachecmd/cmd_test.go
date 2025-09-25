@@ -18,8 +18,8 @@ import (
 
 func TestGLFS(t *testing.T) {
 	stateDir := t.TempDir()
-	runCmd(t, nil, []string{"--state", stateDir, "mkvol.local", "vol1"})
-	runCmd(t, nil, []string{"--state", stateDir, "ls"})
+	runCmd(t, nil, []string{"--state", stateDir, "basicns", "createat", "vol1"})
+	runCmd(t, nil, []string{"--state", stateDir, "basicns", "ls"})
 	apiUrl := setupTestDaemon(t, stateDir)
 	env := map[string]string{
 		bcclient.EnvBlobcacheAPI: apiUrl,
@@ -48,8 +48,9 @@ func setupTestDaemon(t testing.TB, stateDir string) (apiURL string) {
 		Net:  "unix",
 	})
 	require.NoError(t, err)
+	d := blobcached.Daemon{StateDir: stateDir}
 	go func() {
-		if err := blobcached.Run(ctx, stateDir, testutil.PacketConn(t), lis); err != nil {
+		if err := d.Run(ctx, testutil.PacketConn(t), lis); err != nil {
 			logctx.Error(ctx, "blobcached failed", zap.Error(err))
 		}
 	}()
