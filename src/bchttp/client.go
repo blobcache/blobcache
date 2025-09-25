@@ -21,9 +21,17 @@ type Client struct {
 }
 
 func NewClient(hc *http.Client, ep string) *Client {
-	ep = strings.TrimPrefix(ep, "http://")
-	if hc == nil {
-		hc = http.DefaultClient
+	switch {
+	case strings.HasPrefix(ep, "http://"):
+		ep = strings.TrimPrefix(ep, "http://")
+		if hc == nil {
+			hc = http.DefaultClient
+		}
+	case strings.HasPrefix(ep, "tcp://"):
+		ep = strings.TrimPrefix(ep, "tcp://")
+		if hc == nil {
+			hc = http.DefaultClient
+		}
 	}
 	return &Client{hc: hc, ep: "http://" + ep}
 }

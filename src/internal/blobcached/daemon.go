@@ -4,17 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"testing"
 	"time"
 
+	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/ed25519"
+	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
@@ -192,4 +197,35 @@ func AwaitHealthy(ctx context.Context, svc blobcache.Service) error {
 		case <-tick.C:
 		}
 	}
+}
+
+// RunTestDaemon launches a test daemon and returns it and the API address.
+// This function will block until the daemon is healthy.
+// The daemon will be stopped and cleaned up at the end of the test.
+// The test will fail during cleanup if the daemon fails to stop, and
+// The test will not complete until the daemon is successfully torn down.
+func RunTestDaemon(t testing.TB) (*Daemon, string) {
+	ctx := testutil.Context(t)
+	ctx, cf := context.WithCancel(ctx)
+	t.Cleanup(cf)
+	dir := t.TempDir()
+	d := Daemon{StateDir: dir}
+	pc := testutil.PacketConn(t)
+	lis := testutil.Listen(t)
+	go func() {
+		if err := d.Run(ctx, pc, lis); err != nil {
+			t.Log(err)
+		}
+	}()
+	apiURL := lis.Addr().Network() + "://" + lis.Addr().String()
+	log.Println("serving API on", apiURL)
+	t.Cleanup(func() {
+		require.NoError(t, pc.Close())
+		require.NoError(t, lis.Close())
+	})
+	svc := bcclient.NewClient(apiURL)
+	t.Log("awaiting healthy", apiURL)
+	require.NoError(t, AwaitHealthy(ctx, svc))
+	t.Log("service is up")
+	return &d, apiURL
 }

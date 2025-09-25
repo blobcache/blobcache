@@ -23,18 +23,19 @@ var basicnsCreateAtCmd = star.Command{
 	Flags: []star.Flag{stateDirParam},
 	F: func(c star.Context) error {
 		log.Println(c.Extra)
-		s, err := openLocal(c)
+		s, err := openService(c)
 		if err != nil {
 			return err
 		}
-		defer s.Close()
 		nsc := basicns.Client{Service: s}
-		volh, err := nsc.CreateAt(c, blobcache.Handle{}, volNameParam.Load(c), blobcache.DefaultLocalSpec())
+		name := volNameParam.Load(c)
+		volh, err := nsc.CreateAt(c, blobcache.Handle{}, name, blobcache.DefaultLocalSpec())
 		if err != nil {
 			return err
 		}
 		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v", *volh)
+		c.Printf("HANDLE: %v\n", *volh)
+		c.Printf("NAME: %v\n", name)
 		return nil
 	},
 }
@@ -45,11 +46,10 @@ var basicnsLsCmd = star.Command{
 	},
 	Flags: []star.Flag{stateDirParam},
 	F: func(c star.Context) error {
-		s, err := openLocal(c)
+		s, err := openService(c)
 		if err != nil {
 			return err
 		}
-		defer s.Close()
 		nsc := basicns.Client{Service: s}
 		names, err := nsc.ListNames(c, blobcache.Handle{})
 		if err != nil {
