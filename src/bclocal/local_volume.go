@@ -793,6 +793,9 @@ func (v *localTxnMut) Save(ctx context.Context, root []byte) error {
 		return err
 	}
 	defer unlock()
+	if len(root) > v.MaxSize()/2 {
+		return fmt.Errorf("root cannot be more than half the max blob size. %d", len(root))
+	}
 	return lvSave(v.localSys.db, v.volid, v.mvid, root)
 }
 

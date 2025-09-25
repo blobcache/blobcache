@@ -152,10 +152,10 @@ func (s *Service) Close() error {
 	)
 }
 
-// Serve performs background tasks for the service.
-// This includes cleaning up expired handles, and garbage collecting volumes and transactions.
-// If a PacketConn and PrivateKey were provided, then the Service will also listen for peers.
+// Serve handles requests from the network.
+// Serve blocks untilt the context is cancelled, or Close is called.
 // Cancelling the context will cause Run to return without an error.
+// If Serve is *not* running, then remote volumes will not work, hosted on this Node or other Nodes.
 func (s *Service) Serve(ctx context.Context) error {
 	if s.node == nil {
 		return fmt.Errorf("bclocal.Serve: node is nil")

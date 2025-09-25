@@ -76,10 +76,13 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 			return serveAPI.Close()
 		})
 	}
-	// always run the local service in the background
-	eg.Go(func() error {
-		return svc.Serve(ctx)
-	})
+	if pc != nil {
+		// if a PacketConn is provided, then run the Serve loop.
+		eg.Go(func() error {
+			return svc.Serve(ctx)
+		})
+	}
+
 	if err := eg.Wait(); errors.Is(err, context.Canceled) {
 		err = nil
 	} else if err != nil {
