@@ -105,10 +105,6 @@ func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.
 	return &h, nil
 }
 
-func (s *Service) OpenAs(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return s.OpenFiat(ctx, x, mask)
-}
-
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
 	args := []string{"open-from", base.String(), x.String()}

@@ -33,7 +33,7 @@ func (pv *peerView) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcach
 	if rights := pol.Open(pv.Caller, x); rights == 0 {
 		return nil, ErrNotAllowed{
 			Peer:   pv.Caller,
-			Action: "OpenAs",
+			Action: "OpenFiat",
 			Target: x,
 		}
 	} else {

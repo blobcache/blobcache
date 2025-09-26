@@ -61,7 +61,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 
 	// BEGIN VOLUME
 	case MT_OPEN_AS:
-		handleAsk(req, resp, &OpenAsReq{}, func(req *OpenAsReq) (*OpenAsResp, error) {
+		handleAsk(req, resp, &OpenFiatReq{}, func(req *OpenFiatReq) (*OpenFiatResp, error) {
 			h, err := svc.OpenFiat(ctx, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
@@ -70,7 +70,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err != nil {
 				return nil, err
 			}
-			return &OpenAsResp{Handle: *h, Info: *info}, nil
+			return &OpenFiatResp{Handle: *h, Info: *info}, nil
 		})
 	case MT_OPEN_FROM:
 		handleAsk(req, resp, &OpenFromReq{}, func(req *OpenFromReq) (*OpenFromResp, error) {

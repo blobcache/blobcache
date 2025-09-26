@@ -44,9 +44,9 @@ func InspectHandle(ctx context.Context, tp Transport, ep blobcache.Endpoint, h b
 	return &resp.Info, nil
 }
 
-func OpenAs(ctx context.Context, tp Transport, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	var resp OpenAsResp
-	if _, err := doAsk(ctx, tp, ep, MT_OPEN_AS, OpenAsReq{Target: target, Mask: mask}, &resp); err != nil {
+func OpenFiat(ctx context.Context, tp Transport, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	var resp OpenFiatResp
+	if _, err := doAsk(ctx, tp, ep, MT_OPEN_AS, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil

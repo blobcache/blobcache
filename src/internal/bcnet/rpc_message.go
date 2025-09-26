@@ -131,46 +131,46 @@ func (sr *ShareResp) Unmarshal(data []byte) error {
 	return sr.Handle.Unmarshal(data)
 }
 
-type OpenAsReq struct {
+type OpenFiatReq struct {
 	Target blobcache.OID
 	Mask   blobcache.ActionSet
 }
 
-func (oa OpenAsReq) Marshal(out []byte) []byte {
+func (oa OpenFiatReq) Marshal(out []byte) []byte {
 	out = oa.Target.Marshal(out)
 	out = binary.BigEndian.AppendUint64(out, uint64(oa.Mask))
 	return out
 }
 
-func (oa *OpenAsReq) Unmarshal(data []byte) error {
+func (oa *OpenFiatReq) Unmarshal(data []byte) error {
 	if len(data) < blobcache.OIDSize+8 {
-		return fmt.Errorf("cannot unmarshal OpenAsReq, too short: %d", len(data))
+		return fmt.Errorf("cannot unmarshal OpenFiatReq, too short: %d", len(data))
 	}
 	oa.Target = blobcache.OID(data[:blobcache.OIDSize])
 	oa.Mask = blobcache.ActionSet(binary.BigEndian.Uint64(data[blobcache.OIDSize:]))
 	return nil
 }
 
-type OpenAsResp struct {
+type OpenFiatResp struct {
 	Handle blobcache.Handle
 	Info   blobcache.VolumeInfo
 }
 
-func (oa OpenAsResp) Marshal(out []byte) []byte {
+func (oa OpenFiatResp) Marshal(out []byte) []byte {
 	out = oa.Handle.Marshal(out)
 	return oa.Info.Marshal(out)
 }
 
-func (oa *OpenAsResp) Unmarshal(data []byte) error {
+func (oa *OpenFiatResp) Unmarshal(data []byte) error {
 	if len(data) < blobcache.HandleSize {
-		return fmt.Errorf("cannot unmarshal OpenAsResp, too short: %d", len(data))
+		return fmt.Errorf("cannot unmarshal OpenFiatResp, too short: %d", len(data))
 	}
 	if err := oa.Handle.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
 	}
 	data = data[blobcache.HandleSize:]
 	if err := oa.Info.Unmarshal(data); err != nil {
-		return fmt.Errorf("cannot unmarshal OpenAsResp.Info: %w", err)
+		return fmt.Errorf("cannot unmarshal OpenFiatResp.Info: %w", err)
 	}
 	return nil
 }

@@ -135,7 +135,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 
 		ns1h = *rootNSh
 		for i := 0; i < 10; i++ {
-			require.NotZero(t, ns1h.Secret) // This would cause basicns to call OpenAs instead of OpenFrom.
+			require.NotZero(t, ns1h.Secret) // This would cause basicns to call OpenFiat instead of OpenFrom.
 			ns2h, err := nsc.OpenAt(ctx, ns1h, "nested", blobcache.Action_ALL)
 			require.NoError(t, err)
 			ns1h = *ns2h
