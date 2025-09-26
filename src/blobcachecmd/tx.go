@@ -242,7 +242,7 @@ var txDeleteCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "deletes data from the transaction",
 	},
-	Pos: []star.Positional{txHParam},
+	Pos: []star.Positional{txHParam, cidsParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {

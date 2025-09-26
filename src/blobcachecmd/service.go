@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 
 	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/blobcache"
@@ -27,7 +27,7 @@ func (s *Service) Endpoint(ctx context.Context) (ep blobcache.Endpoint, _ error)
 	if err := s.run([]string{"endpoint"}, nil, &out); err != nil {
 		return blobcache.Endpoint{}, err
 	}
-	return blobcache.ParseEndpoint(out.String())
+	return blobcache.ParseEndpoint(strings.TrimSpace(out.String()))
 }
 
 // HandleAPI
@@ -77,7 +77,7 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
 	var out bytes.Buffer
-	if err := s.run([]string{"volume", "inspect", h.String()}, nil, &out); err != nil {
+	if err := s.run([]string{"ivol", h.String()}, nil, &out); err != nil {
 		return nil, err
 	}
 	var vi blobcache.VolumeInfo
@@ -90,7 +90,11 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 // Backward-compat shim to satisfy any stale interface checks
 func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	str, err := s.runParse([]string{"open-as", x.String(), fmt.Sprint(uint64(mask))}, re)
+	args := []string{"open-fiat", x.String()}
+	if mask != blobcache.Action_ALL {
+		args = append(args, fmt.Sprintf("%x", uint64(mask)))
+	}
+	str, err := s.runParse(args, re)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +111,11 @@ func (s *Service) OpenAs(ctx context.Context, x blobcache.OID, mask blobcache.Ac
 
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	str, err := s.runParse([]string{"open-from", base.String(), x.String(), fmt.Sprint(uint64(mask))}, re)
+	args := []string{"open-from", base.String(), x.String()}
+	if mask != blobcache.Action_ALL {
+		args = append(args, fmt.Sprintf("%x", uint64(mask)))
+	}
+	str, err := s.runParse(args, re)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +315,6 @@ func (s *Service) runParse(args []string, re *regexp.Regexp) (string, error) {
 
 // run runs a command and returns the output.
 func (s *Service) run(args []string, in []byte, out *bytes.Buffer) error {
-	log.Println("running:", s.ExecPath, args)
 	cmd := exec.Command(s.ExecPath, args...)
 	cmd.Env = []string{
 		bcclient.EnvBlobcacheAPI + "=" + s.APIAddr,

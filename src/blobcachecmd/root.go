@@ -81,12 +81,17 @@ var endpointCmd = star.Command{
 
 // openService opens a service
 func openService(c star.Context) (blobcache.Service, error) {
-	apiUrl := os.Getenv(bcclient.EnvBlobcacheAPI)
-	if apiUrl == "" {
-		logctx.Warnf(c.Context, "%s not set, using default=%s", bcclient.EnvBlobcacheAPI, bcclient.DefaultEndpoint)
-		apiUrl = bcclient.DefaultEndpoint
+	apiURL := c.Env[bcclient.EnvBlobcacheAPI]
+	if apiURL == "" {
+		// TODO: star does not properly include Env vars in Main
+		// This should not be required.
+		apiURL = os.Getenv(bcclient.EnvBlobcacheAPI)
 	}
-	return bcclient.NewClient(apiUrl), nil
+	if apiURL == "" {
+		logctx.Warnf(c.Context, "%s not set, using default=%s", bcclient.EnvBlobcacheAPI, bcclient.DefaultEndpoint)
+		apiURL = bcclient.DefaultEndpoint
+	}
+	return bcclient.NewClient(apiURL), nil
 }
 
 func RunTest(t testing.TB, env map[string]string, calledAs string, args []string, stdin *bufio.Reader, stdout *bufio.Writer, stderr *bufio.Writer) {

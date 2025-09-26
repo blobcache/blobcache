@@ -16,7 +16,9 @@ func TestAPI(t *testing.T) {
 
 	dir := t.TempDir()
 	execPath := filepath.Join(dir, "blobcache")
+	t.Log("building blobcache command")
 	require.NoError(t, buildCmd(execPath))
+	t.Log("built blobcache command. written to ", execPath)
 
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
 		_, apiAddr := blobcached.RunTestDaemon(t)

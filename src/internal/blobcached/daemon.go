@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -218,10 +217,13 @@ func RunTestDaemon(t testing.TB) (*Daemon, string) {
 		}
 	}()
 	apiURL := lis.Addr().Network() + "://" + lis.Addr().String()
-	log.Println("serving API on", apiURL)
 	t.Cleanup(func() {
-		require.NoError(t, pc.Close())
-		require.NoError(t, lis.Close())
+		if err := pc.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("packet conn close: %v", err)
+		}
+		if err := lis.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("listener close: %v", err)
+		}
 	})
 	svc := bcclient.NewClient(apiURL)
 	t.Log("awaiting healthy", apiURL)

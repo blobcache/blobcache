@@ -1,8 +1,6 @@
 package blobcachecmd
 
 import (
-	"log"
-
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema/basicns"
 	"go.brendoncarroll.net/star"
@@ -22,7 +20,6 @@ var basicnsCreateAtCmd = star.Command{
 	Pos:   []star.Positional{volNameParam},
 	Flags: []star.Flag{stateDirParam},
 	F: func(c star.Context) error {
-		log.Println(c.Extra)
 		s, err := openService(c)
 		if err != nil {
 			return err

@@ -76,9 +76,9 @@ func (c *Client) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pee
 }
 
 func (c *Client) OpenFiat(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	req := OpenAsReq{Target: target, Mask: mask}
-	var resp OpenAsResp
-	if err := c.doJSON(ctx, "POST", "/OpenAs", nil, req, &resp); err != nil {
+	req := OpenFiatReq{Target: target, Mask: mask}
+	var resp OpenFiatResp
+	if err := c.doJSON(ctx, "POST", "/OpenFiat", nil, req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil

@@ -53,12 +53,12 @@ type OpenFromResp struct {
 	Info   blobcache.VolumeInfo `json:"info"`
 }
 
-type OpenAsReq struct {
+type OpenFiatReq struct {
 	Target blobcache.OID       `json:"target"`
 	Mask   blobcache.ActionSet `json:"mask"`
 }
 
-type OpenAsResp struct {
+type OpenFiatResp struct {
 	Handle blobcache.Handle     `json:"handle"`
 	Info   blobcache.VolumeInfo `json:"info"`
 }
