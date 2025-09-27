@@ -3,6 +3,7 @@ package tries
 import (
 	"context"
 
+	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/state/cadata"
 	"go.brendoncarroll.net/state/kv"
 	"golang.org/x/sync/errgroup"
@@ -18,7 +19,7 @@ type Walker struct {
 // w.ShouldWalk is called before walking a node, if false is returned the node is skipped
 // w.EntryFn is called for every entry in a node
 // w.NodeFn is called for the node after all the entries reachable from it have been walked.
-func (o *Machine) Walk(ctx context.Context, s cadata.Store, root Root, w Walker) error {
+func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) error {
 	if !w.ShouldWalk(root) {
 		return nil
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"blobcache.io/blobcache/src/schema"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state/cadata"
@@ -13,7 +14,7 @@ import (
 
 // getNode returns node at x.
 // all the entries will be in compressed form.
-func (o *Machine) getNode(ctx context.Context, s cadata.Getter, x Root, expandKeys bool) ([]*Entry, error) {
+func (o *Machine) getNode(ctx context.Context, s schema.RO, x Root, expandKeys bool) ([]*Entry, error) {
 	n := &Node{}
 	if err := o.getF(ctx, s, x.Ref, func(data []byte) error {
 		return proto.Unmarshal(data, n)
@@ -63,7 +64,7 @@ func (o *Machine) getParent(ctx context.Context, s cadata.Getter, x Root, expand
 }
 
 // postNode creates a new node with ents, ents will be split if necessary
-func (o *Machine) postNode(ctx context.Context, s cadata.Poster, ents []*Entry) (*Root, error) {
+func (o *Machine) postNode(ctx context.Context, s schema.Poster, ents []*Entry) (*Root, error) {
 	r, err := o.postLeaf(ctx, s, ents)
 	if !errors.Is(err, cadata.ErrTooLarge) {
 		return r, err
@@ -75,7 +76,7 @@ func (o *Machine) postNode(ctx context.Context, s cadata.Poster, ents []*Entry) 
 	return o.postParent(ctx, s, roots, e)
 }
 
-func (o *Machine) postLeaf(ctx context.Context, s cadata.Poster, ents []*Entry) (*Root, error) {
+func (o *Machine) postLeaf(ctx context.Context, s schema.Poster, ents []*Entry) (*Root, error) {
 	sortEntries(ents)
 	ents = dedup(ents)
 	prefix, ents := compressEntries(ents)
@@ -98,7 +99,7 @@ func (o *Machine) postLeaf(ctx context.Context, s cadata.Poster, ents []*Entry) 
 	}, nil
 }
 
-func (o *Machine) postParent(ctx context.Context, s cadata.Poster, children []Root, ent *Entry) (*Root, error) {
+func (o *Machine) postParent(ctx context.Context, s schema.Poster, children []Root, ent *Entry) (*Root, error) {
 	var count uint64
 	ents := make([]*Entry, 0, 257)
 	if ent != nil {

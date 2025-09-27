@@ -40,14 +40,21 @@ func (None) Validate(ctx context.Context, s RO, prev, next []byte) error {
 // RO is read-only Store methods
 type RO interface {
 	Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error)
-	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
+	// Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
 	MaxSize() int
+	Hash([]byte) blobcache.CID
+}
+
+type Poster interface {
+	Post(ctx context.Context, data []byte) (blobcache.CID, error)
+	MaxSize() int
+	Hash(data []byte) blobcache.CID
 }
 
 // RW is Read-Write Store methods
 type RW interface {
 	RO
-	Post(ctx context.Context, data []byte) (blobcache.CID, error)
+	Poster
 }
 
 // RWD is Read-Write-Delete Store methods

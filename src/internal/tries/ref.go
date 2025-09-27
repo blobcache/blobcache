@@ -9,6 +9,7 @@ import (
 	"lukechampine.com/blake3"
 
 	"blobcache.io/blobcache/src/internal/bccrypto"
+	"blobcache.io/blobcache/src/schema"
 )
 
 type Ref struct {
@@ -38,7 +39,7 @@ func parseRef(x []byte) (*Ref, error) {
 	return y, nil
 }
 
-func (o *Machine) post(ctx context.Context, s cadata.Poster, ptext []byte) (*Ref, error) {
+func (o *Machine) post(ctx context.Context, s schema.Poster, ptext []byte) (*Ref, error) {
 	l := len(ptext)
 	ref, err := o.crypto.Post(ctx, s, ptext)
 	if err != nil {
@@ -51,7 +52,7 @@ func (o *Machine) post(ctx context.Context, s cadata.Poster, ptext []byte) (*Ref
 	}, nil
 }
 
-func (o *Machine) getF(ctx context.Context, s cadata.Getter, ref Ref, fn func([]byte) error) error {
+func (o *Machine) getF(ctx context.Context, s schema.RO, ref Ref, fn func([]byte) error) error {
 	key := blake3.Sum256(marshalRef(ref))
 	v, exists := o.cache.Get(key)
 	if exists {
