@@ -68,7 +68,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := basicns.Client{Service: s}
-		nsh, err := s.OpenAs(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		nsh, err := s.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 		err = nsc.PutEntry(ctx, *nsh, "test-name", *volh)
 		require.NoError(t, err)
@@ -88,7 +88,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		nsh, err := s.OpenAs(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		nsh, err := s.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 		nsc := basicns.Client{Service: s}
 		// Delets are idempotent, should not get an error.
@@ -105,7 +105,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		nsc := basicns.Client{Service: s}
 		require.NoError(t, nsc.PutEntry(ctx, blobcache.Handle{}, "vol1", *volh))
 
-		nsh, err := s.OpenAs(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		nsh, err := s.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 		txh, err := s.BeginTx(ctx, *nsh, blobcache.TxParams{Mutate: true})
 		require.NoError(t, err)
@@ -120,7 +120,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		s := mk(t)
 		// Open the root namespace
 		nsc := basicns.Client{Service: s}
-		rootNSh, err := s.OpenAs(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		rootNSh, err := s.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 
 		// Create 10 nested namespaces.
@@ -135,7 +135,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 
 		ns1h = *rootNSh
 		for i := 0; i < 10; i++ {
-			require.NotZero(t, ns1h.Secret) // This would cause basicns to call OpenAs instead of OpenFrom.
+			require.NotZero(t, ns1h.Secret) // This would cause basicns to call OpenFiat instead of OpenFrom.
 			ns2h, err := nsc.OpenAt(ctx, ns1h, "nested", blobcache.Action_ALL)
 			require.NoError(t, err)
 			ns1h = *ns2h
@@ -146,7 +146,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		ctx := testutil.Context(t)
 		s := mk(t)
 		nsc := basicns.Client{Service: s}
-		rootNSh, err := s.OpenAs(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		rootNSh, err := s.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 
 		for i := 0; i < 10; i++ {

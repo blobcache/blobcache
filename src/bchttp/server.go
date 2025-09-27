@@ -34,9 +34,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return &OpenFromResp{Handle: *handle, Info: *volInfo}, nil
 		})
-	case r.URL.Path == "/OpenAs":
-		handleRequest(w, r, func(ctx context.Context, req OpenAsReq) (*OpenAsResp, error) {
-			handle, err := s.Service.OpenAs(ctx, req.Target, req.Mask)
+	case r.URL.Path == "/OpenFiat":
+		handleRequest(w, r, func(ctx context.Context, req OpenFiatReq) (*OpenFiatResp, error) {
+			handle, err := s.Service.OpenFiat(ctx, req.Target, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -44,7 +44,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
-			return &OpenAsResp{Handle: *handle, Info: *volInfo}, nil
+			return &OpenFiatResp{Handle: *handle, Info: *volInfo}, nil
 		})
 	case r.URL.Path == "/Endpoint":
 		handleRequest(w, r, func(ctx context.Context, req EndpointReq) (*EndpointResp, error) {

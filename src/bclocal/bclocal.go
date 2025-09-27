@@ -474,7 +474,7 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	}, nil
 }
 
-func (s *Service) OpenAs(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}

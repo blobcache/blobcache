@@ -96,6 +96,20 @@ func (c *Client) DeleteEntry(ctx context.Context, volh blobcache.Handle, name st
 	return nstx.Commit(ctx)
 }
 
+func (c *Client) ListEntries(ctx context.Context, volh blobcache.Handle) ([]Entry, error) {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return nil, err
+	}
+	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{})
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Abort(ctx)
+	nstx := Tx{Tx: txn}
+	return nstx.ListEntries(ctx)
+}
+
 func (c *Client) ListNames(ctx context.Context, volh blobcache.Handle) ([]string, error) {
 	volh, err := c.resolve(ctx, volh)
 	if err != nil {
@@ -126,7 +140,7 @@ func (c *Client) GetEntry(ctx context.Context, volh blobcache.Handle, name strin
 
 func (c *Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
 	if volh.Secret == ([16]byte{}) {
-		volh2, err := c.Service.OpenAs(ctx, volh.OID, blobcache.Action_ALL)
+		volh2, err := c.Service.OpenFiat(ctx, volh.OID, blobcache.Action_ALL)
 		if err != nil {
 			return blobcache.Handle{}, err
 		}

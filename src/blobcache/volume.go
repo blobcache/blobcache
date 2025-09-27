@@ -8,6 +8,8 @@ import (
 	"iter"
 	"net/netip"
 	"strings"
+
+	"go.inet256.org/inet256/src/inet256"
 )
 
 // Endpoint is somewhere that a blobcache node can be found.
@@ -23,6 +25,25 @@ func (e Endpoint) String() string {
 
 func (e Endpoint) IsZero() bool {
 	return e.Peer.IsZero() && e.IPPort == netip.AddrPort{}
+}
+
+func ParseEndpoint(s string) (Endpoint, error) {
+	parts := strings.Split(s, "@")
+	if len(parts) != 2 {
+		return Endpoint{}, fmt.Errorf("invalid endpoint: %s", s)
+	}
+	peer, err := inet256.ParseAddrBase64([]byte(parts[0]))
+	if err != nil {
+		return Endpoint{}, err
+	}
+	ap, err := netip.ParseAddrPort(parts[1])
+	if err != nil {
+		return Endpoint{}, err
+	}
+	return Endpoint{
+		Peer:   peer,
+		IPPort: ap,
+	}, nil
 }
 
 // VolumeSpec is a specification for a volume.

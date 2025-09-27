@@ -28,15 +28,15 @@ func (pv *peerView) CreateVolume(ctx context.Context, host *blobcache.Endpoint, 
 	return pv.Service.CreateVolume(ctx, nil, vspec)
 }
 
-func (pv *peerView) OpenAs(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (pv *peerView) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	pol := pv.Service.env.Policy
 	if rights := pol.Open(pv.Caller, x); rights == 0 {
 		return nil, ErrNotAllowed{
 			Peer:   pv.Caller,
-			Action: "OpenAs",
+			Action: "OpenFiat",
 			Target: x,
 		}
 	} else {
-		return pv.Service.OpenAs(ctx, x, rights&mask)
+		return pv.Service.OpenFiat(ctx, x, rights&mask)
 	}
 }

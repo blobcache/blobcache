@@ -21,9 +21,17 @@ type Client struct {
 }
 
 func NewClient(hc *http.Client, ep string) *Client {
-	ep = strings.TrimPrefix(ep, "http://")
-	if hc == nil {
-		hc = http.DefaultClient
+	switch {
+	case strings.HasPrefix(ep, "http://"):
+		ep = strings.TrimPrefix(ep, "http://")
+		if hc == nil {
+			hc = http.DefaultClient
+		}
+	case strings.HasPrefix(ep, "tcp://"):
+		ep = strings.TrimPrefix(ep, "tcp://")
+		if hc == nil {
+			hc = http.DefaultClient
+		}
 	}
 	return &Client{hc: hc, ep: "http://" + ep}
 }
@@ -67,10 +75,10 @@ func (c *Client) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pee
 	return &resp.Handle, nil
 }
 
-func (c *Client) OpenAs(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	req := OpenAsReq{Target: target, Mask: mask}
-	var resp OpenAsResp
-	if err := c.doJSON(ctx, "POST", "/OpenAs", nil, req, &resp); err != nil {
+func (c *Client) OpenFiat(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	req := OpenFiatReq{Target: target, Mask: mask}
+	var resp OpenFiatResp
+	if err := c.doJSON(ctx, "POST", "/OpenFiat", nil, req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil

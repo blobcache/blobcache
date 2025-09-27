@@ -19,12 +19,12 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		// create a volume on the first node
 		volh, err := s1.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
-		nsh, err := s1.OpenAs(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		nsh, err := s1.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
 		require.NoError(t, err)
 		nsc := basicns.Client{Service: s1}
 		require.NoError(t, nsc.PutEntry(ctx, *nsh, "name1", *volh))
 
-		// creating a remote volume on the second node should turn into a call to OpenAs on the first node
+		// creating a remote volume on the second node should turn into a call to OpenFiat on the first node
 		volh2, err := s2.CreateVolume(ctx, nil, remoteVolumeSpec(s1ep, volh.OID))
 		require.NoError(t, err)
 

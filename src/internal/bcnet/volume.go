@@ -234,10 +234,10 @@ func OpenVolumeFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, ba
 }
 
 func OpenVolumeAs(ctx context.Context, tp Transport, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {
-	resp, err := doAsk(ctx, tp, ep, MT_OPEN_AS, OpenAsReq{
+	resp, err := doAsk(ctx, tp, ep, MT_OPEN_AS, OpenFiatReq{
 		Target: target,
 		Mask:   mask,
-	}, &OpenAsResp{})
+	}, &OpenFiatResp{})
 	if err != nil {
 		return nil, err
 	}
