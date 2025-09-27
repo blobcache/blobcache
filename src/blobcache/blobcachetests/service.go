@@ -111,7 +111,6 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		})
 	})
 	t.Run("Vault/Tx", func(t *testing.T) {
-		t.SkipNow() // TODO: re-enable after GC transactions are working.
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			s := mk(t)

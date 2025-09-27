@@ -4,24 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"crypto/rand"
+	"fmt"
+	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bccrypto"
 	"blobcache.io/blobcache/src/internal/tries"
-	"go.brendoncarroll.net/state/cadata"
+	"go.brendoncarroll.net/state"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 var _ Volume = &Vault{}
 
 type Vault struct {
-	Inner  Volume
+	Inner Volume
+
 	secret [32]byte
+	tmach  *tries.Machine
+	cmach  *bccrypto.Machine
 }
 
 func NewVault(inner Volume, secret [32]byte) *Vault {
 	return &Vault{
 		Inner:  inner,
 		secret: secret,
+		tmach:  tries.NewMachine(),
 	}
 }
 
@@ -30,38 +38,66 @@ func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (Tx, err
 	if err != nil {
 		return nil, err
 	}
-	return newVaultTx(v, inner), nil
+	return newVaultTx(v, inner, params.GC), nil
 }
 
 func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return v.Inner.Await(ctx, prev, next)
 }
 
+<<<<<<< HEAD
 func (v *Vault) ReadLinks(ctx context.Context, dst LinkSet) error {
 	return v.Inner.ReadLinks(ctx, dst)
+=======
+func (v *Vault) aeadSeal(out []byte, ptext []byte) []byte {
+	var nonce [24]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		panic(err)
+	}
+	out = append(out, nonce[:]...)
+	aead, err := chacha20poly1305.NewX(v.secret[:])
+	if err != nil {
+		panic(err)
+	}
+	return aead.Seal(out, nonce[:], ptext, nil)
+}
+
+func (v *Vault) aeadOpen(out []byte, ctext []byte) ([]byte, error) {
+	if len(ctext) == 0 {
+		return []byte{}, nil
+	}
+	var nonce [24]byte
+	if len(ctext) < len(nonce) {
+		return nil, fmt.Errorf("too small to contain nonce")
+	}
+	copy(nonce[:], ctext[0:len(nonce)])
+	ctext = ctext[len(nonce):]
+	aead, err := chacha20poly1305.NewX(v.secret[:])
+	if err != nil {
+		return nil, err
+	}
+	return aead.Open(out, nonce[:], ctext, nil)
+>>>>>>> 24d5630 (Vault volume backend WIP)
 }
 
 var _ Tx = &VaultTx{}
 
 type VaultTx struct {
-	vol    *Vault
-	inner  Tx
-	crypto *bccrypto.Worker
-	tries  *tries.Machine
+	vol   *Vault
+	inner Tx
+	isGC  bool
 
-	root  []byte
-	blobs map[blobcache.CID]bccrypto.Ref
+	mu  sync.RWMutex
+	ttx *tries.Tx
+	// newTx is only set for GC transactions
+	newTx *tries.Tx
 }
 
-func newVaultTx(vol *Vault, inner Tx) *VaultTx {
-	trieOp := tries.NewMachine()
+func newVaultTx(vol *Vault, inner Tx, isGC bool) *VaultTx {
 	return &VaultTx{
-		vol:    vol,
-		inner:  inner,
-		crypto: bccrypto.NewWorker(nil),
-		tries:  trieOp,
-
-		blobs: make(map[blobcache.CID]bccrypto.Ref),
+		vol:   vol,
+		inner: inner,
+		isGC:  isGC,
 	}
 }
 
@@ -70,52 +106,57 @@ func (tx *VaultTx) Volume() Volume {
 }
 
 func (v *VaultTx) Load(ctx context.Context, dst *[]byte) error {
-	if v.root != nil {
-		*dst = append((*dst)[:0], v.root...)
-		return nil
-	}
-
-	var innerRoot []byte
-	if err := v.inner.Load(ctx, &innerRoot); err != nil {
+	if err := v.setup(ctx); err != nil {
 		return err
 	}
-	var trieRoot tries.Root
-	if err := json.Unmarshal(innerRoot, &trieRoot); err != nil {
-		return err
-	}
-	rootVal, err := v.tries.Get(ctx, UnsaltedStore{v.inner}, trieRoot, nil)
-	if err != nil {
-		return err
-	}
-	v.root = rootVal
-	*dst = append((*dst)[:0], rootVal...)
-	return nil
+	s := NewUnsaltedStore(v)
+	return v.ttx.Get(ctx, s, []byte{}, dst)
 }
 
 func (v *VaultTx) Save(ctx context.Context, src []byte) error {
-	v.root = append(v.root[:0], src...)
-	return nil
+	if err := v.setup(ctx); err != nil {
+		return err
+	}
+	return v.ttx.Put(ctx, []byte{}, src)
 }
 
 func (v *VaultTx) Commit(ctx context.Context) error {
-	b := v.tries.NewBuilder(UnsaltedStore{v.inner}, 1024)
-	for cid, ref := range v.blobs {
-		if ref.IsZero() {
-			continue
+	if v.ttx == nil {
+		return nil
+	}
+	s := NewUnsaltedStore(v.inner)
+
+	if v.isGC {
+		// if this is a GC transaction, then we need to go through and mark everything not visited as deleted.
+	}
+	root, err := v.ttx.Finish(ctx, s)
+	if err != nil {
+		return err
+	}
+	it := v.vol.tmach.NewIterator(s, *root, state.ByteSpan{})
+	if v.isGC {
+		walker := tries.Walker{
+			ShouldWalk: func(root tries.Root) bool {
+				var visited [1]bool
+				if err := v.inner.IsVisited(ctx, []blobcache.CID{root.Ref.ID}, visited[:]); err != nil {
+					return true // if this fails, then we do want to traverse it.
+				}
+				// otherwise traverse if it's not visited.
+				return !visited[0]
+			},
+			EntryFn: func(ent *tries.Entry) error {
+				return nil
+			},
+			NodeFn: func(tr tries.Root) error {
+				return v.inner.Visit(ctx, []blobcache.CID{tr.Ref.ID})
+			},
 		}
-		if err := b.Put(ctx, cid[:], ref.DEK[:]); err != nil {
+		if err := v.vol.tmach.Walk(ctx, s, *root, walker); err != nil {
 			return err
 		}
 	}
-	trieRoot, err := b.Finish(ctx)
-	if err != nil {
-		return err
-	}
-	root2, err := json.Marshal(trieRoot)
-	if err != nil {
-		return err
-	}
-	if err := v.inner.Save(ctx, root2); err != nil {
+	rootCtext := v.vol.aeadSeal(nil, root.Marshal())
+	if err := v.inner.Save(ctx, rootCtext); err != nil {
 		return err
 	}
 	return v.inner.Commit(ctx)
@@ -126,66 +167,78 @@ func (v *VaultTx) Abort(ctx context.Context) error {
 }
 
 func (v *VaultTx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
-	ref, err := v.crypto.Post(ctx, UnsaltedStore{v.inner}, data)
+	s := NewUnsaltedStore(v.inner)
+	cid := v.inner.Hash(nil, data)
+	ref, err := v.vol.cmach.Post(ctx, s, data)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	ptextCID := v.inner.Hash(opts.Salt, data)
-	v.blobs[ptextCID] = ref
-	return ptextCID, nil
+	if err := v.putRef(ctx, cid, ref); err != nil {
+		return blobcache.CID{}, err
+	}
+	return cid, nil
 }
 
 func (v *VaultTx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	if ref, ok := v.blobs[cid]; ok && !ref.IsZero() {
-		return v.crypto.Get(ctx, UnsaltedStore{v.inner}, ref, buf)
-	} else if ok {
-		return 0, cadata.ErrNotFound{Key: cid}
-	}
-	var root []byte
-	if err := v.inner.Load(ctx, &root); err != nil {
+	if err := v.setup(ctx); err != nil {
 		return 0, err
 	}
-	var trieRoot tries.Root
-	if err := json.Unmarshal(root, &trieRoot); err != nil {
-		return 0, err
-	}
-	dek, err := v.tries.Get(ctx, UnsaltedStore{v.inner}, trieRoot, cid[:])
+	ref, err := v.getRef(ctx, cid)
 	if err != nil {
 		return 0, err
 	}
-	ref := bccrypto.Ref{CID: cid, DEK: bccrypto.DEK(dek)}
-	return v.crypto.Get(ctx, UnsaltedStore{v.inner}, ref, buf)
+	s := NewUnsaltedStore(v.inner)
+	// get and decrypt the ciphertext blob
+	return v.vol.cmach.Get(ctx, s, ref, buf)
 }
 
 func (v *VaultTx) Delete(ctx context.Context, cids []blobcache.CID) error {
-	var innerCIDs []blobcache.CID
-	for _, cid := range cids {
-		if ref, exists := v.blobs[cid]; exists {
-			innerCIDs = append(innerCIDs, ref.CID)
-		}
+	if err := v.setup(ctx); err != nil {
+		return err
 	}
-	return v.inner.Delete(ctx, innerCIDs)
-}
-
-func (v *VaultTx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	for i := range cids {
-		if ref, exists := v.blobs[cids[i]]; exists {
-			dst[i] = !ref.IsZero()
+	for _, cid := range cids {
+		ref, err := v.getRef(ctx, cid)
+		if err != nil {
+			return err
+		}
+		if err := v.inner.Delete(ctx, []blobcache.CID{ref.CID}); err != nil {
+			return err
+		}
+		if err := v.ttx.Delete(ctx, cid[:]); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func (v *VaultTx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	// TODO: these CIDs only exist in the plaintext space, we need to transform them to the ciphertext space.
-	// and then mark those as visited.
-	// Additionally, and blobs that we access along the path from the root to the key-value entry
-	// must also be marked as visited.
-	panic("not implemented")
+func (v *VaultTx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	if err := v.setup(ctx); err != nil {
+		return err
+	}
+	ctcids, err := v.translateCIDs(ctx, cids)
+	if err != nil {
+		return err
+	}
+	return v.inner.Exists(ctx, ctcids, dst)
+}
+
+func (v *VaultTx) IsVisited(ctx context.Context, ptcids []blobcache.CID, dst []bool) error {
+	ctcids, err := v.translateCIDs(ctx, ptcids)
+	if err != nil {
+		return err
+	}
+	return v.inner.IsVisited(ctx, ctcids, dst)
 }
 
 func (v *VaultTx) Visit(ctx context.Context, cids []blobcache.CID) error {
-	panic("not implemented")
+	ctcids, err := v.translateCIDs(ctx, cids)
+	if err != nil {
+		return err
+	}
+	if err := v.inner.Visit(ctx, ctcids); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (v *VaultTx) MaxSize() int {
@@ -206,4 +259,74 @@ func (v *VaultTx) Unlink(ctx context.Context, targets []blobcache.OID) error {
 
 func (v *VaultTx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
 	return fmt.Errorf("vault: VisitLinks not implemented")
+}
+
+func (vtx *VaultTx) setup(ctx context.Context) error {
+	vtx.mu.RLock()
+	ttx := vtx.ttx
+	vtx.mu.RUnlock()
+	if ttx != nil {
+		return nil
+	}
+
+	vtx.mu.Lock()
+	defer vtx.mu.Unlock()
+	if vtx.ttx != nil {
+		return nil
+	}
+	var rootCtext []byte
+	if err := vtx.inner.Load(ctx, &rootCtext); err != nil {
+		return err
+	}
+	rootPtext, err := vtx.vol.aeadOpen(nil, rootCtext)
+	if err != nil {
+		return err
+	}
+	troot, err := tries.ParseRoot(rootPtext)
+	if err != nil {
+		return err
+	}
+	vtx.ttx = vtx.vol.tmach.NewTx(*troot)
+	return nil
+}
+
+// getRef returns the crypto ref for the plaintext CID
+func (v *VaultTx) getRef(ctx context.Context, ptcid blobcache.CID) (bccrypto.Ref, error) {
+	if err := v.setup(ctx); err != nil {
+		return bccrypto.Ref{}, err
+	}
+	s := NewUnsaltedStore(v.inner)
+	var crefData []byte
+	if err := v.ttx.Get(ctx, s, ptcid[:], &crefData); err != nil {
+		return bccrypto.Ref{}, err
+	}
+	var ref bccrypto.Ref
+	if err := ref.Unmarshal(crefData); err != nil {
+		return ref, err
+	}
+	return ref, nil
+}
+
+func (v *VaultTx) putRef(ctx context.Context, ptcid blobcache.CID, ref bccrypto.Ref) error {
+	if err := v.setup(ctx); err != nil {
+		return err
+	}
+	return v.ttx.Put(ctx, ptcid[:], ref.Marshal(nil))
+}
+
+// translateCIDs resolves plaintext CIDs into ciphertext CIDs
+func (v *VaultTx) translateCIDs(ctx context.Context, ptcids []blobcache.CID) ([]blobcache.CID, error) {
+	var ctcids []blobcache.CID
+	for _, ptcid := range ptcids {
+		ref, err := v.getRef(ctx, ptcid)
+		if err != nil {
+			if tries.IsErrNotFound(err) {
+				ctcids = append(ctcids, blobcache.CID{})
+				continue
+			}
+			return nil, err
+		}
+		ctcids = append(ctcids, ref.CID)
+	}
+	return ctcids, nil
 }

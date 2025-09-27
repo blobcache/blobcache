@@ -5,59 +5,62 @@ import (
 	"context"
 
 	"blobcache.io/blobcache/src/internal/bccrypto"
+	"blobcache.io/blobcache/src/schema"
 	lru "github.com/hashicorp/golang-lru"
 	"go.brendoncarroll.net/state/cadata"
 )
 
 type Machine struct {
 	cache  *lru.Cache
-	crypto *bccrypto.Worker
+	crypto *bccrypto.Machine
 }
 
 func NewMachine() *Machine {
 	cache, _ := lru.New(16)
 	return &Machine{
 		cache:  cache,
-		crypto: bccrypto.NewWorker(nil),
+		crypto: bccrypto.NewMachine(nil),
 	}
 }
 
 // PostSlice returns a new instance containing ents
-func (o *Machine) PostSlice(ctx context.Context, s cadata.Poster, ents []*Entry) (*Root, error) {
+func (o *Machine) PostSlice(ctx context.Context, s schema.Poster, ents []*Entry) (*Root, error) {
 	return o.postNode(ctx, s, ents)
 }
 
-// Get retrieves a value at key if it exists, otherwise ErrNotExist is returned
-func (o *Machine) Get(ctx context.Context, s cadata.Getter, root Root, key []byte) ([]byte, error) {
+// Get retrieves a value at key if it exists, otherwise ErrNotFound is returned
+func (o *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte, dst *[]byte) error {
 	if !bytes.HasPrefix(key, root.Prefix) {
-		return nil, ErrNotExist
+		return ErrNotFound{Key: key}
 	}
 	key = compressKey(root.Prefix, key)
 	ents, err := o.getNode(ctx, s, root, false)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if root.IsParent {
 		for _, ent := range ents {
 			if len(ent.Key) == 0 && len(key) == 0 {
-				return ent.Value, nil
+				*dst = append((*dst)[:0], ent.Value...)
+				return nil
 			}
 			if bytes.HasPrefix(key, ent.Key) {
 				root2, err := rootFromEntry(ent)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				return o.Get(ctx, s, *root2, key)
+				return o.Get(ctx, s, *root2, key, dst)
 			}
 		}
 	} else {
 		for _, ent := range ents {
 			if bytes.Equal(key, ent.Key) {
-				return ent.Value, nil
+				*dst = append((*dst)[:0], ent.Value...)
+				return nil
 			}
 		}
 	}
-	return nil, ErrNotExist
+	return ErrNotFound{Key: key}
 }
 
 // Put returns a copy of root where key maps to value, and all other mappings are unchanged.
@@ -68,7 +71,7 @@ func (o *Machine) Put(ctx context.Context, s writeStore, root Root, key, value [
 
 // PutBatch performs a batch of put operations on ents, returning a new instance
 // reflecting all the changes.
-func (o *Machine) PutBatch(ctx context.Context, s writeStore, root Root, ents []*Entry) (*Root, error) {
+func (o *Machine) PutBatch(ctx context.Context, s schema.RW, root Root, ents []*Entry) (*Root, error) {
 	if root.IsParent {
 		e, children, err := o.getParent(ctx, s, root, true)
 		if err != nil {
