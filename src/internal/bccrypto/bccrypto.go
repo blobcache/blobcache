@@ -2,7 +2,6 @@ package bccrypto
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
@@ -11,30 +10,12 @@ import (
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/crypto/chacha20"
-	"lukechampine.com/blake3"
 )
 
-type KeyFunc func(ptextHash cadata.ID) DEK
-
-func SaltedConvergent(salt *blobcache.CID) KeyFunc {
-	return func(ptextHash cadata.ID) DEK {
-		var x []byte
-		x = append(x, salt[:]...)
-		x = append(x, ptextHash[:]...)
-		return DEK(blake3.Sum256(x))
-	}
-}
-
-func Convergent(ptextHash blobcache.CID) DEK {
-	return DEK(ptextHash[:])
-}
-
-func RandomKey(_ blobcache.CID) DEK {
-	dek := DEK{}
-	if _, err := rand.Read(dek[:]); err != nil {
-		panic(err)
-	}
-	return dek
+// DeriveKey takes 256 bits of entropy, a hash function, and additional material and returns a 32 byte DEK.
+func DeriveKey(hf blobcache.HashFunc, entropy *[32]byte, additional []byte) DEK {
+	salt := (*blobcache.CID)(entropy)
+	return DEK(hf(salt, additional))
 }
 
 type DEK [32]byte
@@ -82,20 +63,17 @@ func (r *Ref) Unmarshal(data []byte) error {
 
 // Machine contains caches and configuration.
 type Machine struct {
-	keyFunc KeyFunc
+	salt *[32]byte
+	hf   blobcache.HashFunc
 }
 
-func NewMachine(salt *blobcache.CID) *Machine {
-	kf := Convergent
-	if salt != nil {
-		kf = SaltedConvergent(salt)
-	}
-	return &Machine{keyFunc: kf}
+func NewMachine(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
+	return &Machine{hf: hf, salt: (*[32]byte)(salt)}
 }
 
 func (w *Machine) Post(ctx context.Context, s schema.Poster, data []byte) (Ref, error) {
 	ptextCID := s.Hash(data)
-	dek := w.keyFunc(ptextCID)
+	dek := DeriveKey(w.hf, w.salt, ptextCID[:])
 	ctext := make([]byte, len(data))
 	cryptoXOR(&dek, ctext, data)
 	ctextCID, err := s.Post(ctx, ctext)

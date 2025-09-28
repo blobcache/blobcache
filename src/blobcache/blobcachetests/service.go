@@ -131,8 +131,9 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 
 			volh, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Vault: &blobcache.VolumeBackend_Vault[blobcache.Handle]{
-					Inner:  *volh1,
-					Secret: [32]byte{},
+					Inner:    *volh1,
+					HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+					Secret:   [32]byte{},
 				},
 			})
 			require.NoError(t, err)

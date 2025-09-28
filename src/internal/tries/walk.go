@@ -10,9 +10,13 @@ import (
 )
 
 type Walker struct {
+	// ShouldWalk is called immediately before traversing a node.
+	// ShouldWalk must be set; always return true to naively walk everything.
 	ShouldWalk func(root Root) bool
-	EntryFn    func(*Entry) error
-	NodeFn     func(root Root) error
+	// EntryFn, if set, is called for every entry.
+	EntryFn func(*Entry) error
+	// NodeFn, must be set and is called after visiting every node.
+	NodeFn func(root Root) error
 }
 
 // Walk walks a Trie calling methods on Walker throughout the traversal.
@@ -30,7 +34,7 @@ func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) er
 	if root.IsParent {
 		eg := errgroup.Group{}
 		for _, ent := range ents {
-			if len(ent.Key) == 0 {
+			if len(ent.Key) == 0 && w.EntryFn != nil {
 				if err := w.EntryFn(ent); err != nil {
 					return err
 				}
@@ -47,7 +51,7 @@ func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) er
 		if err := eg.Wait(); err != nil {
 			return err
 		}
-	} else {
+	} else if w.EntryFn != nil {
 		for _, ent := range ents {
 			if err := w.EntryFn(ent); err != nil {
 				return err
@@ -62,7 +66,7 @@ func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) er
 func (o *Machine) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn func(*Entry) error) error {
 	return o.Walk(ctx, src, root, Walker{
 		ShouldWalk: func(root Root) bool {
-			exists, err := kv.ExistsUsingList(ctx, dst, root.Ref.ID)
+			exists, err := kv.ExistsUsingList(ctx, dst, root.Ref.CID)
 			if err != nil {
 				exists = false
 			}
@@ -70,7 +74,7 @@ func (o *Machine) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn
 		},
 		EntryFn: fn,
 		NodeFn: func(root Root) error {
-			return cadata.Copy(ctx, dst, src, root.Ref.ID)
+			return cadata.Copy(ctx, dst, src, root.Ref.CID)
 		},
 	})
 }
@@ -78,7 +82,7 @@ func (o *Machine) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn
 func (o *Machine) Populate(ctx context.Context, s cadata.Store, root Root, set cadata.Set, fn func(*Entry) error) error {
 	return o.Walk(ctx, s, root, Walker{
 		ShouldWalk: func(root Root) bool {
-			exists, err := set.Exists(ctx, root.Ref.ID)
+			exists, err := set.Exists(ctx, root.Ref.CID)
 			if err != nil {
 				exists = false
 			}
@@ -86,7 +90,7 @@ func (o *Machine) Populate(ctx context.Context, s cadata.Store, root Root, set c
 		},
 		EntryFn: fn,
 		NodeFn: func(root Root) error {
-			return set.Add(ctx, root.Ref.ID)
+			return set.Add(ctx, root.Ref.CID)
 		},
 	})
 }
