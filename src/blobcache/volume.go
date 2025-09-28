@@ -150,6 +150,9 @@ func (v *VolumeBackend[T]) Validate() (err error) {
 		count++
 	}
 	if v.Vault != nil {
+		if err := v.Vault.Validate(); err != nil {
+			return err
+		}
 		count++
 	}
 

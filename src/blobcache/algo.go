@@ -23,6 +23,20 @@ const (
 	HashAlgo_CSHAKE256   HashAlgo = "cshake256"
 )
 
+// IsKeyed returns true if the hash algorithm supports a key/salt.
+func (h HashAlgo) IsKeyed() bool {
+	switch h {
+	case HashAlgo_BLAKE3_256, HashAlgo_BLAKE2b_256:
+		return true
+	case HashAlgo_SHA3_256, HashAlgo_CSHAKE256:
+		return true
+	case HashAlgo_SHA2_256:
+		return false
+	default:
+		return false
+	}
+}
+
 func (h HashAlgo) Validate() error {
 	switch h {
 	case HashAlgo_BLAKE3_256, HashAlgo_BLAKE2b_256:
