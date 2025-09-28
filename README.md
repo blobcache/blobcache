@@ -5,8 +5,15 @@
 
 Blobcache reimagines application state as Volumes holding hash-linked data structures.
 Volumes can be persisted locally, encrypted, and accessed over the network.
-Hash-linked data structures are efficient to sync and transfer over the network.
+Hash-linked data structures are efficient to sync and transfer.
 Corruption is always detected, and the root is a cryptographic commitment to the whole data structure.
+
+Blobcache is a universal backend for E2EE applications.
+
+## Quick Docs
+- [Why Blobcache?](./doc/0.2_Why_Blobcache.md)
+- [Concepts](/doc/1.0_Concepts.md)
+- [BCP vs. HTTP](/doc/9.01_BCP_vs_HTTP.md)
 
 ## Getting Started
 You should be able to install with
