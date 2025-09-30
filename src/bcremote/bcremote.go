@@ -33,9 +33,10 @@ func New(privateKey ed25519.PrivateKey, pc net.PacketConn, ep blobcache.Endpoint
 	cache, _ := lru.New[blobcache.OID, *blobcache.TxInfo](128)
 	bgCtx, bgCtxCancel := context.WithCancel(context.Background())
 	s := &Service{
-		ep:    ep,
-		node:  bcnet.New(privateKey, pc),
-		pc:    pc,
+		ep:   ep,
+		node: bcnet.New(privateKey, pc),
+		pc:   pc,
+
 		cache: cache,
 		cf:    bgCtxCancel,
 	}

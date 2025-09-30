@@ -35,13 +35,18 @@ $ go build -o ./put/the/binary/here/please ./cmd/blobcache
 This is a good option if you just want to play around with the API, and don't want to persist any data, or connect to peers.
 
 ```shell
-$ blobcache daemon-ephemeral --serve-api unix://./blobcache.sock --listen 0.0.0.0:6025
+$ blobcache daemon-ephemeral \
+    --serve-api unix://./blobcache.sock \
+    --listen 0.0.0.0:6025
 ```
 
 ### Running the daemon
 The following command runs a daemon with state in the specified directory. 
 ```shell
-$ blobcache daemon --state $HOME/.local/blobcache --serve-api unix:///run/blobcache/blobcache.sock --listen 0.0.0.0:6025
+$ blobcache daemon \
+    --state $HOME/.local/blobcache \
+    --serve-api unix:///run/blobcache/blobcache.sock \
+    --listen 0.0.0.0:6025
 ```
 
 Once the daemon is running, you should be able to connect to it and start building your application on top of content-addressed storage.

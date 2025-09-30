@@ -30,16 +30,8 @@ func TestMultiNode(t *testing.T) {
 	blobcachetests.TestMultiNode(t, func(t testing.TB, n int) []blobcache.Service {
 		svcs := make([]blobcache.Service, n)
 		for i := range svcs {
+			// NewTestService will use an allowAllPolicy
 			svcs[i] = NewTestService(t)
-		}
-		for i := range svcs {
-			for j := range svcs {
-				if i == j {
-					continue
-				}
-				peerID := svcs[j].(*Service).node.LocalID()
-				svcs[i].(*Service).env.Policy = &AllOrNothingPolicy{Allow: []blobcache.PeerID{peerID}}
-			}
 		}
 		return svcs
 	})

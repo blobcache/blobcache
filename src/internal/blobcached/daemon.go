@@ -52,7 +52,6 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 	}
 	svc, err := bclocal.New(bclocal.Env{
 		Background: ctx,
-		PacketConn: pc,
 		StateDir:   d.StateDir,
 		PrivateKey: privateKey,
 		Policy:     pol,
@@ -83,7 +82,7 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 	if pc != nil {
 		// if a PacketConn is provided, then run the Serve loop.
 		eg.Go(func() error {
-			return svc.Serve(ctx)
+			return svc.Serve(ctx, pc)
 		})
 	}
 

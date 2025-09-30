@@ -29,7 +29,6 @@ func NewTestEnv(t testing.TB) Env {
 		Background: testutil.Context(t),
 		StateDir:   stateDir,
 
-		PacketConn: testutil.PacketConn(t),
 		PrivateKey: privateKey,
 
 		Policy:  &allowAllPolicy{},
@@ -48,7 +47,8 @@ func NewTestServiceFromEnv(t testing.TB, env Env) *Service {
 	var eg errgroup.Group
 	ctx, cf := context.WithCancel(ctx)
 	eg.Go(func() error {
-		return svc.Serve(ctx)
+		pc := testutil.PacketConn(t)
+		return svc.Serve(ctx, pc)
 	})
 	t.Cleanup(func() {
 		cf()
@@ -95,9 +95,9 @@ func DefaultPebbleOptions() *pebble.Options {
 
 type noOpLogger struct{}
 
-func (l noOpLogger) Infof(msg string, args ...interface{}) {}
+func (l noOpLogger) Infof(msg string, args ...any) {}
 
-func (l noOpLogger) Fatalf(msg string, args ...interface{}) {}
+func (l noOpLogger) Fatalf(msg string, args ...any) {}
 
 // allowAllPolicy is a policy that allows all actions for all peers.
 // this is useful for testing, but is otherwise a bad idea.

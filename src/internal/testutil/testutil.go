@@ -30,7 +30,7 @@ func Listen(t testing.TB) net.Listener {
 }
 
 func PacketConn(t testing.TB) net.PacketConn {
-	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,12 +10,14 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.brendoncarroll.net/tai64"
+	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
 	"lukechampine.com/blake3"
 
@@ -45,13 +47,12 @@ type Env struct {
 	// PrivateKey determines the node's identity.
 	// It must be provided if PacketConn is set.
 	PrivateKey ed25519.PrivateKey
-	// PacketConn is the connection to listen on.
-	PacketConn net.PacketConn
 	// Schemas is the supported schemas.
 	Schemas map[blobcache.Schema]schema.Schema
-	Policy  Policy
 	// Root is the spec to use for the root volume.
 	Root blobcache.VolumeSpec
+	// Policy control network access to the service.
+	Policy Policy
 }
 
 // Config contains configuration for the service.
@@ -67,10 +68,10 @@ type Service struct {
 	env Env
 	cfg Config
 
-	node    *bcnet.Node
 	db      *pebble.DB
 	blobDir *os.Root
 
+	node     atomic.Pointer[bcnet.Node]
 	svcs     svcgroup.Group
 	handles  handleSystem
 	localSys localSystem
@@ -106,18 +107,12 @@ func New(env Env, cfg Config) (*Service, error) {
 		return nil, err
 	}
 
-	var node *bcnet.Node
-	if env.PacketConn != nil {
-		node = bcnet.New(env.PrivateKey, env.PacketConn)
-	}
-
 	s := &Service{
 		env: env,
 		cfg: cfg,
 
 		db:      db,
 		blobDir: blobDir,
-		node:    node,
 		svcs:    svcgroup.New(env.Background),
 	}
 	s.localSys = newLocalSystem(cfg, db, blobDir, &s.handles, func(s blobcache.Schema) schema.Schema {
@@ -156,11 +151,11 @@ func (s *Service) Close() error {
 // Serve blocks untilt the context is cancelled, or Close is called.
 // Cancelling the context will cause Run to return without an error.
 // If Serve is *not* running, then remote volumes will not work, hosted on this Node or other Nodes.
-func (s *Service) Serve(ctx context.Context) error {
-	if s.node == nil {
-		return fmt.Errorf("bclocal.Serve: node is nil")
-	}
-	err := s.node.Serve(ctx, bcnet.Server{
+func (s *Service) Serve(ctx context.Context, pc net.PacketConn) error {
+	node := bcnet.New(s.env.PrivateKey, pc)
+	s.node.Store(node)
+
+	err := node.Serve(ctx, bcnet.Server{
 		Access: func(peer blobcache.PeerID) blobcache.Service {
 			if s.env.Policy.CanConnect(peer) {
 				return &peerView{Service: s, Caller: peer}
@@ -169,10 +164,16 @@ func (s *Service) Serve(ctx context.Context) error {
 			}
 		},
 	})
-	if errors.Is(err, context.Canceled) {
+	if errors.Is(err, net.ErrClosed) {
+		err = nil
+	} else if errors.Is(err, context.Canceled) {
 		err = nil
 	}
 	return err
+}
+
+func (s *Service) LocalID() blobcache.PeerID {
+	return inet256.NewID(s.env.PrivateKey.Public().(inet256.PublicKey))
 }
 
 // AbortAll aborts all transactions.
@@ -420,11 +421,20 @@ func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (transaction, erro
 	return tx, nil
 }
 
-func (s *Service) Endpoint(_ context.Context) (blobcache.Endpoint, error) {
-	if s.node != nil {
-		return s.node.LocalEndpoint(), nil
+// Endpoint blocks waiting for a node to be created (happens when Serve is running).
+// And then returns the Endpoint for that Node.
+func (s *Service) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
+	ctx, cf := context.WithTimeout(ctx, time.Second)
+	defer cf()
+	var node *bcnet.Node
+	for ; node == nil; node = s.node.Load() {
+		select {
+		case <-ctx.Done():
+			return blobcache.Endpoint{}, fmt.Errorf("waiting for node to come online: %w", ctx.Err())
+		default:
+		}
 	}
-	return blobcache.Endpoint{}, nil
+	return node.LocalEndpoint(), nil
 }
 
 func (s *Service) Drop(ctx context.Context, h blobcache.Handle) error {
@@ -527,9 +537,10 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 		return nil, err
 	}
 
-	if host != nil && s.node == nil {
+	node := s.node.Load()
+	if host != nil && node != nil {
 		return nil, fmt.Errorf("bclocal: node is not running. Cannot call CreateVolume with a non-nil host")
-	} else if host != nil && host.Peer != s.node.LocalID() {
+	} else if host != nil && host.Peer != node.LocalID() {
 		return s.createRemoteVolume(ctx, *host, vspec)
 	}
 
@@ -568,12 +579,13 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 
 // createRemoteVolume calls CreateVolume on a remote node
 func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	node := s.node.Load()
 	// the request is for a remote node.
-	rvh, err := bcnet.CreateVolume(ctx, s.node, host, vspec)
+	rvh, err := bcnet.CreateVolume(ctx, node, host, vspec)
 	if err != nil {
 		return nil, err
 	}
-	rvInfo, err := bcnet.InspectVolume(ctx, s.node, host, *rvh)
+	rvInfo, err := bcnet.InspectVolume(ctx, node, host, *rvh)
 	if err != nil {
 		return nil, err
 	}
@@ -597,7 +609,7 @@ func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoin
 	s.mu.Lock()
 	s.volumes[localInfo.ID] = volume{
 		info:    localInfo,
-		backend: bcnet.NewVolume(s.node, host, *rvh, rvInfo),
+		backend: bcnet.NewVolume(node, host, *rvh, rvInfo),
 	}
 	s.mu.Unlock()
 	// create a local handle
@@ -892,7 +904,8 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 		}
 		return s.makeLocal(ctx, lvid)
 	case backend.Remote != nil:
-		return bcnet.OpenVolumeAs(ctx, s.node, backend.Remote.Endpoint, backend.Remote.Volume, blobcache.Action_ALL)
+		node := s.node.Load()
+		return bcnet.OpenVolumeAs(ctx, node, backend.Remote.Endpoint, backend.Remote.Volume, blobcache.Action_ALL)
 	case backend.Git != nil:
 		return s.makeGit(ctx, *backend.Git)
 	case backend.Vault != nil:
@@ -931,7 +944,8 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 	case vspec.Git != nil:
 		return vspec.Git.VolumeParams, nil
 	case vspec.Remote != nil:
-		vol, err := bcnet.OpenVolumeAs(ctx, s.node, vspec.Remote.Endpoint, vspec.Remote.Volume, blobcache.Action_ALL)
+		node := s.node.Load()
+		vol, err := bcnet.OpenVolumeAs(ctx, node, vspec.Remote.Endpoint, vspec.Remote.Volume, blobcache.Action_ALL)
 		if err != nil {
 			return blobcache.VolumeParams{}, err
 		}

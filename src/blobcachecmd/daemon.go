@@ -45,13 +45,18 @@ var daemonEphemeralCmd = star.Command{
 		svc, err := bclocal.New(bclocal.Env{
 			Background: ctx,
 			StateDir:   stateDir,
-			PacketConn: pc,
 			Schemas:    bclocal.DefaultSchemas(),
 			Root:       bclocal.DefaultRoot(),
+			Policy:     &bclocal.AllOrNothingPolicy{},
 		}, bclocal.Config{})
 		if err != nil {
 			return err
 		}
+		go func() {
+			if err := svc.Serve(ctx, pc); err != nil {
+				logctx.Error(ctx, "from serve:", zap.Error(err))
+			}
+		}()
 
 		apiLis, _ := serveAPIParam.LoadOpt(ctx)
 		defer apiLis.Close()
