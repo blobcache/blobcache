@@ -25,6 +25,7 @@ import (
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/svcgroup"
 	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/internal/volumes/vaultvol"
 	"blobcache.io/blobcache/src/schema"
 )
 
@@ -709,9 +710,8 @@ func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcac
 			MaxSize:  volInfo.info.MaxSize,
 			HashAlgo: volInfo.info.HashAlgo,
 		}, nil
-	case *volumes.Vault:
-		// For RootAEAD, report the underlying volume's params
-		innerVol := vol.Inner
+	case *vaultvol.Vault:
+		innerVol := vol.Inner()
 		switch inner := innerVol.(type) {
 		case *localVolume:
 			s.mu.RLock()
@@ -923,7 +923,7 @@ func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_G
 	return nil, fmt.Errorf("git volumes are not yet supported")
 }
 
-func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*volumes.Vault, error) {
+func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*vaultvol.Vault, error) {
 	s.mu.RLock()
 	volstate, exists := s.volumes[backend.Inner]
 	s.mu.RUnlock()
@@ -934,7 +934,7 @@ func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend
 	if err != nil {
 		return nil, err
 	}
-	return volumes.NewVault(inner, backend.Secret), nil
+	return vaultvol.New(inner, backend.Secret, backend.HashAlgo.HashFunc()), nil
 }
 
 func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSpec) (blobcache.VolumeParams, error) {

@@ -2,37 +2,20 @@ package bccrypto
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/crypto/chacha20"
-	"lukechampine.com/blake3"
 )
 
-type KeyFunc func(ptextHash cadata.ID) DEK
-
-func SaltedConvergent(salt *blobcache.CID) KeyFunc {
-	return func(ptextHash cadata.ID) DEK {
-		var x []byte
-		x = append(x, salt[:]...)
-		x = append(x, ptextHash[:]...)
-		return DEK(blake3.Sum256(x))
-	}
-}
-
-func Convergent(ptextHash cadata.ID) DEK {
-	return DEK(ptextHash[:])
-}
-
-func RandomKey(cadata.ID) DEK {
-	dek := DEK{}
-	if _, err := rand.Read(dek[:]); err != nil {
-		panic(err)
-	}
-	return dek
+// DeriveKey takes 256 bits of entropy, a hash function, and additional material and returns a 32 byte DEK.
+func DeriveKey(hf blobcache.HashFunc, entropy *[32]byte, additional []byte) DEK {
+	salt := (*blobcache.CID)(entropy)
+	return DEK(hf(salt, additional))
 }
 
 type DEK [32]byte
@@ -51,6 +34,8 @@ func (dek *DEK) UnmarshalJSON(data []byte) error {
 	return err
 }
 
+const RefSize = 32 + 32
+
 // Ref contains a CID and a DEK.
 type Ref struct {
 	CID blobcache.CID
@@ -61,22 +46,34 @@ func (r Ref) IsZero() bool {
 	return r.CID.IsZero() && r.DEK.IsZero()
 }
 
-// Worker contains caches and configuration.
-type Worker struct {
-	keyFunc KeyFunc
+func (r Ref) Marshal(out []byte) []byte {
+	out = append(out, r.CID[:]...)
+	out = append(out, r.DEK[:]...)
+	return out
 }
 
-func NewWorker(salt *blobcache.CID) *Worker {
-	kf := Convergent
-	if salt != nil {
-		kf = SaltedConvergent(salt)
+func (r *Ref) Unmarshal(data []byte) error {
+	if len(data) < RefSize {
+		return fmt.Errorf("too short to be ref")
 	}
-	return &Worker{keyFunc: kf}
+	r.CID = blobcache.CID(data[0:32])
+	r.DEK = DEK(data[32:64])
+	return nil
 }
 
-func (w *Worker) Post(ctx context.Context, s cadata.Poster, data []byte) (Ref, error) {
+// Machine contains caches and configuration.
+type Machine struct {
+	salt *[32]byte
+	hf   blobcache.HashFunc
+}
+
+func NewMachine(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
+	return &Machine{hf: hf, salt: (*[32]byte)(salt)}
+}
+
+func (w *Machine) Post(ctx context.Context, s schema.Poster, data []byte) (Ref, error) {
 	ptextCID := s.Hash(data)
-	dek := w.keyFunc(ptextCID)
+	dek := DeriveKey(w.hf, w.salt, ptextCID[:])
 	ctext := make([]byte, len(data))
 	cryptoXOR(&dek, ctext, data)
 	ctextCID, err := s.Post(ctx, ctext)
@@ -86,7 +83,7 @@ func (w *Worker) Post(ctx context.Context, s cadata.Poster, data []byte) (Ref, e
 	return Ref{CID: ctextCID, DEK: dek}, nil
 }
 
-func (w *Worker) Get(ctx context.Context, s cadata.Getter, ref Ref, buf []byte) (int, error) {
+func (w *Machine) Get(ctx context.Context, s schema.RO, ref Ref, buf []byte) (int, error) {
 	n, err := s.Get(ctx, ref.CID, buf)
 	if err != nil {
 		return 0, err
@@ -95,7 +92,7 @@ func (w *Worker) Get(ctx context.Context, s cadata.Getter, ref Ref, buf []byte) 
 	return n, nil
 }
 
-func (w *Worker) GetF(ctx context.Context, s cadata.Getter, ref Ref, fn func([]byte) error) error {
+func (w *Machine) GetF(ctx context.Context, s cadata.Getter, ref Ref, fn func([]byte) error) error {
 	buf := make([]byte, s.MaxSize())
 	n, err := s.Get(ctx, ref.CID, buf)
 	if err != nil {
@@ -103,6 +100,7 @@ func (w *Worker) GetF(ctx context.Context, s cadata.Getter, ref Ref, fn func([]b
 	}
 	return fn(buf[:n])
 }
+
 func cryptoXOR(key *DEK, dst, src []byte) {
 	nonce := [chacha20.NonceSize]byte{}
 	cipher, err := chacha20.NewUnauthenticatedCipher(key[:], nonce[:])
