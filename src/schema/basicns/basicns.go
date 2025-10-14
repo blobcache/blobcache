@@ -11,11 +11,16 @@ import (
 	"slices"
 	"strings"
 
+	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/slices2"
 	"go.brendoncarroll.net/state/cadata"
 )
+
+func init() {
+	bclocal.AddDefaultSchema(blobcache.Schema_BasicNS, Constructor)
+}
 
 type Entry struct {
 	Name   string
@@ -34,7 +39,11 @@ var _ schema.Container = &Schema{}
 
 type Schema struct{}
 
-func (sch Schema) Validate(ctx context.Context, s schema.RO, _, next []byte) error {
+func Constructor(_ json.RawMessage, _ func(blobcache.SchemaSpec) (schema.Schema, error)) schema.Schema {
+	return &Schema{}
+}
+
+func (sch Schema) ValidateChange(ctx context.Context, s schema.RO, _, next []byte) error {
 	_, err := sch.ListEntries(ctx, s.(cadata.Getter), next)
 	if err != nil {
 		return err

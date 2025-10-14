@@ -2,13 +2,13 @@ package bclocal
 
 import (
 	"context"
+	"fmt"
+	"maps"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema"
-	"blobcache.io/blobcache/src/schema/basiccont"
-	"blobcache.io/blobcache/src/schema/basicns"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
@@ -64,12 +64,19 @@ func NewTestService(t testing.TB) *Service {
 	return NewTestServiceFromEnv(t, NewTestEnv(t))
 }
 
-func DefaultSchemas() map[blobcache.Schema]schema.Schema {
-	return map[blobcache.Schema]schema.Schema{
-		blobcache.Schema_NONE:           schema.None{},
-		blobcache.Schema_BasicNS:        basicns.Schema{},
-		blobcache.Schema_BasicContainer: basiccont.Schema{},
+var defaultSchemas = map[blobcache.SchemaName]schema.Constructor{
+	blobcache.Schema_NONE: schema.NoneConstructor,
+}
+
+func AddDefaultSchema(name blobcache.SchemaName, constructor schema.Constructor) {
+	if _, exists := defaultSchemas[name]; exists {
+		panic(fmt.Errorf("schema %s already exists", name))
 	}
+	defaultSchemas[name] = constructor
+}
+
+func DefaultSchemas() map[blobcache.SchemaName]schema.Constructor {
+	return maps.Clone(defaultSchemas)
 }
 
 // DefaultRoot returns the default root volume spec.
@@ -78,7 +85,7 @@ func DefaultRoot() blobcache.VolumeSpec {
 	return blobcache.VolumeSpec{
 		Local: &blobcache.VolumeBackend_Local{
 			VolumeParams: blobcache.VolumeParams{
-				Schema:   blobcache.Schema_BasicNS,
+				Schema:   blobcache.SchemaSpec{Name: blobcache.Schema_BasicNS},
 				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 				MaxSize:  1 << 22,
 			},

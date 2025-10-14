@@ -48,7 +48,7 @@ type Env struct {
 	// It must be provided if PacketConn is set.
 	PrivateKey ed25519.PrivateKey
 	// Schemas is the supported schemas.
-	Schemas map[blobcache.Schema]schema.Schema
+	Schemas map[blobcache.SchemaName]schema.Constructor
 	// Root is the spec to use for the root volume.
 	Root blobcache.VolumeSpec
 	// Policy control network access to the service.
@@ -115,8 +115,13 @@ func New(env Env, cfg Config) (*Service, error) {
 		blobDir: blobDir,
 		svcs:    svcgroup.New(env.Background),
 	}
-	s.localSys = newLocalSystem(cfg, db, blobDir, &s.handles, func(s blobcache.Schema) schema.Schema {
-		return env.Schemas[s]
+
+	s.localSys = newLocalSystem(cfg, db, blobDir, &s.handles, func(spec blobcache.SchemaSpec) schema.Schema {
+		factory := env.Schemas[spec.Name]
+		if factory == nil {
+			return nil
+		}
+		return factory(spec.Params, s.getSchema)
 	})
 	s.svcs.Always(func(ctx context.Context) error {
 		s.cleanupLoop(ctx)
@@ -255,23 +260,23 @@ func (s *Service) cleanupLoop(ctx context.Context) {
 }
 
 // getSchema looks up a schema by name.
-func (s *Service) getSchema(name blobcache.Schema) (schema.Schema, error) {
-	schema, exists := s.env.Schemas[name]
+func (s *Service) getSchema(spec blobcache.SchemaSpec) (schema.Schema, error) {
+	schema, exists := s.env.Schemas[spec.Name]
 	if !exists {
-		return nil, fmt.Errorf("unknown schema %s", name)
+		return nil, fmt.Errorf("unknown schema %s", spec.Name)
 	}
-	return schema, nil
+	return schema(spec.Params, nil), nil
 }
 
 // getContainer looks up a container schema by name.
-func (s *Service) getContainer(name blobcache.Schema) (schema.Container, error) {
-	sch, err := s.getSchema(name)
+func (s *Service) getContainer(spec blobcache.SchemaSpec) (schema.Container, error) {
+	sch, err := s.getSchema(spec)
 	if err != nil {
 		return nil, err
 	}
 	container, ok := sch.(schema.Container)
 	if !ok {
-		return nil, fmt.Errorf("found schema %s, but it is not a container", name)
+		return nil, fmt.Errorf("found schema %s, but it is not a container", spec.Name)
 	}
 	return container, nil
 }
@@ -749,7 +754,7 @@ func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) e
 	if err != nil {
 		return err
 	}
-	if err := sch.Validate(ctx, src, prevRoot, root); err != nil {
+	if err := sch.ValidateChange(ctx, src, prevRoot, root); err != nil {
 		return err
 	}
 	return tx.backend.Save(ctx, root)

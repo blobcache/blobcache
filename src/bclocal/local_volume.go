@@ -30,7 +30,7 @@ type localSystem struct {
 	db        *pebble.DB
 	blobs     *blobman.Store
 	hsys      *handleSystem
-	getSchema func(blobcache.Schema) schema.Schema
+	getSchema func(blobcache.SchemaSpec) schema.Schema
 
 	// txSys manages the transaction sequence number, and the set of active transactions.
 	txSys txSystem
@@ -47,7 +47,7 @@ type localSystem struct {
 	blobLocks mapOfLocks[blobman.Key]
 }
 
-func newLocalSystem(cfg Config, db *pebble.DB, blobDir *os.Root, hsys *handleSystem, getSchema func(blobcache.Schema) schema.Schema) localSystem {
+func newLocalSystem(cfg Config, db *pebble.DB, blobDir *os.Root, hsys *handleSystem, getSchema func(blobcache.SchemaSpec) schema.Schema) localSystem {
 	return localSystem{
 		cfg:       cfg,
 		db:        db,
@@ -188,7 +188,7 @@ func (ls *localSystem) beginTx(ctx context.Context, lvid LocalVolumeID, params b
 		return nil, err
 	}
 	if vinfo == nil {
-		return nil, blobcache.ErrNotFound{ID: oidFromLocalID(lvid)}
+		return nil, fmt.Errorf("volume not found. OID: %v", oidFromLocalID(lvid))
 	}
 	if err := putLocalVolumeTxn(ba, lvid, txid); err != nil {
 		return nil, err
@@ -198,7 +198,7 @@ func (ls *localSystem) beginTx(ctx context.Context, lvid LocalVolumeID, params b
 	}
 
 	volParams := blobcache.VolumeParams{
-		Schema:   blobcache.Schema(vinfo.Schema),
+		Schema:   vinfo.Schema,
 		MaxSize:  vinfo.MaxSize,
 		HashAlgo: blobcache.HashAlgo(vinfo.HashAlgo),
 		Salted:   vinfo.Salted,

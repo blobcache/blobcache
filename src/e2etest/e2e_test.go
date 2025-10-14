@@ -15,6 +15,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
+	_ "blobcache.io/blobcache/src/schema/basicns"
 )
 
 // TestGLFS tests that blobcache integrates correctly with the Git-Like File System.

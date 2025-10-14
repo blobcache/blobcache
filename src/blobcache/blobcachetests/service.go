@@ -91,10 +91,6 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		_, err = s.Post(ctx, txh, data, blobcache.PostOpts{})
 		require.Error(t, err)
 	})
-	t.Run("BasicNS", func(t *testing.T) {
-		t.Parallel()
-		BasicNS(t, mk)
-	})
 	// Run Tx test suite on local volume.
 	t.Run("Local/Tx", func(t *testing.T) {
 		t.Parallel()

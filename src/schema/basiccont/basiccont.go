@@ -3,8 +3,10 @@ package basiccont
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/state/cadata"
@@ -15,10 +17,18 @@ var (
 	_ schema.Container = &Schema{}
 )
 
+func init() {
+	bclocal.AddDefaultSchema(blobcache.Schema_BasicContainer, Constructor)
+}
+
 // Schema
 type Schema struct{}
 
-func (sch Schema) Validate(ctx context.Context, s schema.RO, prevRoot, nextRoot []byte) error {
+func Constructor(_ json.RawMessage, _ func(blobcache.SchemaSpec) (schema.Schema, error)) schema.Schema {
+	return &Schema{}
+}
+
+func (sch Schema) ValidateChange(ctx context.Context, s schema.RO, prevRoot, nextRoot []byte) error {
 	var prev blobcache.OID
 	return sch.WalkOIDs(ctx, s, cadata.IDFromBytes(nextRoot), func(oid blobcache.OID) error {
 		if oid.Compare(prev) < 0 {

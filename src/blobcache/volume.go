@@ -180,10 +180,10 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 }
 
 type VolumeParams struct {
-	Schema   Schema   `json:"schema"`
-	HashAlgo HashAlgo `json:"hash_algo"`
-	MaxSize  int64    `json:"max_size"`
-	Salted   bool     `json:"salted"`
+	Schema   SchemaSpec `json:"schema"`
+	HashAlgo HashAlgo   `json:"hash_algo"`
+	MaxSize  int64      `json:"max_size"`
+	Salted   bool       `json:"salted"`
 }
 
 func (v *VolumeParams) Validate() error {
@@ -198,7 +198,7 @@ func (v *VolumeParams) Validate() error {
 
 func DefaultVolumeParams() VolumeParams {
 	return VolumeParams{
-		Schema:   Schema_NONE,
+		Schema:   SchemaSpec{Name: Schema_NONE},
 		HashAlgo: HashAlgo_BLAKE3_256,
 		MaxSize:  1 << 22,
 		Salted:   false,

@@ -3,6 +3,8 @@ package blobcache
 import (
 	"errors"
 	"fmt"
+
+	"go.brendoncarroll.net/state/cadata"
 )
 
 // ErrTxDone is returned when a transaction is already done.
@@ -20,18 +22,25 @@ func IsErrTxDone(err error) bool {
 	return errors.As(err, &ErrTxDone{})
 }
 
-// ErrNotFound is returned when a resource is not found.
-type ErrNotFound struct {
-	Type string
-	ID   OID
-}
-
-func (e ErrNotFound) Error() string {
-	return fmt.Sprintf("%s %v not found", e.Type, e.ID)
-}
+// ErrNotFound is returned when a blob is not found.
+type ErrNotFound = cadata.ErrNotFound
 
 func IsErrNotFound(err error) bool {
-	return errors.As(err, &ErrNotFound{})
+	return cadata.IsNotFound(err)
+}
+
+// ErrTooLarge is returned when a blob is exceeds the maximum size of the Volume.
+type ErrTooLarge struct {
+	BlobSize int
+	MaxSize  int
+}
+
+func (e ErrTooLarge) Error() string {
+	return fmt.Sprintf("blob too large: %d > %d", e.BlobSize, e.MaxSize)
+}
+
+func IsErrTooLarge(err error) bool {
+	return errors.As(err, &ErrTooLarge{})
 }
 
 // ErrInvalidHandle is returned when a handle is invalid.

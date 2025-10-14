@@ -1,4 +1,4 @@
-package blobcachetests
+package schematests
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := basicns.Client{Service: s}
@@ -45,7 +45,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := basicns.Client{Service: s}
@@ -64,7 +64,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := basicns.Client{Service: s}
@@ -85,7 +85,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsh, err := s.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
@@ -99,7 +99,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s := mk(t)
-		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
+		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
 		nsc := basicns.Client{Service: s}
@@ -126,8 +126,8 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		// Create 10 nested namespaces.
 		ns1h := *rootNSh
 		for i := 0; i < 10; i++ {
-			subNSSpec := defaultLocalSpec()
-			subNSSpec.Local.Schema = blobcache.Schema_BasicNS
+			subNSSpec := blobcache.DefaultLocalSpec()
+			subNSSpec.Local.Schema = blobcache.SchemaSpec{Name: blobcache.Schema_BasicNS}
 			ns2h, err := nsc.CreateAt(ctx, ns1h, "nested", subNSSpec)
 			require.NoError(t, err)
 			ns1h = *ns2h
@@ -150,7 +150,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 
 		for i := 0; i < 10; i++ {
-			_, err := nsc.CreateAt(ctx, *rootNSh, fmt.Sprintf("subvol-%d", i), defaultLocalSpec())
+			_, err := nsc.CreateAt(ctx, *rootNSh, fmt.Sprintf("subvol-%d", i), blobcache.DefaultLocalSpec())
 			require.NoError(t, err)
 		}
 

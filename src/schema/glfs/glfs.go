@@ -16,7 +16,7 @@ type Schema struct {
 	Mach *glfs.Machine
 }
 
-func (sch *Schema) Validate(ctx context.Context, src schema.RO, prev, next []byte) error {
+func (sch *Schema) ValidateChange(ctx context.Context, src schema.RO, prev, next []byte) error {
 	if len(prev) == 0 {
 		nextRef, err := ParseRef(next)
 		if err != nil {

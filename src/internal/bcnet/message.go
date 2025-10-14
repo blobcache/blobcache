@@ -81,6 +81,7 @@ const (
 	MT_ERROR_NOT_FOUND
 	MT_ERROR_NO_PERMISSION
 	MT_ERROR_NO_LINK
+	MT_ERROR_TOO_LARGE
 
 	MT_ERROR_UNKNOWN = 255
 )
@@ -159,12 +160,14 @@ func (m *Message) ReadFrom(r io.Reader) (int64, error) {
 
 func (m *Message) SetError(err error) {
 	switch err.(type) {
-	case *blobcache.ErrInvalidHandle:
+	case blobcache.ErrInvalidHandle:
 		m.SetCode(MT_ERROR_INVALID_HANDLE)
-	case *blobcache.ErrNotFound:
+	case blobcache.ErrNotFound:
 		m.SetCode(MT_ERROR_NOT_FOUND)
-	case *blobcache.ErrNoLink:
+	case blobcache.ErrNoLink:
 		m.SetCode(MT_ERROR_NO_LINK)
+	case blobcache.ErrTooLarge:
+		m.SetCode(MT_ERROR_TOO_LARGE)
 	default:
 		m.SetCode(MT_ERROR_UNKNOWN)
 		m.SetBody([]byte(err.Error()))

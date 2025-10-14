@@ -3,15 +3,29 @@ package schema
 
 import (
 	"context"
+	"encoding/json"
 
 	"blobcache.io/blobcache/src/blobcache"
 )
 
+type Spec = blobcache.SchemaSpec
+
+// Constructor is a function that constructs a Schema from its parameters.
+type Constructor = func(params json.RawMessage, mkSchema func(blobcache.SchemaSpec) (Schema, error)) Schema
+
+// Change is a change to a Volume.
+type Change struct {
+	PrevCell  []byte
+	NextCell  []byte
+	PrevStore RO
+	NextStore RO
+}
+
 // Schema is the most general Schema type.
 // All a Schema has to be able to do is validate the contents of a Volume.
 type Schema interface {
-	// Validate returns nil if the contents of the volume are valid.
-	Validate(ctx context.Context, s RO, prev, next []byte) error
+	// ValidateChange returns nil if the state transition is valid.
+	ValidateChange(ctx context.Context, s RO, prev, next []byte) error
 }
 
 // Link is a reference from one volume to another.
@@ -33,7 +47,11 @@ type Container interface {
 // None is a Schema which does not impose any constraints on the contents of a volume.
 type None struct{}
 
-func (None) Validate(ctx context.Context, s RO, prev, next []byte) error {
+func NoneConstructor(_ json.RawMessage, _ func(blobcache.SchemaSpec) (Schema, error)) Schema {
+	return None{}
+}
+
+func (None) ValidateChange(ctx context.Context, s RO, prev, next []byte) error {
 	return nil
 }
 
