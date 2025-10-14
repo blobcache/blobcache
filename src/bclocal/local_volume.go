@@ -30,7 +30,7 @@ type localSystem struct {
 	db        *pebble.DB
 	blobs     *blobman.Store
 	hsys      *handleSystem
-	getSchema func(blobcache.SchemaSpec) schema.Schema
+	getSchema func(blobcache.SchemaSpec) (schema.Schema, error)
 
 	// txSys manages the transaction sequence number, and the set of active transactions.
 	txSys txSystem
@@ -47,7 +47,7 @@ type localSystem struct {
 	blobLocks mapOfLocks[blobman.Key]
 }
 
-func newLocalSystem(cfg Config, db *pebble.DB, blobDir *os.Root, hsys *handleSystem, getSchema func(blobcache.SchemaSpec) schema.Schema) localSystem {
+func newLocalSystem(cfg Config, db *pebble.DB, blobDir *os.Root, hsys *handleSystem, getSchema func(blobcache.SchemaSpec) (schema.Schema, error)) localSystem {
 	return localSystem{
 		cfg:       cfg,
 		db:        db,
@@ -207,7 +207,10 @@ func (ls *localSystem) beginTx(ctx context.Context, lvid LocalVolumeID, params b
 		Mutate: params.Mutate,
 		GC:     params.GC,
 	}
-	sch := ls.getSchema(volParams.Schema)
+	sch, err := ls.getSchema(volParams.Schema)
+	if err != nil {
+		return nil, err
+	}
 	if sch == nil {
 		return nil, fmt.Errorf("unknown schema %s", vinfo.Schema)
 	}

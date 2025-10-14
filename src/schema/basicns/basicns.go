@@ -39,8 +39,8 @@ var _ schema.Container = &Schema{}
 
 type Schema struct{}
 
-func Constructor(_ json.RawMessage, _ func(blobcache.SchemaSpec) (schema.Schema, error)) schema.Schema {
-	return &Schema{}
+func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
+	return &Schema{}, nil
 }
 
 func (sch Schema) ValidateChange(ctx context.Context, s schema.RO, _, next []byte) error {

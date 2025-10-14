@@ -116,10 +116,10 @@ func New(env Env, cfg Config) (*Service, error) {
 		svcs:    svcgroup.New(env.Background),
 	}
 
-	s.localSys = newLocalSystem(cfg, db, blobDir, &s.handles, func(spec blobcache.SchemaSpec) schema.Schema {
+	s.localSys = newLocalSystem(cfg, db, blobDir, &s.handles, func(spec blobcache.SchemaSpec) (schema.Schema, error) {
 		factory := env.Schemas[spec.Name]
 		if factory == nil {
-			return nil
+			return nil, fmt.Errorf("unknown schema %s", spec.Name)
 		}
 		return factory(spec.Params, s.getSchema)
 	})
@@ -265,7 +265,7 @@ func (s *Service) getSchema(spec blobcache.SchemaSpec) (schema.Schema, error) {
 	if !exists {
 		return nil, fmt.Errorf("unknown schema %s", spec.Name)
 	}
-	return schema(spec.Params, nil), nil
+	return schema(spec.Params, s.getSchema)
 }
 
 // getContainer looks up a container schema by name.

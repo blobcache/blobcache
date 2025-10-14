@@ -10,8 +10,11 @@ import (
 
 type Spec = blobcache.SchemaSpec
 
+// Factory creates a Schema from a Spec.
+type Factory = func(blobcache.SchemaSpec) (Schema, error)
+
 // Constructor is a function that constructs a Schema from its parameters.
-type Constructor = func(params json.RawMessage, mkSchema func(blobcache.SchemaSpec) (Schema, error)) Schema
+type Constructor = func(params json.RawMessage, mkSchema Factory) (Schema, error)
 
 // Change is a change to a Volume.
 type Change struct {
@@ -47,8 +50,8 @@ type Container interface {
 // None is a Schema which does not impose any constraints on the contents of a volume.
 type None struct{}
 
-func NoneConstructor(_ json.RawMessage, _ func(blobcache.SchemaSpec) (Schema, error)) Schema {
-	return None{}
+func NoneConstructor(_ json.RawMessage, _ Factory) (Schema, error) {
+	return None{}, nil
 }
 
 func (None) ValidateChange(ctx context.Context, s RO, prev, next []byte) error {

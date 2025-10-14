@@ -24,19 +24,19 @@ type Schema struct {
 }
 
 // Constructor is a schema constructor
-func Constructor(params json.RawMessage, mkSchema func(blobcache.SchemaSpec) (schema.Schema, error)) schema.Schema {
+func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema, error) {
 	var spec Params
 	if err := json.Unmarshal(params, &spec); err != nil {
-		return nil
+		return nil, err
 	}
 	x, err := mkSchema(spec.X)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	return &Schema{
 		X:           x,
 		MaxRootSize: spec.MaxRootSize,
-	}
+	}, nil
 }
 
 func (sch Schema) ValidateChange(ctx context.Context, ros schema.RO, prev, next []byte) error {
