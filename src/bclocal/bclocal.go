@@ -936,12 +936,12 @@ func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_G
 
 func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*volumes.Vault, error) {
 	s.mu.RLock()
-	volstate, exists := s.volumes[backend.Inner]
+	volstate, exists := s.volumes[backend.X]
 	s.mu.RUnlock()
 	if !exists {
-		return nil, fmt.Errorf("inner volume not found: %v", backend.Inner)
+		return nil, fmt.Errorf("inner volume not found: %v", backend.X)
 	}
-	inner, err := s.makeVolume(ctx, backend.Inner, volstate.info.Backend)
+	inner, err := s.makeVolume(ctx, backend.X, volstate.info.Backend)
 	if err != nil {
 		return nil, err
 	}
@@ -964,7 +964,7 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		return volInfo.VolumeParams, nil
 
 	case vspec.Vault != nil:
-		innerVol, _, err := s.resolveVol(vspec.Vault.Inner)
+		innerVol, _, err := s.resolveVol(vspec.Vault.X)
 		if err != nil {
 			return blobcache.VolumeParams{}, err
 		}
