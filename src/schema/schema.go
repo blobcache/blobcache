@@ -28,7 +28,7 @@ type Change struct {
 // All a Schema has to be able to do is validate the contents of a Volume.
 type Schema interface {
 	// ValidateChange returns nil if the state transition is valid.
-	ValidateChange(ctx context.Context, s RO, prev, next []byte) error
+	ValidateChange(ctx context.Context, change Change) error
 }
 
 // Link is a reference from one volume to another.
@@ -54,7 +54,7 @@ func NoneConstructor(_ json.RawMessage, _ Factory) (Schema, error) {
 	return None{}, nil
 }
 
-func (None) ValidateChange(ctx context.Context, s RO, prev, next []byte) error {
+func (None) ValidateChange(ctx context.Context, change Change) error {
 	return nil
 }
 
@@ -62,13 +62,21 @@ func (None) ValidateChange(ctx context.Context, s RO, prev, next []byte) error {
 type RO interface {
 	Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error)
 	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
+	Hash(data []byte) blobcache.CID
+	MaxSize() int
+}
+
+type WO interface {
+	Post(ctx context.Context, data []byte) (blobcache.CID, error)
+	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
+	Hash(data []byte) blobcache.CID
 	MaxSize() int
 }
 
 // RW is Read-Write Store methods
 type RW interface {
 	RO
-	Post(ctx context.Context, data []byte) (blobcache.CID, error)
+	WO
 }
 
 // RWD is Read-Write-Delete Store methods

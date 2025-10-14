@@ -754,7 +754,13 @@ func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) e
 	if err != nil {
 		return err
 	}
-	if err := sch.ValidateChange(ctx, src, prevRoot, root); err != nil {
+	change := schema.Change{
+		PrevCell:  prevRoot,
+		NextCell:  root,
+		PrevStore: src, // TODO: this should be a different store, using a snapshot from the start of the transaciton.
+		NextStore: src,
+	}
+	if err := sch.ValidateChange(ctx, change); err != nil {
 		return err
 	}
 	return tx.backend.Save(ctx, root)

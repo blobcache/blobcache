@@ -7,9 +7,10 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/bcfuse"
+	"blobcache.io/blobcache/src/schema"
+	bcglfs "blobcache.io/blobcache/src/schema/glfs"
 	"blobcache.io/glfs"
 	"go.brendoncarroll.net/exp/streams"
-	"go.brendoncarroll.net/state/cadata"
 )
 
 // Verify that Scheme implements bcfs.Scheme[string]
@@ -26,7 +27,7 @@ func NewScheme() *Scheme {
 }
 
 // FlushExtents writes all the extents to the volume
-func (s *Scheme) FlushExtents(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, extents []bcfuse.Extent[string]) ([]byte, error) {
+func (s *Scheme) FlushExtents(ctx context.Context, dst schema.WO, src schema.RO, root []byte, extents []bcfuse.Extent[string]) ([]byte, error) {
 	// Load the current filesystem state
 	var fsRef glfs.Ref
 	if len(root) > 0 {
@@ -35,7 +36,8 @@ func (s *Scheme) FlushExtents(ctx context.Context, dst cadata.PostExister, src c
 		}
 	} else {
 		// Create empty filesystem
-		ref, err := glfs.PostTreeSlice(ctx, dst, nil)
+		pea := &bcglfs.PostExistAdapter{WO: dst}
+		ref, err := glfs.PostTreeSlice(ctx, pea, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create empty tree: %w", err)
 		}
@@ -57,13 +59,14 @@ func (s *Scheme) FlushExtents(ctx context.Context, dst cadata.PostExister, src c
 		}
 
 		// Create a new tree with this file
-		treeRef, err := glfs.PostTreeSlice(ctx, dst, []glfs.TreeEntry{entry})
+		dst2 := &bcglfs.PostExistAdapter{WO: dst}
+		treeRef, err := glfs.PostTreeSlice(ctx, dst2, []glfs.TreeEntry{entry})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create tree for %s: %w", extent.ID, err)
 		}
 
 		// Merge with the existing filesystem
-		mergedRef, err := glfs.Merge(ctx, dst, src, fsRef, *treeRef)
+		mergedRef, err := glfs.Merge(ctx, dst2, src, fsRef, *treeRef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to merge extent for %s: %w", extent.ID, err)
 		}
@@ -80,7 +83,7 @@ func (s *Scheme) FlushExtents(ctx context.Context, dst cadata.PostExister, src c
 }
 
 // ReadFile reads a file from the volume by identifier into the provided buffer
-func (s *Scheme) ReadFile(ctx context.Context, src cadata.Getter, root []byte, id string, buf []byte) (int, error) {
+func (s *Scheme) ReadFile(ctx context.Context, src schema.RO, root []byte, id string, buf []byte) (int, error) {
 	// Load the filesystem
 	var fsRef glfs.Ref
 	if err := json.Unmarshal(root, &fsRef); err != nil {
@@ -105,7 +108,7 @@ func (s *Scheme) ReadFile(ctx context.Context, src cadata.Getter, root []byte, i
 }
 
 // ReadDir reads directory entries for the given identifier
-func (s *Scheme) ReadDir(ctx context.Context, src cadata.Getter, root []byte, id string) ([]bcfuse.DirEntry[string], error) {
+func (s *Scheme) ReadDir(ctx context.Context, src schema.RO, root []byte, id string) ([]bcfuse.DirEntry[string], error) {
 	// Load the filesystem
 	var fsRef glfs.Ref
 	if err := json.Unmarshal(root, &fsRef); err != nil {
@@ -165,7 +168,8 @@ func (s *Scheme) ReadDir(ctx context.Context, src cadata.Getter, root []byte, id
 }
 
 // CreateAt creates a new file in the directory
-func (s *Scheme) CreateAt(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, parentID string, name string, mode uint32) (string, []byte, error) {
+func (s *Scheme) CreateAt(ctx context.Context, dst schema.WO, src schema.RO, root []byte, parentID string, name string, mode uint32) (string, []byte, error) {
+	dst2 := &bcglfs.PostExistAdapter{WO: dst}
 	// Load the filesystem
 	var fsRef glfs.Ref
 	if len(root) > 0 {
@@ -174,7 +178,7 @@ func (s *Scheme) CreateAt(ctx context.Context, dst cadata.PostExister, src cadat
 		}
 	} else {
 		// Create empty filesystem
-		ref, err := glfs.PostTreeSlice(ctx, dst, nil)
+		ref, err := glfs.PostTreeSlice(ctx, dst2, nil)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to create empty tree: %w", err)
 		}
@@ -200,13 +204,13 @@ func (s *Scheme) CreateAt(ctx context.Context, dst cadata.PostExister, src cadat
 	}
 
 	// Create a new tree with this file
-	treeRef, err := glfs.PostTreeSlice(ctx, dst, []glfs.TreeEntry{entry})
+	treeRef, err := glfs.PostTreeSlice(ctx, dst2, []glfs.TreeEntry{entry})
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create tree: %w", err)
 	}
 
 	// Merge with the existing filesystem
-	newFsRef, err := glfs.Merge(ctx, dst, src, fsRef, *treeRef)
+	newFsRef, err := glfs.Merge(ctx, dst2, src, fsRef, *treeRef)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to merge new file: %w", err)
 	}
@@ -221,7 +225,7 @@ func (s *Scheme) CreateAt(ctx context.Context, dst cadata.PostExister, src cadat
 }
 
 // DeleteAt removes a file from the directory
-func (s *Scheme) DeleteAt(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, parentID string, name string) ([]byte, error) {
+func (s *Scheme) DeleteAt(ctx context.Context, dst schema.WO, src schema.RO, root []byte, parentID string, name string) ([]byte, error) {
 	// Load the filesystem
 	var fsRef glfs.Ref
 	if err := json.Unmarshal(root, &fsRef); err != nil {

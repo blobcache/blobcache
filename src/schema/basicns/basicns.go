@@ -43,15 +43,15 @@ func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
 	return &Schema{}, nil
 }
 
-func (sch Schema) ValidateChange(ctx context.Context, s schema.RO, _, next []byte) error {
-	_, err := sch.ListEntries(ctx, s.(cadata.Getter), next)
+func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) error {
+	_, err := sch.ListEntries(ctx, change.NextStore, change.NextCell)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (sch Schema) ListEntries(ctx context.Context, s cadata.Getter, root []byte) ([]Entry, error) {
+func (sch Schema) ListEntries(ctx context.Context, s schema.RO, root []byte) ([]Entry, error) {
 	if len(root) == 0 {
 		return nil, nil
 	}
@@ -72,7 +72,7 @@ func (sch Schema) ListEntries(ctx context.Context, s cadata.Getter, root []byte)
 }
 
 func (sch Schema) ReadLinks(ctx context.Context, s schema.RO, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error {
-	ents, err := sch.ListEntries(ctx, s.(cadata.Getter), root)
+	ents, err := sch.ListEntries(ctx, s, root)
 	if err != nil {
 		return err
 	}

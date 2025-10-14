@@ -28,9 +28,9 @@ func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
 	return &Schema{}, nil
 }
 
-func (sch Schema) ValidateChange(ctx context.Context, s schema.RO, prevRoot, nextRoot []byte) error {
+func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) error {
 	var prev blobcache.OID
-	return sch.WalkOIDs(ctx, s, cadata.IDFromBytes(nextRoot), func(oid blobcache.OID) error {
+	return sch.WalkOIDs(ctx, change.NextStore, cadata.IDFromBytes(change.NextCell), func(oid blobcache.OID) error {
 		if oid.Compare(prev) < 0 {
 			return fmt.Errorf("OID %s is less than previous OID %s", oid, prev)
 		}

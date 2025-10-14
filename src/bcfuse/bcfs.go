@@ -12,8 +12,8 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/sqlutil"
+	"blobcache.io/blobcache/src/schema"
 	"github.com/jmoiron/sqlx"
-	"go.brendoncarroll.net/state/cadata"
 )
 
 // Scheme handles filesystem operations on blobcache volumes.
@@ -21,19 +21,19 @@ import (
 // All writing methods follow the pattern: func(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, ...) (..., []byte, error)
 type Scheme[K comparable] interface {
 	// FlushExtents writes all the extents to the volume.
-	FlushExtents(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, extents []Extent[K]) ([]byte, error)
+	FlushExtents(ctx context.Context, dst schema.WO, src schema.RO, root []byte, extents []Extent[K]) ([]byte, error)
 
 	// ReadFile reads a file from the volume by identifier into the provided buffer
-	ReadFile(ctx context.Context, src cadata.Getter, root []byte, id K, buf []byte) (int, error)
+	ReadFile(ctx context.Context, src schema.RO, root []byte, id K, buf []byte) (int, error)
 
 	// ReadDir reads directory entries for the given identifier
-	ReadDir(ctx context.Context, src cadata.Getter, root []byte, id K) ([]DirEntry[K], error)
+	ReadDir(ctx context.Context, src schema.RO, root []byte, id K) ([]DirEntry[K], error)
 
 	// CreateAt creates a new file in the directory
-	CreateAt(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, parentID K, name string, mode uint32) (K, []byte, error)
+	CreateAt(ctx context.Context, dst schema.WO, src schema.RO, root []byte, parentID K, name string, mode uint32) (K, []byte, error)
 
 	// DeleteAt removes a file from the directory
-	DeleteAt(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, parentID K, name string) ([]byte, error)
+	DeleteAt(ctx context.Context, dst schema.WO, src schema.RO, root []byte, parentID K, name string) ([]byte, error)
 }
 
 // Extent represents a data extent with generic ID
