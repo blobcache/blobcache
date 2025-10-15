@@ -16,19 +16,39 @@ Blobcache is a universal backend for E2EE applications.
 - [BCP vs. HTTP](/doc/9.01_BCP_vs_HTTP.md)
 
 ## Getting Started
-You should be able to install with
+
+For non-user machines (cloud, homelab) it is recommended to run the docker image.
+For user machines, it is recommended to run blobcache as a systemd service when you log in.
+
+### Installation
+There is an [install script](./etc/install-systemd.sh) for systemd based systems.
+You can run that with `just install-systemd`.
+
+The install script does 2 things:
+- Installs the blobcache executable to `/usr/bin/blobcache`
+- Copies [blobcache.service](./etc/blobcache.service) into `$HOME/.config/systemd/user/`
+
+Then you can manage the service using `systemctl --user` as you would normally.
+The service is not enabled by default (you can do that with `systemctl --user enable blobcache`), so this install method is also appropriate for getting the binary into `/usr/bin` without launching a background process.
+
+### Docker
+There is a docker image, which can be built with `just docker-build`.
+Right now it only builds for `linux-amd64`.
+
+After that you can test run with
 ```shell
-$ go install ./cmd/blobcache
+docker run -it --rm blobcache
 ```
 
-And then if `${go env GOPATH}/bin` is on your path, you should be able to run the blobcache command with
-```shell
-$ blobcache 
-```
+The `/state` directory is where blobcache stores all of its state.
+This is where you should mount a volume to persist data on the host.
+You should also expose the peer port, so other instances can connect.
 
-or to put the executable somewhere specific
 ```shell
-$ go build -o ./put/the/binary/here/please ./cmd/blobcache 
+docker run \
+    -v /host/path/to/state:/state \
+    -p 6025:6025/udp \
+    blobcache:latest
 ```
 
 ### Running a Node in Memory

@@ -1,0 +1,22 @@
+[Unit]
+Description=Blobcache - Content-Addressable Storage Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStartPre=-/bin/rm -f %t/blobcache.sock
+ExecStartPre=/bin/mkdir -p %h/.local/share/blobcache
+ExecStart=/usr/bin/blobcache daemon --state %h/.local/share/blobcache --serve-api unix://%t/blobcache.sock --listen 0.0.0.0:6025
+ExecStopPost=-/bin/rm -f %t/blobcache.sock
+Restart=on-failure
+RestartSec=5s
+
+# Security and sandboxing
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=default.target
