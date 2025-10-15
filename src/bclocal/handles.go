@@ -125,7 +125,3 @@ type handle struct {
 	expiresAt time.Time // zero value means no expiration
 	rights    blobcache.ActionSet
 }
-
-func (h handle) isExpired(now time.Time) bool {
-	return h.expiresAt.Before(now)
-}

@@ -3,8 +3,10 @@ package basiccont
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/state/cadata"
@@ -15,12 +17,20 @@ var (
 	_ schema.Container = &Schema{}
 )
 
+func init() {
+	bclocal.AddDefaultSchema(blobcache.Schema_BasicContainer, Constructor)
+}
+
 // Schema
 type Schema struct{}
 
-func (sch Schema) Validate(ctx context.Context, s schema.RO, prevRoot, nextRoot []byte) error {
+func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
+	return &Schema{}, nil
+}
+
+func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) error {
 	var prev blobcache.OID
-	return sch.WalkOIDs(ctx, s, cadata.IDFromBytes(nextRoot), func(oid blobcache.OID) error {
+	return sch.WalkOIDs(ctx, change.NextStore, cadata.IDFromBytes(change.NextCell), func(oid blobcache.OID) error {
 		if oid.Compare(prev) < 0 {
 			return fmt.Errorf("OID %s is less than previous OID %s", oid, prev)
 		}

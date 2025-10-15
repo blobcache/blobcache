@@ -94,7 +94,7 @@ func (v *VolumeBackend[T]) Unmarshal(data []byte) error {
 func (v *VolumeBackend[T]) Deps() iter.Seq[T] {
 	switch {
 	case v.Vault != nil:
-		return unitIter[T](v.Vault.Inner)
+		return unitIter[T](v.Vault.X)
 	default:
 		return emptyIter[T]()
 	}
@@ -128,7 +128,7 @@ func (v VolumeBackend[T]) String() string {
 	}
 	if v.Vault != nil {
 		sb.WriteString("vault:")
-		sb.WriteString(fmt.Sprintf("%v", v.Vault.Inner))
+		sb.WriteString(fmt.Sprintf("%v", v.Vault.X))
 	}
 	sb.WriteString("}")
 	return sb.String()
@@ -172,7 +172,7 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 	}
 	if x.Vault != nil {
 		ret.Vault = &VolumeBackend_Vault[OID]{
-			Inner:  x.Vault.Inner.OID,
+			X:      x.Vault.X.OID,
 			Secret: x.Vault.Secret,
 		}
 	}
@@ -180,10 +180,10 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 }
 
 type VolumeParams struct {
-	Schema   Schema   `json:"schema"`
-	HashAlgo HashAlgo `json:"hash_algo"`
-	MaxSize  int64    `json:"max_size"`
-	Salted   bool     `json:"salted"`
+	Schema   SchemaSpec `json:"schema"`
+	HashAlgo HashAlgo   `json:"hash_algo"`
+	MaxSize  int64      `json:"max_size"`
+	Salted   bool       `json:"salted"`
 }
 
 func (v *VolumeParams) Validate() error {
@@ -198,7 +198,7 @@ func (v *VolumeParams) Validate() error {
 
 func DefaultVolumeParams() VolumeParams {
 	return VolumeParams{
-		Schema:   Schema_NONE,
+		Schema:   SchemaSpec{Name: Schema_NONE},
 		HashAlgo: HashAlgo_BLAKE3_256,
 		MaxSize:  1 << 22,
 		Salted:   false,
@@ -229,8 +229,27 @@ type VolumeBackend_Git struct {
 }
 
 type VolumeBackend_Vault[T handleOrOID] struct {
-	Inner  T        `json:"inner"`
-	Secret [32]byte `json:"secret"`
+	X      T      `json:"x"`
+	Secret Secret `json:"secret"`
+}
+
+type Secret [32]byte
+
+func (s Secret) MarshalJSON() ([]byte, error) {
+	return json.Marshal(hex.EncodeToString(s[:]))
+}
+
+func (s *Secret) UnmarshalJSON(data []byte) error {
+	var hexString string
+	if err := json.Unmarshal(data, &hexString); err != nil {
+		return err
+	}
+	decoded, err := hex.DecodeString(hexString)
+	if err != nil {
+		return err
+	}
+	copy(s[:], decoded)
+	return nil
 }
 
 type handleOrOID interface {

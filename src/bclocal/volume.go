@@ -24,7 +24,7 @@ func putVolume(w pdb.WO, info blobcache.VolumeInfo) error {
 	ve := volumeEntry{
 		OID: info.ID,
 
-		Schema:   string(info.Schema),
+		Schema:   info.Schema,
 		HashAlgo: string(info.HashAlgo),
 		MaxSize:  info.MaxSize,
 		Backend:  backendJSON,
@@ -74,8 +74,8 @@ func ensureRootVolume(ba *pebble.Batch, spec blobcache.VolumeSpec) (*blobcache.V
 type volumeEntry struct {
 	OID blobcache.OID `db:"id"`
 
-	MaxSize int64  `db:"max_size"`
-	Schema  string `db:"sch"`
+	MaxSize int64                `db:"max_size"`
+	Schema  blobcache.SchemaSpec `db:"sch"`
 	// TODO: use the HashAlgo type, make sure it serializes correctly for the database.
 	HashAlgo string          `db:"hash_algo"`
 	Salted   bool            `db:"salted"`
@@ -92,7 +92,7 @@ func (ve *volumeEntry) Value(out []byte) []byte {
 	out = binary.LittleEndian.AppendUint32(out, uint32(ve.MaxSize))
 	out = append(out, boolToUint8(ve.Salted))
 	out = sbe.AppendLP(out, []byte(ve.HashAlgo))
-	out = sbe.AppendLP(out, []byte(ve.Schema))
+	out = sbe.AppendLP(out, []byte(ve.Schema.Marshal(nil)))
 	out = sbe.AppendLP(out, ve.Backend)
 	return out
 }
@@ -111,8 +111,12 @@ func parseVolumeEntry(k, v []byte) (*volumeEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	schema, rest, err := sbe.ReadLP(rest)
+	schemaData, rest, err := sbe.ReadLP(rest)
 	if err != nil {
+		return nil, err
+	}
+	var schema blobcache.SchemaSpec
+	if err := schema.Unmarshal(schemaData); err != nil {
 		return nil, err
 	}
 	backend, rest, err := sbe.ReadLP(rest)
@@ -124,7 +128,7 @@ func parseVolumeEntry(k, v []byte) (*volumeEntry, error) {
 		OID: oid,
 
 		MaxSize:  int64(maxSize),
-		Schema:   string(schema),
+		Schema:   schema,
 		HashAlgo: string(hashAlgo),
 		Salted:   salted,
 		Backend:  backend,
@@ -147,7 +151,7 @@ func inspectVolume(sn pdb.RO, volID blobcache.OID) (*blobcache.VolumeInfo, error
 	volInfo := blobcache.VolumeInfo{
 		ID: volID,
 		VolumeParams: blobcache.VolumeParams{
-			Schema:   blobcache.Schema(ve.Schema),
+			Schema:   ve.Schema,
 			HashAlgo: blobcache.HashAlgo(ve.HashAlgo),
 			MaxSize:  ve.MaxSize,
 			Salted:   ve.Salted,

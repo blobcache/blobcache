@@ -9,6 +9,8 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"github.com/stretchr/testify/require"
+
+	_ "blobcache.io/blobcache/src/schema/basicns"
 )
 
 func TestService(t *testing.T) {

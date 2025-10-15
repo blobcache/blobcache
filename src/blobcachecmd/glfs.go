@@ -16,6 +16,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/glfsport"
 	"blobcache.io/blobcache/src/schema/basicns"
+	bcglfs "blobcache.io/blobcache/src/schema/glfs"
 	glfsschema "blobcache.io/blobcache/src/schema/glfs"
 )
 
@@ -57,7 +58,8 @@ var glfsInitCmd = star.Command{
 			return fmt.Errorf("there is already something in this volume")
 		}
 		ag := glfs.NewMachine()
-		ref, err := ag.PostTreeSlice(ctx, tx, nil)
+		pea := &bcglfs.PostExistAdapter{WO: tx}
+		ref, err := ag.PostTreeSlice(ctx, pea, nil)
 		if err != nil {
 			return err
 		}
@@ -286,7 +288,7 @@ func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle,
 		return err
 	}
 	// modify
-	root2, err := f(ag, tx, tx, *root)
+	root2, err := f(ag, &bcglfs.PostExistAdapter{WO: tx}, tx, *root)
 	if err != nil {
 		return err
 	}

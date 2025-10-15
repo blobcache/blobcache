@@ -10,6 +10,8 @@ import (
 	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/internal/blobcached"
 	"github.com/stretchr/testify/require"
+
+	_ "blobcache.io/blobcache/src/schema/basicns"
 )
 
 func TestGLFS(t *testing.T) {

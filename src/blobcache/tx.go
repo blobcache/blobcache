@@ -3,6 +3,8 @@ package blobcache
 import (
 	"context"
 	"fmt"
+
+	"go.brendoncarroll.net/exp/slices2"
 )
 
 // BeginTx begins a new transaction and returns the Tx type.
@@ -77,12 +79,12 @@ func (tx *Tx) Post(ctx context.Context, data []byte) (CID, error) {
 	return tx.s.Post(ctx, tx.h, data, PostOpts{})
 }
 
-func (tx *Tx) Exists(ctx context.Context, cid CID) (bool, error) {
-	return ExistsSingle(ctx, tx.s, tx.h, cid)
+func (tx *Tx) Exists(ctx context.Context, cids []CID, exists []bool) error {
+	return tx.s.Exists(ctx, tx.h, cids, exists)
 }
 
-func (tx *Tx) Delete(ctx context.Context, cid CID) error {
-	return tx.s.Delete(ctx, tx.h, []CID{cid})
+func (tx *Tx) Delete(ctx context.Context, cids []CID) error {
+	return tx.s.Delete(ctx, tx.h, cids)
 }
 
 func (tx *Tx) Get(ctx context.Context, cid CID, buf []byte) (int, error) {
@@ -107,6 +109,11 @@ func (tx *Tx) Visit(ctx context.Context, cids []CID) error {
 
 func (tx *Tx) IsVisited(ctx context.Context, cids []CID, yesVisited []bool) error {
 	return tx.s.IsVisited(ctx, tx.h, cids, yesVisited)
+}
+
+func (tx *Tx) Copy(ctx context.Context, srcs []*Tx, cids []CID, success []bool) error {
+	hs := slices2.Map(srcs, func(src *Tx) Handle { return src.h })
+	return tx.s.Copy(ctx, tx.h, cids, hs, success)
 }
 
 // BeginTxSalt is the salted variant of BeginTx.

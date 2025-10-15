@@ -16,25 +16,25 @@ type Schema struct {
 	Mach *glfs.Machine
 }
 
-func (sch *Schema) Validate(ctx context.Context, src schema.RO, prev, next []byte) error {
-	if len(prev) == 0 {
-		nextRef, err := ParseRef(next)
+func (sch *Schema) ValidateChange(ctx context.Context, change schema.Change) error {
+	if len(change.PrevCell) == 0 {
+		nextRef, err := ParseRef(change.NextCell)
 		if err != nil {
 			return err
 		}
-		return sch.Mach.WalkRefs(ctx, src.(cadata.Getter), *nextRef, func(ref glfs.Ref) error {
+		return sch.Mach.WalkRefs(ctx, change.NextStore, *nextRef, func(ref glfs.Ref) error {
 			return nil
 		})
 	}
-	prevRef, err := ParseRef(prev)
+	prevRef, err := ParseRef(change.PrevCell)
 	if err != nil {
 		return err
 	}
-	nextRef, err := ParseRef(next)
+	nextRef, err := ParseRef(change.NextCell)
 	if err != nil {
 		return err
 	}
-	return DiffRefs(ctx, src.(cadata.Getter), *prevRef, *nextRef, func(left, right *glfs.Ref) error { return nil })
+	return DiffRefs(ctx, change.NextStore, *prevRef, *nextRef, func(left, right *glfs.Ref) error { return nil })
 }
 
 func ParseRef(root []byte) (*glfs.Ref, error) {
@@ -55,12 +55,6 @@ func jsonMarshal(x any) []byte {
 		panic(err)
 	}
 	return buf
-}
-
-type Store interface {
-	Get(ctx context.Context, cid cadata.ID, buf []byte) (int, error)
-	Post(ctx context.Context, salt *cadata.ID, data []byte) (cadata.ID, error)
-	Exists(ctx context.Context, cid cadata.ID) (bool, error)
 }
 
 // DiffRefs calls fn for ecah ref that is only in the left filsystem or only in the right filesystem.
@@ -106,11 +100,30 @@ func SyncTx(ctx context.Context, srcTx, dstTx *blobcache.Tx) error {
 	if srcRoot.Equals(*dstRoot) {
 		return nil
 	}
-	if err := glfs.Sync(ctx, dstTx, srcTx, *srcRoot); err != nil {
+	pea := &PostExistAdapter{WO: dstTx}
+	if err := glfs.Sync(ctx, pea, srcTx, *srcRoot); err != nil {
 		return err
 	}
 	if err := dstTx.Save(ctx, MarshalRef(srcRoot)); err != nil {
 		return err
 	}
 	return dstTx.Commit(ctx)
+}
+
+// PostExistAdapter is an adapter to a schema.WO that implements the cadata.PostExister interface.
+// THIS WILL BE REMOVED IN THE FUTURE.
+type PostExistAdapter struct {
+	schema.WO
+}
+
+func (s *PostExistAdapter) Exists(ctx context.Context, cid cadata.ID) (bool, error) {
+	var exists [1]bool
+	if err := s.WO.Exists(ctx, []cadata.ID{cid}, exists[:]); err != nil {
+		return false, err
+	}
+	return exists[0], nil
+}
+
+func (s *PostExistAdapter) MaxSize() int {
+	return s.WO.MaxSize()
 }
