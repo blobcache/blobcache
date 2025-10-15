@@ -1,5 +1,5 @@
-blobcache.io/glfs v0.0.0-20250706163801-7fe8f5eb8ba4 h1:lxWNxn6tMz27umjcep47QsItt+e3vAPE8PBVsUCEJ9k=
-blobcache.io/glfs v0.0.0-20250706163801-7fe8f5eb8ba4/go.mod h1:w//sy3lSHwED7jbcFeN3KhNs9ZGwe2kr9S213GC9QNE=
+blobcache.io/glfs v0.0.0-20251015013643-959eae5a0508 h1:ulnPBMbczSqRjXPj+nF2qeYsEGQY2y7KGcCO866re4A=
+blobcache.io/glfs v0.0.0-20251015013643-959eae5a0508/go.mod h1:fX00pZxS7CL/Brbz7mMtzSzVXthSiTHPOdnC6x8zVGk=
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
 dario.cat/mergo v1.0.0/go.mod h1:uNxQE+84aUszobStD9th8a29P2fMDhsBdgRYvZOxGmk=
 filippo.io/edwards25519 v1.1.0 h1:FNf4tywRC1HmFuKW5xopWpigGjJKiJSV0Cqo0cJWDaA=

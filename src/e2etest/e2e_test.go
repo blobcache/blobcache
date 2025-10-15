@@ -16,7 +16,6 @@ import (
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
 	_ "blobcache.io/blobcache/src/schema/basicns"
-	bcglfs "blobcache.io/blobcache/src/schema/glfs"
 )
 
 // TestGLFS tests that blobcache integrates correctly with the Git-Like File System.
@@ -29,8 +28,7 @@ func TestGLFS(t *testing.T) {
 	blobcachetests.Modify(t, svc, *volh, func(tx *blobcache.Tx) ([]byte, error) {
 		ref, err := glfs.PostBlob(ctx, tx, strings.NewReader("hello"))
 		require.NoError(t, err)
-		pea := &bcglfs.PostExistAdapter{WO: tx}
-		ref, err = glfs.PostTreeSlice(ctx, pea, []glfs.TreeEntry{
+		ref, err = glfs.PostTreeSlice(ctx, tx, []glfs.TreeEntry{
 			{Name: "hello.txt", Ref: *ref},
 		})
 		require.NoError(t, err)

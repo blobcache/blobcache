@@ -100,30 +100,11 @@ func SyncTx(ctx context.Context, srcTx, dstTx *blobcache.Tx) error {
 	if srcRoot.Equals(*dstRoot) {
 		return nil
 	}
-	pea := &PostExistAdapter{WO: dstTx}
-	if err := glfs.Sync(ctx, pea, srcTx, *srcRoot); err != nil {
+	if err := glfs.Sync(ctx, dstTx, srcTx, *srcRoot); err != nil {
 		return err
 	}
 	if err := dstTx.Save(ctx, MarshalRef(srcRoot)); err != nil {
 		return err
 	}
 	return dstTx.Commit(ctx)
-}
-
-// PostExistAdapter is an adapter to a schema.WO that implements the cadata.PostExister interface.
-// THIS WILL BE REMOVED IN THE FUTURE.
-type PostExistAdapter struct {
-	schema.WO
-}
-
-func (s *PostExistAdapter) Exists(ctx context.Context, cid cadata.ID) (bool, error) {
-	var exists [1]bool
-	if err := s.WO.Exists(ctx, []cadata.ID{cid}, exists[:]); err != nil {
-		return false, err
-	}
-	return exists[0], nil
-}
-
-func (s *PostExistAdapter) MaxSize() int {
-	return s.WO.MaxSize()
 }

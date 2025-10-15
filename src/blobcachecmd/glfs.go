@@ -11,12 +11,11 @@ import (
 	"blobcache.io/glfs"
 	"go.brendoncarroll.net/exp/streams"
 	"go.brendoncarroll.net/star"
-	"go.brendoncarroll.net/state/cadata"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/glfsport"
+	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/basicns"
-	bcglfs "blobcache.io/blobcache/src/schema/glfs"
 	glfsschema "blobcache.io/blobcache/src/schema/glfs"
 )
 
@@ -58,8 +57,7 @@ var glfsInitCmd = star.Command{
 			return fmt.Errorf("there is already something in this volume")
 		}
 		ag := glfs.NewMachine()
-		pea := &bcglfs.PostExistAdapter{WO: tx}
-		ref, err := ag.PostTreeSlice(ctx, pea, nil)
+		ref, err := ag.PostTreeSlice(ctx, tx, nil)
 		if err != nil {
 			return err
 		}
@@ -140,7 +138,7 @@ var glfsImportCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		return modifyGLFS(ctx, svc, *volh, func(ag *glfs.Machine, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) (*glfs.Ref, error) {
+		return modifyGLFS(ctx, svc, *volh, func(ag *glfs.Machine, dst schema.WO, src schema.RO, root glfs.Ref) (*glfs.Ref, error) {
 			imp := glfsport.Importer{
 				Store: dst,
 				Dir:   srcPathParam.Load(c),
@@ -182,7 +180,7 @@ var glfsReadCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		return viewGLFS(ctx, svc, *volh, func(ag *glfs.Machine, src cadata.Getter, root glfs.Ref) error {
+		return viewGLFS(ctx, svc, *volh, func(ag *glfs.Machine, src schema.RO, root glfs.Ref) error {
 			ref, err := ag.GetAtPath(ctx, src, root, srcPathParam.Load(c))
 			if err != nil {
 				return err
@@ -251,7 +249,7 @@ var dstVolumeParam = star.Required[string]{
 	Parse: star.ParseString,
 }
 
-func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, fn func(ag *glfs.Machine, src cadata.Getter, root glfs.Ref) error) error {
+func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, fn func(ag *glfs.Machine, src schema.RO, root glfs.Ref) error) error {
 	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{})
 	if err != nil {
 		return err
@@ -269,7 +267,7 @@ func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f
 	return fn(ag, tx, *root)
 }
 
-func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f func(ag *glfs.Machine, dst cadata.PostExister, src cadata.Getter, root glfs.Ref) (*glfs.Ref, error)) error {
+func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f func(ag *glfs.Machine, dst schema.WO, src schema.RO, root glfs.Ref) (*glfs.Ref, error)) error {
 	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{
 		Mutate: true,
 	})
@@ -288,7 +286,7 @@ func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle,
 		return err
 	}
 	// modify
-	root2, err := f(ag, &bcglfs.PostExistAdapter{WO: tx}, tx, *root)
+	root2, err := f(ag, tx, tx, *root)
 	if err != nil {
 		return err
 	}

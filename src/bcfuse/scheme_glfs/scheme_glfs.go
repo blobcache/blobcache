@@ -8,7 +8,6 @@ import (
 
 	"blobcache.io/blobcache/src/bcfuse"
 	"blobcache.io/blobcache/src/schema"
-	bcglfs "blobcache.io/blobcache/src/schema/glfs"
 	"blobcache.io/glfs"
 	"go.brendoncarroll.net/exp/streams"
 )
@@ -36,8 +35,7 @@ func (s *Scheme) FlushExtents(ctx context.Context, dst schema.WO, src schema.RO,
 		}
 	} else {
 		// Create empty filesystem
-		pea := &bcglfs.PostExistAdapter{WO: dst}
-		ref, err := glfs.PostTreeSlice(ctx, pea, nil)
+		ref, err := glfs.PostTreeSlice(ctx, dst, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create empty tree: %w", err)
 		}
@@ -59,14 +57,13 @@ func (s *Scheme) FlushExtents(ctx context.Context, dst schema.WO, src schema.RO,
 		}
 
 		// Create a new tree with this file
-		dst2 := &bcglfs.PostExistAdapter{WO: dst}
-		treeRef, err := glfs.PostTreeSlice(ctx, dst2, []glfs.TreeEntry{entry})
+		treeRef, err := glfs.PostTreeSlice(ctx, dst, []glfs.TreeEntry{entry})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create tree for %s: %w", extent.ID, err)
 		}
 
 		// Merge with the existing filesystem
-		mergedRef, err := glfs.Merge(ctx, dst2, src, fsRef, *treeRef)
+		mergedRef, err := glfs.Merge(ctx, dst, src, fsRef, *treeRef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to merge extent for %s: %w", extent.ID, err)
 		}
@@ -169,7 +166,6 @@ func (s *Scheme) ReadDir(ctx context.Context, src schema.RO, root []byte, id str
 
 // CreateAt creates a new file in the directory
 func (s *Scheme) CreateAt(ctx context.Context, dst schema.WO, src schema.RO, root []byte, parentID string, name string, mode uint32) (string, []byte, error) {
-	dst2 := &bcglfs.PostExistAdapter{WO: dst}
 	// Load the filesystem
 	var fsRef glfs.Ref
 	if len(root) > 0 {
@@ -178,7 +174,7 @@ func (s *Scheme) CreateAt(ctx context.Context, dst schema.WO, src schema.RO, roo
 		}
 	} else {
 		// Create empty filesystem
-		ref, err := glfs.PostTreeSlice(ctx, dst2, nil)
+		ref, err := glfs.PostTreeSlice(ctx, dst, nil)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to create empty tree: %w", err)
 		}
@@ -204,13 +200,13 @@ func (s *Scheme) CreateAt(ctx context.Context, dst schema.WO, src schema.RO, roo
 	}
 
 	// Create a new tree with this file
-	treeRef, err := glfs.PostTreeSlice(ctx, dst2, []glfs.TreeEntry{entry})
+	treeRef, err := glfs.PostTreeSlice(ctx, dst, []glfs.TreeEntry{entry})
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create tree: %w", err)
 	}
 
 	// Merge with the existing filesystem
-	newFsRef, err := glfs.Merge(ctx, dst2, src, fsRef, *treeRef)
+	newFsRef, err := glfs.Merge(ctx, dst, src, fsRef, *treeRef)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to merge new file: %w", err)
 	}

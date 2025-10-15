@@ -10,14 +10,14 @@ import (
 	"runtime"
 	"strings"
 
+	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/glfs"
-	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
 
 type Importer struct {
-	Store  cadata.PostExister
+	Store  schema.WO
 	Dir    string
 	Filter func(p string) bool
 }

@@ -3,7 +3,7 @@ module blobcache.io/blobcache
 go 1.24
 
 require (
-	blobcache.io/glfs v0.0.0-20250706163801-7fe8f5eb8ba4
+	blobcache.io/glfs v0.0.0-20251015013643-959eae5a0508
 	github.com/cloudflare/circl v1.6.1
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/edsrzf/mmap-go v1.2.0
