@@ -84,3 +84,9 @@ func (ms *MemStore) Hash(data []byte) blobcache.CID {
 func (ms *MemStore) MaxSize() int {
 	return ms.maxSize
 }
+
+func (ms *MemStore) Len() int {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	return len(ms.blobs)
+}
