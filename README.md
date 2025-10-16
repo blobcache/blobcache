@@ -31,6 +31,21 @@ The install script does 2 things:
 Then you can manage the service using `systemctl --user` as you would normally.
 The service is not enabled by default (you can do that with `systemctl --user enable blobcache`), so this install method is also appropriate for getting the binary into `/usr/bin` without launching a background process.
 
+### Setting `BLOBCACHE_API`
+On user machines, you will probably want to set the `BLOBCACHE_API` environment variable.
+
+This would set the variable to the unix socket used by default in the systemd service described above.
+```shell
+export BLOBCACHE_API="unix:///run/user/$(id -u)/blobcache.sock"
+```
+
+The environment variable is used by the `blobcache` command to talk to blobcache.
+
+You can test that the CLI can connect to the daemon with
+```shell
+$ blobcache endpoint
+```
+
 ### Docker
 There is a docker image, which can be built with `just docker-build`.
 Right now it only builds for `linux-amd64`.
