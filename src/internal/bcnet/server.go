@@ -5,13 +5,22 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"go.brendoncarroll.net/stdctx/logctx"
+	"go.uber.org/zap"
 )
 
 // AccessFun is called to get a service to access
 type AccessFunc func(blobcache.PeerID) blobcache.Service
 
+type TopicMessage = blobcache.TopicMessage
+
+// TopicHandler is called for every message on a topic.
+// All messages in out will be sent if nil is returned.
+type TopicHandler = func(out *[]TopicMessage, msg TopicMessage) error
+
 type Server struct {
-	Access AccessFunc
+	Access  AccessFunc
+	Deliver func(context.Context, TopicTellMsg)
 }
 
 func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message, resp *Message) {
@@ -280,6 +289,21 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &IsVisitedResp{Visited: visited}, nil
 		})
 	// END TX
+
+	// BEGIN TOPIC
+	case MT_TOPIC_TELL:
+		if err := func() error {
+			var ttm TopicTellMsg
+			if err := ttm.Unmarshal(req.Body()); err != nil {
+				return err
+			}
+			s.Deliver(ctx, ttm)
+			return nil
+		}(); err != nil {
+			logctx.Error(ctx, "handling topic tell", zap.Error(err))
+			return
+		}
+	// END TOPIC
 
 	default:
 		resp.SetError(fmt.Errorf("unknown message type: %v", req.Header().Code()))

@@ -256,7 +256,7 @@ func IsVisited(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blob
 	return nil
 }
 
-func doAsk[Req interface{ Marshal(out []byte) []byte }, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Transport, remote blobcache.Endpoint, code MessageType, req Req, zeroResp Resp) (Resp, error) {
+func doAsk[Req Sendable, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Transport, remote blobcache.Endpoint, code MessageType, req Req, zeroResp Resp) (Resp, error) {
 	reqData := req.Marshal(nil)
 	var reqMsg Message
 	reqMsg.SetCode(code)
@@ -282,6 +282,13 @@ func doAsk[Req interface{ Marshal(out []byte) []byte }, Resp interface{ Unmarsha
 	return resp, nil
 }
 
+func doTell(ctx context.Context, tp Transport, ep blobcache.Endpoint, code MessageType, x Sendable) error {
+	var x2 Message
+	x2.SetCode(code)
+	x2.SetBody(x.Marshal(nil))
+	return tp.Tell(ctx, ep, &x2)
+}
+
 func InspectVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, vol blobcache.Handle) (*blobcache.VolumeInfo, error) {
 	resp, err := doAsk(ctx, tp, ep, MT_VOLUME_INSPECT, InspectVolumeReq{
 		Volume: vol,
@@ -290,4 +297,11 @@ func InspectVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, vol
 		return nil, err
 	}
 	return &resp.Info, nil
+}
+
+// TopicSend processes a single topic messge
+func TopicSend(ctx context.Context, tp Transport, tmsg TopicMessage) error {
+	var ttm TopicTellMsg
+	ttm.Encrypt(tmsg.Topic, tmsg.Payload)
+	return doTell(ctx, tp, tmsg.Endpoint, MT_TOPIC_TELL, ttm)
 }

@@ -328,3 +328,20 @@ func PrefixUpperBound(prefix []byte) []byte {
 	}
 	return append(prefix, 0xff)
 }
+
+func DoRO(db *pebble.DB, fn func(*pebble.Snapshot) error) error {
+	sn := db.NewSnapshot()
+	defer sn.Close()
+	return fn(sn)
+}
+
+// DoRW creates an indexed batch and calls fn with it.
+// if fn returns nil, the batch is committed.
+func DoRW(db *pebble.DB, fn func(*pebble.Batch) error) error {
+	ba := db.NewIndexedBatch()
+	//defer ba.Close()
+	if err := fn(ba); err != nil {
+		return err
+	}
+	return ba.Commit(nil)
+}

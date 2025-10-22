@@ -1,16 +1,16 @@
-package bclocal
+package localvol
 
 import (
 	"context"
 	"sync"
 )
 
-type mapOfLocks[K comparable] struct {
+type MapOfLocks[K comparable] struct {
 	mu sync.RWMutex
 	m  map[K]chan struct{}
 }
 
-func (mol *mapOfLocks[K]) Lock(ctx context.Context, k K) error {
+func (mol *MapOfLocks[K]) Lock(ctx context.Context, k K) error {
 	for {
 		mol.mu.Lock()
 		ch, exists := mol.m[k]
@@ -35,7 +35,7 @@ func (mol *mapOfLocks[K]) Lock(ctx context.Context, k K) error {
 	}
 }
 
-func (mol *mapOfLocks[K]) Unlock(oid K) {
+func (mol *MapOfLocks[K]) Unlock(oid K) {
 	mol.mu.Lock()
 	ch := mol.m[oid]
 	if mol.m != nil {

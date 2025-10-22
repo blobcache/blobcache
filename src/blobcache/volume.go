@@ -72,10 +72,11 @@ func (vi *VolumeInfo) Unmarshal(data []byte) error {
 // If it is going into the API, the it will be a VolumeBackend[Handle].
 // If it is coming out of the API, the it will be a VolumeBackend[OID].
 type VolumeBackend[T handleOrOID] struct {
-	Local  *VolumeBackend_Local    `json:"local,omitempty"`
-	Remote *VolumeBackend_Remote   `json:"remote,omitempty"`
-	Git    *VolumeBackend_Git      `json:"git,omitempty"`
-	Vault  *VolumeBackend_Vault[T] `json:"vault,omitempty"`
+	Local     *VolumeBackend_Local     `json:"local,omitempty"`
+	Remote    *VolumeBackend_Remote    `json:"remote,omitempty"`
+	Git       *VolumeBackend_Git       `json:"git,omitempty"`
+	Vault     *VolumeBackend_Vault[T]  `json:"vault,omitempty"`
+	Consensus *VolumeBackend_Consensus `json:"consensus,omitempty"`
 }
 
 func (v *VolumeBackend[T]) Marshal(out []byte) []byte {
@@ -179,6 +180,8 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 	return ret
 }
 
+// VolumeParams are parameters common to all Volumes.
+// Not every volume backend allows them to be specified, but all Volumes have these Values set.
 type VolumeParams struct {
 	Schema   SchemaSpec `json:"schema"`
 	HashAlgo HashAlgo   `json:"hash_algo"`
@@ -250,6 +253,12 @@ func (s *Secret) UnmarshalJSON(data []byte) error {
 	}
 	copy(s[:], decoded)
 	return nil
+}
+
+type VolumeBackend_Consensus struct {
+	Schema   SchemaSpec `json:"schema"`
+	HashAlgo HashAlgo   `json:"hash_algo"`
+	MaxSize  int64      `json:"max_size"`
 }
 
 type handleOrOID interface {

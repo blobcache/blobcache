@@ -1,11 +1,14 @@
 package bcnet
 
 import (
+	"crypto/rand"
+	"crypto/sha3"
 	"encoding/binary"
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/sbe"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 type InspectHandleReq struct {
@@ -901,6 +904,72 @@ func (cr *CreateVolumeResp) Unmarshal(data []byte) error {
 	}
 	data = data[blobcache.HandleSize:]
 	return cr.Info.Unmarshal(data)
+}
+
+type TopicTellMsg struct {
+	// TopicHash is the hash of the topic ID
+	TopicHash  blobcache.CID
+	Ciphertext []byte
+}
+
+func (ttm TopicTellMsg) Marshal(out []byte) []byte {
+	out = append(out, ttm.TopicHash[:]...)
+	out = append(out, ttm.Ciphertext...)
+	return out
+}
+
+func (ttm *TopicTellMsg) Unmarshal(data []byte) error {
+	if len(data) < len(ttm.TopicHash) {
+		return fmt.Errorf("too short to be TopicTellMsg %d", len(data))
+	}
+	n := copy(ttm.TopicHash[:], data)
+	data = data[:n]
+	ttm.Ciphertext = append(ttm.Ciphertext[:0], data...)
+	return nil
+}
+
+// Encrypt sets the message to contain ciphertext for ptext on topicID.
+func (dst *TopicTellMsg) Encrypt(topicID blobcache.TID, ptext []byte) {
+	dek := getTopicDEK(topicID)
+	ciph, err := chacha20poly1305.NewX(dek[:])
+	if err != nil {
+		panic(err)
+	}
+	var nonce [24]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		panic(err)
+	}
+	dst.Ciphertext = append(dst.Ciphertext[:0], nonce[:]...)
+	dst.Ciphertext = ciph.Seal(dst.Ciphertext, nonce[:], ptext, nil)
+	dst.TopicHash = sha3.Sum256(topicID[:])
+}
+
+// Decrypt attempts to decrypt the message using topic ID.
+func (ttm *TopicTellMsg) Decrypt(tid blobcache.TID, dst *blobcache.TopicMessage) error {
+	if len(ttm.Ciphertext) < chacha20poly1305.NonceSizeX+chacha20poly1305.Overhead {
+		return fmt.Errorf("too short to contain cryptogram")
+	}
+	nonce := ttm.Ciphertext[:chacha20poly1305.NonceSizeX]
+	ctext := ttm.Ciphertext[chacha20poly1305.NonceSizeX:]
+
+	dek := getTopicDEK(tid)
+	ciph, err := chacha20poly1305.New(dek[:])
+	if err != nil {
+		panic(err)
+	}
+	dst.Payload, err = ciph.Open(dst.Payload[:0], nonce, ctext, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getTopicDEK(tid blobcache.TID) [32]byte {
+	h := sha3.NewCSHAKE256(nil, tid[:])
+	h.Write([]byte("chacha20poly1305"))
+	var ret [32]byte
+	h.Read(ret[:])
+	return ret
 }
 
 // unmarshalSections unmarshals according to the buffers passed in sections.

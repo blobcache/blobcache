@@ -66,10 +66,8 @@ const (
 )
 
 const (
-	// MT_LAYER2_TELL is used for volume implementations to communicate with other volumes.
-	MT_LAYER2_TELL MessageType = 96 + iota
-	// MT_LAYER2_ASK is used for volume implementations to communicate with other volumes.
-	MT_LAYER2_ASK
+	// MT_TOPIC_TELL is used for volume implementations to communicate with other volumes.
+	MT_TOPIC_TELL MessageType = 96 + iota
 )
 
 // Response messages
@@ -132,6 +130,19 @@ func (m *Message) SetBody(body []byte) {
 	h.SetBodyLen(len(body))
 	m.setHeader(h)
 	m.buf = append(m.buf[:HeaderLen], body...)
+}
+
+// Sendable is a type that can be sent in a message
+type Sendable interface {
+	Marshal(out []byte) []byte
+}
+
+// SetSendable sets the body of the message to a Sendable
+func (m *Message) SetSendable(x Sendable) {
+	m.buf = x.Marshal(m.buf[:HeaderLen])
+	h := m.Header()
+	h.SetBodyLen(len(m.buf) - HeaderLen)
+	m.setHeader(h)
 }
 
 func (m *Message) Body() []byte {

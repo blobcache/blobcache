@@ -6,11 +6,13 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
-type System[K any] interface {
-	Create(ctx context.Context, k K, spec blobcache.VolumeSpec) error
-	Open(ctx context.Context, k K) (Volume, error)
-	Drop(ctx context.Context, k K) error
-	Clone(ctx context.Context, k K) (Volume, error)
+type System[Params any, V Volume] interface {
+	// Up loads volume state into memory.
+	// This should be called to begin using the Volume.
+	Up(ctx context.Context, spec Params) (V, error)
+
+	// Drop should remove all state associated with the volume
+	Drop(ctx context.Context, vol V) error
 }
 
 type Volume interface {

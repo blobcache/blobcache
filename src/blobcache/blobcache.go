@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha3"
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -98,6 +99,24 @@ func (o *OID) Scan(src interface{}) error {
 type PeerID = inet256.ID
 
 const PeerIDSize = inet256.AddrSize
+
+type TID [32]byte
+
+func (tid TID) String() string {
+	return hex.EncodeToString(tid[:])
+}
+
+func (tid *TID) Unmarshal(data []byte) error {
+	if len(data) < 32 {
+		return fmt.Errorf("too small to be topic id")
+	}
+	copy(tid[:], data)
+	return nil
+}
+
+func (tid TID) Key() [32]byte {
+	return sha3.Sum256(tid[:])
+}
 
 // Conditions is a set of conditions to await.
 type Conditions struct {
@@ -253,6 +272,15 @@ type TxAPI interface {
 	// IsVisited is only usable in a GC transaction.
 	// It checks if each CID has been visited.
 	IsVisited(ctx context.Context, tx Handle, cids []CID, yesVisited []bool) error
+}
+
+type TopicMessage struct {
+	// Endpoint is the endpoint where the message came from or is going.
+	Endpoint Endpoint `json:"endpoint"`
+	// Topic is the topic that the message is speaking on.
+	Topic TID `json:"topic"`
+	// Payload data to deliver.
+	Payload []byte `json:"payload"`
 }
 
 type Service interface {
