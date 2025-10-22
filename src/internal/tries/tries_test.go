@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/state/cadata"
@@ -13,7 +14,7 @@ import (
 
 func TestPutGet(t *testing.T) {
 	ctx := context.TODO()
-	s := cadata.NewMem(cadata.DefaultHash, 1<<20)
+	s := schema.NewTestStore(t)
 	op := NewMachine(nil, blobcache.HashAlgo_BLAKE3_256.HashFunc())
 	const N = 1000
 

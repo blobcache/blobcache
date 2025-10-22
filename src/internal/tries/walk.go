@@ -3,9 +3,9 @@ package tries
 import (
 	"context"
 
+	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/state/cadata"
-	"go.brendoncarroll.net/state/kv"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -63,14 +63,15 @@ func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) er
 
 // Sync ensures that data structure exists in dst, using src to retrieve missing pieces.
 // Sync is only correct if dangling references can be guarenteed to not exist in dst.
-func (o *Machine) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn func(*Entry) error) error {
+func (o *Machine) Sync(ctx context.Context, dst schema.WO, src schema.RO, root Root, fn func(*Entry) error) error {
 	return o.Walk(ctx, src, root, Walker{
 		ShouldWalk: func(root Root) bool {
-			exists, err := kv.ExistsUsingList(ctx, dst, root.Ref.CID)
+			var exists [1]bool
+			err := dst.Exists(ctx, []blobcache.CID{root.Ref.CID}, exists[:])
 			if err != nil {
-				exists = false
+				return false
 			}
-			return !exists
+			return !exists[0]
 		},
 		EntryFn: fn,
 		NodeFn: func(root Root) error {
@@ -79,12 +80,12 @@ func (o *Machine) Sync(ctx context.Context, dst, src cadata.Store, root Root, fn
 	})
 }
 
-func (o *Machine) Populate(ctx context.Context, s cadata.Store, root Root, set cadata.Set, fn func(*Entry) error) error {
+func (o *Machine) Populate(ctx context.Context, s schema.RO, root Root, set cadata.Set, fn func(*Entry) error) error {
 	return o.Walk(ctx, s, root, Walker{
 		ShouldWalk: func(root Root) bool {
 			exists, err := set.Exists(ctx, root.Ref.CID)
 			if err != nil {
-				exists = false
+				return false
 			}
 			return !exists
 		},

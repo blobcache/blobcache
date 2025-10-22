@@ -10,7 +10,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
-func NewTestStore(t testing.TB) RWD {
+func NewTestStore(t testing.TB) *MemStore {
 	return NewMem(blobcache.HashAlgo_BLAKE3_256.HashFunc(), 1<<21)
 }
 

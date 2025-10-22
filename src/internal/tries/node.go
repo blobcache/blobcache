@@ -37,7 +37,7 @@ func (o *Machine) getNode(ctx context.Context, s schema.RO, x Root, expandKeys b
 	return ys, nil
 }
 
-func (o *Machine) getParent(ctx context.Context, s cadata.Getter, x Root, expandKeys bool) (*Entry, *[256]Root, error) {
+func (o *Machine) getParent(ctx context.Context, s schema.RO, x Root, expandKeys bool) (*Entry, *[256]Root, error) {
 	ents, err := o.getNode(ctx, s, x, false)
 	if err != nil {
 		return nil, nil, err

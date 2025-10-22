@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
+	"blobcache.io/blobcache/src/schema"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state"
-	"go.brendoncarroll.net/state/cadata"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -82,7 +82,7 @@ func entryFromRoot(x Root) *Entry {
 	}
 }
 
-func (o *Machine) Validate(ctx context.Context, s cadata.Store, x Root) error {
+func (o *Machine) Validate(ctx context.Context, s schema.RO, x Root) error {
 	// getEntries includes validation
 	ents, err := o.getNode(ctx, s, x, false)
 	if err != nil {

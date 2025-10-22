@@ -10,7 +10,6 @@ import (
 	"blobcache.io/blobcache/src/internal/bccrypto"
 	"blobcache.io/blobcache/src/schema"
 	lru "github.com/hashicorp/golang-lru"
-	"go.brendoncarroll.net/state/cadata"
 )
 
 // Machine holds caches and configuration for operating on tries.
@@ -77,7 +76,7 @@ func (o *Machine) Put(ctx context.Context, s schema.RW, root Root, key, value []
 }
 
 // Delete removes
-func (o *Machine) Delete(ctx context.Context, s cadata.Store, root Root, key []byte) (*Root, error) {
+func (o *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []byte) (*Root, error) {
 	if !bytes.HasPrefix(key, root.Prefix) {
 		return &root, nil
 	}
