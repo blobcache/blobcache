@@ -44,20 +44,26 @@ func InspectHandle(ctx context.Context, tp Transport, ep blobcache.Endpoint, h b
 	return &resp.Info, nil
 }
 
-func OpenFiat(ctx context.Context, tp Transport, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func OpenFiat(ctx context.Context, tp Transport, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFiatResp
 	if _, err := doAsk(ctx, tp, ep, MT_OPEN_AS, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &resp.Handle, nil
+	if err := resp.Info.HashAlgo.Validate(); err != nil {
+		return nil, nil, err
+	}
+	return &resp.Handle, &resp.Info, nil
 }
 
-func OpenFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func OpenFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFromResp
 	if _, err := doAsk(ctx, tp, ep, MT_OPEN_FROM, OpenFromReq{Base: base, Target: target, Mask: mask}, &resp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &resp.Handle, nil
+	if err := resp.Info.HashAlgo.Validate(); err != nil {
+		return nil, nil, err
+	}
+	return &resp.Handle, &resp.Info, nil
 }
 
 func Await(ctx context.Context, tp Transport, ep blobcache.Endpoint, cond blobcache.Conditions) error {

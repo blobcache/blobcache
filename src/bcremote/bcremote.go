@@ -95,11 +95,16 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 }
 
 func (s *Service) OpenFiat(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return bcnet.OpenFiat(ctx, s.node, s.ep, target, mask)
+	h, _, err := bcnet.OpenFiat(ctx, s.node, s.ep, target, mask)
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return bcnet.OpenFrom(ctx, s.node, s.ep, base, target, mask)
+	h, _, err := bcnet.OpenFrom(ctx, s.node, s.ep, base, target, mask)
+	return h, err
 }
 
 func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {

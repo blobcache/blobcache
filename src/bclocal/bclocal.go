@@ -30,6 +30,7 @@ import (
 	"blobcache.io/blobcache/src/internal/svcgroup"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/internal/volumes/consensusvol"
+	"blobcache.io/blobcache/src/internal/volumes/remotevol"
 	"blobcache.io/blobcache/src/schema"
 )
 
@@ -83,6 +84,7 @@ type Service struct {
 
 	volSys struct {
 		local     localvol.System
+		remote    remotevol.System
 		consensus consensusvol.System
 	}
 	hub pubsub.Hub
@@ -143,6 +145,7 @@ func New(env Env, cfg Config) (*Service, error) {
 			return factory(spec.Params, s.getSchema)
 		},
 	})
+	s.volSys.remote = remotevol.New(&s.node)
 	s.volSys.consensus = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
 		Hub:        &s.hub,
@@ -648,11 +651,15 @@ func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoin
 			},
 		},
 	}
+	vol, err := s.volSys.remote.Up(ctx, *rvInfo.Backend.Remote)
+	if err != nil {
+		return nil, err
+	}
 	// insert into volumes
 	s.mu.Lock()
 	s.volumes[localInfo.ID] = volume{
 		info:    localInfo,
-		backend: bcnet.NewVolume(node, host, *rvh, rvInfo),
+		backend: vol,
 	}
 	s.mu.Unlock()
 	// create a local handle
@@ -960,8 +967,7 @@ func (s *Service) makeVolume(ctx context.Context, oid blobcache.OID, backend blo
 		}
 		return s.makeLocal(ctx, lvid)
 	case backend.Remote != nil:
-		node := s.node.Load()
-		return bcnet.OpenVolumeAs(ctx, node, backend.Remote.Endpoint, backend.Remote.Volume, blobcache.Action_ALL)
+		return s.volSys.remote.Up(ctx, *backend.Remote)
 	case backend.Git != nil:
 		return s.makeGit(ctx, *backend.Git)
 	case backend.Vault != nil:
@@ -1011,8 +1017,7 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 	case vspec.Git != nil:
 		return vspec.Git.VolumeParams, nil
 	case vspec.Remote != nil:
-		node := s.node.Load()
-		vol, err := bcnet.OpenVolumeAs(ctx, node, vspec.Remote.Endpoint, vspec.Remote.Volume, blobcache.Action_ALL)
+		vol, err := s.volSys.remote.Up(ctx, *vspec.Remote)
 		if err != nil {
 			return blobcache.VolumeParams{}, err
 		}
