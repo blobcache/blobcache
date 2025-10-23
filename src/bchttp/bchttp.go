@@ -105,12 +105,6 @@ type CreateSubVolumeResp struct {
 	Volume blobcache.VolumeInfo `json:"volume"`
 }
 
-type AllowLinkReq struct {
-	Target blobcache.Handle `json:"target"`
-}
-
-type AllowLinkResp struct{}
-
 type InspectTxReq struct {
 	Tx blobcache.Handle `json:"tx"`
 }
@@ -187,4 +181,31 @@ type EndpointReq struct{}
 
 type EndpointResp struct {
 	Endpoint blobcache.Endpoint `json:"endpoint"`
+}
+
+type LinkReq struct {
+	Target blobcache.Handle    `json:"target"`
+	Mask   blobcache.ActionSet `json:"mask"`
+}
+
+type LinkResp struct{}
+
+type UnlinkReq struct {
+	Targets []blobcache.OID `json:"targets"`
+}
+
+type UnlinkResp struct{}
+
+type VisitLinksReq struct {
+	Targets []blobcache.OID `json:"targets"`
+}
+
+type VisitLinksResp struct{}
+
+type GetLinkReq struct {
+	Target blobcache.OID `json:"target"`
+}
+
+type GetLinkResp struct {
+	Mask blobcache.ActionSet `json:"mask"`
 }

@@ -266,12 +266,26 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			}
 			return &IsVisitedResp{Visited: visited}, nil
 		})
-	case "AllowLink":
-		handleRequest(w, r, func(ctx context.Context, req AllowLinkReq) (*AllowLinkResp, error) {
-			if err := s.Service.AllowLink(ctx, h, req.Target); err != nil {
+	case "Link":
+		handleRequest(w, r, func(ctx context.Context, req LinkReq) (*LinkResp, error) {
+			if err := s.Service.Link(ctx, h, req.Target, req.Mask); err != nil {
 				return nil, err
 			}
-			return &AllowLinkResp{}, nil
+			return &LinkResp{}, nil
+		})
+	case "Unlink":
+		handleRequest(w, r, func(ctx context.Context, req UnlinkReq) (*UnlinkResp, error) {
+			if err := s.Service.Unlink(ctx, h, req.Targets); err != nil {
+				return nil, err
+			}
+			return &UnlinkResp{}, nil
+		})
+	case "VisitLinks":
+		handleRequest(w, r, func(ctx context.Context, req VisitLinksReq) (*VisitLinksResp, error) {
+			if err := s.Service.VisitLinks(ctx, h, req.Targets); err != nil {
+				return nil, err
+			}
+			return &VisitLinksResp{}, nil
 		})
 	default:
 		http.Error(w, fmt.Sprintf("unsupported method %v", method), http.StatusNotFound)

@@ -255,13 +255,12 @@ func (s *Service) Delete(ctx context.Context, h blobcache.Handle, cids []blobcac
 	return s.run(args, nil, nil)
 }
 
-func (s *Service) Copy(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
+func (s *Service) Copy(ctx context.Context, h blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success []bool) error {
+	if len(cids) != len(success) {
+		return fmt.Errorf("cids and success must have the same length")
+	}
 	// optional, not implemented by CLI currently
 	return fmt.Errorf("copy not implemented")
-}
-
-func (s *Service) AllowLink(ctx context.Context, h blobcache.Handle, subvol blobcache.Handle) error {
-	return s.run([]string{"tx", "allow-link", h.String(), subvol.String()}, nil, nil)
 }
 
 func (s *Service) Visit(ctx context.Context, h blobcache.Handle, cids []blobcache.CID) error {
@@ -296,6 +295,18 @@ func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blob
 		}
 	}
 	return nil
+}
+
+func (s *Service) Link(ctx context.Context, h blobcache.Handle, subvol blobcache.Handle, rights blobcache.ActionSet) error {
+	return s.run([]string{"tx", "allow-link", h.String(), subvol.String()}, nil, nil)
+}
+
+func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
+	return s.run([]string{"tx", "unlink", h.String()}, nil, nil)
+}
+
+func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
+	return s.run([]string{"tx", "visit-links", h.String()}, nil, nil)
 }
 
 func (s *Service) runParse(args []string, re *regexp.Regexp) (string, error) {

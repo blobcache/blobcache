@@ -640,20 +640,21 @@ func (gr *GetResp) Unmarshal(data []byte) error {
 	return nil
 }
 
-type AllowLinkReq struct {
+type LinkReq struct {
 	Tx     blobcache.Handle
 	Subvol blobcache.Handle
+	Mask   blobcache.ActionSet
 }
 
-func (ar AllowLinkReq) Marshal(out []byte) []byte {
+func (ar LinkReq) Marshal(out []byte) []byte {
 	out = ar.Tx.Marshal(out)
 	out = ar.Subvol.Marshal(out)
 	return out
 }
 
-func (ar *AllowLinkReq) Unmarshal(data []byte) error {
+func (ar *LinkReq) Unmarshal(data []byte) error {
 	if len(data) < blobcache.HandleSize*2 {
-		return fmt.Errorf("cannot unmarshal AllowLinkReq, too short: %d", len(data))
+		return fmt.Errorf("cannot unmarshal LinkReq, too short: %d", len(data))
 	}
 	if err := ar.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
@@ -664,13 +665,112 @@ func (ar *AllowLinkReq) Unmarshal(data []byte) error {
 	return nil
 }
 
-type AllowLinkResp struct{}
+type LinkResp struct{}
 
-func (ar AllowLinkResp) Marshal(out []byte) []byte {
+func (ar LinkResp) Marshal(out []byte) []byte {
 	return out
 }
 
-func (ar *AllowLinkResp) Unmarshal(data []byte) error {
+func (ar *LinkResp) Unmarshal(data []byte) error {
+	return nil
+}
+
+type UnlinkReq struct {
+	Tx      blobcache.Handle
+	Targets []blobcache.OID
+}
+
+func (ur UnlinkReq) Marshal(out []byte) []byte {
+	out = ur.Tx.Marshal(out)
+	out = binary.AppendUvarint(out, uint64(len(ur.Targets)))
+	for _, target := range ur.Targets {
+		out = target.Marshal(out)
+	}
+	return out
+}
+
+func (ur *UnlinkReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal UnlinkReq, too short: %d", len(data))
+	}
+	if err := ur.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	numTargets, data, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
+	if err != nil {
+		return err
+	}
+	ur.Targets = make([]blobcache.OID, numTargets)
+	for i := range ur.Targets {
+		if len(data) < blobcache.OIDSize {
+			return fmt.Errorf("cannot unmarshal UnlinkReq, too short: %d", len(data))
+		}
+		if err := ur.Targets[i].Unmarshal(data[:blobcache.OIDSize]); err != nil {
+			return err
+		}
+		data = data[blobcache.OIDSize:]
+	}
+	return nil
+}
+
+type UnlinkResp struct{}
+
+func (ur UnlinkResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (ur *UnlinkResp) Unmarshal(data []byte) error {
+	if len(data) != 0 {
+		return fmt.Errorf("empty data expected for UnlinkResp")
+	}
+	return nil
+}
+
+type VisitLinksReq struct {
+	Tx      blobcache.Handle
+	Targets []blobcache.OID
+}
+
+func (vr VisitLinksReq) Marshal(out []byte) []byte {
+	out = vr.Tx.Marshal(out)
+	out = binary.AppendUvarint(out, uint64(len(vr.Targets)))
+	for _, target := range vr.Targets {
+		out = target.Marshal(out)
+	}
+	return out
+}
+
+func (vr *VisitLinksReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal VisitLinksReq, too short: %d", len(data))
+	}
+	if err := vr.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	numTargets, data, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
+	if err != nil {
+		return err
+	}
+	vr.Targets = make([]blobcache.OID, numTargets)
+	for i := range vr.Targets {
+		if len(data) < blobcache.OIDSize {
+			return fmt.Errorf("cannot unmarshal VisitLinksReq, too short: %d", len(data))
+		}
+		if err := vr.Targets[i].Unmarshal(data[:blobcache.OIDSize]); err != nil {
+			return err
+		}
+		data = data[blobcache.OIDSize:]
+	}
+	return nil
+}
+
+type VisitLinksResp struct{}
+
+func (vr VisitLinksResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (vr *VisitLinksResp) Unmarshal(data []byte) error {
 	return nil
 }
 

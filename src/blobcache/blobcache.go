@@ -262,16 +262,24 @@ type TxAPI interface {
 	// If none of them have the blob to copy, then false is written to success for that blob.
 	// Error is only returned if there is an internal error, otherwise the success slice is used to signal
 	// whether a CID was successfully copied.
-	Copy(ctx context.Context, tx Handle, cids []CID, srcTxns []Handle, success []bool) error
-	// AllowLink allows the Volume to reference another volume.
-	// The volume must still have a recognized Container Schema for the volumes to be persisted.
-	AllowLink(ctx context.Context, tx Handle, subvol Handle) error
+	Copy(ctx context.Context, tx Handle, srcTxns []Handle, cids []CID, success []bool) error
 	// Visit is only usable in a GC transaction.
 	// It marks each CID as being visited, so it will not be removed by GC.
 	Visit(ctx context.Context, tx Handle, cids []CID) error
 	// IsVisited is only usable in a GC transaction.
 	// It checks if each CID has been visited.
 	IsVisited(ctx context.Context, tx Handle, cids []CID, yesVisited []bool) error
+
+	// Link adds a link to another volume.
+	// All Link operations take effect atomically on Commit
+	Link(ctx context.Context, tx Handle, target Handle, mask ActionSet) error
+	// Unlink removes a link from the transaction's volume to any and all of the OIDs
+	// All Unlink operations take effect atomically on Commit.
+	Unlink(ctx context.Context, tx Handle, targets []OID) error
+	// VisitLink visits a link to another volume.
+	// This is only usable in a GC transaction.
+	// Any unvisited links will be deleted at the end of a GC transaction.
+	VisitLinks(ctx context.Context, tx Handle, targets []OID) error
 }
 
 type TopicMessage struct {

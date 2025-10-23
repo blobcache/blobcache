@@ -61,6 +61,10 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 	}, nil
 }
 
+func (v *Volume) GetLink(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
+	return 0, fmt.Errorf("remotevol: GetLink not implemented")
+}
+
 // Tx is a transaction on a remote volume.
 type Tx struct {
 	n       bcnet.Transport
@@ -143,10 +147,6 @@ func (tx *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return hf(salt, data)
 }
 
-func (tx *Tx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
-	return bcnet.AllowLink(ctx, tx.n, tx.ep, tx.h, subvol)
-}
-
 func (tx *Tx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and dst must have the same length")
@@ -156,6 +156,18 @@ func (tx *Tx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) e
 
 func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
 	return bcnet.Visit(ctx, tx.n, tx.ep, tx.h, cids)
+}
+
+func (tx *Tx) Link(ctx context.Context, subvol blobcache.OID, mask blobcache.ActionSet) error {
+	return fmt.Errorf("remotevol: Link not implemented")
+}
+
+func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {
+	return fmt.Errorf("remotevol: Unlink not implemented")
+}
+
+func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+	return fmt.Errorf("remotevol: VisitLinks not implemented")
 }
 
 func OpenVolumeFrom(ctx context.Context, tp bcnet.Transport, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*Volume, error) {

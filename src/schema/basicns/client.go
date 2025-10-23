@@ -27,7 +27,7 @@ func (c *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string
 	if err != nil {
 		return nil, err
 	}
-	if err := txn.AllowLink(ctx, *volh); err != nil {
+	if err := txn.Link(ctx, *volh, blobcache.Action_ALL); err != nil {
 		return nil, err
 	}
 	nstx := Tx{Tx: txn}
@@ -70,7 +70,7 @@ func (c *Client) PutEntry(ctx context.Context, volh blobcache.Handle, name strin
 	if err != nil {
 		return err
 	}
-	if err := txn.AllowLink(ctx, target); err != nil {
+	if err := txn.Link(ctx, target, blobcache.Action_ALL); err != nil {
 		return err
 	}
 	nstx := Tx{Tx: txn}

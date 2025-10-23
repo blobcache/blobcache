@@ -234,14 +234,6 @@ func AddFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobca
 	return nil
 }
 
-func AllowLink(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, subvol blobcache.Handle) error {
-	var resp AllowLinkResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_ALLOW_LINK, AllowLinkReq{Tx: tx, Subvol: subvol}, &resp); err != nil {
-		return err
-	}
-	return nil
-}
-
 func Visit(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID) error {
 	var resp VisitResp
 	if _, err := doAsk(ctx, tp, ep, MT_TX_VISIT, VisitReq{Tx: tx, CIDs: cids}, &resp); err != nil {
@@ -259,6 +251,30 @@ func IsVisited(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blob
 		return err
 	}
 	copy(dst, resp.Visited)
+	return nil
+}
+
+func Link(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
+	var resp LinkResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_LINK, LinkReq{Tx: tx, Subvol: subvol, Mask: mask}, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func Unlink(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.OID) error {
+	var resp UnlinkResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_UNLINK, UnlinkReq{Tx: tx, Targets: targets}, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func VisitLinks(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.OID) error {
+	var resp VisitLinksResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_VISIT_LINKS, VisitLinksReq{Tx: tx, Targets: targets}, &resp); err != nil {
+		return err
+	}
 	return nil
 }
 

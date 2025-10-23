@@ -235,7 +235,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	case MT_TX_ADD_FROM:
 		handleAsk(req, resp, &AddFromReq{}, func(req *AddFromReq) (*AddFromResp, error) {
 			success := make([]bool, len(req.CIDs))
-			if err := svc.Copy(ctx, req.Tx, req.CIDs, req.Srcs, success); err != nil {
+			if err := svc.Copy(ctx, req.Tx, req.Srcs, req.CIDs, success); err != nil {
 				return nil, err
 			}
 			return &AddFromResp{Added: success}, nil
@@ -266,12 +266,26 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		}
 		resp.SetCode(MT_OK)
 		resp.SetBody(buf[:n])
-	case MT_TX_ALLOW_LINK:
-		handleAsk(req, resp, &AllowLinkReq{}, func(req *AllowLinkReq) (*AllowLinkResp, error) {
-			if err := svc.AllowLink(ctx, req.Tx, req.Subvol); err != nil {
+	case MT_TX_LINK:
+		handleAsk(req, resp, &LinkReq{}, func(req *LinkReq) (*LinkResp, error) {
+			if err := svc.Link(ctx, req.Tx, req.Subvol, req.Mask); err != nil {
 				return nil, err
 			}
-			return &AllowLinkResp{}, nil
+			return &LinkResp{}, nil
+		})
+	case MT_TX_UNLINK:
+		handleAsk(req, resp, &UnlinkReq{}, func(req *UnlinkReq) (*UnlinkResp, error) {
+			if err := svc.Unlink(ctx, req.Tx, req.Targets); err != nil {
+				return nil, err
+			}
+			return &UnlinkResp{}, nil
+		})
+	case MT_TX_VISIT_LINKS:
+		handleAsk(req, resp, &VisitLinksReq{}, func(req *VisitLinksReq) (*VisitLinksResp, error) {
+			if err := svc.VisitLinks(ctx, req.Tx, req.Targets); err != nil {
+				return nil, err
+			}
+			return &VisitLinksResp{}, nil
 		})
 	case MT_TX_VISIT:
 		handleAsk(req, resp, &VisitReq{}, func(req *VisitReq) (*VisitResp, error) {

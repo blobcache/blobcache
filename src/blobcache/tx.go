@@ -99,8 +99,16 @@ func (tx *Tx) MaxSize() int {
 	return tx.maxSize
 }
 
-func (tx *Tx) AllowLink(ctx context.Context, target Handle) error {
-	return tx.s.AllowLink(ctx, tx.h, target)
+func (tx *Tx) Link(ctx context.Context, target Handle, mask ActionSet) error {
+	return tx.s.Link(ctx, tx.h, target, mask)
+}
+
+func (tx *Tx) Unlink(ctx context.Context, targets []OID) error {
+	return tx.s.Unlink(ctx, tx.h, targets)
+}
+
+func (tx *Tx) VisitLinks(ctx context.Context, targets []OID) error {
+	return tx.s.VisitLinks(ctx, tx.h, targets)
 }
 
 func (tx *Tx) Visit(ctx context.Context, cids []CID) error {
@@ -113,7 +121,7 @@ func (tx *Tx) IsVisited(ctx context.Context, cids []CID, yesVisited []bool) erro
 
 func (tx *Tx) Copy(ctx context.Context, srcs []*Tx, cids []CID, success []bool) error {
 	hs := slices2.Map(srcs, func(src *Tx) Handle { return src.h })
-	return tx.s.Copy(ctx, tx.h, cids, hs, success)
+	return tx.s.Copy(ctx, tx.h, hs, cids, success)
 }
 
 // BeginTxSalt is the salted variant of BeginTx.

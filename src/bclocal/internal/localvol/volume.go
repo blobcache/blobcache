@@ -43,6 +43,10 @@ func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (volumes.Tx
 	return v.sys.beginTx(ctx, v, tp)
 }
 
+func (v *Volume) GetLink(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
+	return 0, fmt.Errorf("localvol: GetLink not implemented")
+}
+
 var _ volumes.Tx = &localTxnMut{}
 
 // localTxnMut is a mutating transaction on a local volume.
@@ -55,20 +59,25 @@ type localTxnMut struct {
 
 	hf blobcache.HashFunc
 
-	// mu protects the finished and allowedLinks fields.
+	// mu protects the finished and links fields.
 	// mu must be taken exclusively to {Commit, Abort, AllowLink}
 	// mu must be taken in read mode for all other operations {Save, Delete, Post, Get, Exists}.
 	// checkFinished is the most convenient way to make sure the transaction is not finished, during an operation.
 	mu sync.RWMutex
 	// finished is set to true when the transaction is finished.
 	finished     bool
-	allowedLinks map[blobcache.OID]blobcache.ActionSet
+	links        map[blobcache.OID]blobcache.ActionSet
+	visitedLinks map[blobcache.OID]struct{}
 }
 
 // newLocalTxn creates a localTxn.
 // It does not change the database state.
 // the caller should have already created the transaction at txid, and volInfo.
 func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcache.TxParams, schema schema.Schema) (*localTxnMut, error) {
+	links := make(map[blobcache.OID]blobcache.ActionSet)
+	if err := dbtab.ReadVolumeLinks(localSys.db, OIDFromLocalID(vol.lvid), links); err != nil {
+		return nil, err
+	}
 	hf := vol.params.HashAlgo.HashFunc()
 	return &localTxnMut{
 		localSys: localSys,
@@ -77,6 +86,7 @@ func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcac
 		txParams: txParams,
 		schema:   schema,
 		hf:       hf,
+		links:    links,
 	}, nil
 }
 
@@ -107,34 +117,18 @@ func (ltx *localTxnMut) Commit(ctx context.Context) error {
 		return blobcache.ErrTxDone{}
 	}
 
-	// produce a final set of links
-	var links dbtab.LinkSet
-	if contSch, ok := ltx.schema.(schema.Container); ok {
-		links = make(dbtab.LinkSet)
-		var root []byte
-		if err := ltx.localSys.load(ltx.vol.lvid, ltx.mvid, &root); err != nil {
-			return err
-		}
-		// this is necessary because we have the lock exclusively, but we need to
-		// present the transaction as a read-only store to ReadLinks.
-		// None of the public methods will work while we are holding the lock exclusively.
-		// linter complains about the lock being copied, but it's okay because we zero
-		// the lock on the line below.
-		//nolint:copylocks // see above
-		ltx2 := *ltx
-		ltx2.mu = sync.RWMutex{}
-
-		var store schema.RO = volumes.NewUnsaltedStore(&ltx2)
-		if err := contSch.ReadLinks(ctx, store, root, links); err != nil {
-			return err
-		}
-	}
 	if ltx.txParams.GC {
 		if err := ltx.localSys.gc(ctx, ltx.vol.lvid, ltx.mvid); err != nil {
 			return err
 		}
+		// filter out the links that are not visited
+		for oid := range ltx.links {
+			if _, ok := ltx.visitedLinks[oid]; !ok {
+				delete(ltx.links, oid)
+			}
+		}
 	}
-	if err := ltx.localSys.commit(ltx.vol.lvid, ltx.mvid, links, ltx.allowedLinks); err != nil {
+	if err := ltx.localSys.commit(ltx.vol.lvid, ltx.mvid, ltx.links); err != nil {
 		return err
 	}
 	ltx.finished = true
@@ -222,23 +216,6 @@ func (v *localTxnMut) Exists(ctx context.Context, cids []blobcache.CID, dst []bo
 	return v.localSys.blobExists(v.vol.lvid, v.mvid, cids, dst)
 }
 
-func (v *localTxnMut) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
-	if _, ok := v.schema.(schema.Container); !ok {
-		return fmt.Errorf("schema %T for volume %s is not a container", v.schema, OIDFromLocalID(v.vol.lvid))
-	}
-	subvolOID, subvolRights := v.localSys.hsys.Resolve(subvol)
-	if subvolRights == 0 {
-		return blobcache.ErrInvalidHandle{Handle: subvol}
-	}
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.allowedLinks == nil {
-		v.allowedLinks = make(map[blobcache.OID]blobcache.ActionSet)
-	}
-	v.allowedLinks[subvolOID] |= subvolRights
-	return nil
-}
-
 func (v *localTxnMut) Visit(ctx context.Context, cids []blobcache.CID) error {
 	unlock, err := v.checkFinished()
 	if err != nil {
@@ -261,6 +238,44 @@ func (v *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst [
 		return blobcache.ErrTxNotGC{Op: "IsVisited"}
 	}
 	return v.localSys.isVisited(v.vol.lvid, v.mvid, cids, dst)
+}
+
+func (v *localTxnMut) Link(ctx context.Context, subvol blobcache.OID, rights blobcache.ActionSet) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.finished {
+		return blobcache.ErrTxDone{}
+	}
+	// Link merges rights.  The original handle passed to the Service will have been resolved and had the rights applied.
+	v.links[subvol] |= rights
+	return nil
+}
+
+func (v *localTxnMut) Unlink(ctx context.Context, targets []blobcache.OID) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.finished {
+		return blobcache.ErrTxDone{}
+	}
+	for _, oid := range targets {
+		delete(v.links, oid)
+	}
+	return nil
+}
+
+func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+	txn.mu.Lock()
+	defer txn.mu.Unlock()
+	if txn.finished {
+		return blobcache.ErrTxDone{}
+	}
+	if txn.visitedLinks == nil {
+		txn.visitedLinks = make(map[blobcache.OID]struct{})
+	}
+	for _, oid := range targets {
+		txn.visitedLinks[oid] = struct{}{}
+	}
+	return nil
 }
 
 var _ volumes.Tx = &localTxnRO{}
@@ -375,8 +390,16 @@ func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []boo
 	return nil
 }
 
-func (v *localTxnRO) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
+func (v *localTxnRO) Link(ctx context.Context, subvol blobcache.OID, mask blobcache.ActionSet) error {
 	return blobcache.ErrTxReadOnly{Op: "AllowLink"}
+}
+
+func (v *localTxnRO) Unlink(ctx context.Context, targets []blobcache.OID) error {
+	return blobcache.ErrTxReadOnly{Op: "Unlink"}
+}
+
+func (v *localTxnRO) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+	return blobcache.ErrTxReadOnly{Op: "VisitLinks"}
 }
 
 func (v *localTxnRO) MaxSize() int {

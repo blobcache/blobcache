@@ -1,4 +1,4 @@
-package blobcachecmd
+package blobcachecmd_test
 
 import (
 	"os/exec"
@@ -7,6 +7,7 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
+	"blobcache.io/blobcache/src/blobcachecmd"
 	"blobcache.io/blobcache/src/internal/blobcached"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +23,7 @@ func TestAPI(t *testing.T) {
 
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
 		_, apiAddr := blobcached.RunTestDaemon(t)
-		return &Service{
+		return &blobcachecmd.Service{
 			APIAddr:  apiAddr,
 			ExecPath: execPath,
 		}

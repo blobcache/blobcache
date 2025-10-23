@@ -35,3 +35,7 @@ func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
 	panic("unimplemented")
 }
+
+func (V *Volume) GetLink(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
+	panic("unimplemented")
+}

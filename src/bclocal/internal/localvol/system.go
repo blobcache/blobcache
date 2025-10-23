@@ -269,21 +269,11 @@ func (s *System) abortMut(volID ID, mvid pdb.MVTag) error {
 // commit commits a local volume.
 // links should be the actual links returned by the schema
 // newlyAllowed should be the allowed links that were added to the volume during the transaction
-func (s *System) commit(volID ID, mvid pdb.MVTag, links dbtab.LinkSet, newlyAllowed dbtab.LinkSet) error {
+func (s *System) commit(volID ID, mvid pdb.MVTag, links dbtab.LinkSet) error {
 	ba := s.db.NewIndexedBatch()
 	defer ba.Close()
 
 	oid := OIDFromLocalID(volID)
-	prevLinks := make(dbtab.LinkSet)
-	if err := dbtab.ReadVolumeLinks(ba, oid, prevLinks); err != nil {
-		return err
-	}
-	for target := range links {
-		links[target] &= (prevLinks[target] | newlyAllowed[target])
-		if links[target] == 0 {
-			delete(links, target)
-		}
-	}
 	if err := dbtab.PutVolumeLinks(ba, oid, links); err != nil {
 		return err
 	}

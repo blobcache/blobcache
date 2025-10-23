@@ -897,7 +897,7 @@ func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobc
 	return txn.backend.Delete(ctx, cids)
 }
 
-func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, out []bool) error {
+func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out []bool) error {
 	if len(cids) != len(out) {
 		return fmt.Errorf("cids and out must have the same length")
 	}
@@ -912,14 +912,6 @@ func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, cids []blobcac
 		ret[i] = false
 	}
 	return nil
-}
-
-func (s *Service) AllowLink(ctx context.Context, txh blobcache.Handle, subvolh blobcache.Handle) error {
-	txn, err := s.resolveTx(txh, true)
-	if err != nil {
-		return err
-	}
-	return txn.backend.AllowLink(ctx, subvolh)
 }
 
 func (s *Service) Visit(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
@@ -941,11 +933,32 @@ func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []bl
 	return txn.backend.IsVisited(ctx, cids, dst)
 }
 
-func (s *Service) Deliver(ctx context.Context, tmsg blobcache.TopicMessage) error {
-	if n := s.hub.Publish(tmsg); n == 0 {
-		return fmt.Errorf("nothing available for delivery on topic %v", tmsg.Topic)
+func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) error {
+	txn, err := s.resolveTx(txh, true)
+	if err != nil {
+		return err
 	}
-	return nil
+	volTo, rights, err := s.resolveVol(target)
+	if err != nil {
+		return err
+	}
+	return txn.backend.Link(ctx, volTo.info.ID, mask&rights)
+}
+
+func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
+	txn, err := s.resolveTx(txh, true)
+	if err != nil {
+		return err
+	}
+	return txn.backend.Unlink(ctx, targets)
+}
+
+func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
+	txn, err := s.resolveTx(txh, true)
+	if err != nil {
+		return err
+	}
+	return txn.backend.VisitLinks(ctx, targets)
 }
 
 // handleKey computes a map key from a handle.
