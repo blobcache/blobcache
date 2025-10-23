@@ -182,7 +182,7 @@ func dropVolume(ba pdb.WO, volID blobcache.OID) error {
 	return nil
 }
 
-func cleanupVolumes(ctx context.Context, db *pebble.DB, keep func(blobcache.OID) bool) error {
+func (s *Service) cleanupVolumes(ctx context.Context, db *pebble.DB, keep func(blobcache.OID) bool) error {
 	ba := db.NewIndexedBatch()
 	defer ba.Close()
 	iter, err := db.NewIterWithContext(ctx, &pebble.IterOptions{
@@ -216,15 +216,7 @@ func cleanupVolumes(ctx context.Context, db *pebble.DB, keep func(blobcache.OID)
 			continue
 		}
 		clear(volumeLinks)
-		if err := dbtab.ReadVolumeLinksTo(ba, blobcache.OID(k.Key), volumeLinks); err != nil {
-			return err
-		}
-		if len(volumeLinks) > 0 {
-			continue
-		}
-		if err := ba.Delete(iter.Key(), nil); err != nil {
-			return err
-		}
+		// TODO: read links to the volume.
 	}
 	return ba.Commit(nil)
 }

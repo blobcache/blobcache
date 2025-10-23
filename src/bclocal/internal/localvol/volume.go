@@ -43,8 +43,8 @@ func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (volumes.Tx
 	return v.sys.beginTx(ctx, v, tp)
 }
 
-func (v *Volume) GetLink(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
-	return 0, fmt.Errorf("localvol: GetLink not implemented")
+func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
+	return v.sys.readLinksFrom(v.lvid, dst)
 }
 
 var _ volumes.Tx = &localTxnMut{}
@@ -75,7 +75,7 @@ type localTxnMut struct {
 // the caller should have already created the transaction at txid, and volInfo.
 func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcache.TxParams, schema schema.Schema) (*localTxnMut, error) {
 	links := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := dbtab.ReadVolumeLinks(localSys.db, OIDFromLocalID(vol.lvid), links); err != nil {
+	if err := ReadVolumeLinks(localSys.db, OIDFromLocalID(vol.lvid), links); err != nil {
 		return nil, err
 	}
 	hf := vol.params.HashAlgo.HashFunc()

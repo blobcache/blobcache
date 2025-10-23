@@ -15,13 +15,15 @@ type System[Params any, V Volume] interface {
 	Drop(ctx context.Context, vol V) error
 }
 
+type LinkSet = map[blobcache.OID]blobcache.ActionSet
+
 type Volume interface {
 	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error)
 	// Await blocks until the volume root changes away from prev to something else.
 	// The next state is written to next.
 	Await(ctx context.Context, prev []byte, next *[]byte) error
-	// GetLink returns the set of actions associated with the link.
-	GetLink(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error)
+	// ReadLinks returns the set of actions associated with the link.
+	ReadLinks(ctx context.Context, dst LinkSet) error
 }
 
 // Tx is a consistent view of a volume, during a transaction.

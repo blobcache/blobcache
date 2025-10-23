@@ -36,6 +36,6 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 	panic("unimplemented")
 }
 
-func (V *Volume) GetLink(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
+func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
 	panic("unimplemented")
 }

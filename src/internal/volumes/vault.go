@@ -37,8 +37,8 @@ func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return v.Inner.Await(ctx, prev, next)
 }
 
-func (v *Vault) GetLink(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
-	return 0, fmt.Errorf("vault: GetLink not implemented")
+func (v *Vault) ReadLinks(ctx context.Context, dst LinkSet) error {
+	return v.Inner.ReadLinks(ctx, dst)
 }
 
 var _ Tx = &VaultTx{}

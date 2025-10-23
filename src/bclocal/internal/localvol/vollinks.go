@@ -1,4 +1,4 @@
-package dbtab
+package localvol
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 
+	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 )
@@ -37,13 +38,13 @@ func ParseVolumeLink(k, v []byte) (VolumeLink, error) {
 
 func PutVolumeLink(ba *pebble.Batch, fromVolID blobcache.OID, toID blobcache.OID, rights blobcache.ActionSet) error {
 	// forwards
-	k := pdb.TKey{TableID: TID_VOLUME_LINKS, Key: slices.Concat(fromVolID[:], toID[:])}
+	k := pdb.TKey{TableID: dbtab.TID_VOLUME_LINKS, Key: slices.Concat(fromVolID[:], toID[:])}
 	v := binary.LittleEndian.AppendUint64(nil, uint64(rights))
 	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
 		return err
 	}
 	// inverse
-	k = pdb.TKey{TableID: TID_VOLUME_LINKS_INV, Key: slices.Concat(toID[:], fromVolID[:])}
+	k = pdb.TKey{TableID: dbtab.TID_VOLUME_LINKS_INV, Key: slices.Concat(toID[:], fromVolID[:])}
 	v = []byte{}
 	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
 		return err
@@ -56,11 +57,11 @@ type LinkSet = map[blobcache.OID]blobcache.ActionSet
 // ReadVolumeLinks reads the volume links from volID into dst.
 func ReadVolumeLinks(sp pdb.RO, fromVolID blobcache.OID, dst LinkSet) error {
 	gteq := pdb.TKey{
-		TableID: TID_VOLUME_LINKS,
+		TableID: dbtab.TID_VOLUME_LINKS,
 		Key:     fromVolID[:],
 	}
 	lt := pdb.TKey{
-		TableID: TID_VOLUME_LINKS,
+		TableID: dbtab.TID_VOLUME_LINKS,
 		Key:     slices.Concat(fromVolID[:], allOnesOID[:]),
 	}
 	iter, err := sp.NewIter(&pebble.IterOptions{
@@ -87,11 +88,11 @@ func ReadVolumeLinks(sp pdb.RO, fromVolID blobcache.OID, dst LinkSet) error {
 // To get the rights, read from the VOLUME_LINKS table.
 func ReadVolumeLinksTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]struct{}) error {
 	gteq := pdb.TKey{
-		TableID: TID_VOLUME_LINKS_INV,
+		TableID: dbtab.TID_VOLUME_LINKS_INV,
 		Key:     toVolID[:],
 	}
 	lt := pdb.TKey{
-		TableID: TID_VOLUME_LINKS_INV,
+		TableID: dbtab.TID_VOLUME_LINKS_INV,
 		Key:     pdb.PrefixUpperBound(toVolID[:]),
 	}
 	iter, err := sp.NewIter(&pebble.IterOptions{
@@ -123,11 +124,11 @@ func PutVolumeLinks(ba *pebble.Batch, fromVolID blobcache.OID, links LinkSet) er
 	}
 	// delete forwards
 	gteq := pdb.TKey{
-		TableID: TID_VOLUME_LINKS,
+		TableID: dbtab.TID_VOLUME_LINKS,
 		Key:     fromVolID[:],
 	}
 	lt := pdb.TKey{
-		TableID: TID_VOLUME_LINKS,
+		TableID: dbtab.TID_VOLUME_LINKS,
 		Key:     slices.Concat(fromVolID[:], allOnesOID[:]),
 	}
 	if err := ba.DeleteRange(gteq.Marshal(nil), lt.Marshal(nil), nil); err != nil {
@@ -135,7 +136,7 @@ func PutVolumeLinks(ba *pebble.Batch, fromVolID blobcache.OID, links LinkSet) er
 	}
 	// delete inverse
 	for toID := range oldLinks {
-		invKey := pdb.TKey{TableID: TID_VOLUME_LINKS_INV, Key: slices.Concat(toID[:], fromVolID[:])}
+		invKey := pdb.TKey{TableID: dbtab.TID_VOLUME_LINKS_INV, Key: slices.Concat(toID[:], fromVolID[:])}
 		if err := ba.Delete(invKey.Marshal(nil), nil); err != nil {
 			return err
 		}

@@ -269,12 +269,12 @@ func (s *System) abortMut(volID ID, mvid pdb.MVTag) error {
 // commit commits a local volume.
 // links should be the actual links returned by the schema
 // newlyAllowed should be the allowed links that were added to the volume during the transaction
-func (s *System) commit(volID ID, mvid pdb.MVTag, links dbtab.LinkSet) error {
+func (s *System) commit(volID ID, mvid pdb.MVTag, links LinkSet) error {
 	ba := s.db.NewIndexedBatch()
 	defer ba.Close()
 
 	oid := OIDFromLocalID(volID)
-	if err := dbtab.PutVolumeLinks(ba, oid, links); err != nil {
+	if err := PutVolumeLinks(ba, oid, links); err != nil {
 		return err
 	}
 	if err := s.txSys.Success(ba, mvid); err != nil {
@@ -577,6 +577,13 @@ func (s *System) readBlobData(k blobman.Key, buf []byte) (int, error) {
 		return 0, fmt.Errorf("blob metadata exists, but blob data was not found. key=%v", k)
 	}
 	return n, nil
+}
+
+func (s *System) readLinksFrom(fromVol ID, dst LinkSet) error {
+	clear(dst)
+	snp := s.db.NewSnapshot()
+	defer snp.Close()
+	return ReadVolumeLinks(snp, OIDFromLocalID(fromVol), dst)
 }
 
 // setVolumeBlob associates a volume with a blob according to the flags.

@@ -61,8 +61,8 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 	}, nil
 }
 
-func (v *Volume) GetLink(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
-	return 0, fmt.Errorf("remotevol: GetLink not implemented")
+func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
+	return fmt.Errorf("remotevol: ReadLinks not implemented")
 }
 
 // Tx is a transaction on a remote volume.

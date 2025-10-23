@@ -275,7 +275,7 @@ func (s *Service) Cleanup(ctx context.Context) error {
 	s.mu.Unlock()
 
 	// cleanup volumes.
-	if err := cleanupVolumes(ctx, s.db, func(oid blobcache.OID) bool {
+	if err := s.cleanupVolumes(ctx, s.db, func(oid blobcache.OID) bool {
 		if oid == (blobcache.OID{}) {
 			return true
 		}
@@ -368,26 +368,10 @@ func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobc
 // mountAllInContainer reads the links from the container using the provided container schema.
 // Next it mounts all of those volumes.
 // allowedLinks is used to filter out illegitimate links produced by the container.
-func (s *Service) mountAllInContainer(ctx context.Context, sch schema.Container, contVol volumes.Volume, allowedLinks map[blobcache.OID]blobcache.ActionSet) error {
-	txn, err := contVol.BeginTx(ctx, blobcache.TxParams{})
-	if err != nil {
+func (s *Service) mountAllInContainer(ctx context.Context, contVol volumes.Volume) error {
+	links := volumes.LinkSet{}
+	if err := contVol.ReadLinks(ctx, links); err != nil {
 		return err
-	}
-	defer txn.Abort(ctx)
-	src, root, err := volumes.ViewUnsalted(ctx, txn)
-	if err != nil {
-		return err
-	}
-	links := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := sch.ReadLinks(ctx, src, root, links); err != nil {
-		return err
-	}
-	// constrain according to allowedLinks
-	for target, rights := range links {
-		links[target] = allowedLinks[target] & rights
-		if links[target] == 0 {
-			delete(links, target)
-		}
 	}
 	for target := range links {
 		volInfo, err := inspectVolume(s.db, target)
@@ -414,13 +398,8 @@ func (s *Service) mountRoot(ctx context.Context) error {
 	}
 
 	rootOID := blobcache.OID{}
-	allowedLinks := make(map[blobcache.OID]blobcache.ActionSet)
 	var volInfo *blobcache.VolumeInfo
 	if err := doRWBatch(s.db, func(ba *pebble.Batch) error {
-		clear(allowedLinks)
-		if err := dbtab.ReadVolumeLinks(ba, rootOID, allowedLinks); err != nil {
-			return err
-		}
 		var err error
 		volInfo, err = ensureRootVolume(ba, s.env.Root)
 		return err
@@ -431,11 +410,7 @@ func (s *Service) mountRoot(ctx context.Context) error {
 	if err := s.mountVolume(ctx, rootOID, *volInfo); err != nil {
 		return err
 	}
-	container, err := s.getContainer(volInfo.Schema)
-	if err != nil {
-		return err
-	}
-	return s.mountAllInContainer(ctx, container, s.rootVolume(), allowedLinks)
+	return s.mountAllInContainer(ctx, s.rootVolume())
 }
 
 type volume struct {
@@ -557,21 +532,17 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
-	_, _, err := s.resolveVol(base)
+	vol, _, err := s.resolveVol(base)
 	if err != nil {
 		return nil, err
 	}
-
-	links := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := doSnapshot(s.db, func(sp *pebble.Snapshot) error {
-		return dbtab.ReadVolumeLinks(sp, base.OID, links)
-	}); err != nil {
+	links := volumes.LinkSet{}
+	if err := vol.backend.ReadLinks(ctx, links); err != nil {
 		return nil, err
 	}
 	if links[x] == 0 {
 		return nil, blobcache.ErrNoLink{Base: base.OID, Target: x}
 	}
-
 	sp := s.db.NewSnapshot()
 	defer sp.Close()
 	for target := range links {
