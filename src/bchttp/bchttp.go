@@ -201,11 +201,3 @@ type VisitLinksReq struct {
 }
 
 type VisitLinksResp struct{}
-
-type GetLinkReq struct {
-	Target blobcache.OID `json:"target"`
-}
-
-type GetLinkResp struct {
-	Mask blobcache.ActionSet `json:"mask"`
-}

@@ -202,6 +202,19 @@ func (s *Service) Serve(ctx context.Context, pc net.PacketConn) error {
 				return nil
 			}
 		},
+		Deliver: func(ctx context.Context, from blobcache.Endpoint, ttm bcnet.TopicTellMsg) error {
+			topicID := s.hub.Lookup(ttm.TopicHash)
+			if topicID.IsZero() {
+				logctx.Warn(ctx, "dropping tell message", zap.Any("from", from), zap.Int("ctext_len", len(ttm.Ciphertext)))
+				return nil
+			}
+			tmsg := s.hub.Acquire()
+			if err := ttm.Decrypt(topicID, tmsg); err != nil {
+				s.hub.Release(tmsg)
+				return err
+			}
+			return nil
+		},
 	})
 	if errors.Is(err, net.ErrClosed) {
 		err = nil

@@ -14,13 +14,9 @@ type AccessFunc func(blobcache.PeerID) blobcache.Service
 
 type TopicMessage = blobcache.TopicMessage
 
-// TopicHandler is called for every message on a topic.
-// All messages in out will be sent if nil is returned.
-type TopicHandler = func(out *[]TopicMessage, msg TopicMessage) error
-
 type Server struct {
 	Access  AccessFunc
-	Deliver func(context.Context, TopicTellMsg)
+	Deliver func(ctx context.Context, from blobcache.Endpoint, ttm TopicTellMsg) error
 }
 
 func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message, resp *Message) {
@@ -311,8 +307,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err := ttm.Unmarshal(req.Body()); err != nil {
 				return err
 			}
-			s.Deliver(ctx, ttm)
-			return nil
+			return s.Deliver(ctx, ep, ttm)
 		}(); err != nil {
 			logctx.Error(ctx, "handling topic tell", zap.Error(err))
 			return

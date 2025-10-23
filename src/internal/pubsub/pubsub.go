@@ -52,7 +52,9 @@ func (h *Hub) Unsubscribe(tid blobcache.TID, ch chan<- *blobcache.TopicMessage) 
 }
 
 // Publish will return the number of destinations the topic was sent to
-func (h *Hub) Publish(tmsg blobcache.TopicMessage) int {
+// tmsg should have been obtained using Acquire.
+// After Publish is called, the caller does not need to call Release on the message.
+func (h *Hub) Publish(tmsg *blobcache.TopicMessage) int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	subs := h.topics[tmsg.Topic]
@@ -60,7 +62,7 @@ func (h *Hub) Publish(tmsg blobcache.TopicMessage) int {
 	var n int
 	for sub := range subs {
 		select {
-		case sub <- &tmsg:
+		case sub <- tmsg:
 			n++
 		default:
 		}

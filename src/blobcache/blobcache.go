@@ -102,6 +102,10 @@ const PeerIDSize = inet256.AddrSize
 
 type TID [32]byte
 
+func (tid TID) IsZero() bool {
+	return tid == (TID{})
+}
+
 func (tid TID) String() string {
 	return hex.EncodeToString(tid[:])
 }
