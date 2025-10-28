@@ -138,6 +138,27 @@ func (c *Client) GetEntry(ctx context.Context, volh blobcache.Handle, name strin
 	return nstx.GetEntry(ctx, name)
 }
 
+// GC performs garbage collection on the namespace.
+func (c *Client) GC(ctx context.Context, volh blobcache.Handle) error {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return err
+	}
+	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{
+		Mutate: true,
+		GC:     true,
+	})
+	if err != nil {
+		return err
+	}
+	defer txn.Abort(ctx)
+	nstx := Tx{Tx: txn}
+	if err := nstx.GC(ctx); err != nil {
+		return err
+	}
+	return nstx.Commit(ctx)
+}
+
 func (c *Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
 	if volh.Secret == ([16]byte{}) {
 		volh2, err := c.Service.OpenFiat(ctx, volh.OID, blobcache.Action_ALL)

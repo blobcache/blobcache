@@ -182,6 +182,26 @@ func (ns Tx) Commit(ctx context.Context) error {
 	return ns.Tx.Commit(ctx)
 }
 
+// GC visits the root blob and all the links to other volumes.
+// It then deletes any entries that are not visited.
+// If the underlying Tx is not a GC transaction, it will return an error (on the first call to Visit).
+func (ns Tx) GC(ctx context.Context) error {
+	ents, err := ns.loadEntries(ctx)
+	if err != nil {
+		return err
+	}
+	cid := cadata.IDFromBytes(ns.Root)
+	if err := ns.Tx.Visit(ctx, []blobcache.CID{cid}); err != nil {
+		return err
+	}
+	for _, ent := range ents {
+		if err := ns.Tx.VisitLinks(ctx, []blobcache.OID{ent.Target}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func encodeNamespace(ents []Entry) ([]byte, error) {
 	slices.SortFunc(ents, func(a, b Entry) int {
 		return strings.Compare(a.Name, b.Name)
