@@ -82,14 +82,6 @@ func (sys *System) Drop(ctx context.Context, vol *Volume) error {
 	return nil
 }
 
-func (sys *System) Open(ctx context.Context, k blobcache.TID) (volumes.Volume, error) {
-	return nil, nil
-}
-
-func (sys *System) Clone(ctx context.Context, k blobcache.TID) (volumes.Volume, error) {
-	return nil, nil
-}
-
 // NewTID returns a TID from a SchemaSpec
 func NewTID(sch blobcache.SchemaSpec) blobcache.TID {
 	hf := blobcache.HashAlgo_CSHAKE256.HashFunc()

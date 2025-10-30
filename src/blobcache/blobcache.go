@@ -100,6 +100,8 @@ type PeerID = inet256.ID
 
 const PeerIDSize = inet256.AddrSize
 
+// TID is a Topic ID
+// It uniquely identifies a Topic
 type TID [32]byte
 
 func (tid TID) IsZero() bool {
