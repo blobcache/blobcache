@@ -269,6 +269,9 @@ func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.OID)
 	if txn.finished {
 		return blobcache.ErrTxDone{}
 	}
+	if !txn.txParams.GC {
+		return blobcache.ErrTxNotGC{Op: "VisitLinks"}
+	}
 	if txn.visitedLinks == nil {
 		txn.visitedLinks = make(map[blobcache.OID]struct{})
 	}

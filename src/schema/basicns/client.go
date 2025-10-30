@@ -153,7 +153,7 @@ func (c *Client) GC(ctx context.Context, volh blobcache.Handle) error {
 	}
 	defer txn.Abort(ctx)
 	nstx := Tx{Tx: txn}
-	if err := nstx.GC(ctx); err != nil {
+	if err := nstx.VisitAll(ctx); err != nil {
 		return err
 	}
 	return nstx.Commit(ctx)

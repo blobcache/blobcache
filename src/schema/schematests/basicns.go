@@ -159,4 +159,45 @@ func BasicNS(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			require.NoError(t, err)
 		}
 	})
+	t.Run("GC", func(t *testing.T) {
+		t.Parallel()
+		ctx := testutil.Context(t)
+		s := mk(t)
+		nsc := basicns.Client{Service: s}
+		rootNSh, err := s.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+		mkName := func(x int) string {
+			return fmt.Sprintf("name-%d", x)
+		}
+		// add some subvolumes
+		for i := range 10 {
+			name := mkName(i)
+			_, err := nsc.CreateAt(ctx, *rootNSh, name, blobcache.DefaultLocalSpec())
+			require.NoError(t, err)
+		}
+		// run GC
+		require.NoError(t, nsc.GC(ctx, *rootNSh))
+		// open subvolumes
+		for i := range 10 {
+			name := mkName(i)
+			_, err := nsc.OpenAt(ctx, *rootNSh, name, blobcache.Action_ALL)
+			require.NoError(t, err)
+		}
+		// delete even entries
+		for i := 0; i < 10; i += 2 {
+			name := mkName(i)
+			require.NoError(t, nsc.DeleteEntry(ctx, *rootNSh, name))
+		}
+		// GC
+		require.NoError(t, nsc.GC(ctx, *rootNSh))
+		for i := range 10 {
+			name := mkName(i)
+			_, err := nsc.OpenAt(ctx, *rootNSh, name, blobcache.Action_ALL)
+			if i%2 == 0 {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		}
+	})
 }

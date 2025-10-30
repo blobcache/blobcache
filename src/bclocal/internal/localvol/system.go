@@ -39,7 +39,7 @@ type System struct {
 	db        *pebble.DB
 	blobs     *blobman.Store
 	hsys      HandleSystem
-	getSchema func(blobcache.SchemaSpec) (schema.Schema, error)
+	getSchema schema.Factory
 
 	// txSys manages the transaction sequence number, and the set of active transactions.
 	txSys *pdb.TxSys
@@ -277,13 +277,13 @@ func (s *System) commit(volID ID, mvid pdb.MVTag, links LinkSet) error {
 	if err := PutVolumeLinks(ba, oid, links); err != nil {
 		return err
 	}
-	if err := s.txSys.Success(ba, mvid); err != nil {
-		return err
-	}
 	if !s.cfg.NoSync {
 		if err := s.blobs.Flush(); err != nil {
 			return err
 		}
+	}
+	if err := s.txSys.Success(ba, mvid); err != nil {
+		return err
 	}
 	if err := ba.Commit(nil); err != nil {
 		return err
