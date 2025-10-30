@@ -5,13 +5,18 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"go.brendoncarroll.net/stdctx/logctx"
+	"go.uber.org/zap"
 )
 
 // AccessFun is called to get a service to access
 type AccessFunc func(blobcache.PeerID) blobcache.Service
 
+type TopicMessage = blobcache.TopicMessage
+
 type Server struct {
-	Access AccessFunc
+	Access  AccessFunc
+	Deliver func(ctx context.Context, from blobcache.Endpoint, ttm TopicTellMsg) error
 }
 
 func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message, resp *Message) {
@@ -226,7 +231,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	case MT_TX_ADD_FROM:
 		handleAsk(req, resp, &AddFromReq{}, func(req *AddFromReq) (*AddFromResp, error) {
 			success := make([]bool, len(req.CIDs))
-			if err := svc.Copy(ctx, req.Tx, req.CIDs, req.Srcs, success); err != nil {
+			if err := svc.Copy(ctx, req.Tx, req.Srcs, req.CIDs, success); err != nil {
 				return nil, err
 			}
 			return &AddFromResp{Added: success}, nil
@@ -257,12 +262,26 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		}
 		resp.SetCode(MT_OK)
 		resp.SetBody(buf[:n])
-	case MT_TX_ALLOW_LINK:
-		handleAsk(req, resp, &AllowLinkReq{}, func(req *AllowLinkReq) (*AllowLinkResp, error) {
-			if err := svc.AllowLink(ctx, req.Tx, req.Subvol); err != nil {
+	case MT_TX_LINK:
+		handleAsk(req, resp, &LinkReq{}, func(req *LinkReq) (*LinkResp, error) {
+			if err := svc.Link(ctx, req.Tx, req.Subvol, req.Mask); err != nil {
 				return nil, err
 			}
-			return &AllowLinkResp{}, nil
+			return &LinkResp{}, nil
+		})
+	case MT_TX_UNLINK:
+		handleAsk(req, resp, &UnlinkReq{}, func(req *UnlinkReq) (*UnlinkResp, error) {
+			if err := svc.Unlink(ctx, req.Tx, req.Targets); err != nil {
+				return nil, err
+			}
+			return &UnlinkResp{}, nil
+		})
+	case MT_TX_VISIT_LINKS:
+		handleAsk(req, resp, &VisitLinksReq{}, func(req *VisitLinksReq) (*VisitLinksResp, error) {
+			if err := svc.VisitLinks(ctx, req.Tx, req.Targets); err != nil {
+				return nil, err
+			}
+			return &VisitLinksResp{}, nil
 		})
 	case MT_TX_VISIT:
 		handleAsk(req, resp, &VisitReq{}, func(req *VisitReq) (*VisitResp, error) {
@@ -280,6 +299,20 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			return &IsVisitedResp{Visited: visited}, nil
 		})
 	// END TX
+
+	// BEGIN TOPIC
+	case MT_TOPIC_TELL:
+		if err := func() error {
+			var ttm TopicTellMsg
+			if err := ttm.Unmarshal(req.Body()); err != nil {
+				return err
+			}
+			return s.Deliver(ctx, ep, ttm)
+		}(); err != nil {
+			logctx.Error(ctx, "handling topic tell", zap.Error(err))
+			return
+		}
+	// END TOPIC
 
 	default:
 		resp.SetError(fmt.Errorf("unknown message type: %v", req.Header().Code()))

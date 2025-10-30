@@ -160,11 +160,11 @@ func (ns *Tx) DeleteEntry(ctx context.Context, name string) error {
 	return ns.saveEntries(ctx, ents)
 }
 
-func (ns Tx) ListEntries(ctx context.Context) ([]Entry, error) {
+func (ns *Tx) ListEntries(ctx context.Context) ([]Entry, error) {
 	return ns.loadEntries(ctx)
 }
 
-func (ns Tx) ListNames(ctx context.Context) ([]string, error) {
+func (ns *Tx) ListNames(ctx context.Context) ([]string, error) {
 	ents, err := ns.loadEntries(ctx)
 	if err != nil {
 		return nil, err
@@ -175,11 +175,30 @@ func (ns Tx) ListNames(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-func (ns Tx) Commit(ctx context.Context) error {
+func (ns *Tx) Commit(ctx context.Context) error {
 	if err := ns.Tx.Save(ctx, ns.Root); err != nil {
 		return err
 	}
 	return ns.Tx.Commit(ctx)
+}
+
+// VisitAll visits the root blob and all the links to other volumes.
+// If the underlying Tx is not a GC transaction, it will return an error (on the first call to Visit).
+func (ns *Tx) VisitAll(ctx context.Context) error {
+	ents, err := ns.loadEntries(ctx)
+	if err != nil {
+		return err
+	}
+	cid := cadata.IDFromBytes(ns.Root)
+	if err := ns.Tx.Visit(ctx, []blobcache.CID{cid}); err != nil {
+		return err
+	}
+	for _, ent := range ents {
+		if err := ns.Tx.VisitLinks(ctx, []blobcache.OID{ent.Target}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func encodeNamespace(ents []Entry) ([]byte, error) {

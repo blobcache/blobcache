@@ -95,11 +95,16 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 }
 
 func (s *Service) OpenFiat(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return bcnet.OpenFiat(ctx, s.node, s.ep, target, mask)
+	h, _, err := bcnet.OpenFiat(ctx, s.node, s.ep, target, mask)
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return bcnet.OpenFrom(ctx, s.node, s.ep, base, target, mask)
+	h, _, err := bcnet.OpenFrom(ctx, s.node, s.ep, base, target, mask)
+	return h, err
 }
 
 func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
@@ -170,7 +175,10 @@ func (s *Service) Delete(ctx context.Context, tx blobcache.Handle, cids []blobca
 	return bcnet.Delete(ctx, s.node, s.ep, tx, cids)
 }
 
-func (s *Service) Copy(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
+func (s *Service) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success []bool) error {
+	if len(cids) != len(success) {
+		return fmt.Errorf("cids and success must have the same length")
+	}
 	return bcnet.AddFrom(ctx, s.node, s.ep, tx, cids, srcTxns, success)
 }
 
@@ -183,17 +191,25 @@ func (s *Service) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CI
 	return bcnet.Get(ctx, s.node, s.ep, tx, hf, cid, opts.Salt, buf)
 }
 
-// AllowLink allows the Volume to reference another volume.
-func (s *Service) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle) error {
-	return bcnet.AllowLink(ctx, s.node, s.ep, tx, subvol)
-}
-
 func (s *Service) Visit(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID) error {
 	return bcnet.Visit(ctx, s.node, s.ep, tx, cids)
 }
 
 func (s *Service) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
 	return bcnet.IsVisited(ctx, s.node, s.ep, tx, cids, dst)
+}
+
+// Link allows the Volume to reference another volume.
+func (s *Service) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
+	return bcnet.Link(ctx, s.node, s.ep, tx, subvol, mask)
+}
+
+func (s *Service) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
+	return bcnet.Unlink(ctx, s.node, s.ep, tx, targets)
+}
+
+func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
+	return bcnet.VisitLinks(ctx, s.node, s.ep, tx, targets)
 }
 
 // getHashFunc finds the hash function for a transaction.

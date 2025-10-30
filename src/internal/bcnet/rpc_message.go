@@ -1,11 +1,14 @@
 package bcnet
 
 import (
+	"crypto/rand"
+	"crypto/sha3"
 	"encoding/binary"
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/sbe"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 type InspectHandleReq struct {
@@ -637,20 +640,21 @@ func (gr *GetResp) Unmarshal(data []byte) error {
 	return nil
 }
 
-type AllowLinkReq struct {
+type LinkReq struct {
 	Tx     blobcache.Handle
 	Subvol blobcache.Handle
+	Mask   blobcache.ActionSet
 }
 
-func (ar AllowLinkReq) Marshal(out []byte) []byte {
+func (ar LinkReq) Marshal(out []byte) []byte {
 	out = ar.Tx.Marshal(out)
 	out = ar.Subvol.Marshal(out)
 	return out
 }
 
-func (ar *AllowLinkReq) Unmarshal(data []byte) error {
+func (ar *LinkReq) Unmarshal(data []byte) error {
 	if len(data) < blobcache.HandleSize*2 {
-		return fmt.Errorf("cannot unmarshal AllowLinkReq, too short: %d", len(data))
+		return fmt.Errorf("cannot unmarshal LinkReq, too short: %d", len(data))
 	}
 	if err := ar.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
@@ -661,13 +665,112 @@ func (ar *AllowLinkReq) Unmarshal(data []byte) error {
 	return nil
 }
 
-type AllowLinkResp struct{}
+type LinkResp struct{}
 
-func (ar AllowLinkResp) Marshal(out []byte) []byte {
+func (ar LinkResp) Marshal(out []byte) []byte {
 	return out
 }
 
-func (ar *AllowLinkResp) Unmarshal(data []byte) error {
+func (ar *LinkResp) Unmarshal(data []byte) error {
+	return nil
+}
+
+type UnlinkReq struct {
+	Tx      blobcache.Handle
+	Targets []blobcache.OID
+}
+
+func (ur UnlinkReq) Marshal(out []byte) []byte {
+	out = ur.Tx.Marshal(out)
+	out = binary.AppendUvarint(out, uint64(len(ur.Targets)))
+	for _, target := range ur.Targets {
+		out = target.Marshal(out)
+	}
+	return out
+}
+
+func (ur *UnlinkReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal UnlinkReq, too short: %d", len(data))
+	}
+	if err := ur.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	numTargets, data, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
+	if err != nil {
+		return err
+	}
+	ur.Targets = make([]blobcache.OID, numTargets)
+	for i := range ur.Targets {
+		if len(data) < blobcache.OIDSize {
+			return fmt.Errorf("cannot unmarshal UnlinkReq, too short: %d", len(data))
+		}
+		if err := ur.Targets[i].Unmarshal(data[:blobcache.OIDSize]); err != nil {
+			return err
+		}
+		data = data[blobcache.OIDSize:]
+	}
+	return nil
+}
+
+type UnlinkResp struct{}
+
+func (ur UnlinkResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (ur *UnlinkResp) Unmarshal(data []byte) error {
+	if len(data) != 0 {
+		return fmt.Errorf("empty data expected for UnlinkResp")
+	}
+	return nil
+}
+
+type VisitLinksReq struct {
+	Tx      blobcache.Handle
+	Targets []blobcache.OID
+}
+
+func (vr VisitLinksReq) Marshal(out []byte) []byte {
+	out = vr.Tx.Marshal(out)
+	out = binary.AppendUvarint(out, uint64(len(vr.Targets)))
+	for _, target := range vr.Targets {
+		out = target.Marshal(out)
+	}
+	return out
+}
+
+func (vr *VisitLinksReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal VisitLinksReq, too short: %d", len(data))
+	}
+	if err := vr.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	numTargets, data, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
+	if err != nil {
+		return err
+	}
+	vr.Targets = make([]blobcache.OID, numTargets)
+	for i := range vr.Targets {
+		if len(data) < blobcache.OIDSize {
+			return fmt.Errorf("cannot unmarshal VisitLinksReq, too short: %d", len(data))
+		}
+		if err := vr.Targets[i].Unmarshal(data[:blobcache.OIDSize]); err != nil {
+			return err
+		}
+		data = data[blobcache.OIDSize:]
+	}
+	return nil
+}
+
+type VisitLinksResp struct{}
+
+func (vr VisitLinksResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (vr *VisitLinksResp) Unmarshal(data []byte) error {
 	return nil
 }
 
@@ -901,6 +1004,72 @@ func (cr *CreateVolumeResp) Unmarshal(data []byte) error {
 	}
 	data = data[blobcache.HandleSize:]
 	return cr.Info.Unmarshal(data)
+}
+
+type TopicTellMsg struct {
+	// TopicHash is the hash of the topic ID
+	TopicHash  blobcache.CID
+	Ciphertext []byte
+}
+
+func (ttm TopicTellMsg) Marshal(out []byte) []byte {
+	out = append(out, ttm.TopicHash[:]...)
+	out = append(out, ttm.Ciphertext...)
+	return out
+}
+
+func (ttm *TopicTellMsg) Unmarshal(data []byte) error {
+	if len(data) < len(ttm.TopicHash) {
+		return fmt.Errorf("too short to be TopicTellMsg %d", len(data))
+	}
+	n := copy(ttm.TopicHash[:], data)
+	data = data[:n]
+	ttm.Ciphertext = append(ttm.Ciphertext[:0], data...)
+	return nil
+}
+
+// Encrypt sets the message to contain ciphertext for ptext on topicID.
+func (dst *TopicTellMsg) Encrypt(topicID blobcache.TID, ptext []byte) {
+	dek := getTopicDEK(topicID)
+	ciph, err := chacha20poly1305.NewX(dek[:])
+	if err != nil {
+		panic(err)
+	}
+	var nonce [24]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		panic(err)
+	}
+	dst.Ciphertext = append(dst.Ciphertext[:0], nonce[:]...)
+	dst.Ciphertext = ciph.Seal(dst.Ciphertext, nonce[:], ptext, nil)
+	dst.TopicHash = sha3.Sum256(topicID[:])
+}
+
+// Decrypt attempts to decrypt the message using topic ID.
+func (ttm *TopicTellMsg) Decrypt(tid blobcache.TID, dst *blobcache.TopicMessage) error {
+	if len(ttm.Ciphertext) < chacha20poly1305.NonceSizeX+chacha20poly1305.Overhead {
+		return fmt.Errorf("too short to contain cryptogram")
+	}
+	nonce := ttm.Ciphertext[:chacha20poly1305.NonceSizeX]
+	ctext := ttm.Ciphertext[chacha20poly1305.NonceSizeX:]
+
+	dek := getTopicDEK(tid)
+	ciph, err := chacha20poly1305.New(dek[:])
+	if err != nil {
+		panic(err)
+	}
+	dst.Payload, err = ciph.Open(dst.Payload[:0], nonce, ctext, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getTopicDEK(tid blobcache.TID) [32]byte {
+	h := sha3.NewCSHAKE256(nil, tid[:])
+	h.Write([]byte("chacha20poly1305"))
+	var ret [32]byte
+	h.Read(ret[:])
+	return ret
 }
 
 // unmarshalSections unmarshals according to the buffers passed in sections.

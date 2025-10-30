@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha3"
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -98,6 +99,30 @@ func (o *OID) Scan(src interface{}) error {
 type PeerID = inet256.ID
 
 const PeerIDSize = inet256.AddrSize
+
+// TID is a Topic ID
+// It uniquely identifies a Topic
+type TID [32]byte
+
+func (tid TID) IsZero() bool {
+	return tid == (TID{})
+}
+
+func (tid TID) String() string {
+	return hex.EncodeToString(tid[:])
+}
+
+func (tid *TID) Unmarshal(data []byte) error {
+	if len(data) < 32 {
+		return fmt.Errorf("too small to be topic id")
+	}
+	copy(tid[:], data)
+	return nil
+}
+
+func (tid TID) Key() [32]byte {
+	return sha3.Sum256(tid[:])
+}
 
 // Conditions is a set of conditions to await.
 type Conditions struct {
@@ -243,16 +268,33 @@ type TxAPI interface {
 	// If none of them have the blob to copy, then false is written to success for that blob.
 	// Error is only returned if there is an internal error, otherwise the success slice is used to signal
 	// whether a CID was successfully copied.
-	Copy(ctx context.Context, tx Handle, cids []CID, srcTxns []Handle, success []bool) error
-	// AllowLink allows the Volume to reference another volume.
-	// The volume must still have a recognized Container Schema for the volumes to be persisted.
-	AllowLink(ctx context.Context, tx Handle, subvol Handle) error
+	Copy(ctx context.Context, tx Handle, srcTxns []Handle, cids []CID, success []bool) error
 	// Visit is only usable in a GC transaction.
 	// It marks each CID as being visited, so it will not be removed by GC.
 	Visit(ctx context.Context, tx Handle, cids []CID) error
 	// IsVisited is only usable in a GC transaction.
 	// It checks if each CID has been visited.
 	IsVisited(ctx context.Context, tx Handle, cids []CID, yesVisited []bool) error
+
+	// Link adds a link to another volume.
+	// All Link operations take effect atomically on Commit
+	Link(ctx context.Context, tx Handle, target Handle, mask ActionSet) error
+	// Unlink removes a link from the transaction's volume to any and all of the OIDs
+	// All Unlink operations take effect atomically on Commit.
+	Unlink(ctx context.Context, tx Handle, targets []OID) error
+	// VisitLink visits a link to another volume.
+	// This is only usable in a GC transaction.
+	// Any unvisited links will be deleted at the end of a GC transaction.
+	VisitLinks(ctx context.Context, tx Handle, targets []OID) error
+}
+
+type TopicMessage struct {
+	// Endpoint is the endpoint where the message came from or is going.
+	Endpoint Endpoint `json:"endpoint"`
+	// Topic is the topic that the message is speaking on.
+	Topic TID `json:"topic"`
+	// Payload data to deliver.
+	Payload []byte `json:"payload"`
 }
 
 type Service interface {

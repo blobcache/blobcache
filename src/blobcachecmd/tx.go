@@ -64,7 +64,9 @@ var txCmd = star.NewDir(star.Metadata{
 	"visit":      txVisitCmd,
 	"is-visited": txIsVisitedCmd,
 
-	"allow-link": txAllowLinkCmd,
+	"link":        txLinkCmd,
+	"unlink":      txUnlinkCmd,
+	"visit-links": txVisitLinksCmd,
 })
 
 var txInspectCmd = star.Command{
@@ -301,7 +303,7 @@ var txIsVisitedCmd = star.Command{
 	},
 }
 
-var txAllowLinkCmd = star.Command{
+var txLinkCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "allows the transaction to link to another transaction",
 	},
@@ -312,12 +314,52 @@ var txAllowLinkCmd = star.Command{
 			return err
 		}
 		txh := txHParam.Load(c)
+		mask, maskOK := maskParam.LoadOpt(c)
+		if !maskOK {
+			mask = blobcache.Action_ALL
+		}
 		subvolh := subvolHParam.Load(c)
-		if err := svc.AllowLink(c.Context, txh, subvolh); err != nil {
+		if err := svc.Link(c.Context, txh, subvolh, mask); err != nil {
 			return err
 		}
-		printOK(c, "ALLOW-LINK")
+		printOK(c, "LINK")
 		c.Printf("linked -> %s\n", subvolh.OID.String())
+		return nil
+	},
+}
+
+var txUnlinkCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "removes a link from the transaction",
+	},
+	Pos: []star.Positional{txHParam, oidsParam},
+	F: func(c star.Context) error {
+		svc, err := openService(c)
+		if err != nil {
+			return err
+		}
+		if err := svc.Unlink(c.Context, txHParam.Load(c), oidsParam.Load(c)); err != nil {
+			return err
+		}
+		printOK(c, "UNLINK")
+		return nil
+	},
+}
+
+var txVisitLinksCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "visits links in the transaction",
+	},
+	Pos: []star.Positional{txHParam, oidsParam},
+	F: func(c star.Context) error {
+		svc, err := openService(c)
+		if err != nil {
+			return err
+		}
+		if err := svc.VisitLinks(c.Context, txHParam.Load(c), oidsParam.Load(c)); err != nil {
+			return err
+		}
+		printOK(c, "VISIT-LINKS")
 		return nil
 	},
 }
@@ -349,6 +391,11 @@ var cidsParam = star.Repeated[blobcache.CID]{
 var subvolHParam = star.Required[blobcache.Handle]{
 	Name:  "subvol",
 	Parse: blobcache.ParseHandle,
+}
+
+var oidsParam = star.Repeated[blobcache.OID]{
+	Name:  "oid",
+	Parse: blobcache.ParseOID,
 }
 
 const checkmark = "✓"

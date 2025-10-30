@@ -1,4 +1,4 @@
-package bclocal
+package localvol
 
 import (
 	"encoding/binary"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/bclocal/internal/blobman"
+	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"github.com/cockroachdb/pebble"
@@ -41,7 +42,7 @@ func parseBlobMeta(k []byte, v []byte) (blobMeta, error) {
 
 func (bi blobMeta) Key(out []byte) []byte {
 	return pdb.TKey{
-		TableID: tid_BLOB_META,
+		TableID: dbtab.TID_BLOB_META,
 		Key:     bi.cid[:],
 	}.Marshal(out)
 }
@@ -62,7 +63,7 @@ func putBlobMeta(ba pdb.WO, bm blobMeta) error {
 
 // getBlobMeta gets a blobMeta from the database.
 func getBlobMeta(ba pdb.RO, cid blobcache.CID) (blobMeta, error) {
-	k := pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil)
+	k := pdb.TKey{TableID: dbtab.TID_BLOB_META, Key: cid[:]}.Marshal(nil)
 	v, closer, err := ba.Get(k)
 	if err != nil {
 		return blobMeta{}, err
@@ -73,7 +74,7 @@ func getBlobMeta(ba pdb.RO, cid blobcache.CID) (blobMeta, error) {
 
 // existsBlobMeta returns true if an entry for cid exists in the BLOB_META table.
 func existsBlobMeta(ba *pebble.Batch, cid blobcache.CID) (bool, error) {
-	return pdb.Exists(ba, pdb.TKey{TableID: tid_BLOB_META, Key: cid[:]}.Marshal(nil), nil)
+	return pdb.Exists(ba, pdb.TKey{TableID: dbtab.TID_BLOB_META, Key: cid[:]}.Marshal(nil), nil)
 }
 
 func mkBlobMetaFlags(hasSalt bool) uint8 {
@@ -89,7 +90,7 @@ type RefCount uint32
 // blobRefCountIncr must be called with a lock on the blob.
 // blob ref counts are the number of times a blob is referenced (excluding delete operations) in the LOCAL_VOLUME_BLOBS table.
 func blobRefCountIncr(ba *pebble.Batch, cidp blobman.Key, delta int32) (RefCount, error) {
-	k := pdb.TKey{TableID: tid_BLOB_REF_COUNT, Key: cidp.Bytes()}.Marshal(nil)
+	k := pdb.TKey{TableID: dbtab.TID_BLOB_REF_COUNT, Key: cidp.Bytes()}.Marshal(nil)
 	n, err := pdb.IncrUint32(ba, k, delta, false)
 	if err != nil {
 		return 0, err
@@ -99,7 +100,7 @@ func blobRefCountIncr(ba *pebble.Batch, cidp blobman.Key, delta int32) (RefCount
 
 // blobRefCountGet gets the reference count for a blob.
 func blobRefCountGet(ba pdb.RO, cidp blobman.Key) (RefCount, error) {
-	k := pdb.TKey{TableID: tid_BLOB_REF_COUNT, Key: cidp.Bytes()}.Marshal(nil)
+	k := pdb.TKey{TableID: dbtab.TID_BLOB_REF_COUNT, Key: cidp.Bytes()}.Marshal(nil)
 	v, closer, err := ba.Get(k)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {

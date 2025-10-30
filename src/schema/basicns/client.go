@@ -27,7 +27,7 @@ func (c *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string
 	if err != nil {
 		return nil, err
 	}
-	if err := txn.AllowLink(ctx, *volh); err != nil {
+	if err := txn.Link(ctx, *volh, blobcache.Action_ALL); err != nil {
 		return nil, err
 	}
 	nstx := Tx{Tx: txn}
@@ -70,7 +70,7 @@ func (c *Client) PutEntry(ctx context.Context, volh blobcache.Handle, name strin
 	if err != nil {
 		return err
 	}
-	if err := txn.AllowLink(ctx, target); err != nil {
+	if err := txn.Link(ctx, target, blobcache.Action_ALL); err != nil {
 		return err
 	}
 	nstx := Tx{Tx: txn}
@@ -136,6 +136,27 @@ func (c *Client) GetEntry(ctx context.Context, volh blobcache.Handle, name strin
 	defer txn.Abort(ctx)
 	nstx := Tx{Tx: txn}
 	return nstx.GetEntry(ctx, name)
+}
+
+// GC performs garbage collection on the namespace.
+func (c *Client) GC(ctx context.Context, volh blobcache.Handle) error {
+	volh, err := c.resolve(ctx, volh)
+	if err != nil {
+		return err
+	}
+	txn, err := blobcache.BeginTx(ctx, c.Service, volh, blobcache.TxParams{
+		Mutate: true,
+		GC:     true,
+	})
+	if err != nil {
+		return err
+	}
+	defer txn.Abort(ctx)
+	nstx := Tx{Tx: txn}
+	if err := nstx.VisitAll(ctx); err != nil {
+		return err
+	}
+	return nstx.Commit(ctx)
 }
 
 func (c *Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {

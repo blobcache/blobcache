@@ -44,20 +44,26 @@ func InspectHandle(ctx context.Context, tp Transport, ep blobcache.Endpoint, h b
 	return &resp.Info, nil
 }
 
-func OpenFiat(ctx context.Context, tp Transport, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func OpenFiat(ctx context.Context, tp Transport, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFiatResp
 	if _, err := doAsk(ctx, tp, ep, MT_OPEN_AS, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &resp.Handle, nil
+	if err := resp.Info.HashAlgo.Validate(); err != nil {
+		return nil, nil, err
+	}
+	return &resp.Handle, &resp.Info, nil
 }
 
-func OpenFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func OpenFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFromResp
 	if _, err := doAsk(ctx, tp, ep, MT_OPEN_FROM, OpenFromReq{Base: base, Target: target, Mask: mask}, &resp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &resp.Handle, nil
+	if err := resp.Info.HashAlgo.Validate(); err != nil {
+		return nil, nil, err
+	}
+	return &resp.Handle, &resp.Info, nil
 }
 
 func Await(ctx context.Context, tp Transport, ep blobcache.Endpoint, cond blobcache.Conditions) error {
@@ -228,14 +234,6 @@ func AddFrom(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobca
 	return nil
 }
 
-func AllowLink(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, subvol blobcache.Handle) error {
-	var resp AllowLinkResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_ALLOW_LINK, AllowLinkReq{Tx: tx, Subvol: subvol}, &resp); err != nil {
-		return err
-	}
-	return nil
-}
-
 func Visit(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID) error {
 	var resp VisitResp
 	if _, err := doAsk(ctx, tp, ep, MT_TX_VISIT, VisitReq{Tx: tx, CIDs: cids}, &resp); err != nil {
@@ -256,7 +254,31 @@ func IsVisited(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blob
 	return nil
 }
 
-func doAsk[Req interface{ Marshal(out []byte) []byte }, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Transport, remote blobcache.Endpoint, code MessageType, req Req, zeroResp Resp) (Resp, error) {
+func Link(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
+	var resp LinkResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_LINK, LinkReq{Tx: tx, Subvol: subvol, Mask: mask}, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func Unlink(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.OID) error {
+	var resp UnlinkResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_UNLINK, UnlinkReq{Tx: tx, Targets: targets}, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func VisitLinks(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.OID) error {
+	var resp VisitLinksResp
+	if _, err := doAsk(ctx, tp, ep, MT_TX_VISIT_LINKS, VisitLinksReq{Tx: tx, Targets: targets}, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func doAsk[Req Sendable, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Transport, remote blobcache.Endpoint, code MessageType, req Req, zeroResp Resp) (Resp, error) {
 	reqData := req.Marshal(nil)
 	var reqMsg Message
 	reqMsg.SetCode(code)
@@ -282,6 +304,13 @@ func doAsk[Req interface{ Marshal(out []byte) []byte }, Resp interface{ Unmarsha
 	return resp, nil
 }
 
+func doTell(ctx context.Context, tp Transport, ep blobcache.Endpoint, code MessageType, x Sendable) error {
+	var x2 Message
+	x2.SetCode(code)
+	x2.SetBody(x.Marshal(nil))
+	return tp.Tell(ctx, ep, &x2)
+}
+
 func InspectVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, vol blobcache.Handle) (*blobcache.VolumeInfo, error) {
 	resp, err := doAsk(ctx, tp, ep, MT_VOLUME_INSPECT, InspectVolumeReq{
 		Volume: vol,
@@ -290,4 +319,11 @@ func InspectVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, vol
 		return nil, err
 	}
 	return &resp.Info, nil
+}
+
+// TopicSend processes a single topic messge
+func TopicSend(ctx context.Context, tp Transport, tmsg TopicMessage) error {
+	var ttm TopicTellMsg
+	ttm.Encrypt(tmsg.Topic, tmsg.Payload)
+	return doTell(ctx, tp, tmsg.Endpoint, MT_TOPIC_TELL, ttm)
 }

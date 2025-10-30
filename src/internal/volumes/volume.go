@@ -6,18 +6,24 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
-type System[K any] interface {
-	Create(ctx context.Context, k K, spec blobcache.VolumeSpec) error
-	Open(ctx context.Context, k K) (Volume, error)
-	Drop(ctx context.Context, k K) error
-	Clone(ctx context.Context, k K) (Volume, error)
+type System[Params any, V Volume] interface {
+	// Up loads volume state into memory.
+	// This should be called to begin using the Volume.
+	Up(ctx context.Context, spec Params) (V, error)
+
+	// Drop should remove all state associated with the volume
+	Drop(ctx context.Context, vol V) error
 }
+
+type LinkSet = map[blobcache.OID]blobcache.ActionSet
 
 type Volume interface {
 	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error)
 	// Await blocks until the volume root changes away from prev to something else.
 	// The next state is written to next.
 	Await(ctx context.Context, prev []byte, next *[]byte) error
+	// ReadLinks returns the set of actions associated with the link.
+	ReadLinks(ctx context.Context, dst LinkSet) error
 }
 
 // Tx is a consistent view of a volume, during a transaction.
@@ -38,8 +44,13 @@ type Tx interface {
 	MaxSize() int
 	Hash(salt *blobcache.CID, data []byte) blobcache.CID
 
-	// AllowLink creates adds a handle to prove access to a volume.
-	AllowLink(ctx context.Context, subvol blobcache.Handle) error
+	// Link creates adds a handle to prove access to a volume.
+	Link(ctx context.Context, target blobcache.OID, rights blobcache.ActionSet) error
+	// Unlink removes a link from the volume.
+	Unlink(ctx context.Context, targets []blobcache.OID) error
+	// VisitLinks visits a link to another volume.
+	// This is only usable in a GC transaction.
+	VisitLinks(ctx context.Context, targets []blobcache.OID) error
 }
 
 func ViewUnsalted(ctx context.Context, tx Tx) (*UnsaltedStore, []byte, error) {

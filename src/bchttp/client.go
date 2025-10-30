@@ -246,13 +246,10 @@ func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID
 	return n, nil
 }
 
-func (c *Client) AllowLink(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle) error {
-	req := AllowLinkReq{Target: subvol}
-	var resp AllowLinkResp
-	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AllowLink", tx.OID.String()), &tx.Secret, req, &resp)
-}
-
-func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, srcs []blobcache.Handle, out []bool) error {
+func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, srcs []blobcache.Handle, cids []blobcache.CID, out []bool) error {
+	if len(cids) != len(out) {
+		return fmt.Errorf("cids and out must have the same length")
+	}
 	req := AddFromReq{CIDs: cids, Srcs: srcs}
 	var resp AddFromResp
 	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AddFrom", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
@@ -276,6 +273,24 @@ func (c *Client) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blob
 	}
 	copy(out, resp.Visited)
 	return nil
+}
+
+func (c *Client) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
+	req := LinkReq{Target: subvol, Mask: mask}
+	var resp LinkResp
+	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Link", tx.OID.String()), &tx.Secret, req, &resp)
+}
+
+func (c *Client) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
+	req := UnlinkReq{Targets: targets}
+	var resp UnlinkResp
+	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Unlink", tx.OID.String()), &tx.Secret, req, &resp)
+}
+
+func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
+	req := VisitLinksReq{Targets: targets}
+	var resp VisitLinksResp
+	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.VisitLinks", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
 func (c *Client) mkTxURL(tx blobcache.Handle, method string) string {

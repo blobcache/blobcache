@@ -3,6 +3,7 @@ package volumes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bccrypto"
@@ -34,6 +35,10 @@ func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (Tx, err
 
 func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return v.Inner.Await(ctx, prev, next)
+}
+
+func (v *Vault) ReadLinks(ctx context.Context, dst LinkSet) error {
+	return v.Inner.ReadLinks(ctx, dst)
 }
 
 var _ Tx = &VaultTx{}
@@ -191,6 +196,14 @@ func (v *VaultTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return v.inner.Hash(salt, data)
 }
 
-func (v *VaultTx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
-	return v.inner.AllowLink(ctx, subvol)
+func (v *VaultTx) Link(ctx context.Context, subvol blobcache.OID, mask blobcache.ActionSet) error {
+	return fmt.Errorf("vault: Link not implemented")
+}
+
+func (v *VaultTx) Unlink(ctx context.Context, targets []blobcache.OID) error {
+	return fmt.Errorf("vault: Unlink not implemented")
+}
+
+func (v *VaultTx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+	return fmt.Errorf("vault: VisitLinks not implemented")
 }
