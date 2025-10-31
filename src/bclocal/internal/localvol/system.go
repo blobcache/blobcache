@@ -47,13 +47,13 @@ type System struct {
 	// mutVol manages access to volumes
 	// only one mutating transaction can access a volume at a time.
 	// mutating transactions should hold one of these locks starting in beginTx, and release when {Commit, Abort} is called.
-	mutVol MapOfLocks[ID]
+	mutVol mapOfLocks[ID]
 	// blobLocks prevents concurrent operations on blobLocks
 	// only one {Post, Delete, Add} operation can have a lock at a time.
 	// - Post could potentially increment the refCount, and ingest blob data.
 	// - Delete could potentially decrement the refCount, and delete blob data.
 	// - Add could potentially increment the refCount, but does not ingest blob data.
-	blobLocks MapOfLocks[blobman.Key]
+	blobLocks mapOfLocks[blobman.Key]
 }
 
 type Env struct {

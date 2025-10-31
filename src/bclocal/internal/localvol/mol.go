@@ -5,12 +5,12 @@ import (
 	"sync"
 )
 
-type MapOfLocks[K comparable] struct {
+type mapOfLocks[K comparable] struct {
 	mu sync.RWMutex
 	m  map[K]chan struct{}
 }
 
-func (mol *MapOfLocks[K]) Lock(ctx context.Context, k K) error {
+func (mol *mapOfLocks[K]) Lock(ctx context.Context, k K) error {
 	for {
 		mol.mu.Lock()
 		ch, exists := mol.m[k]
@@ -35,7 +35,7 @@ func (mol *MapOfLocks[K]) Lock(ctx context.Context, k K) error {
 	}
 }
 
-func (mol *MapOfLocks[K]) Unlock(oid K) {
+func (mol *mapOfLocks[K]) Unlock(oid K) {
 	mol.mu.Lock()
 	ch := mol.m[oid]
 	if mol.m != nil {
