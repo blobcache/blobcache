@@ -73,12 +73,6 @@ type WO interface {
 	MaxSize() int
 }
 
-type Poster interface {
-	Post(ctx context.Context, data []byte) (blobcache.CID, error)
-	MaxSize() int
-	Hash(data []byte) blobcache.CID
-}
-
 // RW is Read-Write Store methods
 type RW interface {
 	RO

@@ -26,12 +26,12 @@ func NewMachine(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
 	}
 }
 
-func (o *Machine) NewEmpty(ctx context.Context, s schema.Poster) (*Root, error) {
+func (o *Machine) NewEmpty(ctx context.Context, s schema.WO) (*Root, error) {
 	return o.PostSlice(ctx, s, nil)
 }
 
 // PostSlice returns a new instance containing ents
-func (o *Machine) PostSlice(ctx context.Context, s schema.Poster, ents []*Entry) (*Root, error) {
+func (o *Machine) PostSlice(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
 	return o.postNode(ctx, s, ents)
 }
 

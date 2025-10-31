@@ -39,7 +39,7 @@ func parseRef(x []byte) (*Ref, error) {
 	return y, nil
 }
 
-func (o *Machine) post(ctx context.Context, s schema.Poster, ptext []byte) (*Ref, error) {
+func (o *Machine) post(ctx context.Context, s schema.WO, ptext []byte) (*Ref, error) {
 	l := len(ptext)
 	ref, err := o.crypto.Post(ctx, s, ptext)
 	if err != nil {

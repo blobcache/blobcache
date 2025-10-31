@@ -438,7 +438,7 @@ func (vtx *Tx) init(ctx context.Context) error {
 	if err := vtx.inner.Load(ctx, &rootCtext); err != nil {
 		return err
 	}
-	var s schema.Poster = volumes.NewUnsaltedStore(vtx.inner)
+	var s schema.WO = volumes.NewUnsaltedStore(vtx.inner)
 	var ttx *tries.Tx
 	if len(rootCtext) == 0 {
 		var err error

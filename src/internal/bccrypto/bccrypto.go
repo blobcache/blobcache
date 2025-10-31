@@ -74,7 +74,7 @@ func NewMachine(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
 	return &Machine{hf: hf, salt: (*[32]byte)(salt)}
 }
 
-func (w *Machine) Post(ctx context.Context, s schema.Poster, data []byte) (Ref, error) {
+func (w *Machine) Post(ctx context.Context, s schema.WO, data []byte) (Ref, error) {
 	ptextCID := s.Hash(data)
 	dek := DeriveKey(w.hf, w.salt, ptextCID[:])
 	ctext := make([]byte, len(data))

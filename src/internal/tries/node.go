@@ -65,7 +65,7 @@ func (o *Machine) getParent(ctx context.Context, s schema.RO, x Root, expandKeys
 }
 
 // postNode creates a new node with ents, ents will be split if necessary
-func (o *Machine) postNode(ctx context.Context, s schema.Poster, ents []*Entry) (*Root, error) {
+func (o *Machine) postNode(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
 	r, err := o.postLeaf(ctx, s, ents)
 	if !errors.Is(err, cadata.ErrTooLarge) {
 		return r, err
@@ -77,7 +77,7 @@ func (o *Machine) postNode(ctx context.Context, s schema.Poster, ents []*Entry) 
 	return o.postParent(ctx, s, roots, e)
 }
 
-func (o *Machine) postLeaf(ctx context.Context, s schema.Poster, ents []*Entry) (*Root, error) {
+func (o *Machine) postLeaf(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
 	if !slices.IsSortedFunc(ents, func(a, b *Entry) int {
 		return bytes.Compare(a.Key, b.Key)
 	}) {
@@ -103,7 +103,7 @@ func (o *Machine) postLeaf(ctx context.Context, s schema.Poster, ents []*Entry) 
 	}, nil
 }
 
-func (o *Machine) postParent(ctx context.Context, s schema.Poster, children []Root, ent *Entry) (*Root, error) {
+func (o *Machine) postParent(ctx context.Context, s schema.WO, children []Root, ent *Entry) (*Root, error) {
 	var count uint64
 	ents := make([]*Entry, 0, 257)
 	if ent != nil {
@@ -124,7 +124,7 @@ func (o *Machine) postParent(ctx context.Context, s schema.Poster, children []Ro
 	return r, nil
 }
 
-func (o *Machine) split(ctx context.Context, s cadata.Poster, ents []*Entry) (*Entry, []Root, error) {
+func (o *Machine) split(ctx context.Context, s schema.WO, ents []*Entry) (*Entry, []Root, error) {
 	if len(ents) < 2 {
 		return nil, nil, ErrCannotSplit
 	}

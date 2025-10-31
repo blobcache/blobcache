@@ -26,7 +26,7 @@ func (m *Machine) NewTx(prevRoot Root) *Tx {
 	}
 }
 
-func (m *Machine) NewTxOnEmpty(ctx context.Context, s schema.Poster) (*Tx, error) {
+func (m *Machine) NewTxOnEmpty(ctx context.Context, s schema.WO) (*Tx, error) {
 	root, err := m.NewEmpty(ctx, s)
 	if err != nil {
 		return nil, err
