@@ -8,7 +8,6 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema"
-	"go.brendoncarroll.net/state/cadata"
 	"golang.org/x/crypto/chacha20"
 )
 
@@ -18,7 +17,11 @@ func DeriveKey(hf blobcache.HashFunc, entropy *[32]byte, additional []byte) DEK 
 	return DEK(hf(salt, additional))
 }
 
-type DEK [32]byte
+// DEKSize is the number of bytes in a DEK.
+const DEKSize = 32
+
+// DEK is a Data Encryption Key.
+type DEK [DEKSize]byte
 
 func (dek *DEK) IsZero() bool {
 	zero := [32]byte{}
@@ -92,9 +95,9 @@ func (w *Machine) Get(ctx context.Context, s schema.RO, ref Ref, buf []byte) (in
 	return n, nil
 }
 
-func (w *Machine) GetF(ctx context.Context, s cadata.Getter, ref Ref, fn func([]byte) error) error {
+func (w *Machine) GetF(ctx context.Context, s schema.RO, ref Ref, fn func([]byte) error) error {
 	buf := make([]byte, s.MaxSize())
-	n, err := s.Get(ctx, ref.CID, buf)
+	n, err := w.Get(ctx, s, ref, buf)
 	if err != nil {
 		return err
 	}

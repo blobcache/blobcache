@@ -26,11 +26,12 @@ func (m *Machine) NewTx(prevRoot Root) *Tx {
 	}
 }
 
-func (m *Machine) NewTxOnEmpty() *Tx {
-	return &Tx{
-		prevRoot: Root{},
-		mach:     m,
+func (m *Machine) NewTxOnEmpty(ctx context.Context, s schema.Poster) (*Tx, error) {
+	root, err := m.NewEmpty(ctx, s)
+	if err != nil {
+		return nil, err
 	}
+	return m.NewTx(*root), nil
 }
 
 // Put creates or replace the entry for key, such that it points to value.

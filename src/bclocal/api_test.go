@@ -75,7 +75,11 @@ func TestManyBlobs(t *testing.T) {
 
 func TestBasicNS(t *testing.T) {
 	t.Parallel()
-	schematests.BasicNS(t, func(t testing.TB) blobcache.Service {
-		return bclocal.NewTestService(t)
+	schematests.BasicNS(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
+		ctx := testutil.Context(t)
+		svc := bclocal.NewTestService(t)
+		nsh, err := svc.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+		return svc, *nsh
 	})
 }

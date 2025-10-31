@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"sync"
 
+	"golang.org/x/crypto/chacha20poly1305"
+
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bccrypto"
 	"blobcache.io/blobcache/src/internal/tries"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
-	"golang.org/x/crypto/chacha20poly1305"
 )
 
 var _ volumes.Volume = &Vault{}
@@ -53,12 +54,16 @@ func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (volumes
 	if err != nil {
 		return nil, err
 	}
-	return newVaultTx(v, inner, params.GC), nil
+	return newVaultTx(v, inner, params), nil
 }
 
 func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return fmt.Errorf("Await not implemented")
 	// TODO: aead seal/open the next
+}
+
+func (v *Vault) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
+	return v.inner.ReadLinks(ctx, dst)
 }
 
 func (v *Vault) aeadSeal(out []byte, ptext []byte) []byte {
@@ -83,18 +88,20 @@ func (v *Vault) aeadOpen(out []byte, ctext []byte) ([]byte, error) {
 	return v.aead.Open(out, nonce[:], ctext, nil)
 }
 
-var _ volumes.Tx = &VaultTx{}
+var _ volumes.Tx = &Tx{}
 
-type VaultTx struct {
+type Tx struct {
 	vol   *Vault
 	inner volumes.Tx
-	isGC  bool
+	txp   blobcache.TxParams
 
 	mu     sync.RWMutex
 	isDone bool
 
+	// cellMu protects the cell field.
 	cellMu sync.Mutex
-	cell   []byte
+	// cell holds the plaintext cell data.
+	cell []byte
 
 	// trieMu protects the ttx and newTx fields.
 	trieMu sync.RWMutex
@@ -105,27 +112,30 @@ type VaultTx struct {
 	newTx *tries.Tx
 }
 
-func newVaultTx(vol *Vault, inner volumes.Tx, isGC bool) *VaultTx {
-	return &VaultTx{
+func newVaultTx(vol *Vault, inner volumes.Tx, txp blobcache.TxParams) *Tx {
+	return &Tx{
 		vol:   vol,
 		inner: inner,
-		isGC:  isGC,
+		txp:   txp,
 	}
 }
 
-func (tx *VaultTx) Volume() volumes.Volume {
+func (tx *Tx) Volume() volumes.Volume {
 	return tx.vol
 }
 
-func (v *VaultTx) Load(ctx context.Context, dst *[]byte) error {
-	if err := v.setup(ctx); err != nil {
+func (v *Tx) Load(ctx context.Context, dst *[]byte) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
 		return err
 	}
+	defer release()
+
 	v.cellMu.Lock()
 	defer v.cellMu.Unlock()
 	v.trieMu.RLock()
 	defer v.trieMu.RUnlock()
-	s := volumes.NewUnsaltedStore(v)
+	s := volumes.NewUnsaltedStore(v.inner)
 
 	if v.cell == nil {
 		// if the cell is not set, load it from the trie
@@ -137,21 +147,25 @@ func (v *VaultTx) Load(ctx context.Context, dst *[]byte) error {
 	return nil
 }
 
-func (v *VaultTx) Save(ctx context.Context, src []byte) error {
-	if err := v.setup(ctx); err != nil {
+func (v *Tx) Save(ctx context.Context, src []byte) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
 		return err
 	}
+	defer release()
+
 	v.cellMu.Lock()
 	defer v.cellMu.Unlock()
 	v.cell = append(v.cell[:0], src...)
 	return nil
 }
 
-func (v *VaultTx) Commit(ctx context.Context) error {
+func (v *Tx) Commit(ctx context.Context) error {
+	// don't call beginOp here, we want to get a write lock.
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	if v.ttx == nil {
-		return nil
+	if !v.txp.Mutate {
+		return blobcache.ErrTxReadOnly{Op: "Commit"}
 	}
 	if v.isDone {
 		return blobcache.ErrTxDone{}
@@ -161,6 +175,9 @@ func (v *VaultTx) Commit(ctx context.Context) error {
 	defer v.cellMu.Unlock()
 	v.trieMu.Lock()
 	defer v.trieMu.Unlock()
+	if v.ttx == nil {
+		return nil
+	}
 	s := volumes.NewUnsaltedStore(v.inner)
 
 	var nextCell []byte
@@ -174,7 +191,7 @@ func (v *VaultTx) Commit(ctx context.Context) error {
 	}
 
 	var root *tries.Root
-	if v.isGC {
+	if v.txp.GC {
 		cellRef, err := saveCell(ctx, v.newTx, v.vol.cmach, s, nextCell)
 		if err != nil {
 			return err
@@ -222,11 +239,17 @@ func (v *VaultTx) Commit(ctx context.Context) error {
 	return nil
 }
 
-func (v *VaultTx) Abort(ctx context.Context) error {
+func (v *Tx) Abort(ctx context.Context) error {
 	return v.inner.Abort(ctx)
 }
 
-func (v *VaultTx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
+func (v *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
+	release, err := v.beginOp(ctx)
+	if err != nil {
+		return blobcache.CID{}, err
+	}
+	defer release()
+
 	s := volumes.NewUnsaltedStore(v.inner)
 	cid := v.inner.Hash(nil, data)
 	ref, err := v.vol.cmach.Post(ctx, s, data)
@@ -239,10 +262,13 @@ func (v *VaultTx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts
 	return cid, nil
 }
 
-func (v *VaultTx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	if err := v.setup(ctx); err != nil {
+func (v *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
+	release, err := v.beginOp(ctx)
+	if err != nil {
 		return 0, err
 	}
+	defer release()
+
 	ref, err := v.getRef(ctx, cid)
 	if err != nil {
 		return 0, err
@@ -252,10 +278,13 @@ func (v *VaultTx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts b
 	return v.vol.cmach.Get(ctx, s, ref, buf)
 }
 
-func (v *VaultTx) Delete(ctx context.Context, cids []blobcache.CID) error {
-	if err := v.setup(ctx); err != nil {
+func (v *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
 		return err
 	}
+	defer release()
+
 	for _, cid := range cids {
 		ref, err := v.getRef(ctx, cid)
 		if err != nil {
@@ -271,10 +300,12 @@ func (v *VaultTx) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return nil
 }
 
-func (v *VaultTx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	if err := v.setup(ctx); err != nil {
+func (v *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
 		return err
 	}
+	defer release()
 	ctcids, err := v.translateCIDs(ctx, cids)
 	if err != nil {
 		return err
@@ -282,7 +313,12 @@ func (v *VaultTx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) 
 	return v.inner.Exists(ctx, ctcids, dst)
 }
 
-func (v *VaultTx) IsVisited(ctx context.Context, ptcids []blobcache.CID, dst []bool) error {
+func (v *Tx) IsVisited(ctx context.Context, ptcids []blobcache.CID, dst []bool) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	ctcids, err := v.translateCIDs(ctx, ptcids)
 	if err != nil {
 		return err
@@ -290,8 +326,14 @@ func (v *VaultTx) IsVisited(ctx context.Context, ptcids []blobcache.CID, dst []b
 	return v.inner.IsVisited(ctx, ctcids, dst)
 }
 
-func (v *VaultTx) Visit(ctx context.Context, ptcids []blobcache.CID) error {
-	if !v.isGC {
+func (v *Tx) Visit(ctx context.Context, ptcids []blobcache.CID) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	if !v.txp.GC {
 		return fmt.Errorf("Visit not allowed on non-GC transactions")
 	}
 	v.trieMu.Lock()
@@ -312,29 +354,76 @@ func (v *VaultTx) Visit(ctx context.Context, ptcids []blobcache.CID) error {
 	return v.inner.Visit(ctx, ctcids)
 }
 
-func (v *VaultTx) MaxSize() int {
+func (v *Tx) MaxSize() int {
 	return v.inner.MaxSize()
 }
 
-func (v *VaultTx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+func (v *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return v.inner.Hash(salt, data)
 }
 
-func (v *VaultTx) AllowLink(ctx context.Context, subvol blobcache.Handle) error {
-	return fmt.Errorf("AllowLink not allowed on Vault Volumes")
+func (v *Tx) Link(ctx context.Context, subvol blobcache.OID, rights blobcache.ActionSet) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return v.inner.Link(ctx, subvol, rights)
 }
 
-func (vtx *VaultTx) setup(ctx context.Context) error {
-	vtx.mu.RLock()
-	ttx := vtx.ttx
-	vtx.mu.RUnlock()
-	if vtx.isDone {
-		return blobcache.ErrTxDone{}
+func (v *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
+		return err
 	}
-	if ttx != nil {
-		return nil
-	}
+	defer release()
+	return v.inner.Unlink(ctx, targets)
+}
 
+func (v *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+	release, err := v.beginOp(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return v.inner.VisitLinks(ctx, targets)
+}
+
+// getRef returns the crypto ref for the plaintext CID
+func (v *Tx) getRef(ctx context.Context, ptcid blobcache.CID) (bccrypto.Ref, error) {
+	v.trieMu.RLock()
+	defer v.trieMu.RUnlock()
+	s := volumes.NewUnsaltedStore(v.inner)
+	return getRef(ctx, v.ttx, s, ptcid)
+}
+
+func (vtx *Tx) putRef(ctx context.Context, ptcid blobcache.CID, ref bccrypto.Ref) error {
+	vtx.trieMu.Lock()
+	defer vtx.trieMu.Unlock()
+	s := volumes.NewUnsaltedStore(vtx.inner)
+	return putRef(ctx, vtx.ttx, s, ptcid, ref)
+}
+
+// translateCIDs resolves plaintext CIDs into ciphertext CIDs
+func (v *Tx) translateCIDs(ctx context.Context, ptcids []blobcache.CID) ([]blobcache.CID, error) {
+	var ctcids []blobcache.CID
+	for _, ptcid := range ptcids {
+		ref, err := v.getRef(ctx, ptcid)
+		if err != nil {
+			if tries.IsErrNotFound(err) {
+				ctcids = append(ctcids, blobcache.CID{})
+				continue
+			}
+			return nil, err
+		}
+		ctcids = append(ctcids, ref.CID)
+	}
+	return ctcids, nil
+}
+
+// init is called to initialize the trie and cell.
+// It requires exclusive locks on mu and trieMu.
+func (vtx *Tx) init(ctx context.Context) error {
 	vtx.mu.Lock()
 	defer vtx.mu.Unlock()
 	vtx.trieMu.Lock()
@@ -349,59 +438,63 @@ func (vtx *VaultTx) setup(ctx context.Context) error {
 	if err := vtx.inner.Load(ctx, &rootCtext); err != nil {
 		return err
 	}
-	rootPtext, err := vtx.vol.aeadOpen(nil, rootCtext)
-	if err != nil {
-		return err
+	var s schema.Poster = volumes.NewUnsaltedStore(vtx.inner)
+	var ttx *tries.Tx
+	if len(rootCtext) == 0 {
+		var err error
+		if !vtx.txp.Mutate {
+			s = schema.NewMem(vtx.inner.Hash, vtx.inner.MaxSize())
+		}
+		ttx, err = vtx.vol.tmach.NewTxOnEmpty(ctx, s)
+		if err != nil {
+			return err
+		}
+	} else {
+		rootPtext, err := vtx.vol.aeadOpen(nil, rootCtext)
+		if err != nil {
+			return err
+		}
+		troot, err := tries.ParseRoot(rootPtext)
+		if err != nil {
+			return err
+		}
+		ttx = vtx.vol.tmach.NewTx(*troot)
 	}
-	troot, err := tries.ParseRoot(rootPtext)
-	if err != nil {
-		return err
-	}
-	ttx = vtx.vol.tmach.NewTx(*troot)
 
-	if vtx.isGC {
-		vtx.newTx = vtx.vol.tmach.NewTxOnEmpty()
+	if vtx.txp.GC {
+		newTx, err := vtx.vol.tmach.NewTxOnEmpty(ctx, s)
+		if err != nil {
+			return err
+		}
+		vtx.newTx = newTx
 	}
 	vtx.ttx = ttx
 	return nil
 }
 
-// getRef returns the crypto ref for the plaintext CID
-func (v *VaultTx) getRef(ctx context.Context, ptcid blobcache.CID) (bccrypto.Ref, error) {
-	if err := v.setup(ctx); err != nil {
-		return bccrypto.Ref{}, err
+// beginOp should be called at the start of every operation.
+// If an error is returned, it should be returned immediately.
+// If err is nil, then the caller is responsible for calling release
+// at the end of the operation.
+func (vtx *Tx) beginOp(ctx context.Context) (release func(), _ error) {
+	vtx.mu.RLock()
+	ttx := vtx.ttx
+	if ttx != nil {
+		// if there is already a transaction, then setup has been run.
+		return vtx.mu.RUnlock, nil
 	}
-	v.trieMu.RLock()
-	defer v.trieMu.RUnlock()
-	s := volumes.NewUnsaltedStore(v.inner)
-	return getRef(ctx, v.ttx, s, ptcid)
-}
+	if vtx.isDone {
+		vtx.mu.RUnlock()
+		return nil, blobcache.ErrTxDone{}
+	}
+	vtx.mu.RUnlock()
 
-func (v *VaultTx) putRef(ctx context.Context, ptcid blobcache.CID, ref bccrypto.Ref) error {
-	if err := v.setup(ctx); err != nil {
-		return err
+	if err := vtx.init(ctx); err != nil {
+		return nil, err
 	}
-	v.trieMu.Lock()
-	defer v.trieMu.Unlock()
-	s := volumes.NewUnsaltedStore(v.inner)
-	return putRef(ctx, v.ttx, s, ptcid, ref)
-}
-
-// translateCIDs resolves plaintext CIDs into ciphertext CIDs
-func (v *VaultTx) translateCIDs(ctx context.Context, ptcids []blobcache.CID) ([]blobcache.CID, error) {
-	var ctcids []blobcache.CID
-	for _, ptcid := range ptcids {
-		ref, err := v.getRef(ctx, ptcid)
-		if err != nil {
-			if tries.IsErrNotFound(err) {
-				ctcids = append(ctcids, blobcache.CID{})
-				continue
-			}
-			return nil, err
-		}
-		ctcids = append(ctcids, ref.CID)
-	}
-	return ctcids, nil
+	// re-acquire the read lock
+	vtx.mu.RLock()
+	return vtx.mu.RUnlock, nil
 }
 
 func saveCell(ctx context.Context, tx *tries.Tx, cm *bccrypto.Machine, s schema.RW, data []byte) (bccrypto.Ref, error) {
