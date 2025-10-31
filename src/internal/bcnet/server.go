@@ -130,11 +130,11 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 			if err != nil {
 				return nil, err
 			}
-			info, err := svc.InspectVolume(ctx, req.Volume)
+			info, err := svc.InspectTx(ctx, *h)
 			if err != nil {
 				return nil, err
 			}
-			return &BeginTxResp{Tx: *h, VolumeInfo: *info}, nil
+			return &BeginTxResp{Tx: *h, Info: *info}, nil
 		})
 	// END VOLUME
 

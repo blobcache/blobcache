@@ -112,7 +112,12 @@ func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
 }
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
-	return bcnet.BeginTx(ctx, s.node, s.ep, volh, txp)
+	h, info, err := bcnet.BeginTx(ctx, s.node, s.ep, volh, txp)
+	if err != nil {
+		return nil, err
+	}
+	s.cache.Add(h.OID, info)
+	return h, nil
 }
 
 // CreateVolume creates a new volume.

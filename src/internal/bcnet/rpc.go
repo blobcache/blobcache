@@ -90,12 +90,12 @@ func CloneVolume(ctx context.Context, tp Transport, ep blobcache.Endpoint, calle
 	return &resp.Handle, nil
 }
 
-func BeginTx(ctx context.Context, tp Transport, ep blobcache.Endpoint, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
+func BeginTx(ctx context.Context, tp Transport, ep blobcache.Endpoint, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, *blobcache.TxInfo, error) {
 	var resp BeginTxResp
 	if _, err := doAsk(ctx, tp, ep, MT_VOLUME_BEGIN_TX, BeginTxReq{Volume: volh, Params: txp}, &resp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &resp.Tx, nil
+	return &resp.Tx, &resp.Info, nil
 }
 
 func InspectTx(ctx context.Context, tp Transport, ep blobcache.Endpoint, tx blobcache.Handle) (*blobcache.TxInfo, error) {

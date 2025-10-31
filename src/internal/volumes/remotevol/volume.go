@@ -48,16 +48,15 @@ func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 }
 
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
-	txh, err := bcnet.BeginTx(ctx, v.n, v.ep, v.h, spec)
+	txh, info, err := bcnet.BeginTx(ctx, v.n, v.ep, v.h, spec)
 	if err != nil {
 		return nil, err
 	}
 	return &Tx{
-		n:       v.n,
-		ep:      v.ep,
-		params:  spec,
-		h:       *txh,
-		volInfo: v.info,
+		vol:    v,
+		params: spec,
+		h:      *txh,
+		info:   info,
 	}, nil
 }
 
@@ -67,22 +66,16 @@ func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
 
 // Tx is a transaction on a remote volume.
 type Tx struct {
-	n       bcnet.Transport
-	ep      blobcache.Endpoint
-	h       blobcache.Handle
-	params  blobcache.TxParams
-	volInfo *blobcache.VolumeInfo
+	vol    *Volume
+	h      blobcache.Handle
+	params blobcache.TxParams
+	info   *blobcache.TxInfo
 
 	root []byte
 }
 
 func (tx *Tx) Volume() volumes.Volume {
-	return &Volume{
-		n:    tx.n,
-		ep:   tx.ep,
-		h:    tx.h,
-		info: tx.volInfo,
-	}
+	return tx.vol
 }
 
 func (tx *Tx) Commit(ctx context.Context) error {
@@ -93,15 +86,15 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.root != nil {
 		root = &tx.root
 	}
-	return bcnet.Commit(ctx, tx.n, tx.ep, tx.h, root)
+	return bcnet.Commit(ctx, tx.vol.n, tx.vol.ep, tx.h, root)
 }
 
 func (tx *Tx) Abort(ctx context.Context) error {
-	return bcnet.Abort(ctx, tx.n, tx.ep, tx.h)
+	return bcnet.Abort(ctx, tx.vol.n, tx.vol.ep, tx.h)
 }
 
 func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
-	return bcnet.Load(ctx, tx.n, tx.ep, tx.h, dst)
+	return bcnet.Load(ctx, tx.vol.n, tx.vol.ep, tx.h, dst)
 }
 
 func (tx *Tx) Save(ctx context.Context, src []byte) error {
@@ -115,7 +108,7 @@ func (tx *Tx) Save(ctx context.Context, src []byte) error {
 }
 
 func (tx *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
-	theirCID, err := bcnet.Post(ctx, tx.n, tx.ep, tx.h, opts.Salt, data)
+	theirCID, err := bcnet.Post(ctx, tx.vol.n, tx.vol.ep, tx.h, opts.Salt, data)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
@@ -127,23 +120,23 @@ func (tx *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (b
 }
 
 func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	return bcnet.Get(ctx, tx.n, tx.ep, tx.h, tx.Hash, cid, opts.Salt, buf)
+	return bcnet.Get(ctx, tx.vol.n, tx.vol.ep, tx.h, tx.Hash, cid, opts.Salt, buf)
 }
 
 func (tx *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
-	return bcnet.Delete(ctx, tx.n, tx.ep, tx.h, cids)
+	return bcnet.Delete(ctx, tx.vol.n, tx.vol.ep, tx.h, cids)
 }
 
 func (tx *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	return bcnet.Exists(ctx, tx.n, tx.ep, tx.h, cids, dst)
+	return bcnet.Exists(ctx, tx.vol.n, tx.vol.ep, tx.h, cids, dst)
 }
 
 func (tx *Tx) MaxSize() int {
-	return int(tx.volInfo.MaxSize)
+	return int(tx.info.MaxSize)
 }
 
 func (tx *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
-	hf := tx.volInfo.HashAlgo.HashFunc()
+	hf := tx.info.HashAlgo.HashFunc()
 	return hf(salt, data)
 }
 
@@ -151,11 +144,11 @@ func (tx *Tx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) e
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and dst must have the same length")
 	}
-	return bcnet.IsVisited(ctx, tx.n, tx.ep, tx.h, cids, dst)
+	return bcnet.IsVisited(ctx, tx.vol.n, tx.vol.ep, tx.h, cids, dst)
 }
 
 func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
-	return bcnet.Visit(ctx, tx.n, tx.ep, tx.h, cids)
+	return bcnet.Visit(ctx, tx.vol.n, tx.vol.ep, tx.h, cids)
 }
 
 func (tx *Tx) Link(ctx context.Context, subvol blobcache.OID, mask blobcache.ActionSet) error {

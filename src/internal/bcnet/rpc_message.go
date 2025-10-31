@@ -317,12 +317,12 @@ type BeginTxResp struct {
 	// Tx is the handle for the transaction.
 	Tx blobcache.Handle
 	// VolumeInfo is the volume info for the transaction.
-	VolumeInfo blobcache.VolumeInfo
+	Info blobcache.TxInfo
 }
 
 func (btx BeginTxResp) Marshal(out []byte) []byte {
 	out = btx.Tx.Marshal(out)
-	return btx.VolumeInfo.Marshal(out)
+	return btx.Info.Marshal(out)
 }
 
 func (btx *BeginTxResp) Unmarshal(data []byte) error {
@@ -333,7 +333,7 @@ func (btx *BeginTxResp) Unmarshal(data []byte) error {
 		return err
 	}
 	data = data[blobcache.HandleSize:]
-	return btx.VolumeInfo.Unmarshal(data)
+	return btx.Info.Unmarshal(data)
 }
 
 type InspectTxReq struct {
