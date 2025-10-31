@@ -8,7 +8,6 @@ import (
 	"slices"
 
 	"blobcache.io/blobcache/src/schema"
-	proto "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state/cadata"
 )
@@ -16,9 +15,9 @@ import (
 // getNode returns node at x.
 // all the entries will be in compressed form.
 func (o *Machine) getNode(ctx context.Context, s schema.RO, x Root, expandKeys bool) ([]*Entry, error) {
-	n := &Node{}
+	var n Node
 	if err := o.getF(ctx, s, x.Ref, func(data []byte) error {
-		return proto.Unmarshal(data, n)
+		return n.Unmarshal(data)
 	}); err != nil {
 		return nil, err
 	}
@@ -84,10 +83,14 @@ func (o *Machine) postLeaf(ctx context.Context, s schema.WO, ents []*Entry) (*Ro
 		return nil, errors.Errorf("entries must be sorted")
 	}
 	prefix, ents := compressEntries(ents)
-	data, err := proto.Marshal(&Node{Entries: ents})
+
+	// Marshal using Cap'n Proto
+	node := &Node{Entries: ents}
+	data, err := node.Marshal()
 	if err != nil {
 		return nil, err
 	}
+
 	if len(data) > s.MaxSize() {
 		return nil, cadata.ErrTooLarge
 	}
@@ -199,7 +202,7 @@ func compressEntries(xs []*Entry) ([]byte, []*Entry) {
 
 func validateEntries(isParent bool, ents []*Entry) error {
 	if isParent {
-		if len(ents) != 256 || len(ents) != 257 {
+		if len(ents) != 256 && len(ents) != 257 {
 			return errors.Errorf("parent does not have 256 children")
 		}
 	} else {

@@ -1,6 +1,6 @@
 
 # Build the blobcache binary for the current platform.
-build:
+build: capnp
 	mkdir -p ./build/out
 	CGO_ENABLED=0 go build -o ./build/out/blobcache ./cmd/blobcache 
 
@@ -15,9 +15,8 @@ test:
 testv:
 	go test -count=1 -v ./pkg/...
 
-protobuf:
-	cd ./src/tries && ./build.sh
-	cd ./pkg/bcgrpc && ./build.sh
+capnp:
+	cd ./src/internal/tries/triescnp && ./build.sh
 
 docker-build: build-amd64-linux
 	podman build --tag blobcache .

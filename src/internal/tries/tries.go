@@ -7,7 +7,6 @@ import (
 	"blobcache.io/blobcache/src/schema"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state"
-	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -49,16 +48,11 @@ func (r *Root) Marshal() []byte {
 
 func rootFromEntry(ent *Entry) (*Root, error) {
 	var idx Index
-	if err := proto.Unmarshal(ent.Value, &idx); err != nil {
-		return nil, err
-	}
-	ref, err := parseRef(idx.Ref)
-	if err != nil {
+	if err := idx.Unmarshal(ent.Value); err != nil {
 		return nil, err
 	}
 	return &Root{
-		Ref: *ref,
-
+		Ref:      idx.Ref,
 		IsParent: idx.IsParent,
 		Count:    idx.Count,
 
@@ -68,11 +62,11 @@ func rootFromEntry(ent *Entry) (*Root, error) {
 
 func entryFromRoot(x Root) *Entry {
 	idx := &Index{
-		Ref:      marshalRef(x.Ref),
+		Ref:      x.Ref,
 		IsParent: x.IsParent,
 		Count:    x.Count,
 	}
-	data, err := proto.Marshal(idx)
+	data, err := idx.Marshal()
 	if err != nil {
 		panic(err)
 	}
