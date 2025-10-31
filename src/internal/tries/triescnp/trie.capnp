@@ -18,4 +18,3 @@ struct Index {
     count @1 :UInt64;
     isParent @2 :Bool;
 }
-
