@@ -150,6 +150,9 @@ func (v *VolumeBackend[T]) Validate() (err error) {
 		count++
 	}
 	if v.Vault != nil {
+		if err := v.Vault.Validate(); err != nil {
+			return err
+		}
 		count++
 	}
 
@@ -173,8 +176,9 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 	}
 	if x.Vault != nil {
 		ret.Vault = &VolumeBackend_Vault[OID]{
-			X:      x.Vault.X.OID,
-			Secret: x.Vault.Secret,
+			X:        x.Vault.X.OID,
+			HashAlgo: x.Vault.HashAlgo,
+			Secret:   x.Vault.Secret,
 		}
 	}
 	return ret
@@ -232,8 +236,13 @@ type VolumeBackend_Git struct {
 }
 
 type VolumeBackend_Vault[T handleOrOID] struct {
-	X      T      `json:"x"`
-	Secret Secret `json:"secret"`
+	X        T        `json:"x"`
+	Secret   Secret   `json:"secret"`
+	HashAlgo HashAlgo `json:"hash_algo"`
+}
+
+func (v *VolumeBackend_Vault[T]) Validate() error {
+	return v.HashAlgo.Validate()
 }
 
 type Secret [32]byte

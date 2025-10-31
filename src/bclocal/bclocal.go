@@ -31,6 +31,7 @@ import (
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/internal/volumes/consensusvol"
 	"blobcache.io/blobcache/src/internal/volumes/remotevol"
+	"blobcache.io/blobcache/src/internal/volumes/vaultvol"
 	"blobcache.io/blobcache/src/schema"
 )
 
@@ -743,9 +744,8 @@ func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcac
 			MaxSize:  volInfo.info.MaxSize,
 			HashAlgo: volInfo.info.HashAlgo,
 		}, nil
-	case *volumes.Vault:
-		// For RootAEAD, report the underlying volume's params
-		innerVol := vol.Inner
+	case *vaultvol.Vault:
+		innerVol := vol.Inner()
 		switch inner := innerVol.(type) {
 		case *localvol.Volume:
 			s.mu.RLock()
@@ -792,7 +792,7 @@ func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) e
 	if err := sch.ValidateChange(ctx, change); err != nil {
 		return err
 	}
-	return tx.backend.Save(ctx, root)
+	return setErrTxOID(tx.backend.Save(ctx, root), txh.OID)
 }
 
 func (s *Service) Commit(ctx context.Context, txh blobcache.Handle) error {
@@ -801,7 +801,7 @@ func (s *Service) Commit(ctx context.Context, txh blobcache.Handle) error {
 		return err
 	}
 	if err := tx.backend.Commit(ctx); err != nil {
-		return err
+		return setErrTxOID(err, txh.OID)
 	}
 	s.mu.Lock()
 	s.handles.Drop(txh)
@@ -828,7 +828,7 @@ func (s *Service) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) e
 	if err != nil {
 		return err
 	}
-	return txn.backend.Load(ctx, dst)
+	return setErrTxOID(txn.backend.Load(ctx, dst), txh.OID)
 }
 
 func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
@@ -836,7 +836,11 @@ func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte, o
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	return txn.backend.Post(ctx, data, opts)
+	cid, err := txn.backend.Post(ctx, data, opts)
+	if err != nil {
+		return blobcache.CID{}, setErrTxOID(err, txh.OID)
+	}
+	return cid, nil
 }
 
 func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
@@ -847,7 +851,7 @@ func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobc
 	if err != nil {
 		return err
 	}
-	return txn.backend.Exists(ctx, cids, dst)
+	return setErrTxOID(txn.backend.Exists(ctx, cids, dst), txh.OID)
 }
 
 func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
@@ -857,7 +861,7 @@ func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.C
 	}
 	n, err := txn.backend.Get(ctx, cid, buf, opts)
 	if err != nil {
-		return 0, err
+		return 0, setErrTxOID(err, txh.OID)
 	}
 	if !opts.SkipVerify {
 		cid2 := txn.backend.Hash(opts.Salt, buf[:n])
@@ -878,7 +882,7 @@ func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobc
 	if err != nil {
 		return err
 	}
-	return txn.backend.Delete(ctx, cids)
+	return setErrTxOID(txn.backend.Delete(ctx, cids), txh.OID)
 }
 
 func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out []bool) error {
@@ -903,7 +907,7 @@ func (s *Service) Visit(ctx context.Context, txh blobcache.Handle, cids []blobca
 	if err != nil {
 		return err
 	}
-	return txn.backend.Visit(ctx, cids)
+	return setErrTxOID(txn.backend.Visit(ctx, cids), txh.OID)
 }
 
 func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
@@ -914,7 +918,7 @@ func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []bl
 	if err != nil {
 		return err
 	}
-	return txn.backend.IsVisited(ctx, cids, dst)
+	return setErrTxOID(txn.backend.IsVisited(ctx, cids, dst), txh.OID)
 }
 
 func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) error {
@@ -926,7 +930,7 @@ func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcac
 	if err != nil {
 		return err
 	}
-	return txn.backend.Link(ctx, volTo.info.ID, mask&rights)
+	return setErrTxOID(txn.backend.Link(ctx, volTo.info.ID, mask&rights), txh.OID)
 }
 
 func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
@@ -934,7 +938,7 @@ func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []bl
 	if err != nil {
 		return err
 	}
-	return txn.backend.Unlink(ctx, targets)
+	return setErrTxOID(txn.backend.Unlink(ctx, targets), txh.OID)
 }
 
 func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
@@ -942,7 +946,7 @@ func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets 
 	if err != nil {
 		return err
 	}
-	return txn.backend.VisitLinks(ctx, targets)
+	return setErrTxOID(txn.backend.VisitLinks(ctx, targets), txh.OID)
 }
 
 // handleKey computes a map key from a handle.
@@ -993,7 +997,7 @@ func (s *Service) makeGit(ctx context.Context, backend blobcache.VolumeBackend_G
 	return nil, fmt.Errorf("git volumes are not yet supported")
 }
 
-func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*volumes.Vault, error) {
+func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*vaultvol.Vault, error) {
 	s.mu.RLock()
 	volstate, exists := s.volumes[backend.X]
 	s.mu.RUnlock()
@@ -1004,7 +1008,7 @@ func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend
 	if err != nil {
 		return nil, err
 	}
-	return volumes.NewVault(inner, backend.Secret), nil
+	return vaultvol.New(inner, backend.Secret, backend.HashAlgo.HashFunc()), nil
 }
 
 func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSpec) (blobcache.VolumeParams, error) {
@@ -1029,5 +1033,18 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		return innerVol.info.VolumeParams, nil
 	default:
 		panic(vspec)
+	}
+}
+
+func setErrTxOID(err error, oid blobcache.OID) error {
+	switch e := err.(type) {
+	case blobcache.ErrTxDone:
+		e.ID = oid
+		return e
+	case blobcache.ErrTxReadOnly:
+		e.Tx = oid
+		return e
+	default:
+		return err
 	}
 }

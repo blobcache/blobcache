@@ -3,25 +3,24 @@ package tries
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 
-	"go.brendoncarroll.net/state/cadata"
+	"blobcache.io/blobcache/src/schema"
 )
 
 type Iterator struct {
 	op      *Machine
-	s       cadata.Store
+	s       schema.RO
 	root    Root
 	span    Span
 	lastKey []byte
 }
 
-func (o *Machine) NewIterator(s cadata.Store, root Root, span Span) *Iterator {
+func (o *Machine) NewIterator(s schema.RO, root Root, span Span) *Iterator {
 	return &Iterator{op: o, s: s, root: root, span: span}
 }
 
-func (it *Iterator) Next(ctx context.Context) (*Entry, error) {
+func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
 	var gteq []byte
 	if it.lastKey != nil {
 		gteq = append(it.lastKey, 0x00)
@@ -30,17 +29,20 @@ func (it *Iterator) Next(ctx context.Context) (*Entry, error) {
 	}
 	ent, err := it.op.MinEntry(ctx, it.s, it.root, gteq)
 	if err != nil {
-		if errors.Is(err, ErrNotExist) {
+		if IsErrNotFound(err) {
 			err = io.EOF
 		}
-		return nil, err
+		return err
 	}
+
 	it.lastKey = append(it.lastKey[:0], ent.Key...)
-	return ent, nil
+	dst.Key = append(dst.Key[:0], ent.Key...)
+	dst.Value = append(dst.Value[:0], ent.Value...)
+	return nil
 }
 
 // MinEntry returns the first entry >= gteq
-func (o *Machine) MinEntry(ctx context.Context, s cadata.Store, root Root, gteq []byte) (*Entry, error) {
+func (o *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []byte) (*Entry, error) {
 	ents, err := o.getNode(ctx, s, root, false)
 	if err != nil {
 		return nil, err
@@ -73,10 +75,5 @@ func (o *Machine) MinEntry(ctx context.Context, s cadata.Store, root Root, gteq 
 			}
 		}
 	}
-	return nil, ErrNotExist
-}
-
-func prefixOverlaps(prefix, first, last []byte) bool {
-	return bytes.Compare(first, prefix) <= 0 &&
-		(last == nil || bytes.Compare(last, prefix) > 0)
+	return nil, ErrNotFound{Key: gteq}
 }

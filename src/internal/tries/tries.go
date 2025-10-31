@@ -2,19 +2,25 @@ package tries
 
 import (
 	"context"
+	"encoding/json"
 
+	"blobcache.io/blobcache/src/schema"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state"
-	"go.brendoncarroll.net/state/cadata"
 	"google.golang.org/protobuf/proto"
 )
 
 var (
-	ErrNotExist = errors.Errorf("no entry for key")
-
 	ErrCannotCollapse = errors.Errorf("cannot collapse parent into child")
 	ErrCannotSplit    = errors.Errorf("cannot split, < 2 entries")
 )
+
+// ErrNotFound is returned when a key cannot be found.
+type ErrNotFound = state.ErrNotFound[[]byte]
+
+func IsErrNotFound(err error) bool {
+	return state.IsErrNotFound[[]byte](err)
+}
 
 type Span = state.ByteSpan
 
@@ -23,6 +29,22 @@ type Root struct {
 	IsParent bool   `json:"is_parent"`
 	Count    uint64 `json:"count"`
 	Prefix   []byte `json:"prefix"`
+}
+
+func ParseRoot(x []byte) (*Root, error) {
+	var root Root
+	if err := json.Unmarshal(x, &root); err != nil {
+		return nil, err
+	}
+	return &root, nil
+}
+
+func (r *Root) Marshal() []byte {
+	data, err := json.Marshal(r)
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
 
 func rootFromEntry(ent *Entry) (*Root, error) {
@@ -60,7 +82,7 @@ func entryFromRoot(x Root) *Entry {
 	}
 }
 
-func (o *Machine) Validate(ctx context.Context, s cadata.Store, x Root) error {
+func (o *Machine) Validate(ctx context.Context, s schema.RO, x Root) error {
 	// getEntries includes validation
 	ents, err := o.getNode(ctx, s, x, false)
 	if err != nil {

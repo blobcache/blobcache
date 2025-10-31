@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"sort"
+	"iter"
+	"slices"
 
+	"blobcache.io/blobcache/src/schema"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state/cadata"
@@ -13,7 +15,7 @@ import (
 
 // getNode returns node at x.
 // all the entries will be in compressed form.
-func (o *Machine) getNode(ctx context.Context, s cadata.Getter, x Root, expandKeys bool) ([]*Entry, error) {
+func (o *Machine) getNode(ctx context.Context, s schema.RO, x Root, expandKeys bool) ([]*Entry, error) {
 	n := &Node{}
 	if err := o.getF(ctx, s, x.Ref, func(data []byte) error {
 		return proto.Unmarshal(data, n)
@@ -35,7 +37,7 @@ func (o *Machine) getNode(ctx context.Context, s cadata.Getter, x Root, expandKe
 	return ys, nil
 }
 
-func (o *Machine) getParent(ctx context.Context, s cadata.Getter, x Root, expandKeys bool) (*Entry, *[256]Root, error) {
+func (o *Machine) getParent(ctx context.Context, s schema.RO, x Root, expandKeys bool) (*Entry, *[256]Root, error) {
 	ents, err := o.getNode(ctx, s, x, false)
 	if err != nil {
 		return nil, nil, err
@@ -63,7 +65,7 @@ func (o *Machine) getParent(ctx context.Context, s cadata.Getter, x Root, expand
 }
 
 // postNode creates a new node with ents, ents will be split if necessary
-func (o *Machine) postNode(ctx context.Context, s cadata.Poster, ents []*Entry) (*Root, error) {
+func (o *Machine) postNode(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
 	r, err := o.postLeaf(ctx, s, ents)
 	if !errors.Is(err, cadata.ErrTooLarge) {
 		return r, err
@@ -75,9 +77,12 @@ func (o *Machine) postNode(ctx context.Context, s cadata.Poster, ents []*Entry) 
 	return o.postParent(ctx, s, roots, e)
 }
 
-func (o *Machine) postLeaf(ctx context.Context, s cadata.Poster, ents []*Entry) (*Root, error) {
-	sortEntries(ents)
-	ents = dedup(ents)
+func (o *Machine) postLeaf(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
+	if !slices.IsSortedFunc(ents, func(a, b *Entry) int {
+		return bytes.Compare(a.Key, b.Key)
+	}) {
+		return nil, errors.Errorf("entries must be sorted")
+	}
 	prefix, ents := compressEntries(ents)
 	data, err := proto.Marshal(&Node{Entries: ents})
 	if err != nil {
@@ -98,7 +103,7 @@ func (o *Machine) postLeaf(ctx context.Context, s cadata.Poster, ents []*Entry) 
 	}, nil
 }
 
-func (o *Machine) postParent(ctx context.Context, s cadata.Poster, children []Root, ent *Entry) (*Root, error) {
+func (o *Machine) postParent(ctx context.Context, s schema.WO, children []Root, ent *Entry) (*Root, error) {
 	var count uint64
 	ents := make([]*Entry, 0, 257)
 	if ent != nil {
@@ -119,11 +124,11 @@ func (o *Machine) postParent(ctx context.Context, s cadata.Poster, children []Ro
 	return r, nil
 }
 
-func (o *Machine) split(ctx context.Context, s cadata.Poster, ents []*Entry) (*Entry, []Root, error) {
+func (o *Machine) split(ctx context.Context, s schema.WO, ents []*Entry) (*Entry, []Root, error) {
 	if len(ents) < 2 {
 		return nil, nil, ErrCannotSplit
 	}
-	e, groups := groupEntries(ents)
+	e, groups := groupEntries(slices.Values(ents))
 	var children []Root
 	for _, childEnts := range groups {
 		childRoot, err := o.postNode(ctx, s, childEnts)
@@ -208,20 +213,26 @@ func validateEntries(isParent bool, ents []*Entry) error {
 	return nil
 }
 
-func sortEntries(ents []*Entry) {
-	sort.SliceStable(ents, func(i, j int) bool {
-		return bytes.Compare(ents[i].Key, ents[j].Key) < 0
-	})
-}
-
-func groupEntries(ents []*Entry) (e *Entry, groups [256][]*Entry) {
-	for _, ent := range ents {
+func groupEntries(ents iter.Seq[*Entry]) (local *Entry, groups [256][]*Entry) {
+	for ent := range ents {
 		if len(ent.Key) == 0 {
-			e = ent
+			local = ent
 			continue
 		}
 		b := ent.Key[0]
 		groups[b] = append(groups[b], ent)
 	}
-	return e, groups
+	return local, groups
+}
+
+func groupOps(ops iter.Seq[Op]) (local *Op, groups [256][]Op) {
+	for op := range ops {
+		if len(op.Key) == 0 {
+			local = &op
+			continue
+		}
+		b := op.Key[0]
+		groups[b] = append(groups[b], op)
+	}
+	return local, groups
 }
