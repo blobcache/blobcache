@@ -228,7 +228,7 @@ func (v *Tx) Commit(ctx context.Context) error {
 		}
 		root = r
 	}
-	rootCtext := v.vol.aeadSeal(nil, root.Marshal())
+	rootCtext := v.vol.aeadSeal(nil, root.Marshal(nil))
 	if err := v.inner.Save(ctx, rootCtext); err != nil {
 		return err
 	}

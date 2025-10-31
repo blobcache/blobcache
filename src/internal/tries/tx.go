@@ -15,7 +15,7 @@ type Tx struct {
 	prevRoot Root
 
 	// changes to be applied to the prevRoot
-	// if edits[k] == nil, then the key is being deleted.
+	// if edits[k].Value == nil, then the key is being deleted.
 	edits map[string]Op
 }
 

@@ -27,7 +27,7 @@ func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) er
 	if !w.ShouldWalk(root) {
 		return nil
 	}
-	ents, err := o.getNode(ctx, s, root, true)
+	ents, err := o.getNode(ctx, s, Index(root), true)
 	if err != nil {
 		return err
 	}
@@ -39,12 +39,12 @@ func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) er
 					return err
 				}
 			} else {
-				root2, err := rootFromEntry(ent)
-				if err != nil {
+				var idx Index
+				if err := idx.FromEntry(*ent); err != nil {
 					return err
 				}
 				eg.Go(func() error {
-					return o.Walk(ctx, s, *root2, w)
+					return o.Walk(ctx, s, Root(idx), w)
 				})
 			}
 		}

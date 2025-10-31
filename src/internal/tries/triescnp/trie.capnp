@@ -15,6 +15,7 @@ struct Node {
 
 struct Index {
     ref @0 :Data;
-    count @1 :UInt64;
-    isParent @2 :Bool;
+    prefix @1 :Data;
+    count @2 :UInt64;
+    isParent @3 :Bool;
 }

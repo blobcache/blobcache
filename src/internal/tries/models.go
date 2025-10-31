@@ -121,6 +121,8 @@ func (n *Node) Unmarshal(data []byte) error {
 type Index struct {
 	// Ref is the reference to the node.
 	Ref Ref
+	// Prefix is the common prefix of all the entries in the referenced node.
+	Prefix []byte
 	// Count is the cumulative number of entries transitively reachable from this node.
 	Count uint64
 	// IsParent is true if the node at Ref is a parent node.
@@ -128,24 +130,26 @@ type Index struct {
 }
 
 // Marshal serializes an Index using Cap'n Proto
-func (idx *Index) Marshal() ([]byte, error) {
+func (idx *Index) Marshal(out []byte) []byte {
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-
 	capnpIdx, err := triescnp.NewRootIndex(seg)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-
 	if err := capnpIdx.SetRef(marshalRef(idx.Ref)); err != nil {
-		return nil, err
+		panic(err)
 	}
-	capnpIdx.SetIsParent(idx.IsParent)
+	capnpIdx.SetPrefix(idx.Prefix)
 	capnpIdx.SetCount(idx.Count)
-
-	return msg.Marshal()
+	capnpIdx.SetIsParent(idx.IsParent)
+	data, err := msg.Marshal()
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
 }
 
 // UnmarshalIndex deserializes an Index using Cap'n Proto
@@ -169,5 +173,22 @@ func (idx *Index) Unmarshal(data []byte) error {
 	idx.Ref = *ref2
 	idx.IsParent = capnpIdx.IsParent()
 	idx.Count = capnpIdx.Count()
+	return nil
+}
+
+func (idx *Index) ToEntry() *Entry {
+	idx2 := *idx
+	idx2.Prefix = nil
+	return &Entry{
+		Key:   idx2.Prefix,
+		Value: idx2.Marshal(nil),
+	}
+}
+
+func (idx *Index) FromEntry(ent Entry) error {
+	if err := idx.Unmarshal(ent.Value); err != nil {
+		return err
+	}
+	idx.Prefix = ent.Key
 	return nil
 }

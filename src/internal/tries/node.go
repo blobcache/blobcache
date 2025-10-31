@@ -14,7 +14,7 @@ import (
 
 // getNode returns node at x.
 // all the entries will be in compressed form.
-func (o *Machine) getNode(ctx context.Context, s schema.RO, x Root, expandKeys bool) ([]*Entry, error) {
+func (o *Machine) getNode(ctx context.Context, s schema.RO, x Index, expandKeys bool) ([]*Entry, error) {
 	var n Node
 	if err := o.getF(ctx, s, x.Ref, func(data []byte) error {
 		return n.Unmarshal(data)
@@ -36,13 +36,13 @@ func (o *Machine) getNode(ctx context.Context, s schema.RO, x Root, expandKeys b
 	return ys, nil
 }
 
-func (o *Machine) getParent(ctx context.Context, s schema.RO, x Root, expandKeys bool) (*Entry, *[256]Root, error) {
+func (o *Machine) getParent(ctx context.Context, s schema.RO, x Index, expandKeys bool) (*Entry, *[256]Index, error) {
 	ents, err := o.getNode(ctx, s, x, false)
 	if err != nil {
 		return nil, nil, err
 	}
 	var e *Entry
-	children := new([256]Root)
+	children := new([256]Index)
 	for _, ent := range ents {
 		if len(ent.Key) == 0 {
 			if expandKeys {
@@ -54,17 +54,17 @@ func (o *Machine) getParent(ctx context.Context, s schema.RO, x Root, expandKeys
 		if expandKeys {
 			ent = expandEntry(x.Prefix, ent)
 		}
-		root, err := rootFromEntry(ent)
-		if err != nil {
+		var idx Index
+		if err := idx.FromEntry(*ent); err != nil {
 			return nil, nil, err
 		}
-		children[root.Prefix[0]] = *root
+		children[idx.Prefix[0]] = idx
 	}
 	return e, children, nil
 }
 
 // postNode creates a new node with ents, ents will be split if necessary
-func (o *Machine) postNode(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
+func (o *Machine) postNode(ctx context.Context, s schema.WO, ents []*Entry) (*Index, error) {
 	r, err := o.postLeaf(ctx, s, ents)
 	if !errors.Is(err, cadata.ErrTooLarge) {
 		return r, err
@@ -76,7 +76,7 @@ func (o *Machine) postNode(ctx context.Context, s schema.WO, ents []*Entry) (*Ro
 	return o.postParent(ctx, s, roots, e)
 }
 
-func (o *Machine) postLeaf(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
+func (o *Machine) postLeaf(ctx context.Context, s schema.WO, ents []*Entry) (*Index, error) {
 	if !slices.IsSortedFunc(ents, func(a, b *Entry) int {
 		return bytes.Compare(a.Key, b.Key)
 	}) {
@@ -98,7 +98,7 @@ func (o *Machine) postLeaf(ctx context.Context, s schema.WO, ents []*Entry) (*Ro
 	if err != nil {
 		return nil, err
 	}
-	return &Root{
+	return &Index{
 		Ref:      *ref,
 		Prefix:   prefix,
 		IsParent: false,
@@ -106,16 +106,16 @@ func (o *Machine) postLeaf(ctx context.Context, s schema.WO, ents []*Entry) (*Ro
 	}, nil
 }
 
-func (o *Machine) postParent(ctx context.Context, s schema.WO, children []Root, ent *Entry) (*Root, error) {
+func (o *Machine) postParent(ctx context.Context, s schema.WO, children []Index, ent *Entry) (*Index, error) {
 	var count uint64
 	ents := make([]*Entry, 0, 257)
 	if ent != nil {
 		ents = append(ents, ent)
 		count++
 	}
-	for _, root := range children {
-		count += root.Count
-		ent := entryFromRoot(root)
+	for _, idx := range children {
+		count += idx.Count
+		ent := idx.ToEntry()
 		ents = append(ents, ent)
 	}
 	r, err := o.postLeaf(ctx, s, ents)
@@ -127,12 +127,12 @@ func (o *Machine) postParent(ctx context.Context, s schema.WO, children []Root, 
 	return r, nil
 }
 
-func (o *Machine) split(ctx context.Context, s schema.WO, ents []*Entry) (*Entry, []Root, error) {
+func (o *Machine) split(ctx context.Context, s schema.WO, ents []*Entry) (*Entry, []Index, error) {
 	if len(ents) < 2 {
 		return nil, nil, ErrCannotSplit
 	}
 	e, groups := groupEntries(slices.Values(ents))
-	var children []Root
+	var children []Index
 	for _, childEnts := range groups {
 		childRoot, err := o.postNode(ctx, s, childEnts)
 		if err != nil {
