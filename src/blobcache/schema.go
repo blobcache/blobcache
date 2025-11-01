@@ -17,7 +17,7 @@ type SchemaSpec struct {
 	// Name is the name of the schema.
 	Name SchemaName `json:"name"`
 	// Params are the parameters for the schema.
-	Params json.RawMessage `json:"params"`
+	Params json.RawMessage `json:"params,omitempty"`
 }
 
 func (s SchemaSpec) Marshal(out []byte) []byte {

@@ -21,7 +21,7 @@ import (
 
 var glfsCmd = star.NewDir(star.Metadata{
 	Short: "Git Like Filesystem",
-}, map[star.Symbol]star.Command{
+}, map[string]star.Command{
 	"init":   glfsInitCmd,
 	"look":   glfsLookCmd,
 	"import": glfsImportCmd,
@@ -30,7 +30,7 @@ var glfsCmd = star.NewDir(star.Metadata{
 })
 
 var glfsInitCmd = star.Command{
-	Flags: []star.Flag{},
+	Flags: map[string]star.Flag{},
 	Pos:   []star.Positional{volumeNameParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
@@ -73,7 +73,7 @@ var glfsInitCmd = star.Command{
 }
 
 var glfsLookCmd = star.Command{
-	Flags: []star.Flag{},
+	Flags: map[string]star.Flag{},
 	Pos:   []star.Positional{volumeNameParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
@@ -125,7 +125,7 @@ var glfsImportCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "import data from the local filesystem into a GLFS volume",
 	},
-	Flags: []star.Flag{},
+	Flags: map[string]star.Flag{},
 	Pos:   []star.Positional{volumeNameParam, dstPathParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
@@ -167,7 +167,7 @@ var glfsReadCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "Read a file from a GLFS volume and write it to stdout",
 	},
-	Flags: []star.Flag{},
+	Flags: map[string]star.Flag{},
 	Pos:   []star.Positional{volumeNameParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
@@ -202,7 +202,7 @@ var glfsSyncCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "sync efficiently sets the contents of the dst volume to the content of the src volume",
 	},
-	Flags: []star.Flag{},
+	Flags: map[string]star.Flag{},
 	Pos:   []star.Positional{srcVolumeParam, dstVolumeParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
@@ -225,28 +225,33 @@ var glfsSyncCmd = star.Command{
 }
 
 var dstPathParam = star.Required[string]{
-	Name:  "dst",
-	Parse: star.ParseString,
+	ID:       "dst",
+	ShortDoc: "the destination path",
+	Parse:    star.ParseString,
 }
 
 var srcPathParam = star.Required[string]{
-	Name:  "src",
-	Parse: star.ParseString,
+	ID:       "src",
+	ShortDoc: "the source path",
+	Parse:    star.ParseString,
 }
 
 var volumeNameParam = star.Required[string]{
-	Name:  "volume",
-	Parse: star.ParseString,
+	ID:       "volume",
+	ShortDoc: "the name of a volume",
+	Parse:    star.ParseString,
 }
 
 var srcVolumeParam = star.Required[string]{
-	Name:  "src",
-	Parse: star.ParseString,
+	ID:       "src",
+	ShortDoc: "the source volume",
+	Parse:    star.ParseString,
 }
 
 var dstVolumeParam = star.Required[string]{
-	Name:  "dst",
-	Parse: star.ParseString,
+	ID:       "dst",
+	ShortDoc: "the destination volume",
+	Parse:    star.ParseString,
 }
 
 func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, fn func(ag *glfs.Machine, src schema.RO, root glfs.Ref) error) error {

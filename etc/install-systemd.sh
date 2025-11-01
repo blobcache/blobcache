@@ -4,7 +4,7 @@ set -xeuo pipefail
 # Blobcache systemd user installer script
 # This script installs the blobcache binary and systemd user service
 
-BINARY_PATH="./build/out/blobcache_amd64-linux"
+BINARY_PATH="./build/out/blobcache"
 SERVICE_FILE="./etc/blobcache.service"
 
 # Check if the service is currently running

@@ -13,8 +13,12 @@ var mkVolLocalCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "create a new local volume",
 	},
-	Flags: []star.Flag{hostParam, hashAlgoParam, maxSizeParam},
-	Pos:   []star.Positional{},
+	Flags: map[string]star.Flag{
+		"host":     hostParam,
+		"hash":     hashAlgoParam,
+		"max-size": maxSizeParam,
+	},
+	Pos: []star.Positional{},
 	F: func(c star.Context) error {
 		s, err := openService(c)
 		if err != nil {
@@ -42,8 +46,7 @@ var mkVolRemoteCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "create a new remote volume",
 	},
-	Flags: []star.Flag{},
-	Pos:   []star.Positional{endpointParam, volOIDParam},
+	Pos: []star.Positional{endpointParam, volOIDParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
@@ -68,8 +71,7 @@ var mkVolVaultCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "create a new vault volume",
 	},
-	Flags: []star.Flag{},
-	Pos:   []star.Positional{volHParam},
+	Pos: []star.Positional{volHParam},
 	F: func(c star.Context) error {
 		return fmt.Errorf("not yet implemented")
 	},
@@ -79,8 +81,7 @@ var mkVolGitCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "create a new git volume",
 	},
-	Flags: []star.Flag{},
-	Pos:   []star.Positional{volHParam},
+	Pos: []star.Positional{volHParam},
 	F: func(c star.Context) error {
 		return fmt.Errorf("not yet implemented")
 	},
@@ -112,7 +113,9 @@ var ivolCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(c.StdOut).Encode(vi)
+		enc := json.NewEncoder(c.StdOut)
+		enc.SetIndent("", "  ")
+		return enc.Encode(vi)
 	},
 }
 
@@ -182,14 +185,16 @@ var openFromCmd = star.Command{
 }
 
 var oidParam = star.Required[blobcache.OID]{
-	Name:  "oid",
-	Parse: blobcache.ParseOID,
+	ID:       "oid",
+	ShortDoc: "an object identifier (OID)",
+	Parse:    blobcache.ParseOID,
 }
 
 // hostParam is for rerouting CreateVolume calls to a remote Node.
 // It is a pointer so that the zero value works out to nil.
 var hostParam = star.Optional[*blobcache.Endpoint]{
-	Name: "host",
+	ID:       "host",
+	ShortDoc: "the endpoint of the node to perform the operation on",
 	Parse: func(s string) (*blobcache.Endpoint, error) {
 		ep, err := blobcache.ParseEndpoint(s)
 		return &ep, err
@@ -197,18 +202,21 @@ var hostParam = star.Optional[*blobcache.Endpoint]{
 }
 
 var endpointParam = star.Required[blobcache.Endpoint]{
-	Name:  "endpoint",
-	Parse: blobcache.ParseEndpoint,
+	ID:       "endpoint",
+	ShortDoc: "an endpoint for connecting to another node",
+	Parse:    blobcache.ParseEndpoint,
 }
 
 var volOIDParam = star.Required[blobcache.OID]{
-	Name:  "volid",
-	Parse: blobcache.ParseOID,
+	ID:       "volid",
+	ShortDoc: "the OID of a volume",
+	Parse:    blobcache.ParseOID,
 }
 
 // maskParam is an ActionSet encoded as a hex string.
 var maskParam = star.Optional[blobcache.ActionSet]{
-	Name: "mask",
+	ID:       "mask",
+	ShortDoc: "a bitwise mask to AND with an ActionSet",
 	Parse: func(s string) (blobcache.ActionSet, error) {
 		n, err := strconv.ParseUint(s, 16, 64)
 		if err != nil {
@@ -219,7 +227,8 @@ var maskParam = star.Optional[blobcache.ActionSet]{
 }
 
 var hashAlgoParam = star.Optional[blobcache.HashAlgo]{
-	Name: "hash",
+	ID:       "hash",
+	ShortDoc: "the hash algorithm to use",
 	Parse: func(s string) (blobcache.HashAlgo, error) {
 		ha := blobcache.HashAlgo(s)
 		if err := ha.Validate(); err != nil {
@@ -230,7 +239,8 @@ var hashAlgoParam = star.Optional[blobcache.HashAlgo]{
 }
 
 var maxSizeParam = star.Optional[int64]{
-	Name: "max-size",
+	ID:       "max-size",
+	ShortDoc: "the maximum size of blobs in the volume",
 	Parse: func(s string) (int64, error) {
 		n, err := strconv.ParseInt(s, 10, 64)
 		if err != nil {

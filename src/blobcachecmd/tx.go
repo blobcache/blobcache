@@ -47,7 +47,7 @@ var beginTxCmd = star.Command{
 
 var txCmd = star.NewDir(star.Metadata{
 	Short: "perform operations on a transaction",
-}, map[star.Symbol]star.Command{
+}, map[string]star.Command{
 
 	"abort":   txAbortCmd,
 	"commit":  txCommitCmd,
@@ -369,33 +369,39 @@ func printOK(c star.Context, method string) {
 }
 
 var volHParam = star.Required[blobcache.Handle]{
-	Name:  "volh",
-	Parse: blobcache.ParseHandle,
+	ID:       "volh",
+	ShortDoc: "a volume handle",
+	Parse:    blobcache.ParseHandle,
 }
 
 var txHParam = star.Required[blobcache.Handle]{
-	Name:  "txh",
-	Parse: blobcache.ParseHandle,
+	ID:       "txh",
+	ShortDoc: "a transaction handle",
+	Parse:    blobcache.ParseHandle,
 }
 
 var cidParam = star.Required[blobcache.CID]{
-	Name:  "cid",
-	Parse: blobcache.ParseCID,
+	ID:       "cid",
+	ShortDoc: "a content identifier",
+	Parse:    blobcache.ParseCID,
 }
 
 var cidsParam = star.Repeated[blobcache.CID]{
-	Name:  "cid",
-	Parse: blobcache.ParseCID,
+	ID:       "cid",
+	ShortDoc: "a list of content identifiers",
+	Parse:    blobcache.ParseCID,
 }
 
 var subvolHParam = star.Required[blobcache.Handle]{
-	Name:  "subvol",
-	Parse: blobcache.ParseHandle,
+	ID:       "subvol",
+	ShortDoc: "a handle to a volume",
+	Parse:    blobcache.ParseHandle,
 }
 
 var oidsParam = star.Repeated[blobcache.OID]{
-	Name:  "oid",
-	Parse: blobcache.ParseOID,
+	ID:       "oid",
+	ShortDoc: "an object identifier (OID)",
+	Parse:    blobcache.ParseOID,
 }
 
 const checkmark = "✓"

@@ -20,11 +20,15 @@ var daemonCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon",
 	},
-	Flags: []star.Flag{stateDirParam, serveAPIParam, listenParam},
+	Flags: map[string]star.Flag{
+		"state":     stateDirParam,
+		"serve-api": serveAPIParam,
+		"net":       netParam,
+	},
 	F: func(c star.Context) error {
 		stateDir := stateDirParam.Load(c)
 		serveAPI, _ := serveAPIParam.LoadOpt(c)
-		pc, _ := listenParam.LoadOpt(c)
+		pc, _ := netParam.LoadOpt(c)
 		d := blobcached.Daemon{StateDir: stateDir}
 		return d.Run(c, pc, serveAPI)
 	},
@@ -34,14 +38,17 @@ var daemonEphemeralCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon without persistent state",
 	},
-	Flags: []star.Flag{serveAPIParam, listenParam},
+	Flags: map[string]star.Flag{
+		"serve-api": serveAPIParam,
+		"net":       netParam,
+	},
 	F: func(ctx star.Context) error {
 		stateDir, err := os.MkdirTemp("", "blobcache-ephemeral")
 		if err != nil {
 			return err
 		}
 		defer os.RemoveAll(stateDir)
-		pc, _ := listenParam.LoadOpt(ctx)
+		pc, _ := netParam.LoadOpt(ctx)
 		svc, err := bclocal.New(bclocal.Env{
 			Background: ctx,
 			StateDir:   stateDir,
@@ -68,12 +75,12 @@ var daemonEphemeralCmd = star.Command{
 }
 
 var stateDirParam = star.Required[string]{
-	Name:  "state",
+	ID:    "state",
 	Parse: star.ParseString,
 }
 
 var serveAPIParam = star.Optional[net.Listener]{
-	Name: "serve-api",
+	ID: "serve-api",
 	Parse: func(s string) (net.Listener, error) {
 		parts := strings.Split(s, "://")
 		if len(parts) != 2 {
@@ -83,8 +90,8 @@ var serveAPIParam = star.Optional[net.Listener]{
 	},
 }
 
-var listenParam = star.Optional[net.PacketConn]{
-	Name: "listen",
+var netParam = star.Optional[net.PacketConn]{
+	ID: "net",
 	Parse: func(s string) (net.PacketConn, error) {
 		ap, err := netip.ParseAddrPort(s)
 		if err != nil {

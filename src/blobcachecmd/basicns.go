@@ -10,7 +10,7 @@ var basicnsCmd = star.NewDir(
 	star.Metadata{
 		Short: "basicns is a simple namespace implementation",
 	},
-	map[star.Symbol]star.Command{
+	map[string]star.Command{
 		"createat": basicnsCreateAtCmd,
 		"ls":       basicnsLsCmd,
 	},
@@ -18,7 +18,7 @@ var basicnsCmd = star.NewDir(
 
 var basicnsCreateAtCmd = star.Command{
 	Pos:   []star.Positional{volNameParam},
-	Flags: []star.Flag{},
+	Flags: map[string]star.Flag{},
 	F: func(c star.Context) error {
 		s, err := openService(c)
 		if err != nil {
@@ -41,7 +41,7 @@ var basicnsLsCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "lists volumes",
 	},
-	Flags: []star.Flag{},
+	Flags: map[string]star.Flag{},
 	F: func(c star.Context) error {
 		s, err := openService(c)
 		if err != nil {
@@ -61,6 +61,6 @@ var basicnsLsCmd = star.Command{
 }
 
 var volNameParam = star.Required[string]{
-	Name:  "name",
+	ID:    "name",
 	Parse: star.ParseString,
 }

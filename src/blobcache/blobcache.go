@@ -43,6 +43,15 @@ func (o OID) Compare(other OID) int {
 	return bytes.Compare(o[:], other[:])
 }
 
+func (o OID) MarshalText() ([]byte, error) {
+	return bytes.ToUpper(hex.AppendEncode(nil, o[:])), nil
+}
+
+func (o *OID) UnmarshalText(data []byte) error {
+	_, err := hex.Decode(o[:], data)
+	return err
+}
+
 func (o OID) Marshal(out []byte) []byte {
 	return append(out, o[:]...)
 }
@@ -79,7 +88,7 @@ func (o OID) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface.
-func (o *OID) Scan(src interface{}) error {
+func (o *OID) Scan(src any) error {
 	if src == nil {
 		return fmt.Errorf("OID: cannot scan nil src")
 	}

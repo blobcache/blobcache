@@ -33,7 +33,7 @@ func Root() star.Command {
 var rootCmd = star.NewDir(
 	star.Metadata{
 		Short: "blobcache is content-addressable storage",
-	}, map[star.Symbol]star.Command{
+	}, map[string]star.Command{
 		"endpoint":         endpointCmd,
 		"daemon":           daemonCmd,
 		"daemon-ephemeral": daemonEphemeralCmd,

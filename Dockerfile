@@ -8,4 +8,4 @@ RUN mkdir /state
 
 EXPOSE 6025/udp
 
-CMD ["/app/blobcache", "daemon", "--state", "/state", "--listen", "0.0.0.0:6025"]
+CMD ["/app/blobcache", "daemon", "--state", "/state", "--net", "0.0.0.0:6025"]

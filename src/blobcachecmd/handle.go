@@ -29,8 +29,10 @@ var shareCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "shares a handle",
 	},
-	Pos:   []star.Positional{volHParam, peerParam},
-	Flags: []star.Flag{maskParam},
+	Pos: []star.Positional{volHParam, peerParam},
+	Flags: map[string]star.Flag{
+		"mask": maskParam,
+	},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
@@ -51,7 +53,8 @@ var shareCmd = star.Command{
 }
 
 var peerParam = star.Required[blobcache.PeerID]{
-	Name: "peer",
+	ID:       "peer",
+	ShortDoc: "a PeerID",
 	Parse: func(s string) (blobcache.PeerID, error) {
 		return inet256.ParseAddrBase64([]byte(s))
 	},
