@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"go.brendoncarroll.net/exp/slices2"
 	"go.inet256.org/inet256/src/inet256"
 	"golang.org/x/exp/constraints"
 )
@@ -59,19 +61,20 @@ type Action string
 func (a Action) String() string { return string(a) }
 
 const (
-	Action_LOAD      Action = "LOAD"
-	Action_SAVE      Action = "SAVE"
-	Action_POST      Action = "POST"
-	Action_GET       Action = "GET"
-	Action_EXISTS    Action = "EXISTS"
-	Action_DELETE    Action = "DELETE"
-	Action_COPY_FROM Action = "COPY_FROM"
-	Action_COPY_TO   Action = "COPY_TO"
-	Action_LINK_FROM Action = "LINK_FROM"
-	Action_LINK_TO   Action = "LINK_TO"
-	Action_AWAIT     Action = "AWAIT"
-	Action_CLONE     Action = "CLONE"
-	Action_CREATE    Action = "CREATE"
+	Action_LOAD        Action = "LOAD"
+	Action_SAVE        Action = "SAVE"
+	Action_POST        Action = "POST"
+	Action_GET         Action = "GET"
+	Action_EXISTS      Action = "EXISTS"
+	Action_DELETE      Action = "DELETE"
+	Action_COPY_FROM   Action = "COPY_FROM"
+	Action_COPY_TO     Action = "COPY_TO"
+	Action_LINK_FROM   Action = "LINK_FROM"
+	Action_LINK_TO     Action = "LINK_TO"
+	Action_UNLINK_FROM Action = "UNLINK_FROM"
+	Action_AWAIT       Action = "AWAIT"
+	Action_CLONE       Action = "CLONE"
+	Action_CREATE      Action = "CREATE"
 )
 
 func (a Action) ToSet() blobcache.ActionSet {
@@ -106,6 +109,25 @@ func (a Action) ToSet() blobcache.ActionSet {
 	return 0
 }
 
+func AllActions() []Action {
+	return []Action{
+		Action_LOAD,
+		Action_SAVE,
+		Action_POST,
+		Action_EXISTS,
+		Action_DELETE,
+		Action_COPY_FROM,
+		Action_COPY_TO,
+		Action_LINK_FROM,
+		Action_LINK_TO,
+		Action_UNLINK_FROM,
+
+		Action_AWAIT,
+		Action_CLONE,
+		Action_CREATE,
+	}
+}
+
 func ParseAction(x []byte) (Action, error) {
 	switch string(x) {
 	case "LOAD":
@@ -128,6 +150,8 @@ func ParseAction(x []byte) (Action, error) {
 		return Action_LINK_FROM, nil
 	case "LINK_TO":
 		return Action_LINK_TO, nil
+	case "UNLINK_FROM":
+		return Action_UNLINK_FROM, nil
 	case "AWAIT":
 		return Action_AWAIT, nil
 	case "CLONE":
@@ -139,8 +163,17 @@ func ParseAction(x []byte) (Action, error) {
 }
 
 func DefaultActionsFile() (ret string) {
-	ret += "all LOAD SAVE POST GET EXISTS DELETE COPY_FROM COPY_TO LINK_FROM LINK_TO AWAIT CLONE CREATE\n"
-	ret += "look LOAD GET EXISTS COPY_FROM LINK_TO AWAIT\n"
+	appendLine := func(out string, group string, as ...Action) string {
+		out += group +
+			" " +
+			strings.Join(slices2.Map(as, Action.String), " ") +
+			"\n"
+		return out
+	}
+	ret += appendLine(ret, "all", AllActions()...)
+	ret += appendLine(ret, "look",
+		Action_LOAD, Action_GET, Action_COPY_FROM, Action_LINK_TO, Action_AWAIT,
+	)
 	ret += "touch @look SAVE POST DELETE COPY_TO\n"
 	return ret
 }

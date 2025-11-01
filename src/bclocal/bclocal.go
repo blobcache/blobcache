@@ -316,19 +316,6 @@ func (s *Service) getSchema(spec blobcache.SchemaSpec) (schema.Schema, error) {
 	return schema(spec.Params, s.getSchema)
 }
 
-// getContainer looks up a container schema by name.
-func (s *Service) getContainer(spec blobcache.SchemaSpec) (schema.Container, error) {
-	sch, err := s.getSchema(spec)
-	if err != nil {
-		return nil, err
-	}
-	container, ok := sch.(schema.Container)
-	if !ok {
-		return nil, fmt.Errorf("found schema %s, but it is not a container", spec.Name)
-	}
-	return container, nil
-}
-
 func (s *Service) rootVolume() volumes.Volume {
 	lv, err := s.volSys.local.Up(context.TODO(), localvol.Params{
 		ID:     0,
@@ -440,7 +427,7 @@ func (s *Service) resolveVol(x blobcache.Handle) (volume, blobcache.ActionSet, e
 
 // resolveTx looks up the transaction handle from memory.
 // If the handle is valid it will load a new transaction.
-func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (transaction, error) {
+func (s *Service) resolveTx(txh blobcache.Handle, touch bool, requires blobcache.ActionSet) (transaction, error) {
 	oid, rights := s.handles.Resolve(txh)
 	if rights == 0 {
 		return transaction{}, blobcache.ErrInvalidHandle{Handle: txh}
@@ -449,6 +436,13 @@ func (s *Service) resolveTx(txh blobcache.Handle, touch bool) (transaction, erro
 	tx, exists := s.txns[oid]
 	if !exists {
 		return transaction{}, blobcache.ErrInvalidHandle{Handle: txh}
+	}
+	if rights&requires < requires {
+		return transaction{}, blobcache.ErrPermission{
+			Handle:   txh,
+			Rights:   rights,
+			Requires: requires,
+		}
 	}
 	if touch {
 		s.handles.KeepAlive(txh, time.Now().Add(DefaultTxTTL))
@@ -725,7 +719,7 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blo
 }
 
 func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcache.TxInfo, error) {
-	txn, err := s.resolveTx(txh, false)
+	txn, err := s.resolveTx(txh, false, blobcache.Action_TX_INSPECT)
 	if err != nil {
 		return nil, err
 	}
@@ -769,7 +763,7 @@ func (s *Service) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcac
 }
 
 func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) error {
-	tx, err := s.resolveTx(txh, true)
+	tx, err := s.resolveTx(txh, true, blobcache.Action_TX_SAVE)
 	if err != nil {
 		return err
 	}
@@ -796,7 +790,7 @@ func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) e
 }
 
 func (s *Service) Commit(ctx context.Context, txh blobcache.Handle) error {
-	tx, err := s.resolveTx(txh, true)
+	tx, err := s.resolveTx(txh, true, 0) // anyone can commit the transaction if they opened it.
 	if err != nil {
 		return err
 	}
@@ -810,7 +804,7 @@ func (s *Service) Commit(ctx context.Context, txh blobcache.Handle) error {
 }
 
 func (s *Service) Abort(ctx context.Context, txh blobcache.Handle) error {
-	txn, err := s.resolveTx(txh, false)
+	txn, err := s.resolveTx(txh, false, 0) // anyone can abort the transaction if they opened it.
 	if err != nil {
 		return err
 	}
@@ -824,7 +818,7 @@ func (s *Service) Abort(ctx context.Context, txh blobcache.Handle) error {
 }
 
 func (s *Service) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) error {
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_LOAD)
 	if err != nil {
 		return err
 	}
@@ -832,7 +826,7 @@ func (s *Service) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) e
 }
 
 func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_POST)
 	if err != nil {
 		return blobcache.CID{}, err
 	}
@@ -847,7 +841,7 @@ func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobc
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and dst must have the same length")
 	}
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_EXISTS)
 	if err != nil {
 		return err
 	}
@@ -855,7 +849,7 @@ func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobc
 }
 
 func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_GET)
 	if err != nil {
 		return 0, err
 	}
@@ -878,7 +872,7 @@ func (s *Service) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.C
 }
 
 func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_DELETE)
 	if err != nil {
 		return err
 	}
@@ -889,7 +883,7 @@ func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blob
 	if len(cids) != len(out) {
 		return fmt.Errorf("cids and out must have the same length")
 	}
-	_, err := s.resolveTx(txh, true)
+	_, err := s.resolveTx(txh, true, blobcache.Action_TX_COPY_FROM)
 	if err != nil {
 		return err
 	}
@@ -903,7 +897,7 @@ func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blob
 }
 
 func (s *Service) Visit(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then Visit it allowed.
 	if err != nil {
 		return err
 	}
@@ -914,7 +908,7 @@ func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []bl
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and out must have the same length")
 	}
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then IsVisited is allowed.
 	if err != nil {
 		return err
 	}
@@ -922,7 +916,7 @@ func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []bl
 }
 
 func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) error {
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_LINK_FROM)
 	if err != nil {
 		return err
 	}
@@ -934,7 +928,7 @@ func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcac
 }
 
 func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_UNLINK_FROM)
 	if err != nil {
 		return err
 	}
@@ -942,7 +936,7 @@ func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []bl
 }
 
 func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
-	txn, err := s.resolveTx(txh, true)
+	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then VisitLinks is allowed.
 	if err != nil {
 		return err
 	}

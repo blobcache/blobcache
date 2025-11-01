@@ -103,3 +103,13 @@ type ErrTxNotGC struct {
 func (e ErrTxNotGC) Error() string {
 	return fmt.Sprintf("transaction is not a GC transaction, cannot perform %v", e.Op)
 }
+
+type ErrPermission struct {
+	Handle   Handle
+	Rights   ActionSet
+	Requires ActionSet
+}
+
+func (e ErrPermission) Error() string {
+	return fmt.Sprintf("permission denied: handle=%v, rights=%v, requires=%v", e.Handle, e.Rights, e.Requires)
+}

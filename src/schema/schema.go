@@ -40,11 +40,10 @@ type Link struct {
 }
 
 // Container is a Schema which can store Links to other volumes.
-type Container interface {
+type Opener interface {
 	Schema
 
-	// ReadLinks returns a list of links for a given root.
-	ReadLinks(ctx context.Context, s RO, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error
+	OpenAs(ctx context.Context, s RO, root []byte, peer blobcache.PeerID) (blobcache.ActionSet, error)
 }
 
 // None is a Schema which does not impose any constraints on the contents of a volume.

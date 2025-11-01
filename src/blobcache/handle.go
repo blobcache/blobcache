@@ -184,6 +184,10 @@ const (
 	// It gates the AllowLink operation.
 	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
 	Action_TX_LINK_FROM
+	// Action_TX_UNLINK_FROM allows a transaction to remove a link from another Volume.
+	// It gates the Unlink operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_UNLINK_FROM
 )
 
 const (

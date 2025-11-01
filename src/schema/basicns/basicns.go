@@ -35,8 +35,6 @@ func (ent *Entry) Link() schema.Link {
 	}
 }
 
-var _ schema.Container = &Schema{}
-
 type Schema struct{}
 
 func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
@@ -71,15 +69,9 @@ func (sch Schema) ListEntries(ctx context.Context, s schema.RO, root []byte) ([]
 	return ents, nil
 }
 
-func (sch Schema) ReadLinks(ctx context.Context, s schema.RO, root []byte, dst map[blobcache.OID]blobcache.ActionSet) error {
-	ents, err := sch.ListEntries(ctx, s, root)
-	if err != nil {
-		return err
-	}
-	for _, ent := range ents {
-		dst[ent.Target] |= ent.Rights
-	}
-	return nil
+func (sch Schema) OpenAs(ctx context.Context, s schema.RO, root []byte, peer blobcache.PeerID) (blobcache.ActionSet, error) {
+	// Don't modify the volume's permissions for any particular user.
+	return blobcache.Action_ALL, nil
 }
 
 // Tx wraps a Tx to provide a namespace view.
