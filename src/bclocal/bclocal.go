@@ -105,6 +105,9 @@ func New(env Env, cfg Config) (*Service, error) {
 	if env.StateDir == "" {
 		return nil, fmt.Errorf("bclocal.New: StateDir cannot be empty")
 	}
+	if env.PrivateKey == nil {
+		return nil, fmt.Errorf("bclocal.New: PrivateKey cannot be nil")
+	}
 	dbPath := filepath.Join(env.StateDir, "pebble")
 	blobDirPath := filepath.Join(env.StateDir, "blob")
 	for _, dir := range []string{dbPath, blobDirPath} {
@@ -112,7 +115,9 @@ func New(env Env, cfg Config) (*Service, error) {
 			return nil, err
 		}
 	}
-	db, err := pebble.Open(dbPath, &pebble.Options{})
+	db, err := pebble.Open(dbPath, &pebble.Options{
+		Logger: noOpLogger{},
+	})
 	if err != nil {
 		return nil, err
 	}
