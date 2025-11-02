@@ -4,14 +4,7 @@ import "encoding/json"
 
 type SchemaName string
 
-const (
-	Schema_NONE SchemaName = ""
-	// Schema_BasicNS is the schema name for the basic namespace.
-	Schema_BasicNS        SchemaName = "blobcache/basicns"
-	Schema_BasicContainer SchemaName = "blobcache/basiccontainer"
-
-	Schema_MerkleLog SchemaName = "merklelog"
-)
+const Schema_NONE SchemaName = ""
 
 type SchemaSpec struct {
 	// Name is the name of the schema.

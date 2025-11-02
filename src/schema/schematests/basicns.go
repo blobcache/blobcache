@@ -111,7 +111,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		ns1h := nsh
 		for i := 0; i < 10; i++ {
 			subNSSpec := blobcache.DefaultLocalSpec()
-			subNSSpec.Local.Schema = blobcache.SchemaSpec{Name: blobcache.Schema_BasicNS}
+			subNSSpec.Local.Schema = blobcache.SchemaSpec{Name: basicns.SchemaName}
 			ns2h, err := nsc.CreateAt(ctx, ns1h, "nested", subNSSpec)
 			require.NoError(t, err)
 			ns1h = *ns2h

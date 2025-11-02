@@ -82,10 +82,11 @@ func DefaultSchemas() map[blobcache.SchemaName]schema.Constructor {
 // DefaultRoot returns the default root volume spec.
 // It uses the basicns schema and a 2MB byte max size.
 func DefaultRoot() blobcache.VolumeSpec {
+	const rootSchemaName = "blobcache/basicns"
 	return blobcache.VolumeSpec{
 		Local: &blobcache.VolumeBackend_Local{
 			VolumeParams: blobcache.VolumeParams{
-				Schema:   blobcache.SchemaSpec{Name: blobcache.Schema_BasicNS},
+				Schema:   blobcache.SchemaSpec{Name: rootSchemaName},
 				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 				MaxSize:  1 << 22,
 			},

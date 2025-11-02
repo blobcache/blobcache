@@ -18,8 +18,10 @@ import (
 	"go.brendoncarroll.net/state/cadata"
 )
 
+const SchemaName blobcache.SchemaName = "blobcache/basicns"
+
 func init() {
-	bclocal.AddDefaultSchema(blobcache.Schema_BasicNS, Constructor)
+	bclocal.AddDefaultSchema(SchemaName, Constructor)
 }
 
 type Entry struct {

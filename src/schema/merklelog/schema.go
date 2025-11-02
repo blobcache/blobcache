@@ -11,6 +11,8 @@ import (
 	"go.brendoncarroll.net/exp/streams"
 )
 
+const SchemaName blobcache.SchemaName = "merklelog"
+
 var _ schema.Schema = &Schema{}
 
 type Params struct {
@@ -78,5 +80,5 @@ func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) erro
 }
 
 func init() {
-	bclocal.AddDefaultSchema(blobcache.Schema_MerkleLog, Constructor)
+	bclocal.AddDefaultSchema(SchemaName, Constructor)
 }
