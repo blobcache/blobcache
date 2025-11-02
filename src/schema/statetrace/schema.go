@@ -1,4 +1,4 @@
-package ledger
+package statetrace
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"blobcache.io/blobcache/src/schema"
 )
 
-const SchemaName = "blobcache/ledger"
+const SchemaName = "blobcache/statetrace"
 
 func init() {
 	bclocal.AddDefaultSchema(SchemaName, Constructor)

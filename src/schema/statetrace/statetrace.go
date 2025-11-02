@@ -1,5 +1,5 @@
 // package ledger implements an append-only ledger where state transitions can be verified
-package ledger
+package statetrace
 
 import (
 	"context"
