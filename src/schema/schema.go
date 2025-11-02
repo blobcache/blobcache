@@ -83,3 +83,11 @@ type RWD interface {
 	RW
 	Delete(ctx context.Context, cids []blobcache.CID) error
 }
+
+func ExistsUnit(ctx context.Context, s RO, cid blobcache.CID) (bool, error) {
+	var dst [1]bool
+	if err := s.Exists(ctx, []blobcache.CID{cid}, dst[:]); err != nil {
+		return false, err
+	}
+	return dst[0], nil
+}
