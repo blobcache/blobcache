@@ -6,20 +6,127 @@ import (
 	capnp "capnproto.org/go/capnp/v3"
 	text "capnproto.org/go/capnp/v3/encoding/text"
 	schemas "capnproto.org/go/capnp/v3/schemas"
+	strconv "strconv"
 )
 
+type Index capnp.Struct
+
+// Index_TypeID is the unique identifier for the type Index.
+const Index_TypeID = 0xba9cf241dfa2755b
+
+func NewIndex(s *capnp.Segment) (Index, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1})
+	return Index(st), err
+}
+
+func NewRootIndex(s *capnp.Segment) (Index, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1})
+	return Index(st), err
+}
+
+func ReadRootIndex(msg *capnp.Message) (Index, error) {
+	root, err := msg.Root()
+	return Index(root.Struct()), err
+}
+
+func (s Index) String() string {
+	str, _ := text.Marshal(0xba9cf241dfa2755b, capnp.Struct(s))
+	return str
+}
+
+func (s Index) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Index) DecodeFromPtr(p capnp.Ptr) Index {
+	return Index(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Index) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Index) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Index) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Index) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Index) Ref() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return []byte(p.Data()), err
+}
+
+func (s Index) HasRef() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Index) SetRef(v []byte) error {
+	return capnp.Struct(s).SetData(0, v)
+}
+
+func (s Index) Count() uint64 {
+	return capnp.Struct(s).Uint64(0)
+}
+
+func (s Index) SetCount(v uint64) {
+	capnp.Struct(s).SetUint64(0, v)
+}
+
+// Index_List is a list of Index.
+type Index_List = capnp.StructList[Index]
+
+// NewIndex creates a new list of Index.
+func NewIndex_List(s *capnp.Segment, sz int32) (Index_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 1}, sz)
+	return capnp.StructList[Index](l), err
+}
+
+// Index_Future is a wrapper for a Index promised by a client call.
+type Index_Future struct{ *capnp.Future }
+
+func (f Index_Future) Struct() (Index, error) {
+	p, err := f.Future.Ptr()
+	return Index(p.Struct()), err
+}
+
 type Entry capnp.Struct
+type Entry_Which uint16
+
+const (
+	Entry_Which_value Entry_Which = 0
+	Entry_Which_index Entry_Which = 1
+	Entry_Which_vnode Entry_Which = 2
+)
+
+func (w Entry_Which) String() string {
+	const s = "valueindexvnode"
+	switch w {
+	case Entry_Which_value:
+		return s[0:5]
+	case Entry_Which_index:
+		return s[5:10]
+	case Entry_Which_vnode:
+		return s[10:15]
+
+	}
+	return "Entry_Which(" + strconv.FormatUint(uint64(w), 10) + ")"
+}
 
 // Entry_TypeID is the unique identifier for the type Entry.
 const Entry_TypeID = 0x9fb6af56de709433
 
 func NewEntry(s *capnp.Segment) (Entry, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2})
 	return Entry(st), err
 }
 
 func NewRootEntry(s *capnp.Segment) (Entry, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2})
 	return Entry(st), err
 }
 
@@ -43,6 +150,10 @@ func (Entry) DecodeFromPtr(p capnp.Ptr) Entry {
 
 func (s Entry) ToPtr() capnp.Ptr {
 	return capnp.Struct(s).ToPtr()
+}
+
+func (s Entry) Which() Entry_Which {
+	return Entry_Which(capnp.Struct(s).Uint16(0))
 }
 func (s Entry) IsValid() bool {
 	return capnp.Struct(s).IsValid()
@@ -69,16 +180,87 @@ func (s Entry) SetKey(v []byte) error {
 }
 
 func (s Entry) Value() ([]byte, error) {
+	if capnp.Struct(s).Uint16(0) != 0 {
+		panic("Which() != value")
+	}
 	p, err := capnp.Struct(s).Ptr(1)
 	return []byte(p.Data()), err
 }
 
 func (s Entry) HasValue() bool {
+	if capnp.Struct(s).Uint16(0) != 0 {
+		return false
+	}
 	return capnp.Struct(s).HasPtr(1)
 }
 
 func (s Entry) SetValue(v []byte) error {
+	capnp.Struct(s).SetUint16(0, 0)
 	return capnp.Struct(s).SetData(1, v)
+}
+
+func (s Entry) Index() (Index, error) {
+	if capnp.Struct(s).Uint16(0) != 1 {
+		panic("Which() != index")
+	}
+	p, err := capnp.Struct(s).Ptr(1)
+	return Index(p.Struct()), err
+}
+
+func (s Entry) HasIndex() bool {
+	if capnp.Struct(s).Uint16(0) != 1 {
+		return false
+	}
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Entry) SetIndex(v Index) error {
+	capnp.Struct(s).SetUint16(0, 1)
+	return capnp.Struct(s).SetPtr(1, capnp.Struct(v).ToPtr())
+}
+
+// NewIndex sets the index field to a newly
+// allocated Index struct, preferring placement in s's segment.
+func (s Entry) NewIndex() (Index, error) {
+	capnp.Struct(s).SetUint16(0, 1)
+	ss, err := NewIndex(capnp.Struct(s).Segment())
+	if err != nil {
+		return Index{}, err
+	}
+	err = capnp.Struct(s).SetPtr(1, capnp.Struct(ss).ToPtr())
+	return ss, err
+}
+
+func (s Entry) Vnode() (Node, error) {
+	if capnp.Struct(s).Uint16(0) != 2 {
+		panic("Which() != vnode")
+	}
+	p, err := capnp.Struct(s).Ptr(1)
+	return Node(p.Struct()), err
+}
+
+func (s Entry) HasVnode() bool {
+	if capnp.Struct(s).Uint16(0) != 2 {
+		return false
+	}
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Entry) SetVnode(v Node) error {
+	capnp.Struct(s).SetUint16(0, 2)
+	return capnp.Struct(s).SetPtr(1, capnp.Struct(v).ToPtr())
+}
+
+// NewVnode sets the vnode field to a newly
+// allocated Node struct, preferring placement in s's segment.
+func (s Entry) NewVnode() (Node, error) {
+	capnp.Struct(s).SetUint16(0, 2)
+	ss, err := NewNode(capnp.Struct(s).Segment())
+	if err != nil {
+		return Node{}, err
+	}
+	err = capnp.Struct(s).SetPtr(1, capnp.Struct(ss).ToPtr())
+	return ss, err
 }
 
 // Entry_List is a list of Entry.
@@ -86,7 +268,7 @@ type Entry_List = capnp.StructList[Entry]
 
 // NewEntry creates a new list of Entry.
 func NewEntry_List(s *capnp.Segment, sz int32) (Entry_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2}, sz)
 	return capnp.StructList[Entry](l), err
 }
 
@@ -96,6 +278,12 @@ type Entry_Future struct{ *capnp.Future }
 func (f Entry_Future) Struct() (Entry, error) {
 	p, err := f.Future.Ptr()
 	return Entry(p.Struct()), err
+}
+func (p Entry_Future) Index() Index_Future {
+	return Index_Future{Future: p.Future.Field(1, nil)}
+}
+func (p Entry_Future) Vnode() Node_Future {
+	return Node_Future{Future: p.Future.Field(1, nil)}
 }
 
 type Node capnp.Struct
@@ -186,135 +374,29 @@ func (f Node_Future) Struct() (Node, error) {
 	return Node(p.Struct()), err
 }
 
-type Index capnp.Struct
-
-// Index_TypeID is the unique identifier for the type Index.
-const Index_TypeID = 0xba9cf241dfa2755b
-
-func NewIndex(s *capnp.Segment) (Index, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 2})
-	return Index(st), err
-}
-
-func NewRootIndex(s *capnp.Segment) (Index, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 2})
-	return Index(st), err
-}
-
-func ReadRootIndex(msg *capnp.Message) (Index, error) {
-	root, err := msg.Root()
-	return Index(root.Struct()), err
-}
-
-func (s Index) String() string {
-	str, _ := text.Marshal(0xba9cf241dfa2755b, capnp.Struct(s))
-	return str
-}
-
-func (s Index) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
-	return capnp.Struct(s).EncodeAsPtr(seg)
-}
-
-func (Index) DecodeFromPtr(p capnp.Ptr) Index {
-	return Index(capnp.Struct{}.DecodeFromPtr(p))
-}
-
-func (s Index) ToPtr() capnp.Ptr {
-	return capnp.Struct(s).ToPtr()
-}
-func (s Index) IsValid() bool {
-	return capnp.Struct(s).IsValid()
-}
-
-func (s Index) Message() *capnp.Message {
-	return capnp.Struct(s).Message()
-}
-
-func (s Index) Segment() *capnp.Segment {
-	return capnp.Struct(s).Segment()
-}
-func (s Index) Ref() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return []byte(p.Data()), err
-}
-
-func (s Index) HasRef() bool {
-	return capnp.Struct(s).HasPtr(0)
-}
-
-func (s Index) SetRef(v []byte) error {
-	return capnp.Struct(s).SetData(0, v)
-}
-
-func (s Index) Prefix() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(1)
-	return []byte(p.Data()), err
-}
-
-func (s Index) HasPrefix() bool {
-	return capnp.Struct(s).HasPtr(1)
-}
-
-func (s Index) SetPrefix(v []byte) error {
-	return capnp.Struct(s).SetData(1, v)
-}
-
-func (s Index) Count() uint64 {
-	return capnp.Struct(s).Uint64(0)
-}
-
-func (s Index) SetCount(v uint64) {
-	capnp.Struct(s).SetUint64(0, v)
-}
-
-func (s Index) IsParent() bool {
-	return capnp.Struct(s).Bit(64)
-}
-
-func (s Index) SetIsParent(v bool) {
-	capnp.Struct(s).SetBit(64, v)
-}
-
-// Index_List is a list of Index.
-type Index_List = capnp.StructList[Index]
-
-// NewIndex creates a new list of Index.
-func NewIndex_List(s *capnp.Segment, sz int32) (Index_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 2}, sz)
-	return capnp.StructList[Index](l), err
-}
-
-// Index_Future is a wrapper for a Index promised by a client call.
-type Index_Future struct{ *capnp.Future }
-
-func (f Index_Future) Struct() (Index, error) {
-	p, err := f.Future.Ptr()
-	return Index(p.Struct()), err
-}
-
-const schema_86dd963ad5de13d5 = "x\xda\\\x91\xbfk\x13a\x18\xc7\xbf\xdf\xe7\xbd\x98\x84" +
-	"p\x92\xe32*\xa2D\xd0!\xe2\xaf)K\xa2\xe0\xa0" +
-	"\x83\xe4]\x04Q\xc1#y\x83\x87\x97\xcby\xb9h2" +
-	"\x88(\xe8\x90Y\x94B\xa1\xd0\x7f\xa0[\x87\xfe\x13\x9d" +
-	"B\x976\x1d\xbbw\xeav\xe5\x12\x92\xb6\xd9\x9e\xf7\xe1" +
-	"\xc3\xe7\xf9\xc0[\xdeoZ\x8f\xec\xbe@\xf4\x8d\xdc\xb5" +
-	"\xf4\xc9\xdfh\xf6fgw\x0bN\x89\xe9\xd4\x9dM\xeb" +
-	"\xff\x8e\xfe 'y\xc0\xbd\xc9\x89{\x97\xd9t\x9b\xdf" +
-	"\xc0\xf4\xddp\xfb\xf8\xd9\xe9\xe6\x1et\x89\xb2\x0e\x7f\xe7" +
-	"\xc4\xfd=\x87\x7f\xf2\x04L\x0f{\x1b\xff\xcf\x82/\x07" +
-	"k\xe29\xf1V~\xb9\x1fd15PK\x93\xd87" +
-	"\x0f\xda^\xc40\xaa\xbf\x08\x93x\x0c\xb4H]P\x16" +
-	"`\x11p\xee\xdf\x01tUQ?\x14:d\x85\xd9\xb2" +
-	"\xf6\x18\xd0\xf7\x14\xf5Sa\xfe\xb3\x19\xd3\x86\xd0\x06o" +
-	"}\xf5\x82\xa1Y\xbe\xae\xc8_\x86\x1d3Z\xc8\xcb+" +
-	"\xb9\x97\xc9\xdf+\xeaO\x97\xe4\xa6\x0e\xe8\x8f\x8a:\x10" +
-	"R*\x14\xc0\xf1\xb3\x83\x1dE\x1d\x09\x1d\xd5\xacP\x01" +
-	"N\xef\x15\xa0\x03E=\x12\xe6c\xd3]\xdemD\xb1" +
-	"\xe9\xfa\xa3UT\xbb?\x0c\x13\x16!,\x82\xa9?h" +
-	"y\xb1\x09\x13\x00$\x84\\\x0b}\xdd\xef\x98y\xa6\xb5" +
-	"\xca\xb4\x9f\x03\xba\xa0\xa8\xab\xc2\x1f&\xcc\xe8\x01\xaf\x83" +
-	"-E\x96/\xfe\x11\xcc\x96\xe7\x01\x00\x00\xff\xff\xc2\xf6" +
-	"i\xf7"
+const schema_86dd963ad5de13d5 = "x\xdad\x91?\x8b\x13A\x18\xc6\x9f\xe7\x9d\x8d\x9b\x10" +
+	"VvYK\x17Q\"h\x11\xf1_\x95\xc6?\x90\xc2" +
+	"F2\x85\x82ha\xc8\x8e$\x98\xec\xaeq\xa3\xa6\x12" +
+	",,R\x8b\"\x08\x82_\xc0\xce\xc2\x0fa\x17l4" +
+	"\x96\xf6\x07\x07wEn\x8fI\x8e\x0d\x97\xeb\xde\xf9\xf1" +
+	"\xcc3\xbf\x97\xf1\x7f\xddv\xaey\xa9@\xf4\xd9\xca\xa9" +
+	"\xe2\xc6\x87l\xf1\xf0\xfb\x8f\xaf\xd0u\xb2\x98\x87\x8by" +
+	"\xeb\xe3\xdf\xf7h\x8b\xab\x800\xe2,\xbcH\x17\x08\xcf" +
+	"\xf3?X<\x9e|\xfbwg\xe7\xcb\xcf\xadte\x15" +
+	"\xd9\xe5,\\\xae\xa6}\xbe\x06\x8b?\xa3\xcf\x9f\xf6\x86" +
+	"/~#\xa8\x9f\xc8>\x90w\xe1#YO\xb7\xd0," +
+	"\xf2\xf1\xc0\\\xe9u3&Y\xab\x9d\xe4\xe3)\xd0!" +
+	"\xb5\xaf\x1c\xc0!\x10t/\x00\xfa\x89\xa2\xee\x0b#\x16" +
+	"\x05\xcf\xd0bs\x1d\xd0O\x15\xf5P\x18\xc9\x81\xc5\x02" +
+	"\x04\x03\x8bcE\x9d\x09#\xb5\xb4X\x01\xc1\xc8\xe2\xbe" +
+	"\xa2\xce\x85\xees3\xa5\x07\xa1\x07\x9e{\xd5\x1dNL" +
+	"y\x1a$\xb1yC\x7f\xb3-H\xdf\xa6\x9246\xf4" +
+	"7\x8b\xad\xf91\xf9{\xf6\xeeZ\xbeZ\xca_\xb6\xf2" +
+	"\x0dE}U\xc8#\xf3\xa6u\xb9\xa4\xa8o\x0a\xdd\xb1" +
+	"yV\xbe\xdeK'I\xce\x1a\x84\xb5\xad\xee\xfbil" +
+	"V\xcdN\xd9\xec\xdd\x05tUQ7\x84oMb\xd3" +
+	"/y\x1a\xec(\xd2\xdf|.h\xe1a\x00\x00\x00\xff" +
+	"\xff\x11\x91{\x07"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{

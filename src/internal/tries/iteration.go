@@ -41,13 +41,17 @@ func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
 }
 
 // MinEntry returns the first entry >= gteq
-func (mach *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []byte) (*Entry, error) {
-	ents, err := mach.getNode(ctx, s, Index(root), false)
+func (o *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []byte) (*Entry, error) {
+	node, err := o.getNode(ctx, s, IndexEntry(root))
 	if err != nil {
 		return nil, err
 	}
 	gteq = compressKey(root.Prefix, gteq)
-	if root.IsParent {
+	ents, err := node.Entries()
+	if err != nil {
+		return nil, err
+	}
+
 		for _, ent := range ents {
 			if len(ent.Key) == 0 {
 				if bytes.Equal(gteq, ent.Key) {
@@ -56,7 +60,7 @@ func (mach *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq 
 				continue
 			}
 			if bytes.Compare(ent.Key, gteq) >= 0 {
-				var idx Index
+				var idx IndexEntry
 				if err := idx.FromEntry(*ent); err != nil {
 					return nil, err
 				}

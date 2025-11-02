@@ -7,132 +7,130 @@ import (
 	"iter"
 	"slices"
 
+	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	"blobcache.io/blobcache/src/schema"
+	"capnproto.org/go/capnp/v3"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state/cadata"
 )
 
 // getNode returns node at x.
 // all the entries will be in compressed form.
-func (mach *Machine) getNode(ctx context.Context, s schema.RO, x Index, expandKeys bool) ([]*Entry, error) {
-	var n Node
-	if err := mach.getF(ctx, s, x.Ref, func(data []byte) error {
-		return n.Unmarshal(data)
+func (o *Machine) getNode(ctx context.Context, s schema.RO, x IndexEntry) (*triescnp.Node, error) {
+	var n triescnp.Node
+	if err := o.getF(ctx, s, x.Ref, func(data []byte) error {
+		data = slices.Clone(data)
+		msg, err := capnp.Unmarshal(data)
+		if err != nil {
+			return err
+		}
+		n, err = triescnp.ReadRootNode(msg)
+		if err != nil {
+			return err
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}
-	if err := validateEntries(x.IsParent, n.Entries); err != nil {
+	ents, err := n.Entries()
+	if err != nil {
 		return nil, err
 	}
-	var ys []*Entry
-	if expandKeys {
-		for _, ent := range n.Entries {
-			ent = expandEntry(x.Prefix, ent)
-			ys = append(ys, ent)
-		}
-	} else {
-		ys = n.Entries
+	if err := validateEntries(ents); err != nil {
+		return nil, err
 	}
-	return ys, nil
-}
-
-func (mach *Machine) getParent(ctx context.Context, s schema.RO, x Index, expandKeys bool) (*Entry, *[256]Index, error) {
-	ents, err := mach.getNode(ctx, s, x, false)
-	if err != nil {
-		return nil, nil, err
+	if err := checkIndexEntries(ctx, s, x, ents); err != nil {
+		return nil, err
 	}
-	var e *Entry
-	children := new([256]Index)
-	for _, ent := range ents {
-		if len(ent.Key) == 0 {
-			if expandKeys {
-				ent = expandEntry(x.Prefix, ent)
-			}
-			e = ent
-			continue
-		}
-		if expandKeys {
-			ent = expandEntry(x.Prefix, ent)
-		}
-		var idx Index
-		if err := idx.FromEntry(*ent); err != nil {
-			return nil, nil, err
-		}
-		children[idx.Prefix[0]] = idx
-	}
-	return e, children, nil
+	return &n, nil
 }
 
 // postNode creates a new node with ents, ents will be split if necessary
-func (mach *Machine) postNode(ctx context.Context, s schema.WO, ents []*Entry) (*Index, error) {
-	r, err := mach.postLeaf(ctx, s, ents)
-	if !errors.Is(err, cadata.ErrTooLarge) {
-		return r, err
-	}
-	e, roots, err := mach.split(ctx, s, ents)
+func (mach *Machine) postNode(ctx context.Context, s schema.WO, node triescnp.Node) (*IndexEntry, error) {
+	data, err := capnp.Canonicalize(capnp.Struct(node))
 	if err != nil {
 		return nil, err
 	}
-	return mach.postParent(ctx, s, roots, e)
-}
-
-func (mach *Machine) postLeaf(ctx context.Context, s schema.WO, ents []*Entry) (*Index, error) {
-	if !slices.IsSortedFunc(ents, func(a, b *Entry) int {
-		return bytes.Compare(a.Key, b.Key)
-	}) {
-		return nil, errors.Errorf("entries must be sorted")
-	}
-	prefix, ents := compressEntries(ents)
-
-	// Marshal using Cap'n Proto
-	node := &Node{Entries: ents}
-	data, err := node.Marshal()
-	if err != nil {
-		return nil, err
-	}
-
 	if len(data) > s.MaxSize() {
-		return nil, cadata.ErrTooLarge
+		valEnt, idxEnts, err := mach.split(ctx, s, node)
+		if err != nil {
+			return nil, err
+		}
+		entsLen := len(idxEnts)
+		if valEnt != nil {
+			entsLen++
+		}
+		node2, err := triescnp.NewNode(nil)
+		if err != nil {
+			return nil, err
+		}
+		ents, err := node2.NewEntries(int32(entsLen))
+		if err != nil {
+			return nil, err
+		}
+		if valEnt != nil {
+			ent := ents.At(0)
+			if err := ent.SetKey(valEnt.Key); err != nil {
+				return nil, err
+			}
+			if err := ent.SetValue(valEnt.Value); err != nil {
+				return nil, err
+			}
+		}
+		for i := 0; i < len(idxEnts); i++ {
+			ent := ents.At(i + (entsLen - len(idxEnts)))
+			if err := idxEnts[i].toCNP(&ent); err != nil {
+				return nil, err
+			}
+		}
+
+		node = node2
+		data, err = capnp.Canonicalize(capnp.Struct(node2))
+		if err != nil {
+			return nil, err
+		}
 	}
-	ref, err := mach.post(ctx, s, data)
+
+	// base case: encrypt and post to store, create IndexEntry
+	var prefix []byte
+	var count uint64
+	ents, err := node.Entries()
 	if err != nil {
 		return nil, err
 	}
-	return &Index{
-		Ref:      *ref,
-		Prefix:   prefix,
-		IsParent: false,
-		Count:    uint64(len(ents)),
+	for i := 0; i < ents.Len(); i++ {
+		ent := ents.At(i)
+		key, err := ent.Key()
+		if err != nil {
+			return nil, err
+		}
+		prefix = longestCommonPrefix(prefix, key)
+	}
+	ref, err := mach.crypto.Post(ctx, s, data)
+	if err != nil {
+		return nil, err
+	}
+	return &IndexEntry{
+		Prefix: prefix,
+		Ref: Ref{
+			CID:    ref.CID,
+			DEK:    ref.DEK,
+			Length: uint32(len(data)),
+		},
+		Count: count,
 	}, nil
 }
 
-func (mach *Machine) postParent(ctx context.Context, s schema.WO, children []Index, ent *Entry) (*Index, error) {
-	var count uint64
-	ents := make([]*Entry, 0, 257)
-	if ent != nil {
-		ents = append(ents, ent)
-		count++
-	}
-	for _, idx := range children {
-		count += idx.Count
-		ent := idx.ToEntry()
-		ents = append(ents, ent)
-	}
-	r, err := mach.postLeaf(ctx, s, ents)
+func (o *Machine) split(ctx context.Context, s schema.WO, node triescnp.Node) (*Entry, []IndexEntry, error) {
+	ents, err := node.Entries()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	r.IsParent = true
-	r.Count = count
-	return r, nil
-}
-
-func (mach *Machine) split(ctx context.Context, s schema.WO, ents []*Entry) (*Entry, []Index, error) {
-	if len(ents) < 2 {
+	if ents.Len() < 2 {
 		return nil, nil, ErrCannotSplit
 	}
-	e, groups := groupEntries(slices.Values(ents))
-	var children []Index
+	e, groups := groupEntries(ents)
+	var children []IndexEntry
 	for _, childEnts := range groups {
 		childRoot, err := mach.postNode(ctx, s, childEnts)
 		if err != nil {
@@ -200,18 +198,57 @@ func compressEntries(xs []*Entry) ([]byte, []*Entry) {
 	return lcp, ys
 }
 
-func validateEntries(isParent bool, ents []*Entry) error {
-	if isParent {
-		if len(ents) != 256 && len(ents) != 257 {
-			return errors.Errorf("parent does not have 256 children")
+func validateEntries(ents triescnp.Entry_List) error {
+	var lastKey []byte
+	for i := 0; i < ents.Len(); i++ {
+		ent := ents.At(i)
+		k, err := ent.Key()
+		if err != nil {
+			return err
 		}
-	} else {
-		// child checks would go here
+		if i > 0 {
+			if bytes.HasPrefix(k, lastKey) || bytes.HasPrefix(lastKey, k) {
+				return errors.Errorf("entries must not be prefixes of one another")
+			}
+			if bytes.Compare(k, lastKey) <= 0 {
+				return errors.Errorf("entries must be sorted")
+			}
+		}
+		lastKey = k
 	}
-	for i := 1; i < len(ents); i++ {
-		if bytes.Compare(ents[i].Key, ents[i-1].Key) <= 0 {
-			return errors.Errorf("entries must be sorted")
+	return nil
+}
+
+func checkIndexEntries(ctx context.Context, s schema.RO, x IndexEntry, ents triescnp.Entry_List) error {
+	var actualSum uint64
+	for i := 0; i < ents.Len(); i++ {
+		ent := ents.At(i)
+		switch ent.Which() {
+		case triescnp.Entry_Which_index:
+			idx, err := ent.Index()
+			if err != nil {
+				return err
+			}
+			refData, err := idx.Ref()
+			if err != nil {
+				return err
+			}
+			ref, err := parseRef(refData)
+			if err != nil {
+				return err
+			}
+			exists, err := schema.ExistsUnit(ctx, s, ref.CID)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return errors.Errorf("index reference %s does not exist", ref.CID)
+			}
+			actualSum += idx.Count()
 		}
+	}
+	if actualSum != x.Count {
+		return errors.Errorf("count mismatch: actual %d, expected %d", actualSum, x.Count)
 	}
 	return nil
 }
@@ -238,4 +275,13 @@ func groupOps(ops iter.Seq[Op]) (local *Op, groups [256][]Op) {
 		groups[b] = append(groups[b], op)
 	}
 	return local, groups
+}
+
+func longestCommonPrefix(a, b []byte) []byte {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return a[:i]
+		}
+	}
+	return a
 }

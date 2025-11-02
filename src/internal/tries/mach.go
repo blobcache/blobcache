@@ -8,8 +8,10 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bccrypto"
+	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	"blobcache.io/blobcache/src/schema"
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/pkg/errors"
 )
 
 // Machine holds caches and configuration for operating on tries.
@@ -35,8 +37,24 @@ func (mach *Machine) NewEmpty(ctx context.Context, s schema.WO) (*Root, error) {
 }
 
 // PostSlice returns a new instance containing ents
-func (mach *Machine) PostSlice(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
-	idx, err := mach.postNode(ctx, s, ents)
+func (o *Machine) PostSlice(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
+	node, err := triescnp.NewRootNode(nil)
+	if err != nil {
+		return nil, err
+	}
+	ents2, err := node.NewEntries(int32(len(ents)))
+	if err != nil {
+		return nil, err
+	}
+	for i := range ents {
+		if err := ents2.At(i).SetKey(ents[i].Key); err != nil {
+			return nil, err
+		}
+		if err := ents2.At(i).SetValue(ents[i].Value); err != nil {
+			return nil, err
+		}
+	}
+	idx, err := o.postNode(ctx, s, node)
 	if err != nil {
 		return nil, err
 	}
@@ -49,9 +67,47 @@ func (mach *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte
 		return false, nil
 	}
 	key = compressKey(root.Prefix, key)
-	ents, err := mach.getNode(ctx, s, Index(root), false)
+	node, err := o.getNode(ctx, s, IndexEntry(root))
 	if err != nil {
 		return false, err
+	}
+	ents, err := node.Entries()
+	if err != nil {
+		return err
+	}
+	for i := 0; i < ents.Len(); i++ {
+		ent := ents.At(i)
+		entKey, err := ent.Key()
+		if err != nil {
+			return err
+		}
+		switch ent.Which() {
+		case triescnp.Entry_Which_value:
+			if bytes.Equal(key, entKey) {
+				v, err := ent.Value()
+				if err != nil {
+					return err
+				}
+				*dst = append((*dst)[:0], v...)
+				return nil
+			}
+		case triescnp.Entry_Which_index:
+			idx, err := ent.Index()
+			if err != nil {
+				return err
+			}
+			idxData, err := idx.Ref()
+			if err != nil {
+				return err
+			}
+			idx2, err := parseRef(idxData)
+			if err != nil {
+				return err
+			}
+			return o.Get(ctx, s, Root(*idx2), key, dst)
+		default:
+			return errors.Errorf("unsupported entry type: %s", ent.Which())
+		}
 	}
 	if root.IsParent {
 		for _, ent := range ents {
@@ -60,7 +116,7 @@ func (mach *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte
 				return true, nil
 			}
 			if bytes.HasPrefix(key, ent.Key) {
-				var idx Index
+				var idx IndexEntry
 				if err := idx.FromEntry(*ent); err != nil {
 					return false, err
 				}
@@ -96,7 +152,7 @@ func (mach *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []
 	if root.IsParent {
 		panic("deleting from parent not implemented")
 	} else {
-		xs, err := mach.getNode(ctx, s, Index(root), false)
+		xs, err := o.getNode(ctx, s, IndexEntry(root), false)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +178,7 @@ func (mach *Machine) BatchEdit(ctx context.Context, s schema.RW, root Root, opsS
 		return bytes.Compare(a.Key, b.Key)
 	})
 	if root.IsParent {
-		e, children, err := mach.getParent(ctx, s, Index(root), true)
+		e, children, err := o.getParent(ctx, s, IndexEntry(root), true)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +193,7 @@ func (mach *Machine) BatchEdit(ctx context.Context, s schema.RW, root Root, opsS
 			if err != nil {
 				return nil, err
 			}
-			children[i] = Index(*child2)
+			children[i] = IndexEntry(*child2)
 		}
 		idx, err := mach.postParent(ctx, s, children[:], e)
 		if err != nil {
@@ -145,7 +201,7 @@ func (mach *Machine) BatchEdit(ctx context.Context, s schema.RW, root Root, opsS
 		}
 		return (*Root)(idx), nil
 	} else {
-		xs, err := mach.getNode(ctx, s, Index(root), true)
+		xs, err := o.getNode(ctx, s, IndexEntry(root), true)
 		if err != nil {
 			return nil, err
 		}

@@ -3,6 +3,7 @@ package tries
 import (
 	"context"
 
+	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state"
@@ -15,37 +16,41 @@ var (
 
 type Span = state.ByteSpan
 
-type Root Index
+type Root IndexEntry
 
 func (x *Root) Marshal(out []byte) []byte {
-	idx := Index(*x)
+	idx := IndexEntry(*x)
 	return idx.Marshal(out)
 }
 
 func ParseRoot(x []byte) (*Root, error) {
-	var idx Index
+	var idx IndexEntry
 	if err := idx.Unmarshal(x); err != nil {
 		return nil, err
 	}
 	return (*Root)(&idx), nil
 }
 
-func (mach *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
+func (o *Machine) Validate(ctx context.Context, s schema.RO, x IndexEntry) error {
 	// getEntries includes validation
-	ents, err := mach.getNode(ctx, s, x, false)
+	node, err := o.getNode(ctx, s, x)
 	if err != nil {
 		return err
 	}
-	if x.IsParent {
-		for _, ent := range ents {
-			var idx Index
-			if err := idx.FromEntry(*ent); err != nil {
-				return err
-			}
-			if err := mach.Validate(ctx, s, idx); err != nil {
-				return err
-			}
+	ents, err := node.Entries()
+	if err != nil {
+		return err
+	}
+	if err := checkIndexEntries(ctx, s, x, ents); err != nil {
+		return err
+	}
+	for i := 0; i < ents.Len(); i++ {
+		ent := ents.At(i)
+		switch ent.Which() {
+		case triescnp.Entry_Which_value:
+			continue
 		}
+		return errors.Errorf("invalid entry: %s", ent.Which())
 	}
 	return nil
 }

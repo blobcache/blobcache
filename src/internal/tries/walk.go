@@ -27,19 +27,47 @@ func (mach *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker)
 	if !w.ShouldWalk(root) {
 		return nil
 	}
-	ents, err := mach.getNode(ctx, s, Index(root), true)
+	node, err := o.getNode(ctx, s, IndexEntry(root))
 	if err != nil {
 		return err
 	}
-	if root.IsParent {
-		eg := errgroup.Group{}
+	ents, err := node.Entries()
+	if err != nil {
+		return err
+	}
+
+	eg := errgroup.Group{}
+	for i := 0; i < ents.Len(); i++ {
+		ent := ents.At(i)
+		switch ent.Which() {
+		case triescnp.Entry_Which_value:
+			if w.EntryFn != nil {
+				var ent2 Entry
+				if err := ent2.fromCNP(ent); err != nil {
+					return err
+				}
+				if err := w.EntryFn(ent2); err != nil {
+					return err
+				}
+			}
+		case triescnp.Entry_Which_index:
+			idx, err := ents.At(i).Index()
+			if err != nil {
+				return err
+			}
+			refData, err := idx.Ref()
+			if err != nil {
+				return err
+			}
+		}
+	}
 		for _, ent := range ents {
 			if len(ent.Key) == 0 && w.EntryFn != nil {
 				if err := w.EntryFn(ent); err != nil {
 					return err
 				}
 			} else {
-				var idx Index
+				var idx IndexEntry
 				if err := idx.FromEntry(*ent); err != nil {
 					return err
 				}
@@ -50,12 +78,6 @@ func (mach *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker)
 		}
 		if err := eg.Wait(); err != nil {
 			return err
-		}
-	} else if w.EntryFn != nil {
-		for _, ent := range ents {
-			if err := w.EntryFn(ent); err != nil {
-				return err
-			}
 		}
 	}
 	return w.NodeFn(root)
