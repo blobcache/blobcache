@@ -74,6 +74,57 @@ var daemonEphemeralCmd = star.Command{
 	},
 }
 
+var daemonValidateCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "Validate the config files and exit",
+	},
+	Flags: map[string]star.Flag{
+		"state": stateDirParam,
+	},
+	F: func(c star.Context) error {
+		stateDir := stateDirParam.Load(c)
+		c.Printf("checking configuration in %s\n", stateDir)
+		d := blobcached.Daemon{
+			StateDir: stateDir,
+		}
+		if _, err := d.GetPolicy(); err != nil {
+			return err
+		}
+		c.Printf(checkmark + " configuration is valid\n")
+		return nil
+	},
+}
+
+var showAccessCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "show access rights given to a peer on a given object",
+	},
+	Pos: []star.Positional{
+		peerParam,
+		oidParam,
+	},
+	Flags: map[string]star.Flag{
+		"state": stateDirParam,
+	},
+	F: func(c star.Context) error {
+		stateDir := stateDirParam.Load(c)
+		peerID := peerParam.Load(c)
+		target := oidParam.Load(c)
+		d := blobcached.Daemon{
+			StateDir: stateDir,
+		}
+		pol, err := d.GetPolicy()
+		if err != nil {
+			return err
+		}
+		rights := pol.OpenFiat(peerID, target)
+		c.Printf("PEER ID: %v\n", peerID)
+		c.Printf("TARGET: %v\n", target)
+		c.Printf("RIGHTS: %v\n", rights)
+		return nil
+	},
+}
+
 var stateDirParam = star.Required[string]{
 	ID:    "state",
 	Parse: star.ParseString,

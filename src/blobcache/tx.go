@@ -17,13 +17,14 @@ func BeginTx(ctx context.Context, s Service, volH Handle, txp TxParams) (*Tx, er
 	if err != nil {
 		return nil, err
 	}
-	if err := info.HashAlgo.Validate(); err != nil {
+	params := info.VolumeParams
+	if err := params.Validate(); err != nil {
 		return nil, err
 	}
-	if info.MaxSize <= 0 {
+	if params.MaxSize <= 0 {
 		return nil, fmt.Errorf("max size must be positive")
 	}
-	return NewTx(s, *txh, info.HashAlgo.HashFunc(), int(info.MaxSize)), nil
+	return NewTx(s, *txh, params.HashAlgo.HashFunc(), int(params.MaxSize)), nil
 }
 
 // Tx is a convenience type for managing a transaction within a Service.
@@ -134,7 +135,11 @@ func BeginTxSalt(ctx context.Context, s Service, volH Handle, txp TxParams) (*Tx
 	if err != nil {
 		return nil, err
 	}
-	return NewTxSalt(s, *txh, info.HashAlgo.HashFunc(), int(info.MaxSize)), nil
+	params := info.VolumeParams
+	if err := params.Validate(); err != nil {
+		return nil, err
+	}
+	return NewTxSalt(s, *txh, params.HashAlgo.HashFunc(), int(params.MaxSize)), nil
 }
 
 // TxSalt is a convenience type for managing a salted transaction within a Service.

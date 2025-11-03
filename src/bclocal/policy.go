@@ -8,7 +8,7 @@ import (
 )
 
 type Policy interface {
-	Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet
+	OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet
 	// CanCreate returns true if the peer can create a new volume.
 	CanCreate(peer blobcache.PeerID) bool
 	CanConnect(peer blobcache.PeerID) bool
@@ -29,7 +29,7 @@ type AllOrNothingPolicy struct {
 	Allow []blobcache.PeerID
 }
 
-func (p *AllOrNothingPolicy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+func (p *AllOrNothingPolicy) OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
 	if !slices.Contains(p.Allow, peer) {
 		return 0
 	}

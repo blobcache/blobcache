@@ -263,7 +263,7 @@ func TestPolicy(t *testing.T) {
 			require.NoError(t, err)
 			for _, check := range tc.Checks {
 				require.Equal(t, check.CanConnect, p.CanConnect(check.Peer))
-				rights := p.Open(check.Peer, check.Target)
+				rights := p.OpenFiat(check.Peer, check.Target)
 				require.Equal(t, check.Open, rights)
 				require.Equal(t, check.CanCreate, p.CanCreate(check.Peer))
 			}

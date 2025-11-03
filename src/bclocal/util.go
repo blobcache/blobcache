@@ -10,7 +10,6 @@ import (
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
-	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -94,13 +93,6 @@ func DefaultRoot() blobcache.VolumeSpec {
 	}
 }
 
-// DefaultPebbleOptions
-func DefaultPebbleOptions() *pebble.Options {
-	return &pebble.Options{
-		Logger: noOpLogger{},
-	}
-}
-
 type noOpLogger struct{}
 
 func (l noOpLogger) Infof(msg string, args ...any) {}
@@ -116,7 +108,7 @@ func (p *allowAllPolicy) CanConnect(peer blobcache.PeerID) bool {
 	return true
 }
 
-func (p *allowAllPolicy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+func (p *allowAllPolicy) OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
 	return blobcache.Action_ALL
 }
 

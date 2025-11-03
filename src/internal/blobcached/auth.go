@@ -354,11 +354,6 @@ type Policy struct {
 
 	grants []Grant
 
-	// original memberships for writing back
-	// idenMemberships   []Membership[Identity]
-	// actionMemberships []Membership[Action]
-	// objectMemberships []Membership[ObjectSet]
-
 	// indexes
 	iden2Grant     map[inet256.ID][]uint16
 	anyoneGrants   []uint16
@@ -374,7 +369,7 @@ func (p *Policy) CanConnect(peer blobcache.PeerID) bool {
 	return exists
 }
 
-func (p *Policy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+func (p *Policy) OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
 	volGrants := p.vol2Grant[target]
 	idenGrants := append([]uint16{}, p.iden2Grant[peer]...)
 	if len(p.anyoneGrants) > 0 {
@@ -736,19 +731,19 @@ func LoadPolicy(stateDir string) (*Policy, error) {
 	grantsPath := filepath.Join(stateDir, GrantsFilename)
 	idens, err := LoadIdentitiesFile(idenPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading IDENTITIES file: %w", err)
 	}
 	acts, err := LoadActionsFile(actionPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading ACTIONS file: %w", err)
 	}
 	objs, err := LoadObjectsFile(objectPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading OBJECTS file: %w", err)
 	}
 	grants, err := LoadGrantsFile(grantsPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading GRANTS file: %w", err)
 	}
 	return NewPolicy(idens, acts, objs, grants)
 }

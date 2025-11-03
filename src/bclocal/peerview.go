@@ -30,7 +30,7 @@ func (pv *peerView) CreateVolume(ctx context.Context, host *blobcache.Endpoint, 
 
 func (pv *peerView) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	pol := pv.Service.env.Policy
-	if rights := pol.Open(pv.Caller, x); rights == 0 {
+	if rights := pol.OpenFiat(pv.Caller, x); rights == 0 {
 		return nil, ErrNotAllowed{
 			Peer:   pv.Caller,
 			Action: "OpenFiat",
