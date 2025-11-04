@@ -99,6 +99,8 @@ func (a Action) ToSet() blobcache.ActionSet {
 		return blobcache.Action_TX_LINK_FROM
 	case Action_LINK_TO:
 		return blobcache.Action_TX_LINK_FROM
+	case Action_UNLINK_FROM:
+		return blobcache.Action_TX_UNLINK_FROM
 	case Action_AWAIT:
 		return blobcache.Action_VOLUME_AWAIT
 	case Action_CLONE:
@@ -106,7 +108,7 @@ func (a Action) ToSet() blobcache.ActionSet {
 	case Action_CREATE:
 		return blobcache.Action_VOLUME_CREATE
 	}
-	return 0
+	panic(a)
 }
 
 func AllActions() []Action {
