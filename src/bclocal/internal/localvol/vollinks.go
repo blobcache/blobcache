@@ -14,11 +14,12 @@ import (
 )
 
 type VolumeLink struct {
-	From, To blobcache.OID
-	Rights   blobcache.ActionSet
+	From   ID
+	To     blobcache.OID
+	Rights blobcache.ActionSet
 }
 
-// ParseVolumeLink parses an entry from the VOLUME_LINKS table.
+// ParseVolumeLink parses an entry from the LOCAL_VOLUME_LINKS table.
 func ParseVolumeLink(k, v []byte) (VolumeLink, error) {
 	if len(k) < 4 {
 		return VolumeLink{}, fmt.Errorf("volume link key too short: %d", len(k))
@@ -27,24 +28,31 @@ func ParseVolumeLink(k, v []byte) (VolumeLink, error) {
 	if len(k) < 2*blobcache.OIDSize {
 		return VolumeLink{}, fmt.Errorf("volume link key too short: %d", len(k))
 	}
-	fromID := blobcache.OID(k[:blobcache.OIDSize])
-	toID := blobcache.OID(k[blobcache.OIDSize:])
+	fromID := binary.BigEndian.Uint64(k[:8])
+	toID := blobcache.OID(k[8:])
 	return VolumeLink{
-		From:   fromID,
+		From:   ID(fromID),
 		To:     toID,
 		Rights: blobcache.ActionSet(binary.LittleEndian.Uint64(v)),
 	}, nil
 }
 
-func PutVolumeLink(ba *pebble.Batch, fromVolID blobcache.OID, toID blobcache.OID, rights blobcache.ActionSet) error {
+func (ls *System) putVolumeLink(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID, toID blobcache.OID, rights blobcache.ActionSet) error {
 	// forwards
-	k := pdb.TKey{TableID: dbtab.TID_VOLUME_LINKS, Key: slices.Concat(fromVolID[:], toID[:])}
+	k := pdb.MVKey{
+		TableID: dbtab.TID_LOCAL_VOLUME_LINKS,
+		Key:     slices.Concat(fromVolID.Marshal(nil), toID[:]),
+		Version: mvid,
+	}
 	v := binary.LittleEndian.AppendUint64(nil, uint64(rights))
 	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
 		return err
 	}
 	// inverse
-	k = pdb.TKey{TableID: dbtab.TID_VOLUME_LINKS_INV, Key: slices.Concat(toID[:], fromVolID[:])}
+	k = pdb.MVKey{
+		TableID: dbtab.TID_LOCAL_VOLUME_LINKS_INV,
+		Key:     slices.Concat(toID[:], fromVolID.Marshal(nil)),
+	}
 	v = []byte{}
 	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
 		return err
@@ -55,18 +63,36 @@ func PutVolumeLink(ba *pebble.Batch, fromVolID blobcache.OID, toID blobcache.OID
 type LinkSet = map[blobcache.OID]blobcache.ActionSet
 
 // ReadVolumeLinks reads the volume links from volID into dst.
-func ReadVolumeLinks(sp pdb.RO, fromVolID blobcache.OID, dst LinkSet) error {
-	gteq := pdb.TKey{
-		TableID: dbtab.TID_VOLUME_LINKS,
-		Key:     fromVolID[:],
+func (ls *System) readVolumeLinks(sp pdb.RO, mvid pdb.MVTag, fromVolID ID, dst LinkSet) error {
+	exclude := func(x pdb.MVTag) bool {
+		if x == mvid {
+			return false
+		} else {
+			ok, err := ls.txSys.IsActive(sp, x)
+			if err != nil {
+				return false
+			}
+			return ok
+		}
+	}
+	gteq := pdb.MVKey{
+		TableID: dbtab.TID_LOCAL_VOLUME_LINKS,
+		Key:     fromVolID.Marshal(nil),
 	}
 	lt := pdb.TKey{
-		TableID: dbtab.TID_VOLUME_LINKS,
-		Key:     slices.Concat(fromVolID[:], allOnesOID[:]),
+		TableID: dbtab.TID_LOCAL_VOLUME_LINKS,
+		Key:     slices.Concat(fromVolID.Marshal(nil), allOnesOID[:]),
 	}
 	iter, err := sp.NewIter(&pebble.IterOptions{
 		LowerBound: gteq.Marshal(nil),
 		UpperBound: lt.Marshal(nil),
+		SkipPoint: func(k []byte) bool {
+			mvk, err := pdb.ParseMVKey(k)
+			if err != nil {
+				return false
+			}
+			return exclude(mvk.Version)
+		},
 	})
 	if err != nil {
 		return err
@@ -86,13 +112,13 @@ func ReadVolumeLinks(sp pdb.RO, fromVolID blobcache.OID, dst LinkSet) error {
 // readVolumeLinksTo reads the volume links to toVolID into dst.
 // It only reads the inverse links.
 // To get the rights, read from the VOLUME_LINKS table.
-func ReadVolumeLinksTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]struct{}) error {
+func (ls *System) readVolumeLinksTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]struct{}) error {
 	gteq := pdb.TKey{
-		TableID: dbtab.TID_VOLUME_LINKS_INV,
-		Key:     toVolID[:],
+		TableID: dbtab.TID_LOCAL_VOLUME_LINKS_INV,
+		Key:     slices.Concat(toVolID[:], allOnesOID[:]),
 	}
 	lt := pdb.TKey{
-		TableID: dbtab.TID_VOLUME_LINKS_INV,
+		TableID: dbtab.TID_LOCAL_VOLUME_LINKS_INV,
 		Key:     pdb.PrefixUpperBound(toVolID[:]),
 	}
 	iter, err := sp.NewIter(&pebble.IterOptions{
@@ -117,26 +143,31 @@ func ReadVolumeLinksTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]s
 // putVolumeLinks puts the volume links from fromVolID into links into the database.
 // It overwrites the previous links for the volume.
 // putVolumeLinks requires that the batch is indexed.
-func PutVolumeLinks(ba *pebble.Batch, fromVolID blobcache.OID, links LinkSet) error {
+func (sys *System) putVolumeLinks(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID, links LinkSet) error {
 	oldLinks := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := ReadVolumeLinks(ba, fromVolID, oldLinks); err != nil {
+	if err := sys.readVolumeLinks(ba, mvid, fromVolID, oldLinks); err != nil {
 		return err
 	}
 	// delete forwards
-	gteq := pdb.TKey{
-		TableID: dbtab.TID_VOLUME_LINKS,
-		Key:     fromVolID[:],
+	gteq := pdb.MVKey{
+		TableID: dbtab.TID_LOCAL_VOLUME_LINKS,
+		Key:     fromVolID.Marshal(nil),
+		Version: mvid,
 	}
-	lt := pdb.TKey{
-		TableID: dbtab.TID_VOLUME_LINKS,
-		Key:     slices.Concat(fromVolID[:], allOnesOID[:]),
+	lt := pdb.MVKey{
+		TableID: dbtab.TID_LOCAL_VOLUME_LINKS,
+		Key:     slices.Concat(fromVolID.Marshal(nil), allOnesOID[:]),
+		Version: mvid,
 	}
 	if err := ba.DeleteRange(gteq.Marshal(nil), lt.Marshal(nil), nil); err != nil {
 		return err
 	}
 	// delete inverse
 	for toID := range oldLinks {
-		invKey := pdb.TKey{TableID: dbtab.TID_VOLUME_LINKS_INV, Key: slices.Concat(toID[:], fromVolID[:])}
+		invKey := pdb.MVKey{
+			TableID: dbtab.TID_LOCAL_VOLUME_LINKS_INV,
+			Key:     slices.Concat(toID[:], fromVolID.Marshal(nil)),
+		}
 		if err := ba.Delete(invKey.Marshal(nil), nil); err != nil {
 			return err
 		}
@@ -144,7 +175,7 @@ func PutVolumeLinks(ba *pebble.Batch, fromVolID blobcache.OID, links LinkSet) er
 
 	// add the new links
 	for toID, rights := range links {
-		if err := PutVolumeLink(ba, fromVolID, toID, rights); err != nil {
+		if err := sys.putVolumeLink(ba, mvid, fromVolID, toID, rights); err != nil {
 			return err
 		}
 	}

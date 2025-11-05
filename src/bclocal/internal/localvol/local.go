@@ -14,6 +14,13 @@ import (
 // ID uniquely identifies a local volume
 type ID uint64
 
+func ParseLocalID(k []byte) (ID, error) {
+	if len(k) != 8 {
+		return 0, fmt.Errorf("local ID key too short: %d", len(k))
+	}
+	return ID(binary.BigEndian.Uint64(k[:8])), nil
+}
+
 func (lvid ID) Marshal(out []byte) []byte {
 	return binary.BigEndian.AppendUint64(out, uint64(lvid))
 }

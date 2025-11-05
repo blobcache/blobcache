@@ -273,8 +273,7 @@ func (s *System) commit(volID ID, mvid pdb.MVTag, links LinkSet) error {
 	ba := s.db.NewIndexedBatch()
 	defer ba.Close()
 
-	oid := OIDFromLocalID(volID)
-	if err := PutVolumeLinks(ba, oid, links); err != nil {
+	if err := s.putVolumeLinks(ba, mvid, volID, links); err != nil {
 		return err
 	}
 	if !s.cfg.NoSync {
@@ -579,11 +578,11 @@ func (s *System) readBlobData(k blobman.Key, buf []byte) (int, error) {
 	return n, nil
 }
 
-func (s *System) readLinksFrom(fromVol ID, dst LinkSet) error {
+func (s *System) readLinksFrom(mvid pdb.MVTag, fromVol ID, dst LinkSet) error {
 	clear(dst)
 	snp := s.db.NewSnapshot()
 	defer snp.Close()
-	return ReadVolumeLinks(snp, OIDFromLocalID(fromVol), dst)
+	return s.readVolumeLinks(snp, mvid, fromVol, dst)
 }
 
 // setVolumeBlob associates a volume with a blob according to the flags.

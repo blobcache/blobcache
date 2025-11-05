@@ -44,7 +44,7 @@ func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (volumes.Tx
 }
 
 func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
-	return v.sys.readLinksFrom(v.lvid, dst)
+	return v.sys.readLinksFrom(0, v.lvid, dst)
 }
 
 var _ volumes.Tx = &localTxnMut{}
@@ -75,7 +75,7 @@ type localTxnMut struct {
 // the caller should have already created the transaction at txid, and volInfo.
 func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcache.TxParams, schema schema.Schema) (*localTxnMut, error) {
 	links := make(map[blobcache.OID]blobcache.ActionSet)
-	if err := ReadVolumeLinks(localSys.db, OIDFromLocalID(vol.lvid), links); err != nil {
+	if err := localSys.readVolumeLinks(localSys.db, mvid, vol.lvid, links); err != nil {
 		return nil, err
 	}
 	hf := vol.params.HashAlgo.HashFunc()
