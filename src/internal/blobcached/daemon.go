@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -154,6 +155,27 @@ func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
 
 func (d *Daemon) GetPolicy() (*Policy, error) {
 	return LoadPolicy(d.StateDir)
+}
+
+// GetEndpoint returns the endpoint that the daemon would listen on.
+// If a packet conn with addr was passed to Run.
+func (d *Daemon) GetEndpoint(addr netip.AddrPort) (blobcache.Endpoint, error) {
+	id, err := d.GetPeerID()
+	if err != nil {
+		return blobcache.Endpoint{}, err
+	}
+	return blobcache.Endpoint{
+		Peer:   id,
+		IPPort: addr,
+	}, nil
+}
+
+func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {
+	privKey, err := d.EnsurePrivateKey()
+	if err != nil {
+		return blobcache.PeerID{}, err
+	}
+	return inet256.NewID(privKey.Public().(ed25519.PublicKey)), nil
 }
 
 func LoadPrivateKey(p string) (inet256.PrivateKey, error) {
