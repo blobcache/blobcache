@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,9 +86,7 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 		})
 	}
 
-	if err := eg.Wait(); errors.Is(err, context.Canceled) {
-		err = nil
-	} else if err != nil {
+	if err := eg.Wait(); !errors.Is(err, context.Canceled) {
 		return err
 	}
 	if err := svc.Close(); err != nil {
@@ -155,19 +152,6 @@ func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
 
 func (d *Daemon) GetPolicy() (*Policy, error) {
 	return LoadPolicy(d.StateDir)
-}
-
-// GetEndpoint returns the endpoint that the daemon would listen on.
-// If a packet conn with addr was passed to Run.
-func (d *Daemon) GetEndpoint(addr netip.AddrPort) (blobcache.Endpoint, error) {
-	id, err := d.GetPeerID()
-	if err != nil {
-		return blobcache.Endpoint{}, err
-	}
-	return blobcache.Endpoint{
-		Peer:   id,
-		IPPort: addr,
-	}, nil
 }
 
 func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {

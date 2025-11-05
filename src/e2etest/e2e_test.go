@@ -25,7 +25,6 @@ import (
 	"blobcache.io/blobcache/src/internal/blobcached"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema/basicns"
-	_ "blobcache.io/blobcache/src/schema/basicns"
 )
 
 // TestDaemonAuth checks that the daemon correctly reads the auth policy files.
@@ -55,8 +54,13 @@ func TestDaemonAuth(t *testing.T) {
 	})
 
 	// connect with the client
-	ep, err := d.GetEndpoint(pc.LocalAddr().(*net.UDPAddr).AddrPort())
+	peer, err := d.GetPeerID()
 	require.NoError(t, err)
+	ep := blobcache.Endpoint{
+		Peer:   peer,
+		IPPort: pc.LocalAddr().(*net.UDPAddr).AddrPort(),
+	}
+
 	svc, err := bcremote.Dial(clientPriv.(ed25519.PrivateKey), ep)
 	require.NoError(t, err)
 	nsc := basicns.Client{Service: svc}
