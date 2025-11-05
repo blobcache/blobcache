@@ -86,9 +86,7 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 		})
 	}
 
-	if err := eg.Wait(); errors.Is(err, context.Canceled) {
-		err = nil
-	} else if err != nil {
+	if err := eg.Wait(); !errors.Is(err, context.Canceled) {
 		return err
 	}
 	if err := svc.Close(); err != nil {
@@ -154,6 +152,14 @@ func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
 
 func (d *Daemon) GetPolicy() (*Policy, error) {
 	return LoadPolicy(d.StateDir)
+}
+
+func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {
+	privKey, err := d.EnsurePrivateKey()
+	if err != nil {
+		return blobcache.PeerID{}, err
+	}
+	return inet256.NewID(privKey.Public().(ed25519.PublicKey)), nil
 }
 
 func LoadPrivateKey(p string) (inet256.PrivateKey, error) {

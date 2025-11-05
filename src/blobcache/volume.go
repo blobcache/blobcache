@@ -51,7 +51,8 @@ type VolumeSpec = VolumeBackend[Handle]
 
 // VolumeInfo is a volume info.
 type VolumeInfo struct {
-	ID OID `json:"id"`
+	ID   OID    `json:"id"`
+	Host PeerID `json:"host"`
 	VolumeParams
 	Backend VolumeBackend[OID] `json:"backend"`
 }
@@ -66,6 +67,10 @@ func (vi VolumeInfo) Marshal(out []byte) []byte {
 
 func (vi *VolumeInfo) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, vi)
+}
+
+func (vi *VolumeInfo) GetFQOID() FQOID {
+	return FQOID{Peer: vi.Host, OID: vi.ID}
 }
 
 // VolumeBackend is a specification for a volume backend.

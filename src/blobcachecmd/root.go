@@ -37,6 +37,8 @@ var rootCmd = star.NewDir(
 		"endpoint":         endpointCmd,
 		"daemon":           daemonCmd,
 		"daemon-ephemeral": daemonEphemeralCmd,
+		"daemon-validate":  daemonValidateCmd,
+		"show-access":      showAccessCmd,
 
 		// volumes
 		"mkvol.local":  mkVolLocalCmd,

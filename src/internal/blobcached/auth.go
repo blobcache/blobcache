@@ -99,6 +99,8 @@ func (a Action) ToSet() blobcache.ActionSet {
 		return blobcache.Action_TX_LINK_FROM
 	case Action_LINK_TO:
 		return blobcache.Action_TX_LINK_FROM
+	case Action_UNLINK_FROM:
+		return blobcache.Action_TX_UNLINK_FROM
 	case Action_AWAIT:
 		return blobcache.Action_VOLUME_AWAIT
 	case Action_CLONE:
@@ -106,7 +108,7 @@ func (a Action) ToSet() blobcache.ActionSet {
 	case Action_CREATE:
 		return blobcache.Action_VOLUME_CREATE
 	}
-	return 0
+	panic(a)
 }
 
 func AllActions() []Action {
@@ -354,16 +356,12 @@ type Policy struct {
 
 	grants []Grant
 
-	// original memberships for writing back
-	// idenMemberships   []Membership[Identity]
-	// actionMemberships []Membership[Action]
-	// objectMemberships []Membership[ObjectSet]
-
 	// indexes
-	iden2Grant     map[inet256.ID][]uint16
-	anyoneGrants   []uint16
-	vol2Grant      map[blobcache.OID][]uint16
-	actionsClosure map[GroupName]blobcache.ActionSet
+	iden2Grant      map[inet256.ID][]uint16
+	anyoneGrants    []uint16
+	allObjectGrants []uint16
+	vol2Grant       map[blobcache.OID][]uint16
+	actionsClosure  map[GroupName]blobcache.ActionSet
 }
 
 func (p *Policy) CanConnect(peer blobcache.PeerID) bool {
@@ -374,8 +372,9 @@ func (p *Policy) CanConnect(peer blobcache.PeerID) bool {
 	return exists
 }
 
-func (p *Policy) Open(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
-	volGrants := p.vol2Grant[target]
+func (p *Policy) OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+	volGrants := slices.Clone(p.vol2Grant[target])
+	volGrants = append(volGrants, p.allObjectGrants...)
 	idenGrants := append([]uint16{}, p.iden2Grant[peer]...)
 	if len(p.anyoneGrants) > 0 {
 		idenGrants = append(idenGrants, p.anyoneGrants...)
@@ -484,7 +483,11 @@ func NewPolicy(idens []Membership[Identity], actions []Membership[Action], objec
 			p.iden2Grant[pid] = append(p.iden2Grant[pid], uint16(gi))
 		}
 		// objects
-		for _, oid := range p.expandObjectMember(g.Object) {
+		includesAll, oids := p.expandObjectMember(g.Object)
+		if includesAll {
+			p.allObjectGrants = append(p.allObjectGrants, uint16(gi))
+		}
+		for _, oid := range oids {
 			p.vol2Grant[oid] = append(p.vol2Grant[oid], uint16(gi))
 		}
 	}
@@ -497,6 +500,7 @@ func NewPolicy(idens []Membership[Identity], actions []Membership[Action], objec
 	}
 	slices.Sort(p.anyoneGrants)
 	p.anyoneGrants = slices.Compact(p.anyoneGrants)
+	p.allObjectGrants = slices.Compact(p.allObjectGrants)
 	for k := range p.vol2Grant {
 		s := p.vol2Grant[k]
 		slices.Sort(s)
@@ -541,12 +545,14 @@ func (p *Policy) expandIdentityMember(m Member[Identity]) (bool, []inet256.ID) {
 	return everyone, out
 }
 
-func (p *Policy) expandObjectMember(m Member[ObjectSet]) []blobcache.OID {
+func (p *Policy) expandObjectMember(m Member[ObjectSet]) (bool, []blobcache.OID) {
 	seen := make(map[GroupName]bool)
 	oids := make(map[blobcache.OID]struct{})
+	var includesAll bool
 	var visit func(Member[ObjectSet])
 	visit = func(mx Member[ObjectSet]) {
-		if mx.GroupRef != nil {
+		switch {
+		case mx.GroupRef != nil:
 			if seen[*mx.GroupRef] {
 				return
 			}
@@ -555,13 +561,13 @@ func (p *Policy) expandObjectMember(m Member[ObjectSet]) []blobcache.OID {
 				visit(sub)
 			}
 			return
-		}
-		if mx.Unit == nil {
-			return
-		}
-		obj := *mx.Unit
-		if obj.ByOID != nil {
-			oids[*obj.ByOID] = struct{}{}
+		case mx.Unit != nil:
+			obj := *mx.Unit
+			if obj.ByOID != nil {
+				oids[*obj.ByOID] = struct{}{}
+			} else if obj.All != nil {
+				includesAll = true
+			}
 		}
 	}
 	visit(m)
@@ -571,7 +577,7 @@ func (p *Policy) expandObjectMember(m Member[ObjectSet]) []blobcache.OID {
 	}
 	// keep stable order; not strictly necessary
 	slices.SortFunc(out, func(a, b blobcache.OID) int { return a.Compare(b) })
-	return out
+	return includesAll, out
 }
 
 func (p *Policy) expandActionMember(m Member[Action]) blobcache.ActionSet {
@@ -736,19 +742,19 @@ func LoadPolicy(stateDir string) (*Policy, error) {
 	grantsPath := filepath.Join(stateDir, GrantsFilename)
 	idens, err := LoadIdentitiesFile(idenPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading IDENTITIES file: %w", err)
 	}
 	acts, err := LoadActionsFile(actionPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading ACTIONS file: %w", err)
 	}
 	objs, err := LoadObjectsFile(objectPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading OBJECTS file: %w", err)
 	}
 	grants, err := LoadGrantsFile(grantsPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading GRANTS file: %w", err)
 	}
 	return NewPolicy(idens, acts, objs, grants)
 }

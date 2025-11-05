@@ -255,6 +255,47 @@ func TestPolicy(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "admin-all-all",
+			Idens: []Membership[Identity]{
+				{Group: "admin", Member: Unit(peer1)},
+			},
+			Actions: []Membership[Action]{
+				{Group: "all", Member: Unit(Action_LOAD)},
+				{Group: "all", Member: Unit(Action_SAVE)},
+				{Group: "all", Member: Unit(Action_POST)},
+				{Group: "all", Member: Unit(Action_GET)},
+				{Group: "all", Member: Unit(Action_EXISTS)},
+				{Group: "all", Member: Unit(Action_DELETE)},
+				{Group: "all", Member: Unit(Action_COPY_FROM)},
+				{Group: "all", Member: Unit(Action_COPY_TO)},
+				{Group: "all", Member: Unit(Action_LINK_FROM)},
+				{Group: "all", Member: Unit(Action_LINK_TO)},
+				{Group: "all", Member: Unit(Action_UNLINK_FROM)},
+				{Group: "all", Member: Unit(Action_AWAIT)},
+				{Group: "all", Member: Unit(Action_CLONE)},
+				{Group: "all", Member: Unit(Action_CREATE)},
+			},
+			Objects: []Membership[ObjectSet]{
+				{Group: "all", Member: Unit(ObjectSet{ByOID: &vol1})},
+			},
+			Grants: []Grant{
+				{Subject: GroupRef[Identity]("admin"), Action: GroupRef[Action]("all"), Object: GroupRef[ObjectSet]("all")},
+			},
+			Checks: []Check{
+				{
+					Peer:       peer1,
+					Target:     vol1,
+					CanConnect: true,
+					Open: blobcache.Action_TX_LOAD | blobcache.Action_TX_SAVE | blobcache.Action_TX_POST |
+						blobcache.Action_TX_GET | blobcache.Action_TX_EXISTS | blobcache.Action_TX_DELETE |
+						blobcache.Action_TX_COPY_FROM | blobcache.Action_TX_COPY_TO |
+						blobcache.Action_TX_LINK_FROM | blobcache.Action_TX_UNLINK_FROM |
+						blobcache.Action_VOLUME_AWAIT | blobcache.Action_VOLUME_CLONE,
+					CanCreate: true,
+				},
+			},
+		},
 	}
 
 	for _, tc := range tcs {
@@ -263,7 +304,7 @@ func TestPolicy(t *testing.T) {
 			require.NoError(t, err)
 			for _, check := range tc.Checks {
 				require.Equal(t, check.CanConnect, p.CanConnect(check.Peer))
-				rights := p.Open(check.Peer, check.Target)
+				rights := p.OpenFiat(check.Peer, check.Target)
 				require.Equal(t, check.Open, rights)
 				require.Equal(t, check.CanCreate, p.CanCreate(check.Peer))
 			}
