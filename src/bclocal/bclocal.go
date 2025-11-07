@@ -581,6 +581,10 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 	if vp.MaxSize > MaxMaxBlobSize {
 		return nil, fmt.Errorf("bclocal: only supports blobs up to %d, requested %d", MaxMaxBlobSize, vp.MaxSize)
 	}
+	if _, err := s.getSchema(vp.Schema); err != nil {
+		return nil, err
+	}
+
 	lvid, err := s.volSys.local.GenerateLocalID()
 	if err != nil {
 		return nil, err
