@@ -1,4 +1,4 @@
-package bcnet
+package bcp
 
 import (
 	"encoding/binary"
@@ -190,7 +190,7 @@ func (m *Message) SetError(err error) {
 	m.SetBody(jsonMarshal(err))
 }
 
-func ParseWireError(code MessageType, x []byte) error {
+func parseWireError(code MessageType, x []byte) error {
 	var ret error
 	switch code {
 	case MT_ERROR_INVALID_HANDLE:

@@ -13,6 +13,7 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
+	"blobcache.io/blobcache/src/internal/bcp"
 )
 
 // Dial starts listening via UDP on any available port, then
@@ -79,23 +80,23 @@ func (s *Service) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
 }
 
 func (s *Service) Drop(ctx context.Context, h blobcache.Handle) error {
-	return bcnet.Drop(ctx, s.node, s.ep, h)
+	return bcp.Drop(ctx, s.node, s.ep, h)
 }
 
 func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
-	return bcnet.KeepAlive(ctx, s.node, s.ep, hs)
+	return bcp.KeepAlive(ctx, s.node, s.ep, hs)
 }
 
 func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return bcnet.Share(ctx, s.node, s.ep, h, to, mask)
+	return bcp.Share(ctx, s.node, s.ep, h, to, mask)
 }
 
 func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
-	return bcnet.InspectHandle(ctx, s.node, s.ep, h)
+	return bcp.InspectHandle(ctx, s.node, s.ep, h)
 }
 
 func (s *Service) OpenFiat(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	h, _, err := bcnet.OpenFiat(ctx, s.node, s.ep, target, mask)
+	h, _, err := bcp.OpenFiat(ctx, s.node, s.ep, target, mask)
 	if err != nil {
 		return nil, err
 	}
@@ -103,16 +104,16 @@ func (s *Service) OpenFiat(ctx context.Context, target blobcache.OID, mask blobc
 }
 
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	h, _, err := bcnet.OpenFrom(ctx, s.node, s.ep, base, target, mask)
+	h, _, err := bcp.OpenFrom(ctx, s.node, s.ep, base, target, mask)
 	return h, err
 }
 
 func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
-	return bcnet.Await(ctx, s.node, s.ep, cond)
+	return bcp.Await(ctx, s.node, s.ep, cond)
 }
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
-	h, info, err := bcnet.BeginTx(ctx, s.node, s.ep, volh, txp)
+	h, info, err := bcp.BeginTx(ctx, s.node, s.ep, volh, txp)
 	if err != nil {
 		return nil, err
 	}
@@ -125,46 +126,46 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 	if host != nil && *host != s.ep {
 		return nil, fmt.Errorf("bcremote: caller cannot be different from the node ID")
 	}
-	return bcnet.CreateVolume(ctx, s.node, s.ep, vspec)
+	return bcp.CreateVolume(ctx, s.node, s.ep, vspec)
 }
 
 // InspectVolume returns info about a Volume.
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
-	return bcnet.InspectVolume(ctx, s.node, s.ep, h)
+	return bcp.InspectVolume(ctx, s.node, s.ep, h)
 }
 
 func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	return bcnet.CloneVolume(ctx, s.node, s.ep, caller, volh)
+	return bcp.CloneVolume(ctx, s.node, s.ep, caller, volh)
 }
 
 // InspectTx returns info about a transaction.
 func (s *Service) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache.TxInfo, error) {
-	return bcnet.InspectTx(ctx, s.node, s.ep, tx)
+	return bcp.InspectTx(ctx, s.node, s.ep, tx)
 }
 
 // Commit commits a transaction.
 func (s *Service) Commit(ctx context.Context, tx blobcache.Handle) error {
-	return bcnet.Commit(ctx, s.node, s.ep, tx, nil)
+	return bcp.Commit(ctx, s.node, s.ep, tx, nil)
 }
 
 // Abort aborts a transaction.
 func (s *Service) Abort(ctx context.Context, tx blobcache.Handle) error {
-	return bcnet.Abort(ctx, s.node, s.ep, tx)
+	return bcp.Abort(ctx, s.node, s.ep, tx)
 }
 
 // Load loads the volume root into dst
 func (s *Service) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) error {
-	return bcnet.Load(ctx, s.node, s.ep, tx, dst)
+	return bcp.Load(ctx, s.node, s.ep, tx, dst)
 }
 
 // Save writes to the volume root.
 func (s *Service) Save(ctx context.Context, tx blobcache.Handle, src []byte) error {
-	return bcnet.Save(ctx, s.node, s.ep, tx, src)
+	return bcp.Save(ctx, s.node, s.ep, tx, src)
 }
 
 // Post posts data to the volume
 func (s *Service) Post(ctx context.Context, tx blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
-	return bcnet.Post(ctx, s.node, s.ep, tx, opts.Salt, data)
+	return bcp.Post(ctx, s.node, s.ep, tx, opts.Salt, data)
 }
 
 // Exists checks if a CID exists in the volume
@@ -172,19 +173,19 @@ func (s *Service) Exists(ctx context.Context, tx blobcache.Handle, cids []blobca
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and dst must have the same length")
 	}
-	return bcnet.Exists(ctx, s.node, s.ep, tx, cids, dst)
+	return bcp.Exists(ctx, s.node, s.ep, tx, cids, dst)
 }
 
 // Delete deletes a CID from the volume
 func (s *Service) Delete(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID) error {
-	return bcnet.Delete(ctx, s.node, s.ep, tx, cids)
+	return bcp.Delete(ctx, s.node, s.ep, tx, cids)
 }
 
 func (s *Service) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success []bool) error {
 	if len(cids) != len(success) {
 		return fmt.Errorf("cids and success must have the same length")
 	}
-	return bcnet.AddFrom(ctx, s.node, s.ep, tx, cids, srcTxns, success)
+	return bcp.AddFrom(ctx, s.node, s.ep, tx, cids, srcTxns, success)
 }
 
 // Get returns the data for a CID.
@@ -193,28 +194,28 @@ func (s *Service) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CI
 	if err != nil {
 		return 0, err
 	}
-	return bcnet.Get(ctx, s.node, s.ep, tx, hf, cid, opts.Salt, buf)
+	return bcp.Get(ctx, s.node, s.ep, tx, hf, cid, opts.Salt, buf)
 }
 
 func (s *Service) Visit(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID) error {
-	return bcnet.Visit(ctx, s.node, s.ep, tx, cids)
+	return bcp.Visit(ctx, s.node, s.ep, tx, cids)
 }
 
 func (s *Service) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
-	return bcnet.IsVisited(ctx, s.node, s.ep, tx, cids, dst)
+	return bcp.IsVisited(ctx, s.node, s.ep, tx, cids, dst)
 }
 
 // Link allows the Volume to reference another volume.
 func (s *Service) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
-	return bcnet.Link(ctx, s.node, s.ep, tx, subvol, mask)
+	return bcp.Link(ctx, s.node, s.ep, tx, subvol, mask)
 }
 
 func (s *Service) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
-	return bcnet.Unlink(ctx, s.node, s.ep, tx, targets)
+	return bcp.Unlink(ctx, s.node, s.ep, tx, targets)
 }
 
 func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
-	return bcnet.VisitLinks(ctx, s.node, s.ep, tx, targets)
+	return bcp.VisitLinks(ctx, s.node, s.ep, tx, targets)
 }
 
 // getHashFunc finds the hash function for a transaction.
@@ -223,7 +224,7 @@ func (s *Service) getHashFunc(ctx context.Context, txh blobcache.Handle) (blobca
 	if ok {
 		return txinfo.HashAlgo.HashFunc(), nil
 	}
-	txinfo, err := bcnet.InspectTx(ctx, s.node, s.ep, txh)
+	txinfo, err := bcp.InspectTx(ctx, s.node, s.ep, txh)
 	if err != nil {
 		return nil, err
 	}

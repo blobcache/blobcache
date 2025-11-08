@@ -26,6 +26,7 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
+	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/internal/pubsub"
 	"blobcache.io/blobcache/src/internal/svcgroup"
 	"blobcache.io/blobcache/src/internal/volumes"
@@ -160,7 +161,7 @@ func New(env Env, cfg Config) (*Service, error) {
 			if node == nil {
 				return fmt.Errorf("cannot send, no node")
 			}
-			return bcnet.TopicSend(s.env.Background, node, tm)
+			return bcp.TopicSend(s.env.Background, node, tm)
 		},
 	})
 	s.svcs.Always(func(ctx context.Context) error {
@@ -208,7 +209,7 @@ func (s *Service) Serve(ctx context.Context, pc net.PacketConn) error {
 				return nil
 			}
 		},
-		Deliver: func(ctx context.Context, from blobcache.Endpoint, ttm bcnet.TopicTellMsg) error {
+		Deliver: func(ctx context.Context, from blobcache.Endpoint, ttm bcp.TopicTellMsg) error {
 			topicID := s.hub.Lookup(ttm.TopicHash)
 			if topicID.IsZero() {
 				logctx.Warn(ctx, "dropping tell message", zap.Any("from", from), zap.Int("ctext_len", len(ttm.Ciphertext)))
@@ -615,11 +616,11 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	node := s.node.Load()
 	// the request is for a remote node.
-	rvh, err := bcnet.CreateVolume(ctx, node, host, vspec)
+	rvh, err := bcp.CreateVolume(ctx, node, host, vspec)
 	if err != nil {
 		return nil, err
 	}
-	rvInfo, err := bcnet.InspectVolume(ctx, node, host, *rvh)
+	rvInfo, err := bcp.InspectVolume(ctx, node, host, *rvh)
 	if err != nil {
 		return nil, err
 	}
