@@ -51,9 +51,9 @@ type VolumeSpec = VolumeBackend[Handle]
 
 // VolumeInfo is a volume info.
 type VolumeInfo struct {
-	ID   OID    `json:"id"`
-	Host PeerID `json:"host"`
-	VolumeParams
+	// ID is always the local OID for the volume.
+	ID OID `json:"id"`
+	VolumeConfig
 	Backend VolumeBackend[OID] `json:"backend"`
 }
 
@@ -69,8 +69,14 @@ func (vi *VolumeInfo) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, vi)
 }
 
-func (vi *VolumeInfo) GetFQOID() FQOID {
-	return FQOID{Peer: vi.Host, OID: vi.ID}
+func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
+	if vi.Backend.Remote == nil {
+		return FQOID{}
+	}
+	return FQOID{
+		Peer: vi.Backend.Remote.Endpoint.Peer,
+		OID:  vi.Backend.Remote.Volume,
+	}
 }
 
 // VolumeBackend is a specification for a volume backend.
@@ -106,12 +112,12 @@ func (v *VolumeBackend[T]) Deps() iter.Seq[T] {
 	}
 }
 
-func (v VolumeBackend[T]) Params() VolumeParams {
+func (v VolumeBackend[T]) Params() VolumeConfig {
 	switch {
 	case v.Local != nil:
-		return v.Local.VolumeParams
+		return v.Local.VolumeConfig
 	case v.Git != nil:
-		return v.Git.VolumeParams
+		return v.Git.VolumeConfig
 	default:
 		panic(v)
 	}
@@ -189,16 +195,18 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 	return ret
 }
 
-// VolumeParams are parameters common to all Volumes.
+// VolumeConfig contains parameters common to all Volumes.
 // Not every volume backend allows them to be specified, but all Volumes have these Values set.
-type VolumeParams struct {
+// e.g. the remote volume does not allow a max size to be specified, that's dictated by the remote node.
+// However, the volume still has an effective max size, which is available if the volume has been mounted on the local Node.
+type VolumeConfig struct {
 	Schema   SchemaSpec `json:"schema"`
 	HashAlgo HashAlgo   `json:"hash_algo"`
 	MaxSize  int64      `json:"max_size"`
 	Salted   bool       `json:"salted"`
 }
 
-func (v *VolumeParams) Validate() error {
+func (v *VolumeConfig) Validate() error {
 	if err := v.HashAlgo.Validate(); err != nil {
 		return err
 	}
@@ -208,8 +216,8 @@ func (v *VolumeParams) Validate() error {
 	return nil
 }
 
-func DefaultVolumeParams() VolumeParams {
-	return VolumeParams{
+func DefaultVolumeParams() VolumeConfig {
+	return VolumeConfig{
 		Schema:   SchemaSpec{Name: Schema_NONE},
 		HashAlgo: HashAlgo_BLAKE3_256,
 		MaxSize:  1 << 22,
@@ -218,11 +226,11 @@ func DefaultVolumeParams() VolumeParams {
 }
 
 type VolumeBackend_Local struct {
-	VolumeParams
+	VolumeConfig
 }
 
 func (v *VolumeBackend_Local) Validate() error {
-	if err := v.VolumeParams.Validate(); err != nil {
+	if err := v.VolumeConfig.Validate(); err != nil {
 		return err
 	}
 	return nil
@@ -237,7 +245,7 @@ type VolumeBackend_Remote struct {
 type VolumeBackend_Git struct {
 	URL string `json:"url"`
 
-	VolumeParams
+	VolumeConfig
 }
 
 type VolumeBackend_Vault[T handleOrOID] struct {
@@ -283,7 +291,7 @@ type handleOrOID interface {
 func DefaultLocalSpec() VolumeSpec {
 	return VolumeSpec{
 		Local: &VolumeBackend_Local{
-			VolumeParams: DefaultVolumeParams(),
+			VolumeConfig: DefaultVolumeParams(),
 		},
 	}
 }

@@ -322,6 +322,28 @@ func (s *Service) getSchema(spec blobcache.SchemaSpec) (schema.Schema, error) {
 	return schema(spec.Params, s.getSchema)
 }
 
+// addVolume adds a volume to the volumes map.
+// It acquires mu exclusively, and returns false if the volume already exists.
+func (s *Service) addVolume(oid blobcache.OID, vol volumes.Volume) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.volumes[oid]; exists {
+		return false
+	}
+	if s.volumes == nil {
+		s.volumes = make(map[blobcache.OID]volume)
+	}
+	s.volumes[oid] = volume{
+		info: blobcache.VolumeInfo{
+			ID:           oid,
+			VolumeConfig: vol.GetParams(),
+			Backend:      vol.GetBackend(),
+		},
+		backend: vol,
+	}
+	return true
+}
+
 // mountVolume ensures the volume is available.
 // if the volume is already in memory, it does nothing.
 // otherwise it calls makeVolume and writes to the volumes map.
@@ -336,15 +358,7 @@ func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobc
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	if s.volumes == nil {
-		s.volumes = make(map[blobcache.OID]volume)
-	}
-	s.volumes[oid] = volume{
-		info:    info,
-		backend: vol,
-	}
-	s.mu.Unlock()
+	s.addVolume(oid, vol)
 	return nil
 }
 
@@ -499,35 +513,35 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
-	vol, _, err := s.resolveVol(base)
+	baseVol, _, err := s.resolveVol(base)
 	if err != nil {
 		return nil, err
 	}
-	rights, err := vol.backend.AccessSubVolume(ctx, x)
-	if err != nil {
-		return nil, err
-	}
-	if rights == 0 {
-		return nil, blobcache.ErrNoLink{Base: base.OID, Target: x}
-	}
 
-	// create a handle
-	rights = rights & mask
-	createdAt := time.Now()
-	expiresAt := createdAt.Add(DefaultVolumeTTL)
-	h := s.handles.Create(x, rights, createdAt, expiresAt)
-
-	switch vol.backend.(type) {
+	switch baseVol := baseVol.backend.(type) {
 	case *remotevol.Volume:
-		subvol, err := s.volSys.remote.Up(ctx, remotevol.Params{})
+		rights, subvol, err := s.volSys.remote.OpenFrom(ctx, baseVol, x, mask)
 		if err != nil {
 			return nil, err
 		}
-		if err := s.mountVolume(ctx, x, *subvol.Info()); err != nil {
-			return nil, err
-		}
+		// create a handle first to prevent expiration
+		localOID := blobcache.RandomOID()
+		createdAt := time.Now()
+		expiresAt := createdAt.Add(DefaultVolumeTTL)
+		h := s.handles.Create(localOID, rights, createdAt, expiresAt)
+		// add the volume
+		s.addVolume(localOID, subvol)
+		return &h, nil
 
 	default:
+		rights, err := baseVol.AccessSubVolume(ctx, x)
+		if err != nil {
+			return nil, err
+		}
+		if rights == 0 {
+			return nil, blobcache.ErrNoLink{Base: base.OID, Target: x}
+		}
+
 		sn := s.db.NewSnapshot()
 		defer sn.Close()
 		volInfo, err := inspectVolume(sn, x)
@@ -537,12 +551,18 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 		if volInfo == nil {
 			return nil, fmt.Errorf("volume not found")
 		}
+
+		// create a handle first to prevent expiration
+		rights = rights & mask
+		localOID := x
+		createdAt := time.Now()
+		expiresAt := createdAt.Add(DefaultVolumeTTL)
+		h := s.handles.Create(localOID, rights, createdAt, expiresAt)
 		if err := s.mountVolume(ctx, x, *volInfo); err != nil {
 			return nil, err
 		}
+		return &h, nil
 	}
-
-	return &h, nil
 }
 
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
@@ -594,7 +614,7 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 	}
 	info := blobcache.VolumeInfo{
 		ID:           oid,
-		VolumeParams: vp,
+		VolumeConfig: vp,
 		Backend:      blobcache.VolumeBackendToOID(vspec),
 	}
 	if err := doRWBatch(s.db, func(ba *pebble.Batch) error {
@@ -635,7 +655,7 @@ func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoin
 		Backend: blobcache.VolumeBackend[blobcache.OID]{
 			Remote: &blobcache.VolumeBackend_Remote{
 				Endpoint: host,
-				Volume:   blobcache.RandomOID(),
+				Volume:   rvInfo.ID,
 				HashAlgo: vp.HashAlgo,
 			},
 		},
@@ -1022,26 +1042,25 @@ func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend
 	return vaultvol.New(inner, backend.Secret, backend.HashAlgo.HashFunc()), nil
 }
 
-func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSpec) (blobcache.VolumeParams, error) {
+func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSpec) (blobcache.VolumeConfig, error) {
 	switch {
 	case vspec.Local != nil:
-		return vspec.Local.VolumeParams, nil
+		return vspec.Local.VolumeConfig, nil
 	case vspec.Git != nil:
-		return vspec.Git.VolumeParams, nil
+		return vspec.Git.VolumeConfig, nil
 	case vspec.Remote != nil:
 		vol, err := s.volSys.remote.Up(ctx, *vspec.Remote)
 		if err != nil {
-			return blobcache.VolumeParams{}, err
+			return blobcache.VolumeConfig{}, err
 		}
-		volInfo := vol.Info()
-		return volInfo.VolumeParams, nil
+		return vol.GetParams(), nil
 
 	case vspec.Vault != nil:
 		innerVol, _, err := s.resolveVol(vspec.Vault.X)
 		if err != nil {
-			return blobcache.VolumeParams{}, err
+			return blobcache.VolumeConfig{}, err
 		}
-		return innerVol.info.VolumeParams, nil
+		return innerVol.info.VolumeConfig, nil
 	default:
 		panic(vspec)
 	}

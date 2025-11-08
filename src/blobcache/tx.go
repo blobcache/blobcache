@@ -17,7 +17,7 @@ func BeginTx(ctx context.Context, s Service, volH Handle, txp TxParams) (*Tx, er
 	if err != nil {
 		return nil, err
 	}
-	params := info.VolumeParams
+	params := info.VolumeConfig
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func BeginTxSalt(ctx context.Context, s Service, volH Handle, txp TxParams) (*Tx
 	if err != nil {
 		return nil, err
 	}
-	params := info.VolumeParams
+	params := info.VolumeConfig
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}

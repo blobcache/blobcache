@@ -33,16 +33,21 @@ func NewVolume(sys *System, node bcp.Asker, ep blobcache.Endpoint, h blobcache.H
 	}
 }
 
+func (v *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
+	return blobcache.VolumeBackend[blobcache.OID]{
+		Remote: &blobcache.VolumeBackend_Remote{
+			Endpoint: v.ep,
+			Volume:   v.h.OID,
+		},
+	}
+}
+
 func (v *Volume) Endpoint() blobcache.Endpoint {
 	return v.ep
 }
 
 func (v *Volume) Handle() blobcache.Handle {
 	return v.h
-}
-
-func (v *Volume) Info() *blobcache.VolumeInfo {
-	return v.info
 }
 
 func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
@@ -72,6 +77,10 @@ func (v *Volume) AccessSubVolume(ctx context.Context, target blobcache.OID) (blo
 		return 0, err
 	}
 	return hinfo.Rights, nil
+}
+
+func (v *Volume) GetParams() blobcache.VolumeConfig {
+	return v.info.VolumeConfig
 }
 
 // Tx is a transaction on a remote volume.

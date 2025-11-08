@@ -61,6 +61,18 @@ func (sys *System) Up(ctx context.Context, p Params) (*Volume, error) {
 func (sys *System) Drop(ctx context.Context, vol *Volume) error {
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
-	delete(sys.remote, *vol.Info().Backend.Remote)
+	delete(sys.remote, *vol.GetBackend().Remote)
 	return nil
+}
+
+func (sys *System) OpenFrom(ctx context.Context, base *Volume, target blobcache.OID, mask blobcache.ActionSet) (blobcache.ActionSet, *Volume, error) {
+	h, info, err := bcnet.OpenFrom(ctx, base.n, base.ep, base.h, target, blobcache.Action_ALL)
+	if err != nil {
+		return 0, nil, err
+	}
+	hinfo, err := bcnet.InspectHandle(ctx, base.n, base.ep, *h)
+	if err != nil {
+		return 0, nil, err
+	}
+	return hinfo.Rights, NewVolume(sys, base.n, base.ep, *h, info), nil
 }

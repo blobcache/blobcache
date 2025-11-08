@@ -63,7 +63,7 @@ func ensureRootVolume(ba *pebble.Batch, spec blobcache.VolumeSpec) (*blobcache.V
 	}
 	info := blobcache.VolumeInfo{
 		ID:           rootOID,
-		VolumeParams: spec.Params(),
+		VolumeConfig: spec.Params(),
 		Backend:      blobcache.VolumeBackendToOID(spec),
 	}
 	if err := putVolume(ba, info); err != nil {
@@ -99,8 +99,8 @@ func (ve *volumeEntry) Value(out []byte) []byte {
 	return out
 }
 
-func (ve *volumeEntry) Params() blobcache.VolumeParams {
-	return blobcache.VolumeParams{
+func (ve *volumeEntry) Params() blobcache.VolumeConfig {
+	return blobcache.VolumeConfig{
 		Schema:   ve.Schema,
 		HashAlgo: blobcache.HashAlgo(ve.HashAlgo),
 		MaxSize:  ve.MaxSize,
@@ -161,7 +161,7 @@ func inspectVolume(sn pdb.RO, volID blobcache.OID) (*blobcache.VolumeInfo, error
 	}
 	volInfo := blobcache.VolumeInfo{
 		ID: volID,
-		VolumeParams: blobcache.VolumeParams{
+		VolumeConfig: blobcache.VolumeConfig{
 			Schema:   ve.Schema,
 			HashAlgo: blobcache.HashAlgo(ve.HashAlgo),
 			MaxSize:  ve.MaxSize,

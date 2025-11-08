@@ -18,6 +18,11 @@ type System[Params any, V Volume] interface {
 type LinkSet = map[blobcache.OID]blobcache.ActionSet
 
 type Volume interface {
+	// GetParams returns the effective parameters of the volume.
+	GetParams() blobcache.VolumeConfig
+	// GetBackend returns the backend of the volume.
+	GetBackend() blobcache.VolumeBackend[blobcache.OID]
+
 	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error)
 	// Await blocks until the volume root changes away from prev to something else.
 	// The next state is written to next.

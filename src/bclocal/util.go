@@ -84,7 +84,7 @@ func DefaultRoot() blobcache.VolumeSpec {
 	const rootSchemaName = "blobcache/basicns"
 	return blobcache.VolumeSpec{
 		Local: &blobcache.VolumeBackend_Local{
-			VolumeParams: blobcache.VolumeParams{
+			VolumeConfig: blobcache.VolumeConfig{
 				Schema:   blobcache.SchemaSpec{Name: rootSchemaName},
 				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 				MaxSize:  1 << 22,

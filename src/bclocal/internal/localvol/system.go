@@ -28,7 +28,7 @@ type HandleSystem interface {
 
 type Params struct {
 	ID     ID
-	Params blobcache.VolumeParams
+	Params blobcache.VolumeConfig
 }
 
 var _ volumes.System[Params, *Volume] = &System{}

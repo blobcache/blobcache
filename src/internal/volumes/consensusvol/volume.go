@@ -39,3 +39,11 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 func (v *Volume) AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
 	panic("unimplemented")
 }
+
+func (v *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
+	panic("unimplemented")
+}
+
+func (v *Volume) GetParams() blobcache.VolumeConfig {
+	panic("unimplemented")
+}

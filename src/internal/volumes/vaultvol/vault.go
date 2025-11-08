@@ -74,6 +74,14 @@ func (v *Vault) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
 	return lr.ReadLinks(ctx, dst)
 }
 
+func (v *Vault) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
+	return v.inner.GetBackend()
+}
+
+func (v *Vault) GetParams() blobcache.VolumeConfig {
+	return v.inner.GetParams()
+}
+
 func (v *Vault) aeadSeal(out []byte, ptext []byte) []byte {
 	var nonce [24]byte
 	if _, err := rand.Read(nonce[:]); err != nil {

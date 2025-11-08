@@ -20,10 +20,10 @@ var _ volumes.Volume = &Volume{}
 type Volume struct {
 	sys    *System
 	lvid   ID
-	params blobcache.VolumeParams
+	params blobcache.VolumeConfig
 }
 
-func newLocalVolume(sys *System, lvid ID, params blobcache.VolumeParams) *Volume {
+func newLocalVolume(sys *System, lvid ID, params blobcache.VolumeConfig) *Volume {
 	return &Volume{
 		sys:    sys,
 		lvid:   lvid,
@@ -53,6 +53,18 @@ func (v *Volume) AccessSubVolume(ctx context.Context, target blobcache.OID) (blo
 
 func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
 	return v.sys.readLinksFrom(0, v.lvid, dst)
+}
+
+func (v *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
+	return blobcache.VolumeBackend[blobcache.OID]{
+		Local: &blobcache.VolumeBackend_Local{
+			VolumeConfig: v.params,
+		},
+	}
+}
+
+func (v *Volume) GetParams() blobcache.VolumeConfig {
+	return v.params
 }
 
 var _ volumes.Tx = &localTxnMut{}

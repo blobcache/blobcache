@@ -256,7 +256,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		// Create a spec for NONE schema volumes.
 		noneSpec := blobcache.VolumeSpec{
 			Local: &blobcache.VolumeBackend_Local{
-				VolumeParams: blobcache.VolumeParams{
+				VolumeConfig: blobcache.VolumeConfig{
 					Schema:   blobcache.SchemaSpec{Name: blobcache.Schema_NONE},
 					HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 					MaxSize:  1 << 21,
@@ -271,13 +271,13 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Mutate: true})
 
 			// Create a new child volume.
-			vol2h := CreateSubVolume(t, s, vol1h, noneSpec)
+			vol2h, fqoid := CreateSubVolume(t, s, vol1h, noneSpec)
 
 			// Link the child volume to grant access from the parent.
 			Link(t, s, txh, vol2h, blobcache.Action_ALL)
 
 			// Store the child volume's OID in the parent's cell.
-			childOID := vol2h.OID.Marshal(nil)
+			childOID := fqoid.OID.Marshal(nil)
 			Save(t, s, txh, childOID)
 			Commit(t, s, txh)
 
