@@ -248,4 +248,64 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 			require.False(t, Exists(t, s, txh, cid))
 		}
 	})
+	t.Run("Link", func(t *testing.T) {
+		// This test checks that volumes with the NONE schema can be nested arbitrarily deep.
+		ctx := testutil.Context(t)
+		s, rootVolh := mk(t)
+
+		// Create a spec for NONE schema volumes.
+		noneSpec := blobcache.VolumeSpec{
+			Local: &blobcache.VolumeBackend_Local{
+				VolumeParams: blobcache.VolumeParams{
+					Schema:   blobcache.SchemaSpec{Name: blobcache.Schema_NONE},
+					HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+					MaxSize:  1 << 21,
+				},
+			},
+		}
+
+		// Create 10 nested volumes with NONE schema.
+		vol1h := rootVolh
+		for i := 0; i < 10; i++ {
+			// Open a transaction on the current volume.
+			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Mutate: true})
+
+			// Create a new child volume.
+			vol2h := CreateSubVolume(t, s, vol1h, noneSpec)
+
+			// Link the child volume to grant access from the parent.
+			Link(t, s, txh, vol2h, blobcache.Action_ALL)
+
+			// Store the child volume's OID in the parent's cell.
+			childOID := vol2h.OID.Marshal(nil)
+			Save(t, s, txh, childOID)
+			Commit(t, s, txh)
+
+			vol1h = vol2h
+		}
+
+		// Now traverse back down the nesting to verify we can open each level.
+		vol1h = rootVolh
+		for i := 0; i < 10; i++ {
+			// Open a read-only transaction.
+			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Mutate: false})
+			defer Abort(t, s, txh)
+
+			// Load the child OID from the parent's cell.
+			childOIDBytes := Load(t, s, txh)
+			require.NotEmpty(t, childOIDBytes, "child OID should not be empty at level %d", i)
+
+			// Parse the OID.
+			var childOID blobcache.OID
+			err := childOID.Unmarshal(childOIDBytes)
+			require.NoError(t, err)
+
+			// Open the child volume from the parent.
+			vol2h, err := s.OpenFrom(ctx, vol1h, childOID, blobcache.Action_ALL)
+			require.NoError(t, err)
+			require.NotNil(t, vol2h)
+
+			vol1h = *vol2h
+		}
+	})
 }

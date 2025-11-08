@@ -62,8 +62,16 @@ func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	// TODO: aead seal/open the next
 }
 
+func (v *Vault) AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
+	return v.inner.AccessSubVolume(ctx, target)
+}
+
 func (v *Vault) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
-	return v.inner.ReadLinks(ctx, dst)
+	lr, ok := v.inner.(volumes.LinkReader)
+	if !ok {
+		return fmt.Errorf("inner volume does not support LinkReader")
+	}
+	return lr.ReadLinks(ctx, dst)
 }
 
 func (v *Vault) aeadSeal(out []byte, ptext []byte) []byte {
@@ -362,13 +370,13 @@ func (v *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return v.inner.Hash(salt, data)
 }
 
-func (v *Tx) Link(ctx context.Context, subvol blobcache.OID, rights blobcache.ActionSet) error {
+func (v *Tx) Link(ctx context.Context, subvol blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return err
 	}
 	defer release()
-	return v.inner.Link(ctx, subvol, rights)
+	return v.inner.Link(ctx, subvol, rights, targetVol)
 }
 
 func (v *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {

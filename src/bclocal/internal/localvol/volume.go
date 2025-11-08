@@ -43,6 +43,14 @@ func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (volumes.Tx
 	return v.sys.beginTx(ctx, v, tp)
 }
 
+func (v *Volume) AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
+	links := volumes.LinkSet{}
+	if err := v.sys.readLinksFrom(0, v.lvid, links); err != nil {
+		return 0, err
+	}
+	return links[target], nil
+}
+
 func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
 	return v.sys.readLinksFrom(0, v.lvid, dst)
 }
@@ -240,7 +248,7 @@ func (v *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst [
 	return v.localSys.isVisited(v.vol.lvid, v.mvid, cids, dst)
 }
 
-func (v *localTxnMut) Link(ctx context.Context, subvol blobcache.OID, rights blobcache.ActionSet) error {
+func (v *localTxnMut) Link(ctx context.Context, subvol blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.finished {
@@ -393,7 +401,7 @@ func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []boo
 	return nil
 }
 
-func (v *localTxnRO) Link(ctx context.Context, subvol blobcache.OID, mask blobcache.ActionSet) error {
+func (v *localTxnRO) Link(ctx context.Context, subvol blobcache.OID, mask blobcache.ActionSet, targetVol volumes.Volume) error {
 	return blobcache.ErrTxReadOnly{Op: "AllowLink"}
 }
 

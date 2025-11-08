@@ -90,7 +90,8 @@ func (h *Handle) Unmarshal(data []byte) error {
 
 // HandleInfo is information about a handle, *NOT* the object it points to.
 type HandleInfo struct {
-	OID OID `json:"oid"`
+	OID    OID       `json:"oid"`
+	Rights ActionSet `json:"rights"`
 
 	CreatedAt tai64.TAI64 `json:"created_at"`
 	ExpiresAt tai64.TAI64 `json:"expires_at"`
@@ -99,6 +100,7 @@ type HandleInfo struct {
 func (hi HandleInfo) Marshal(out []byte) []byte {
 	ret := out
 	ret = append(ret, hi.OID[:]...)
+	ret = hi.Rights.Marshal(ret)
 	ret = append(ret, hi.CreatedAt.Marshal()...)
 	ret = append(ret, hi.ExpiresAt.Marshal()...)
 	return ret
@@ -109,6 +111,9 @@ func (hi *HandleInfo) Unmarshal(data []byte) error {
 		return fmt.Errorf("invalid HandleInfo length: %d", len(data))
 	}
 	hi.OID = OID(data[:16])
+	if err := hi.Rights.Unmarshal(data[16 : 16+8]); err != nil {
+		return err
+	}
 	createdAt, err := tai64.Parse(data[16 : 16+tai64.TAI64Size])
 	if err != nil {
 		return err
@@ -124,6 +129,18 @@ func (hi *HandleInfo) Unmarshal(data []byte) error {
 
 // ActionSet is a bitmask of the actions that can be performed using a handle.
 type ActionSet uint64
+
+func (a ActionSet) Marshal(out []byte) []byte {
+	return binary.BigEndian.AppendUint64(out, uint64(a))
+}
+
+func (a *ActionSet) Unmarshal(data []byte) error {
+	if len(data) != 8 {
+		return fmt.Errorf("invalid ActionSet length: %d", len(data))
+	}
+	*a = ActionSet(binary.BigEndian.Uint64(data))
+	return nil
+}
 
 func (a ActionSet) Share() ActionSet {
 	if a&Action_SHARE_ACK == 0 {

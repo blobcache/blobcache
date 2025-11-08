@@ -22,7 +22,14 @@ type Volume interface {
 	// Await blocks until the volume root changes away from prev to something else.
 	// The next state is written to next.
 	Await(ctx context.Context, prev []byte, next *[]byte) error
-	// ReadLinks returns the set of actions associated with the link.
+	// AccessSubVolume returns the rights granted to access a subvolume.
+	// Returns 0 if there is no link to the target.
+	AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error)
+}
+
+// LinkReader is an optional interface that volumes can implement to provide
+// efficient bulk reading of all links.
+type LinkReader interface {
 	ReadLinks(ctx context.Context, dst LinkSet) error
 }
 
@@ -45,7 +52,7 @@ type Tx interface {
 	Hash(salt *blobcache.CID, data []byte) blobcache.CID
 
 	// Link creates adds a handle to prove access to a volume.
-	Link(ctx context.Context, target blobcache.OID, rights blobcache.ActionSet) error
+	Link(ctx context.Context, target blobcache.OID, rights blobcache.ActionSet, targetVol Volume) error
 	// Unlink removes a link from the volume.
 	Unlink(ctx context.Context, targets []blobcache.OID) error
 	// VisitLinks visits a link to another volume.

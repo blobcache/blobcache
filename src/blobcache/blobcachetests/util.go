@@ -20,6 +20,22 @@ func CreateVolume(t testing.TB, s blobcache.Service, host *blobcache.Endpoint, s
 	return *volh
 }
 
+// CreateSubVolume creates a new subvolume on the same host as the base volume.
+func CreateSubVolume(t testing.TB, s blobcache.Service, base blobcache.Handle, spec blobcache.VolumeSpec) blobcache.Handle {
+	ctx := testutil.Context(t)
+	info, err := s.InspectVolume(ctx, base)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	var host *blobcache.Endpoint
+	if info.Backend.Remote != nil {
+		host = &info.Backend.Remote.Endpoint
+	}
+	volh, err := s.CreateVolume(ctx, host, spec)
+	require.NoError(t, err)
+	require.NotNil(t, volh)
+	return *volh
+}
+
 func BeginTx(t testing.TB, s blobcache.Service, volh blobcache.Handle, params blobcache.TxParams) blobcache.Handle {
 	ctx := testutil.Context(t)
 	txh, err := s.BeginTx(ctx, volh, params)
@@ -61,6 +77,16 @@ func Delete(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcac
 	t.Helper()
 	ctx := testutil.Context(t)
 	require.NoError(t, s.Delete(ctx, txh, []blobcache.CID{cid}))
+}
+
+func Link(t testing.TB, s blobcache.Service, txh blobcache.Handle, volh blobcache.Handle, mask blobcache.ActionSet) {
+	ctx := testutil.Context(t)
+	require.NoError(t, s.Link(ctx, txh, volh, mask))
+}
+
+func Unlink(t testing.TB, s blobcache.Service, txh blobcache.Handle, volh blobcache.Handle, mask blobcache.ActionSet) {
+	ctx := testutil.Context(t)
+	require.NoError(t, s.Unlink(ctx, txh, []blobcache.OID{volh.OID}))
 }
 
 func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx *blobcache.Tx) ([]byte, error)) {
