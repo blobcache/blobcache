@@ -1,4 +1,4 @@
-package bcnet
+package bcp
 
 import (
 	"crypto/rand"

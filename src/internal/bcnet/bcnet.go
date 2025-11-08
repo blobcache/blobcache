@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/bcp"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/quic-go/quic-go"
 	"go.brendoncarroll.net/exp/singleflight"
@@ -22,6 +23,10 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
+
+type Message = bcp.Message
+
+var _ bcp.Asker = (*Node)(nil)
 
 type Node struct {
 	privateKey ed25519.PrivateKey
@@ -64,7 +69,7 @@ func (n *Node) LocalEndpoint() blobcache.Endpoint {
 }
 
 // Tell opens a uni-stream to the given peer and sends the given request.
-func (n *Node) Tell(ctx context.Context, remote blobcache.Endpoint, req *Message) error {
+func (n *Node) Tell(ctx context.Context, remote blobcache.Endpoint, req bcp.Message) error {
 	conn, err := n.getConn(ctx, remote)
 	if err != nil {
 		return err

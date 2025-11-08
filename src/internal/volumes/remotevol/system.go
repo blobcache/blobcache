@@ -8,6 +8,7 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcnet"
+	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/internal/volumes"
 )
 
@@ -41,7 +42,7 @@ func (sys *System) Up(ctx context.Context, p Params) (*Volume, error) {
 		return vol, nil
 	}
 	// TODO: shouldn't use the network with the lock held.
-	volh, info, err := bcnet.OpenFiat(ctx, node, p.Endpoint, p.Volume, blobcache.Action_ALL)
+	volh, info, err := bcp.OpenFiat(ctx, node, p.Endpoint, p.Volume, blobcache.Action_ALL)
 	if err != nil {
 		return nil, err
 	}
