@@ -20,8 +20,8 @@ func CreateVolume(t testing.TB, s blobcache.Service, host *blobcache.Endpoint, s
 	return *volh
 }
 
-// CreateSubVolume creates a new subvolume on the same host as the base volume.
-func CreateSubVolume(t testing.TB, s blobcache.Service, base blobcache.Handle, spec blobcache.VolumeSpec) (blobcache.Handle, blobcache.FQOID) {
+// CreateOnSameHost creates a new subvolume on the same host as the base volume.
+func CreateOnSameHost(t testing.TB, s blobcache.Service, base blobcache.Handle, spec blobcache.VolumeSpec) (blobcache.Handle, blobcache.FQOID) {
 	ctx := testutil.Context(t)
 	info, err := s.InspectVolume(ctx, base)
 	require.NoError(t, err)
@@ -31,9 +31,9 @@ func CreateSubVolume(t testing.TB, s blobcache.Service, base blobcache.Handle, s
 	}
 	svolh, err := s.CreateVolume(ctx, host, spec)
 	require.NoError(t, err)
-	svinfo, err := s.InspectVolume(ctx, *svolh)
-	require.NoError(t, err)
 	if host != nil {
+		svinfo, err := s.InspectVolume(ctx, *svolh)
+		require.NoError(t, err)
 		return *svolh, svinfo.GetRemoteFQOID()
 	} else {
 		ep, err := s.Endpoint(ctx)
@@ -43,7 +43,6 @@ func CreateSubVolume(t testing.TB, s blobcache.Service, base blobcache.Handle, s
 			OID:  svolh.OID,
 		}
 	}
-
 }
 
 func BeginTx(t testing.TB, s blobcache.Service, volh blobcache.Handle, params blobcache.TxParams) blobcache.Handle {

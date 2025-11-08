@@ -271,7 +271,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Mutate: true})
 
 			// Create a new child volume.
-			vol2h, fqoid := CreateSubVolume(t, s, vol1h, noneSpec)
+			vol2h, fqoid := CreateOnSameHost(t, s, vol1h, noneSpec)
 
 			// Link the child volume to grant access from the parent.
 			Link(t, s, txh, vol2h, blobcache.Action_ALL)
