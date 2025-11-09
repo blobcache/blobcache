@@ -308,6 +308,9 @@ var txLinkCmd = star.Command{
 		Short: "allows the transaction to link to another transaction",
 	},
 	Pos: []star.Positional{txHParam, subvolHParam},
+	Flags: map[string]star.Flag{
+		"mask": maskParam,
+	},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {

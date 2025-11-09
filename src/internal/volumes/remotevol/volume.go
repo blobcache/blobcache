@@ -16,18 +16,29 @@ var (
 
 // Volume is a remote volume.
 type Volume struct {
+	sys  *System
 	n    bcp.Asker
 	ep   blobcache.Endpoint
 	h    blobcache.Handle
 	info *blobcache.VolumeInfo
 }
 
-func NewVolume(n bcp.Asker, ep blobcache.Endpoint, h blobcache.Handle, info *blobcache.VolumeInfo) *Volume {
+func NewVolume(sys *System, node bcp.Asker, ep blobcache.Endpoint, h blobcache.Handle, info *blobcache.VolumeInfo) *Volume {
 	return &Volume{
-		n:    n,
+		sys:  sys,
+		n:    node,
 		ep:   ep,
 		h:    h,
 		info: info,
+	}
+}
+
+func (v *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
+	return blobcache.VolumeBackend[blobcache.OID]{
+		Remote: &blobcache.VolumeBackend_Remote{
+			Endpoint: v.ep,
+			Volume:   v.h.OID,
+		},
 	}
 }
 
@@ -37,10 +48,6 @@ func (v *Volume) Endpoint() blobcache.Endpoint {
 
 func (v *Volume) Handle() blobcache.Handle {
 	return v.h
-}
-
-func (v *Volume) Info() *blobcache.VolumeInfo {
-	return v.info
 }
 
 func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
@@ -60,8 +67,20 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 	}, nil
 }
 
-func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
-	return fmt.Errorf("remotevol: ReadLinks not implemented")
+func (v *Volume) AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
+	h, _, err := bcp.OpenFrom(ctx, v.n, v.ep, v.h, target, blobcache.Action_ALL)
+	if err != nil {
+		return 0, err
+	}
+	hinfo, err := bcp.InspectHandle(ctx, v.n, v.ep, *h)
+	if err != nil {
+		return 0, err
+	}
+	return hinfo.Rights, nil
+}
+
+func (v *Volume) GetParams() blobcache.VolumeConfig {
+	return v.info.VolumeConfig
 }
 
 // Tx is a transaction on a remote volume.
@@ -151,14 +170,33 @@ func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
 	return bcp.Visit(ctx, tx.vol.n, tx.vol.ep, tx.h, cids)
 }
 
-func (tx *Tx) Link(ctx context.Context, subvol blobcache.OID, mask blobcache.ActionSet) error {
-	return fmt.Errorf("remotevol: Link not implemented")
+func (tx *Tx) Link(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet, targetVol volumes.Volume) error {
+	if !tx.params.Mutate {
+		return blobcache.ErrTxReadOnly{}
+	}
+	rvol, ok := targetVol.(*Volume)
+	if !ok {
+		return fmt.Errorf("remotevol: can only link to remote volumes")
+	}
+	if rvol.ep.Peer != tx.vol.ep.Peer {
+		return fmt.Errorf("remotevol: can only link to volumes on the same peer")
+	}
+	return bcp.Link(ctx, tx.vol.n, tx.vol.ep, tx.h, rvol.h, mask)
 }
 
 func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {
-	return fmt.Errorf("remotevol: Unlink not implemented")
+	if !tx.params.Mutate {
+		return blobcache.ErrTxReadOnly{}
+	}
+	return bcp.Unlink(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
 }
 
 func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
-	return fmt.Errorf("remotevol: VisitLinks not implemented")
+	if !tx.params.Mutate {
+		return blobcache.ErrTxReadOnly{}
+	}
+	if !tx.params.GC {
+		return blobcache.ErrTxNotGC{Op: "VisitLinks"}
+	}
+	return bcp.VisitLinks(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
 }

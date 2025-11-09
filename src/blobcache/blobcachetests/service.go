@@ -99,7 +99,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			s := mk(t)
 			volh, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Local: &blobcache.VolumeBackend_Local{
-					VolumeParams: blobcache.VolumeParams{
+					VolumeConfig: blobcache.VolumeConfig{
 						HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 						MaxSize:  1 << 21,
 					},
@@ -116,7 +116,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			s := mk(t)
 			volh1, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Local: &blobcache.VolumeBackend_Local{
-					VolumeParams: blobcache.VolumeParams{
+					VolumeConfig: blobcache.VolumeConfig{
 						HashAlgo: blobcache.HashAlgo_BLAKE3_256,
 						MaxSize:  1 << 21,
 					},

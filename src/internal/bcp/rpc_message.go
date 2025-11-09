@@ -649,19 +649,21 @@ type LinkReq struct {
 func (ar LinkReq) Marshal(out []byte) []byte {
 	out = ar.Tx.Marshal(out)
 	out = ar.Subvol.Marshal(out)
+	out = binary.BigEndian.AppendUint64(out, uint64(ar.Mask))
 	return out
 }
 
 func (ar *LinkReq) Unmarshal(data []byte) error {
-	if len(data) < blobcache.HandleSize*2 {
+	if len(data) < blobcache.HandleSize*2+8 {
 		return fmt.Errorf("cannot unmarshal LinkReq, too short: %d", len(data))
 	}
 	if err := ar.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
 	}
-	if err := ar.Subvol.Unmarshal(data[blobcache.HandleSize:]); err != nil {
+	if err := ar.Subvol.Unmarshal(data[blobcache.HandleSize : blobcache.HandleSize*2]); err != nil {
 		return err
 	}
+	ar.Mask = blobcache.ActionSet(binary.BigEndian.Uint64(data[blobcache.HandleSize*2:]))
 	return nil
 }
 

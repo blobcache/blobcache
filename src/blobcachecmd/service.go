@@ -298,7 +298,7 @@ func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blob
 }
 
 func (s *Service) Link(ctx context.Context, h blobcache.Handle, subvol blobcache.Handle, rights blobcache.ActionSet) error {
-	return s.run([]string{"tx", "allow-link", h.String(), subvol.String()}, nil, nil)
+	return s.run([]string{"tx", "link", h.String(), subvol.String()}, nil, nil)
 }
 
 func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
