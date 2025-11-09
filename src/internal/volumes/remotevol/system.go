@@ -44,7 +44,6 @@ func (sys *System) Up(ctx context.Context, p Params) (*Volume, error) {
 		if exists {
 			return vol, nil
 		}
-		// TODO: shouldn't use the network with the lock held.
 		volh, info, err := bcp.OpenFiat(ctx, node, p.Endpoint, p.Volume, blobcache.Action_ALL)
 		if err != nil {
 			return nil, err
