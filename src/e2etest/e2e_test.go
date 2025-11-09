@@ -20,6 +20,7 @@ import (
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/bcremote"
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/blobcached"
@@ -97,7 +98,7 @@ func TestGLFS(t *testing.T) {
 	volh, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 
-	blobcachetests.Modify(t, svc, *volh, func(tx *blobcache.Tx) ([]byte, error) {
+	blobcachetests.Modify(t, svc, *volh, func(tx *bcsdk.Tx) ([]byte, error) {
 		ref, err := glfs.PostBlob(ctx, tx, strings.NewReader("hello"))
 		require.NoError(t, err)
 		ref, err = glfs.PostTreeSlice(ctx, tx, []glfs.TreeEntry{
@@ -107,7 +108,7 @@ func TestGLFS(t *testing.T) {
 		return jsonMarshal(ref), nil
 	})
 
-	tx, err := blobcache.BeginTx(ctx, svc, *volh, blobcache.TxParams{})
+	tx, err := bcsdk.BeginTx(ctx, svc, *volh, blobcache.TxParams{})
 	require.NoError(t, err)
 	var root []byte
 	require.NoError(t, tx.Load(ctx, &root))

@@ -3,6 +3,7 @@ package blobcachetests
 import (
 	"testing"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -77,7 +78,7 @@ func GetBytes(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobc
 
 func Exists(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID) bool {
 	ctx := testutil.Context(t)
-	yes, err := blobcache.ExistsSingle(ctx, s, txh, cid)
+	yes, err := bcsdk.ExistsSingle(ctx, s, txh, cid)
 	require.NoError(t, err)
 	return yes
 }
@@ -98,9 +99,9 @@ func Unlink(t testing.TB, s blobcache.Service, txh blobcache.Handle, volh blobca
 	require.NoError(t, s.Unlink(ctx, txh, []blobcache.OID{volh.OID}))
 }
 
-func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx *blobcache.Tx) ([]byte, error)) {
+func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx *bcsdk.Tx) ([]byte, error)) {
 	ctx := testutil.Context(t)
-	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{Mutate: true})
+	tx, err := bcsdk.BeginTx(ctx, s, volh, blobcache.TxParams{Mutate: true})
 	require.NoError(t, err)
 	data, err := f(tx)
 	require.NoError(t, err)

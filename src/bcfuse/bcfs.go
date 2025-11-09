@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sync"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/sqlutil"
 	"blobcache.io/blobcache/src/schema"
@@ -99,7 +100,7 @@ func (fs *FS[K]) Flush(ctx context.Context) error {
 	}
 
 	// Begin a write transaction
-	tx, err := blobcache.BeginTx(ctx, fs.svc, fs.vol, blobcache.TxParams{Mutate: true})
+	tx, err := bcsdk.BeginTx(ctx, fs.svc, fs.vol, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}

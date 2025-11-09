@@ -1,14 +1,22 @@
-package blobcache
+package bcsdk
 
 import (
 	"context"
 	"fmt"
 
+	"blobcache.io/blobcache/src/blobcache"
 	"go.brendoncarroll.net/exp/slices2"
 )
 
+type (
+	CID       = blobcache.CID
+	OID       = blobcache.OID
+	Handle    = blobcache.Handle
+	ActionSet = blobcache.ActionSet
+)
+
 // BeginTx begins a new transaction and returns the Tx type.
-func BeginTx(ctx context.Context, s Service, volH Handle, txp TxParams) (*Tx, error) {
+func BeginTx(ctx context.Context, s blobcache.Service, volH blobcache.Handle, txp blobcache.TxParams) (*Tx, error) {
 	txh, err := s.BeginTx(ctx, volH, txp)
 	if err != nil {
 		return nil, err
@@ -29,15 +37,15 @@ func BeginTx(ctx context.Context, s Service, volH Handle, txp TxParams) (*Tx, er
 
 // Tx is a convenience type for managing a transaction within a Service.
 type Tx struct {
-	s       Service
-	h       Handle
-	hash    HashFunc
+	s       blobcache.Service
+	h       blobcache.Handle
+	hash    blobcache.HashFunc
 	maxSize int
 
 	done bool
 }
 
-func NewTx(s Service, h Handle, hash HashFunc, maxSize int) *Tx {
+func NewTx(s blobcache.Service, h blobcache.Handle, hash blobcache.HashFunc, maxSize int) *Tx {
 	return &Tx{
 		s:       s,
 		h:       h,
@@ -56,7 +64,7 @@ func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
 
 func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.done {
-		return ErrTxDone{ID: tx.h.OID}
+		return blobcache.ErrTxDone{ID: tx.h.OID}
 	}
 	err := tx.s.Commit(ctx, tx.h)
 	tx.done = true
@@ -65,7 +73,7 @@ func (tx *Tx) Commit(ctx context.Context) error {
 
 func (tx *Tx) Abort(ctx context.Context) error {
 	if tx.done {
-		return ErrTxDone{ID: tx.h.OID}
+		return blobcache.ErrTxDone{ID: tx.h.OID}
 	}
 	err := tx.s.Abort(ctx, tx.h)
 	tx.done = true
@@ -73,11 +81,11 @@ func (tx *Tx) Abort(ctx context.Context) error {
 }
 
 func (tx *Tx) KeepAlive(ctx context.Context) error {
-	return tx.s.KeepAlive(ctx, []Handle{tx.h})
+	return tx.s.KeepAlive(ctx, []blobcache.Handle{tx.h})
 }
 
 func (tx *Tx) Post(ctx context.Context, data []byte) (CID, error) {
-	return tx.s.Post(ctx, tx.h, data, PostOpts{})
+	return tx.s.Post(ctx, tx.h, data, blobcache.PostOpts{})
 }
 
 func (tx *Tx) Exists(ctx context.Context, cids []CID, exists []bool) error {
@@ -89,7 +97,7 @@ func (tx *Tx) Delete(ctx context.Context, cids []CID) error {
 }
 
 func (tx *Tx) Get(ctx context.Context, cid CID, buf []byte) (int, error) {
-	return tx.s.Get(ctx, tx.h, cid, buf, GetOpts{})
+	return tx.s.Get(ctx, tx.h, cid, buf, blobcache.GetOpts{})
 }
 
 func (tx *Tx) Hash(data []byte) CID {
@@ -100,7 +108,7 @@ func (tx *Tx) MaxSize() int {
 	return tx.maxSize
 }
 
-func (tx *Tx) Link(ctx context.Context, target Handle, mask ActionSet) error {
+func (tx *Tx) Link(ctx context.Context, target blobcache.Handle, mask ActionSet) error {
 	return tx.s.Link(ctx, tx.h, target, mask)
 }
 
@@ -126,7 +134,7 @@ func (tx *Tx) Copy(ctx context.Context, srcs []*Tx, cids []CID, success []bool) 
 }
 
 // BeginTxSalt is the salted variant of BeginTx.
-func BeginTxSalt(ctx context.Context, s Service, volH Handle, txp TxParams) (*TxSalt, error) {
+func BeginTxSalt(ctx context.Context, s blobcache.Service, volH Handle, txp blobcache.TxParams) (*TxSalt, error) {
 	txh, err := s.BeginTx(ctx, volH, txp)
 	if err != nil {
 		return nil, err
@@ -144,15 +152,15 @@ func BeginTxSalt(ctx context.Context, s Service, volH Handle, txp TxParams) (*Tx
 
 // TxSalt is a convenience type for managing a salted transaction within a Service.
 type TxSalt struct {
-	s       Service
+	s       blobcache.Service
 	h       Handle
-	hash    HashFunc
+	hash    blobcache.HashFunc
 	maxSize int
 
 	done bool
 }
 
-func NewTxSalt(s Service, h Handle, hash HashFunc, maxSize int) *TxSalt {
+func NewTxSalt(s blobcache.Service, h Handle, hash blobcache.HashFunc, maxSize int) *TxSalt {
 	return &TxSalt{
 		s:       s,
 		h:       h,
@@ -171,7 +179,7 @@ func (tx *TxSalt) Save(ctx context.Context, src []byte) error {
 
 func (tx *TxSalt) Commit(ctx context.Context) error {
 	if tx.done {
-		return ErrTxDone{ID: tx.h.OID}
+		return blobcache.ErrTxDone{ID: tx.h.OID}
 	}
 	err := tx.s.Commit(ctx, tx.h)
 	tx.done = true
@@ -180,7 +188,7 @@ func (tx *TxSalt) Commit(ctx context.Context) error {
 
 func (tx *TxSalt) Abort(ctx context.Context) error {
 	if tx.done {
-		return ErrTxDone{ID: tx.h.OID}
+		return blobcache.ErrTxDone{ID: tx.h.OID}
 	}
 	err := tx.s.Abort(ctx, tx.h)
 	tx.done = true
@@ -191,7 +199,7 @@ func (tx *TxSalt) KeepAlive(ctx context.Context) error {
 	return tx.s.KeepAlive(ctx, []Handle{tx.h})
 }
 
-func (tx *TxSalt) Post(ctx context.Context, data []byte, opts PostOpts) (CID, error) {
+func (tx *TxSalt) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (CID, error) {
 	return tx.s.Post(ctx, tx.h, data, opts)
 }
 
@@ -203,7 +211,7 @@ func (tx *TxSalt) Delete(ctx context.Context, cid CID) error {
 	return tx.s.Delete(ctx, tx.h, []CID{cid})
 }
 
-func (tx *TxSalt) Get(ctx context.Context, cid CID, buf []byte, opts GetOpts) (int, error) {
+func (tx *TxSalt) Get(ctx context.Context, cid CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	return tx.s.Get(ctx, tx.h, cid, buf, opts)
 }
 

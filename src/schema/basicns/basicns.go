@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"blobcache.io/blobcache/src/bclocal"
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/slices2"
@@ -78,7 +79,7 @@ func (sch Schema) OpenAs(ctx context.Context, s schema.RO, root []byte, peer blo
 
 // Tx wraps a Tx to provide a namespace view.
 type Tx struct {
-	Tx *blobcache.Tx
+	Tx *bcsdk.Tx
 	// Root is the current root, set by calls to PutEntry and DeleteEntry
 	Root   []byte
 	Schema Schema

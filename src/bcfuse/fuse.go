@@ -4,6 +4,7 @@ import (
 	"context"
 	"syscall"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -82,7 +83,7 @@ func (n *Node[K]) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 	defer func() { _ = n.fs.svc.Abort(ctx, *txh) }()
 
 	// Create transaction wrapper
-	tx, err := blobcache.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
 	if err != nil {
 		return nil, syscall.EIO
 	}
@@ -136,7 +137,7 @@ func (n *Node[K]) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	}
 
 	// Begin read transaction
-	tx, err := blobcache.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
 	if err != nil {
 		return nil, syscall.EIO
 	}
@@ -177,7 +178,7 @@ func (n *Node[K]) Create(ctx context.Context, name string, flags uint32, mode ui
 	}
 
 	// Begin write transaction
-	tx, err := blobcache.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: true})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return nil, nil, 0, syscall.EIO
 	}
@@ -237,7 +238,7 @@ func (n *Node[K]) Unlink(ctx context.Context, name string) syscall.Errno {
 	}
 
 	// Begin write transaction
-	tx, err := blobcache.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: true})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: true})
 	if err != nil {
 		return syscall.EIO
 	}
@@ -272,7 +273,7 @@ func (n *Node[K]) Read(ctx context.Context, f fs.FileHandle, dest []byte, off in
 	}
 
 	// Begin read transaction
-	tx, err := blobcache.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
 	if err != nil {
 		return nil, syscall.EIO
 	}
@@ -291,9 +292,7 @@ func (n *Node[K]) Read(ctx context.Context, f fs.FileHandle, dest []byte, off in
 	}
 
 	end := off + int64(len(dest))
-	if end > int64(bytesRead) {
-		end = int64(bytesRead)
-	}
+	end = min(end, int64(bytesRead))
 
 	return fuse.ReadResultData(buf[off:end]), 0
 }

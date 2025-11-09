@@ -12,6 +12,7 @@ import (
 	"go.brendoncarroll.net/exp/streams"
 	"go.brendoncarroll.net/star"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/glfsport"
 	"blobcache.io/blobcache/src/schema"
@@ -43,7 +44,7 @@ var glfsInitCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		tx, err := blobcache.BeginTx(c, svc, *volh, blobcache.TxParams{
+		tx, err := bcsdk.BeginTx(c, svc, *volh, blobcache.TxParams{
 			Mutate: true,
 		})
 		if err != nil {
@@ -86,7 +87,7 @@ var glfsLookCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		tx, err := blobcache.BeginTx(c, svc, *volh, blobcache.TxParams{})
+		tx, err := bcsdk.BeginTx(c, svc, *volh, blobcache.TxParams{})
 		if err != nil {
 			return err
 		}
@@ -255,7 +256,7 @@ var dstVolumeParam = star.Required[string]{
 }
 
 func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, fn func(ag *glfs.Machine, src schema.RO, root glfs.Ref) error) error {
-	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{})
+	tx, err := bcsdk.BeginTx(ctx, s, volh, blobcache.TxParams{})
 	if err != nil {
 		return err
 	}
@@ -273,7 +274,7 @@ func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f
 }
 
 func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f func(ag *glfs.Machine, dst schema.WO, src schema.RO, root glfs.Ref) (*glfs.Ref, error)) error {
-	tx, err := blobcache.BeginTx(ctx, s, volh, blobcache.TxParams{
+	tx, err := bcsdk.BeginTx(ctx, s, volh, blobcache.TxParams{
 		Mutate: true,
 	})
 	if err != nil {
