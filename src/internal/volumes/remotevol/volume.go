@@ -68,11 +68,11 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 }
 
 func (v *Volume) AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
-	h, _, err := bcnet.OpenFrom(ctx, v.n, v.ep, v.h, target, blobcache.Action_ALL)
+	h, _, err := bcp.OpenFrom(ctx, v.n, v.ep, v.h, target, blobcache.Action_ALL)
 	if err != nil {
 		return 0, err
 	}
-	hinfo, err := bcnet.InspectHandle(ctx, v.n, v.ep, *h)
+	hinfo, err := bcp.InspectHandle(ctx, v.n, v.ep, *h)
 	if err != nil {
 		return 0, err
 	}
@@ -181,14 +181,14 @@ func (tx *Tx) Link(ctx context.Context, target blobcache.OID, mask blobcache.Act
 	if rvol.ep.Peer != tx.vol.ep.Peer {
 		return fmt.Errorf("remotevol: can only link to volumes on the same peer")
 	}
-	return bcnet.Link(ctx, tx.vol.n, tx.vol.ep, tx.h, rvol.h, mask)
+	return bcp.Link(ctx, tx.vol.n, tx.vol.ep, tx.h, rvol.h, mask)
 }
 
 func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {
 	if !tx.params.Mutate {
 		return blobcache.ErrTxReadOnly{}
 	}
-	return bcnet.Unlink(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
+	return bcp.Unlink(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
 }
 
 func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
@@ -198,5 +198,5 @@ func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
 	if !tx.params.GC {
 		return blobcache.ErrTxNotGC{Op: "VisitLinks"}
 	}
-	return bcnet.VisitLinks(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
+	return bcp.VisitLinks(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
 }

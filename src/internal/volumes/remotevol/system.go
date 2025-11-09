@@ -66,11 +66,11 @@ func (sys *System) Drop(ctx context.Context, vol *Volume) error {
 }
 
 func (sys *System) OpenFrom(ctx context.Context, base *Volume, target blobcache.OID, mask blobcache.ActionSet) (blobcache.ActionSet, *Volume, error) {
-	h, info, err := bcnet.OpenFrom(ctx, base.n, base.ep, base.h, target, blobcache.Action_ALL)
+	h, info, err := bcp.OpenFrom(ctx, base.n, base.ep, base.h, target, mask)
 	if err != nil {
 		return 0, nil, err
 	}
-	hinfo, err := bcnet.InspectHandle(ctx, base.n, base.ep, *h)
+	hinfo, err := bcp.InspectHandle(ctx, base.n, base.ep, *h)
 	if err != nil {
 		return 0, nil, err
 	}
