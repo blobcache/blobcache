@@ -347,12 +347,16 @@ func (s *Service) addVolume(oid blobcache.OID, vol volumes.Volume) bool {
 // mountVolume ensures the volume is available.
 // if the volume is already in memory, it does nothing.
 // otherwise it calls makeVolume and writes to the volumes map.
-func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID, info blobcache.VolumeInfo) error {
+func (s *Service) mountVolume(ctx context.Context, oid blobcache.OID) error {
 	s.mu.RLock()
 	_, exists := s.volumes[oid]
 	s.mu.RUnlock()
 	if exists {
 		return nil
+	}
+	info, err := s.inspectVolume(ctx, oid)
+	if err != nil {
+		return err
 	}
 	vol, err := s.makeVolume(ctx, oid, info.Backend)
 	if err != nil {
@@ -375,15 +379,26 @@ func (s *Service) mountRoot(ctx context.Context) error {
 	}
 
 	rootOID := blobcache.OID{}
-	var volInfo *blobcache.VolumeInfo
 	if err := doRWBatch(s.db, func(ba *pebble.Batch) error {
 		var err error
-		volInfo, err = ensureRootVolume(ba, s.env.Root)
+		_, err = ensureRootVolume(ba, s.env.Root)
 		return err
 	}); err != nil {
 		return err
 	}
-	return s.mountVolume(ctx, rootOID, *volInfo)
+	return s.mountVolume(ctx, rootOID)
+}
+
+func (s *Service) inspectVolume(ctx context.Context, volID blobcache.OID) (*blobcache.VolumeInfo, error) {
+	var ret *blobcache.VolumeInfo
+	if err := doSnapshot(s.db, func(sn *pebble.Snapshot) error {
+		var err error
+		ret, err = inspectVolume(sn, volID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 type volume struct {
@@ -396,7 +411,11 @@ type transaction struct {
 	volume  *volume
 }
 
-func (s *Service) resolveVol(x blobcache.Handle) (volume, blobcache.ActionSet, error) {
+// resolveVol first checks that the handle is valid.
+// then if it is it will check the volumes map with a read lock.
+// If there is no entry for the volume then the read-lock is temporarily
+// released so that the volume can be mounted if it exists.
+func (s *Service) resolveVol(ctx context.Context, x blobcache.Handle) (volume, blobcache.ActionSet, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	oid, rights := s.handles.Resolve(x)
@@ -405,7 +424,13 @@ func (s *Service) resolveVol(x blobcache.Handle) (volume, blobcache.ActionSet, e
 	}
 	vol, exists := s.volumes[oid]
 	if !exists {
-		return volume{}, 0, fmt.Errorf("handle does not refer to volume")
+		s.mu.RUnlock()
+		err := s.mountVolume(ctx, x.OID)
+		s.mu.RLock()
+		if err != nil {
+			return volume{}, 0, err
+		}
+		return volume{}, 0, fmt.Errorf("handle does not refer to volume, OID=%v ", x.OID)
 	}
 	return vol, rights, nil
 }
@@ -503,6 +528,9 @@ func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
+	if err := s.mountVolume(ctx, x); err != nil {
+		return nil, err
+	}
 	createdAt := time.Now()
 	expiresAt := createdAt.Add(DefaultVolumeTTL)
 	h := s.handles.Create(x, mask, createdAt, expiresAt)
@@ -510,10 +538,7 @@ func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.
 }
 
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	if err := s.mountRoot(ctx); err != nil {
-		return nil, err
-	}
-	baseVol, _, err := s.resolveVol(base)
+	baseVol, _, err := s.resolveVol(ctx, base)
 	if err != nil {
 		return nil, err
 	}
@@ -558,7 +583,7 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 		createdAt := time.Now()
 		expiresAt := createdAt.Add(DefaultVolumeTTL)
 		h := s.handles.Create(localOID, rights, createdAt, expiresAt)
-		if err := s.mountVolume(ctx, x, *volInfo); err != nil {
+		if err := s.mountVolume(ctx, x); err != nil {
 			return nil, err
 		}
 		return &h, nil
@@ -622,7 +647,7 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 	}); err != nil {
 		return nil, err
 	}
-	if err := s.mountVolume(ctx, info.ID, info); err != nil {
+	if err := s.mountVolume(ctx, info.ID); err != nil {
 		return nil, err
 	}
 	// create a handle
@@ -633,6 +658,7 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 }
 
 // createRemoteVolume calls CreateVolume on a remote node
+// it then creates a new local volume with a new random OID
 func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	node := s.node.Load()
 	// the request is for a remote node.
@@ -668,13 +694,7 @@ func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoin
 	if err != nil {
 		return nil, err
 	}
-	// insert into volumes
-	s.mu.Lock()
-	s.volumes[localInfo.ID] = volume{
-		info:    localInfo,
-		backend: vol,
-	}
-	s.mu.Unlock()
+	s.addVolume(localInfo.ID, vol)
 	// create a local handle
 	localHandle := s.handles.Create(localInfo.ID, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL))
 	return &localHandle, nil
@@ -682,7 +702,7 @@ func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoin
 }
 
 func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	vol, _, err := s.resolveVol(volh)
+	vol, _, err := s.resolveVol(ctx, volh)
 	if err != nil {
 		return nil, err
 	}
@@ -712,7 +732,7 @@ func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, vol
 }
 
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
-	vol, _, err := s.resolveVol(h)
+	vol, _, err := s.resolveVol(ctx, h)
 	if err != nil {
 		return nil, err
 	}
@@ -727,7 +747,7 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blo
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
 	}
-	vol, _, err := s.resolveVol(volh)
+	vol, _, err := s.resolveVol(ctx, volh)
 	if err != nil {
 		return nil, err
 	}
@@ -954,7 +974,7 @@ func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcac
 	if err != nil {
 		return err
 	}
-	volTo, rights, err := s.resolveVol(target)
+	volTo, rights, err := s.resolveVol(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -1056,7 +1076,7 @@ func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSp
 		return vol.GetParams(), nil
 
 	case vspec.Vault != nil:
-		innerVol, _, err := s.resolveVol(vspec.Vault.X)
+		innerVol, _, err := s.resolveVol(ctx, vspec.Vault.X)
 		if err != nil {
 			return blobcache.VolumeConfig{}, err
 		}
