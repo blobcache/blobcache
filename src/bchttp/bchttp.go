@@ -36,12 +36,6 @@ type ShareResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
-type AwaitReq struct {
-	Cond blobcache.Conditions `json:"cond"`
-}
-
-type AwaitResp struct{}
-
 type OpenFromReq struct {
 	Base   blobcache.Handle    `json:"base"`
 	Target blobcache.OID       `json:"target"`

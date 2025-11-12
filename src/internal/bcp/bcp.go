@@ -70,14 +70,6 @@ func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcac
 	return &resp.Handle, &resp.Info, nil
 }
 
-func Await(ctx context.Context, tp Asker, ep blobcache.Endpoint, cond blobcache.Conditions) error {
-	var resp AwaitResp
-	if _, err := doAsk(ctx, tp, ep, MT_VOLUME_AWAIT, AwaitReq{Cond: cond}, &resp); err != nil {
-		return err
-	}
-	return nil
-}
-
 func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	var resp CreateVolumeResp
 	if _, err := doAsk(ctx, tp, ep, MT_CREATE_VOLUME, CreateVolumeReq{Spec: vspec}, &resp); err != nil {
@@ -293,7 +285,7 @@ func InspectVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vol blo
 }
 
 // TopicSend processes a single topic messge
-func TopicSend(ctx context.Context, tp Teller, tmsg blobcache.TopicMessage) error {
+func TopicSend(ctx context.Context, tp Teller, tmsg blobcache.Message) error {
 	var ttm TopicTellMsg
 	ttm.Encrypt(tmsg.Topic, tmsg.Payload)
 	return doTell(ctx, tp, tmsg.Endpoint, MT_TOPIC_TELL, ttm)

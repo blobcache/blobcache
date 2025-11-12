@@ -108,10 +108,6 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, target bl
 	return h, err
 }
 
-func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
-	return bcp.Await(ctx, s.node, s.ep, cond)
-}
-
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
 	h, info, err := bcp.BeginTx(ctx, s.node, s.ep, volh, txp)
 	if err != nil {

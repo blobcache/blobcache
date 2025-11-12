@@ -127,12 +127,6 @@ func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobca
 	return &info, nil
 }
 
-func (c *Client) Await(ctx context.Context, cond blobcache.Conditions) error {
-	req := AwaitReq{Cond: cond}
-	var resp AwaitResp
-	return c.doJSON(ctx, "POST", "/Await", nil, req, &resp)
-}
-
 func (c *Client) BeginTx(ctx context.Context, vol blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
 	req := BeginTxReq{Volume: vol, Params: txp}
 	var resp BeginTxResp

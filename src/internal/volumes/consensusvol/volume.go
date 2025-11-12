@@ -12,17 +12,17 @@ var _ volumes.Volume = &Volume{}
 // Volume manages state for a volume.
 type Volume struct {
 	id       blobcache.TID
-	incoming chan *blobcache.TopicMessage
+	incoming chan *blobcache.Message
 }
 
-func newVolume(tid blobcache.TID, incoming chan *blobcache.TopicMessage) *Volume {
+func newVolume(tid blobcache.TID, incoming chan *blobcache.Message) *Volume {
 	return &Volume{
 		id:       tid,
 		incoming: incoming,
 	}
 }
 
-func (v *Volume) Handle(out *[]blobcache.TopicMessage, msg blobcache.TopicMessage) error {
+func (v *Volume) Handle(out *[]blobcache.Message, msg blobcache.Message) error {
 	return nil
 }
 

@@ -13,7 +13,7 @@ import (
 // AccessFun is called to get a service to access
 type AccessFunc func(blobcache.PeerID) blobcache.Service
 
-type TopicMessage = blobcache.TopicMessage
+type TopicMessage = blobcache.Message
 
 type Server struct {
 	Access  AccessFunc
@@ -117,13 +117,6 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 				return nil, err
 			}
 			return &bcp.InspectVolumeResp{Info: *info}, nil
-		})
-	case bcp.MT_VOLUME_AWAIT:
-		handleAsk(req, resp, &bcp.AwaitReq{}, func(req *bcp.AwaitReq) (*bcp.AwaitResp, error) {
-			if err := svc.Await(ctx, req.Cond); err != nil {
-				return nil, err
-			}
-			return &bcp.AwaitResp{}, nil
 		})
 	case bcp.MT_VOLUME_BEGIN_TX:
 		handleAsk(req, resp, &bcp.BeginTxReq{}, func(req *bcp.BeginTxReq) (*bcp.BeginTxResp, error) {
