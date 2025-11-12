@@ -287,6 +287,40 @@ func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.VisitLinks", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
+func (c *Client) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	req := CreateQueueReq{Host: host, Spec: qspec}
+	var resp CreateQueueResp
+	if err := c.doJSON(ctx, "POST", "/queue/", nil, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
+func (c *Client) Next(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	req := NextReq{Opts: opts, Max: len(buf)}
+	var resp NextResp
+	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.Next", q.OID.String()), &q.Secret, req, &resp); err != nil {
+		return 0, err
+	}
+	n := copy(buf, resp.Messages)
+	return n, nil
+}
+
+func (c *Client) Insert(ctx context.Context, from *blobcache.Endpoint, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	req := InsertReq{From: from, Messages: msgs}
+	var resp blobcache.InsertResp
+	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.Insert", q.OID.String()), &q.Secret, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {
+	req := SubToVolumeReq{Volume: vol}
+	var resp SubToVolumeResp
+	return c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.SubToVolume", q.OID.String()), &q.Secret, req, &resp)
+}
+
 func (c *Client) mkTxURL(tx blobcache.Handle, method string) string {
 	return fmt.Sprintf("/tx/%s.%s", tx.OID.String(), method)
 }

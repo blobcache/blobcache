@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha3"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -17,14 +18,30 @@ type Message struct {
 	Payload []byte `json:"payload"`
 }
 
+func (m Message) Marshal(out []byte) []byte {
+	out = m.Endpoint.Marshal(out)
+	out = append(out, m.Topic[:]...)
+	out = append(out, m.Payload...)
+	return out
+}
+
+func (m *Message) Unmarshal(data []byte) error {
+	if err := m.Endpoint.Unmarshal(data[:EndpointSize]); err != nil {
+		return err
+	}
+	m.Topic = TID(data[OIDSize : OIDSize+32])
+	m.Payload = data[OIDSize+32:]
+	return nil
+}
+
 type QueueAPI interface {
 	// CreateQueue creates a new queue and returns a handle to it.
-	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (Handle, error)
+	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)
 	// Next reads from the queue.
 	// It reads into buf until buf is full or another criteria is fulfilled.
 	Next(ctx context.Context, q Handle, buf []Message, opts NextOpts) (int, error)
 	// Insert adds the messages to the end of the queue.
-	Insert(ctx context.Context, from *Endpoint, q Handle, msgs []Message) (InsertResp, error)
+	Insert(ctx context.Context, from *Endpoint, q Handle, msgs []Message) (*InsertResp, error)
 
 	// SubToVolume causes all changes to a Volume's cell to be
 	// writen as message to the queue.
@@ -32,7 +49,8 @@ type QueueAPI interface {
 }
 
 type InsertResp struct {
-	Success bool
+	// Success is the number of messages that were inserted.
+	Success uint32
 }
 
 type NextOpts struct {
@@ -49,9 +67,51 @@ type NextOpts struct {
 	MaxWait *time.Duration `json:"max_wait"`
 }
 
+func (no NextOpts) Marshal(out []byte) []byte {
+	data, err := json.Marshal(no)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (no *NextOpts) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, no)
+}
+
+// QueueInfo is info about a queue.
+type QueueInfo struct {
+	ID   OID               `json:"id"`
+	Spec QueueBackend[OID] `json:"spec"`
+}
+
+func (qi QueueInfo) Marshal(out []byte) []byte {
+	data, err := json.Marshal(qi)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (qi *QueueInfo) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, qi)
+}
+
 type QueueBackend[T handleOrOID] struct {
 	Memory *QueueBackend_Memory `json:"memory,omitempty"`
 	Remote *QueueBackend_Remote `json:"remote,omitempty"`
+}
+
+func (qb QueueBackend[T]) Marshal(out []byte) []byte {
+	data, err := json.Marshal(qb)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (qb *QueueBackend[T]) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, qb)
 }
 
 type QueueBackend_Memory struct {
