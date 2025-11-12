@@ -2,6 +2,9 @@ package blobcache
 
 import (
 	"context"
+	"crypto/sha3"
+	"encoding/hex"
+	"fmt"
 	"time"
 )
 
@@ -19,13 +22,17 @@ type QueueAPI interface {
 	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (Handle, error)
 	// Next reads from the queue.
 	// It reads into buf until buf is full or another criteria is fulfilled.
-	Next(ctx context.Context, q Handle, buf []Message, opts NextOpts) error
+	Next(ctx context.Context, q Handle, buf []Message, opts NextOpts) (int, error)
 	// Insert adds the messages to the end of the queue.
-	Insert(ctx context.Context, from *Endpoint, q Handle, msgs []Message) error
+	Insert(ctx context.Context, from *Endpoint, q Handle, msgs []Message) (InsertResp, error)
 
-	// SubscribeToVolume causes all changes to a Volume's message to be
+	// SubToVolume causes all changes to a Volume's cell to be
 	// writen as message to the queue.
-	SubscribeToVolume(ctx context.Context, q Handle, vol Handle) error
+	SubToVolume(ctx context.Context, q Handle, vol Handle) error
+}
+
+type InsertResp struct {
+	Success bool
 }
 
 type NextOpts struct {
@@ -43,11 +50,11 @@ type NextOpts struct {
 }
 
 type QueueBackend[T handleOrOID] struct {
-	Local  *QueueBackend_Local  `json:"local,omitempty"`
+	Memory *QueueBackend_Memory `json:"memory,omitempty"`
 	Remote *QueueBackend_Remote `json:"remote,omitempty"`
 }
 
-type QueueBackend_Local struct {
+type QueueBackend_Memory struct {
 	// MaxDepth
 	MaxDepth uint32 `json:"max_depth"`
 	// EvictOldest will cause the oldest message in the queue to be evicted
@@ -62,3 +69,27 @@ type QueueBackend_Remote struct {
 }
 
 type QueueSpec = QueueBackend[Handle]
+
+// TID is a Topic ID
+// It uniquely identifies a Topic
+type TID [32]byte
+
+func (tid TID) IsZero() bool {
+	return tid == (TID{})
+}
+
+func (tid TID) String() string {
+	return hex.EncodeToString(tid[:])
+}
+
+func (tid *TID) Unmarshal(data []byte) error {
+	if len(data) < 32 {
+		return fmt.Errorf("too small to be topic id")
+	}
+	copy(tid[:], data)
+	return nil
+}
+
+func (tid TID) Key() [32]byte {
+	return sha3.Sum256(tid[:])
+}

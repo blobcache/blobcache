@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha3"
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -108,30 +107,6 @@ func (o *OID) Scan(src any) error {
 type PeerID = inet256.ID
 
 const PeerIDSize = inet256.AddrSize
-
-// TID is a Topic ID
-// It uniquely identifies a Topic
-type TID [32]byte
-
-func (tid TID) IsZero() bool {
-	return tid == (TID{})
-}
-
-func (tid TID) String() string {
-	return hex.EncodeToString(tid[:])
-}
-
-func (tid *TID) Unmarshal(data []byte) error {
-	if len(data) < 32 {
-		return fmt.Errorf("too small to be topic id")
-	}
-	copy(tid[:], data)
-	return nil
-}
-
-func (tid TID) Key() [32]byte {
-	return sha3.Sum256(tid[:])
-}
 
 // TxParams are parameters for a transaction.
 // The zero value is a read-only transaction.
