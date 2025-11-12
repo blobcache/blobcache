@@ -29,7 +29,7 @@ type Env struct {
 	Background context.Context
 	// Hub is used to subscribe to events
 	Hub  *pubsub.Hub
-	Send func(blobcache.TopicMessage) error
+	Send func(blobcache.Message) error
 }
 
 func New(env Env) System {
@@ -48,11 +48,11 @@ func (sys *System) Up(ctx context.Context, params Params) (*Volume, error) {
 	if vol, exists := sys.vols[k]; exists {
 		return vol, nil
 	}
-	incoming := make(chan *blobcache.TopicMessage)
+	incoming := make(chan *blobcache.Message)
 	vol := newVolume(k, incoming)
 	sys.vols[k] = vol
 	go func() {
-		var outgoing []blobcache.TopicMessage
+		var outgoing []blobcache.Message
 		for tmsg := range incoming {
 			if err := vol.Handle(&outgoing, *tmsg); err != nil {
 				logctx.Error(ctx, "handling topic message: %w", zap.Error(err))

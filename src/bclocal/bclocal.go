@@ -156,7 +156,7 @@ func New(env Env, cfg Config) (*Service, error) {
 	s.volSys.consensus = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
 		Hub:        &s.hub,
-		Send: func(tm blobcache.TopicMessage) error {
+		Send: func(tm blobcache.Message) error {
 			node := s.node.Load()
 			if node == nil {
 				return fmt.Errorf("cannot send, no node")
@@ -737,10 +737,6 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 		return nil, err
 	}
 	return &vol.info, nil
-}
-
-func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
-	return fmt.Errorf("Await not implemented")
 }
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {

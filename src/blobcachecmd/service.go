@@ -177,14 +177,6 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 	return &h, nil
 }
 
-func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
-	data, err := json.Marshal(cond)
-	if err != nil {
-		return err
-	}
-	return s.run([]string{"await"}, data, nil)
-}
-
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
 	args := []string{"begin", volh.String()}
 	if txp.Mutate {

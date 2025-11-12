@@ -249,28 +249,6 @@ func (iv *InspectVolumeResp) Unmarshal(data []byte) error {
 	return iv.Info.Unmarshal(data)
 }
 
-type AwaitReq struct {
-	Cond blobcache.Conditions
-}
-
-func (ar AwaitReq) Marshal(out []byte) []byte {
-	return ar.Cond.Marshal(out)
-}
-
-func (ar *AwaitReq) Unmarshal(data []byte) error {
-	return ar.Cond.Unmarshal(data)
-}
-
-type AwaitResp struct{}
-
-func (ar AwaitResp) Marshal(out []byte) []byte {
-	return out
-}
-
-func (ar *AwaitResp) Unmarshal(data []byte) error {
-	return nil
-}
-
 type CloneVolumeReq struct {
 	Volume blobcache.Handle
 }
@@ -1047,7 +1025,7 @@ func (dst *TopicTellMsg) Encrypt(topicID blobcache.TID, ptext []byte) {
 }
 
 // Decrypt attempts to decrypt the message using topic ID.
-func (ttm *TopicTellMsg) Decrypt(tid blobcache.TID, dst *blobcache.TopicMessage) error {
+func (ttm *TopicTellMsg) Decrypt(tid blobcache.TID, dst *blobcache.Message) error {
 	if len(ttm.Ciphertext) < chacha20poly1305.NonceSizeX+chacha20poly1305.Overhead {
 		return fmt.Errorf("too short to contain cryptogram")
 	}
