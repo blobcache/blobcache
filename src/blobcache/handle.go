@@ -218,9 +218,9 @@ const (
 	// If this is not set, then there is no way for the volume to be persisted.
 	// It has no effect on a Transaction handle.
 	Action_VOLUME_LINK_TO = 1 << 26
-	// Action_VOLUME_SUBSCRIBE_TO allows a Queue to be subscribed
+	// Action_VOLUME_SUB_TO allows a Queue to be subscribed
 	// to a Volume's changes.
-	Action_VOLUME_SUBSCRIBE_TO = 1 << 27
+	Action_VOLUME_SUB_TO = 1 << 27
 
 	// Action_VOLUME_CLONE allows the Volume to be cloned.
 	// It has no effect on a Transaction handle.
@@ -238,9 +238,12 @@ const (
 	Action_QUEUE_NEXT
 	// Action_QUEUE_INSERT allows items to be inserted into the Queue
 	Action_QUEUE_INSERT
-	// Action_QUEUE_SUBSCRIBE_VOLUME allows the Queue to be subscribe to volumes
-	Action_QUEUE_SUBSCRIBE_VOLUME
+	// Action_QUEUE_SUB_VOLUME allows the Queue to be subscribe to volumes
+	Action_QUEUE_SUB_VOLUME
 
+	// Action_QUEUE_CREATE allows creation of queues.
+	// This is never used on a handle
+	// But it is useful to be able to refer to it with the other actions using the ActionSet type.
 	Action_QUEUE_CREATE = 1 << 31
 )
 
@@ -300,12 +303,12 @@ func (r ActionSet) String() string {
 		Action_TX_COPY_TO:   "TX_COPY_TO",
 		Action_TX_LINK_FROM: "TX_LINK_FROM",
 
-		Action_VOLUME_INSPECT:      "VOLUME_INSPECT",
-		Action_VOLUME_BEGIN_TX:     "VOLUME_BEGIN_TX",
-		Action_VOLUME_SUBSCRIBE_TO: "VOLUME_AWAIT",
-		Action_VOLUME_LINK_TO:      "VOLUME_LINK_TO",
-		Action_VOLUME_CLONE:        "VOLUME_CLONE",
-		Action_VOLUME_CREATE:       "VOLUME_CREATE",
+		Action_VOLUME_INSPECT:  "VOLUME_INSPECT",
+		Action_VOLUME_BEGIN_TX: "VOLUME_BEGIN_TX",
+		Action_VOLUME_SUB_TO:   "VOLUME_SUB_TO",
+		Action_VOLUME_LINK_TO:  "VOLUME_LINK_TO",
+		Action_VOLUME_CLONE:    "VOLUME_CLONE",
+		Action_VOLUME_CREATE:   "VOLUME_CREATE",
 	}
 	for r2, str := range rs {
 		if r&r2 != 0 {
