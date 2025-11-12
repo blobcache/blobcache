@@ -272,7 +272,6 @@ func TestPolicy(t *testing.T) {
 				{Group: "all", Member: Unit(Action_LINK_FROM)},
 				{Group: "all", Member: Unit(Action_LINK_TO)},
 				{Group: "all", Member: Unit(Action_UNLINK_FROM)},
-				{Group: "all", Member: Unit(Action_AWAIT)},
 				{Group: "all", Member: Unit(Action_CLONE)},
 				{Group: "all", Member: Unit(Action_CREATE)},
 			},
@@ -290,8 +289,7 @@ func TestPolicy(t *testing.T) {
 					Open: blobcache.Action_TX_LOAD | blobcache.Action_TX_SAVE | blobcache.Action_TX_POST |
 						blobcache.Action_TX_GET | blobcache.Action_TX_EXISTS | blobcache.Action_TX_DELETE |
 						blobcache.Action_TX_COPY_FROM | blobcache.Action_TX_COPY_TO |
-						blobcache.Action_TX_LINK_FROM | blobcache.Action_TX_UNLINK_FROM |
-						blobcache.Action_VOLUME_AWAIT | blobcache.Action_VOLUME_CLONE,
+						blobcache.Action_TX_LINK_FROM | blobcache.Action_TX_UNLINK_FROM | blobcache.Action_VOLUME_CLONE,
 					CanCreate: true,
 				},
 			},

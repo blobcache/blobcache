@@ -131,14 +131,14 @@ func (hi *HandleInfo) Unmarshal(data []byte) error {
 type ActionSet uint64
 
 func (a ActionSet) Marshal(out []byte) []byte {
-	return binary.BigEndian.AppendUint64(out, uint64(a))
+	return binary.LittleEndian.AppendUint64(out, uint64(a))
 }
 
 func (a *ActionSet) Unmarshal(data []byte) error {
 	if len(data) != 8 {
 		return fmt.Errorf("invalid ActionSet length: %d", len(data))
 	}
-	*a = ActionSet(binary.BigEndian.Uint64(data))
+	*a = ActionSet(binary.LittleEndian.Uint64(data))
 	return nil
 }
 
@@ -214,13 +214,13 @@ const (
 	// Action_VOLUME_BEGIN_TX allows the beginning of transactions on a volume
 	// It has no effect on a Transaction handle.
 	Action_VOLUME_BEGIN_TX = 1 << 25
-	// Action_VOLUME_AWAIT allows the awaiting of conditions on a volume
-	// It has no effect on a Transaction handle.
-	Action_VOLUME_AWAIT = 1 << 26
 	// Action_VOLUME_LINK_TO allows a volume to be linked to in an AllowLink operation.
 	// If this is not set, then there is no way for the volume to be persisted.
 	// It has no effect on a Transaction handle.
-	Action_VOLUME_LINK_TO = 1 << 27
+	Action_VOLUME_LINK_TO = 1 << 26
+	// Action_VOLUME_SUBSCRIBE_TO allows a Queue to be subscribed
+	// to a Volume's changes.
+	Action_VOLUME_SUBSCRIBE_TO = 1 << 27
 
 	// Action_VOLUME_CLONE allows the Volume to be cloned.
 	// It has no effect on a Transaction handle.
@@ -229,6 +229,19 @@ const (
 	// This is never used on a Volume or Transaction handle.
 	// But it is useful to be able to refer to it with the other actions using the ActionSet type.
 	Action_VOLUME_CREATE = 1 << 31
+)
+
+const (
+	//Action_QUEUE_INSPECT allows the queue to be inspected
+	Action_QUEUE_INSPECT = 1 << (iota + 1)
+	// Action_QUEUE_NEXT allows items to be read form the Queue
+	Action_QUEUE_NEXT
+	// Action_QUEUE_INSERT allows items to be inserted into the Queue
+	Action_QUEUE_INSERT
+	// Action_QUEUE_SUBSCRIBE_VOLUME allows the Queue to be subscribe to volumes
+	Action_QUEUE_SUBSCRIBE_VOLUME
+
+	Action_QUEUE_CREATE = 1 << 31
 )
 
 const (
@@ -287,12 +300,12 @@ func (r ActionSet) String() string {
 		Action_TX_COPY_TO:   "TX_COPY_TO",
 		Action_TX_LINK_FROM: "TX_LINK_FROM",
 
-		Action_VOLUME_INSPECT:  "VOLUME_INSPECT",
-		Action_VOLUME_BEGIN_TX: "VOLUME_BEGIN_TX",
-		Action_VOLUME_AWAIT:    "VOLUME_AWAIT",
-		Action_VOLUME_LINK_TO:  "VOLUME_LINK_TO",
-		Action_VOLUME_CLONE:    "VOLUME_CLONE",
-		Action_VOLUME_CREATE:   "VOLUME_CREATE",
+		Action_VOLUME_INSPECT:      "VOLUME_INSPECT",
+		Action_VOLUME_BEGIN_TX:     "VOLUME_BEGIN_TX",
+		Action_VOLUME_SUBSCRIBE_TO: "VOLUME_AWAIT",
+		Action_VOLUME_LINK_TO:      "VOLUME_LINK_TO",
+		Action_VOLUME_CLONE:        "VOLUME_CLONE",
+		Action_VOLUME_CREATE:       "VOLUME_CREATE",
 	}
 	for r2, str := range rs {
 		if r&r2 != 0 {
