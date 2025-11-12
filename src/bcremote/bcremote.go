@@ -214,6 +214,22 @@ func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets [
 	return bcp.VisitLinks(ctx, s.node, s.ep, tx, targets)
 }
 
+func (s *Service) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	return bcp.CreateQueue(ctx, s.node, s.ep, qspec)
+}
+
+func (s *Service) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	return bcp.Next(ctx, s.node, s.ep, qh, buf, opts)
+}
+
+func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return bcp.Insert(ctx, s.node, s.ep, from, qh, msgs)
+}
+
+func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
+	return bcp.SubToVolume(ctx, s.node, s.ep, qh, volh)
+}
+
 // getHashFunc finds the hash function for a transaction.
 func (s *Service) getHashFunc(ctx context.Context, txh blobcache.Handle) (blobcache.HashFunc, error) {
 	txinfo, ok := s.cache.Get(txh.OID)

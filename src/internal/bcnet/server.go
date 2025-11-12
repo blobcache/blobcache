@@ -66,7 +66,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 	// END HANDLE
 
 	// BEGIN VOLUME
-	case bcp.MT_OPEN_AS:
+	case bcp.MT_OPEN_FIAT:
 		handleAsk(req, resp, &bcp.OpenFiatReq{}, func(req *bcp.OpenFiatReq) (*bcp.OpenFiatResp, error) {
 			h, err := svc.OpenFiat(ctx, req.Target, req.Mask)
 			if err != nil {

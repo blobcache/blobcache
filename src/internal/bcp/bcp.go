@@ -50,7 +50,7 @@ func InspectHandle(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobc
 
 func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFiatResp
-	if _, err := doAsk(ctx, tp, ep, MT_OPEN_AS, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
+	if _, err := doAsk(ctx, tp, ep, MT_OPEN_FIAT, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
 		return nil, nil, err
 	}
 	if err := resp.Info.HashAlgo.Validate(); err != nil {
@@ -282,6 +282,38 @@ func InspectVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vol blo
 		return nil, err
 	}
 	return &resp.Info, nil
+}
+
+func CreateQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	var resp CreateQueueResp
+	if _, err := doAsk(ctx, tp, ep, MT_QUEUE_CREATE, CreateQueueReq{Spec: qspec}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
+}
+
+func Next(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	var resp NextResp
+	if _, err := doAsk(ctx, tp, ep, MT_QUEUE_NEXT, NextReq{Opts: opts, Max: len(buf)}, &resp); err != nil {
+		return 0, err
+	}
+	return len(resp.Messages), nil
+}
+
+func Insert(ctx context.Context, tp Asker, ep blobcache.Endpoint, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	var resp InsertResp
+	if _, err := doAsk(ctx, tp, ep, MT_QUEUE_INSERT, InsertReq{Messages: msgs}, &resp); err != nil {
+		return nil, err
+	}
+	return &blobcache.InsertResp{Success: resp.Success}, nil
+}
+
+func SubToVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, volh blobcache.Handle) error {
+	var resp SubToVolumeResp
+	if _, err := doAsk(ctx, tp, ep, MT_QUEUE_SUB_TO_VOLUME, SubToVolumeReq{Queue: qh, Volume: volh}, &resp); err != nil {
+		return err
+	}
+	return nil
 }
 
 // TopicSend processes a single topic messge

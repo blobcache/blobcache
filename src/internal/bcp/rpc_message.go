@@ -986,6 +986,161 @@ func (cr *CreateVolumeResp) Unmarshal(data []byte) error {
 	return cr.Info.Unmarshal(data)
 }
 
+type CreateQueueReq struct {
+	Spec blobcache.QueueSpec
+}
+
+func (cq CreateQueueReq) Marshal(out []byte) []byte {
+	return cq.Spec.Marshal(out)
+}
+
+func (cq *CreateQueueReq) Unmarshal(data []byte) error {
+	return cq.Spec.Unmarshal(data)
+}
+
+type CreateQueueResp struct {
+	Handle blobcache.Handle
+}
+
+func (cq CreateQueueResp) Marshal(out []byte) []byte {
+	return cq.Handle.Marshal(out)
+}
+
+func (cq *CreateQueueResp) Unmarshal(data []byte) error {
+	return cq.Handle.Unmarshal(data)
+}
+
+type NextReq struct {
+	Opts blobcache.NextOpts
+	Max  int
+}
+
+func (nr NextReq) Marshal(out []byte) []byte {
+	return nr.Opts.Marshal(out)
+}
+
+func (nr *NextReq) Unmarshal(data []byte) error {
+	return nr.Opts.Unmarshal(data)
+}
+
+type NextResp struct {
+	Messages []blobcache.Message
+}
+
+func (nr NextResp) Marshal(out []byte) []byte {
+	for _, msg := range nr.Messages {
+		out = msg.Marshal(out)
+	}
+	return out
+}
+
+func (nr *NextResp) Unmarshal(data []byte) error {
+	nr.Messages = make([]blobcache.Message, len(data)/blobcache.EndpointSize)
+	for i := range nr.Messages {
+		data := data[i*blobcache.EndpointSize : (i+1)*blobcache.EndpointSize]
+		if err := nr.Messages[i].Unmarshal(data); err != nil {
+			return err
+		}
+		data = data[blobcache.EndpointSize:]
+	}
+	return nil
+}
+
+type InspectQueueReq struct {
+	Queue blobcache.Handle
+}
+
+func (iq InspectQueueReq) Marshal(out []byte) []byte {
+	return iq.Queue.Marshal(out)
+}
+
+func (iq *InspectQueueReq) Unmarshal(data []byte) error {
+	return iq.Queue.Unmarshal(data)
+}
+
+type InspectQueueResp struct {
+	Info blobcache.QueueInfo
+}
+
+func (iq InspectQueueResp) Marshal(out []byte) []byte {
+	return iq.Info.Marshal(out)
+}
+
+func (iq *InspectQueueResp) Unmarshal(data []byte) error {
+	return iq.Info.Unmarshal(data)
+}
+
+type InsertReq struct {
+	Messages []blobcache.Message
+}
+
+func (ir InsertReq) Marshal(out []byte) []byte {
+	out = binary.LittleEndian.AppendUint32(out, uint32(len(ir.Messages)))
+	for _, msg := range ir.Messages {
+		out = sbe.AppendLP(out, msg.Marshal(nil))
+	}
+	return out
+}
+
+func (ir *InsertReq) Unmarshal(data []byte) error {
+	numMessages, data, err := sbe.ReadUint32(data)
+	if err != nil {
+		return err
+	}
+	ir.Messages = make([]blobcache.Message, numMessages)
+	for i := range ir.Messages {
+		msgData, rest, err := sbe.ReadLP(data)
+		if err != nil {
+			return err
+		}
+		if err := ir.Messages[i].Unmarshal(msgData); err != nil {
+			return err
+		}
+		data = rest
+	}
+	return nil
+}
+
+type InsertResp struct {
+	Success uint32
+}
+
+func (ir InsertResp) Marshal(out []byte) []byte {
+	return sbe.AppendUint32(out, ir.Success)
+}
+
+func (ir *InsertResp) Unmarshal(data []byte) error {
+	success, _, err := sbe.ReadUint32(data)
+	if err != nil {
+		return err
+	}
+	ir.Success = success
+	return nil
+}
+
+type SubToVolumeReq struct {
+	Queue  blobcache.Handle
+	Volume blobcache.Handle
+}
+
+func (sr SubToVolumeReq) Marshal(out []byte) []byte {
+	return sr.Queue.Marshal(out)
+}
+
+func (sr *SubToVolumeReq) Unmarshal(data []byte) error {
+	return sr.Queue.Unmarshal(data)
+}
+
+type SubToVolumeResp struct{}
+
+func (sr SubToVolumeResp) Marshal(out []byte) []byte {
+	return out
+}
+
+func (sr *SubToVolumeResp) Unmarshal(data []byte) error {
+	return nil
+}
+
 type TopicTellMsg struct {
 	// TopicHash is the hash of the topic ID
 	TopicHash  blobcache.CID

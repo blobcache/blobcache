@@ -34,6 +34,12 @@ func ReadLP(x []byte) ([]byte, []byte, error) {
 	return x[:int(l)], x[int(l):], nil
 }
 
+func AppendUint32(out []byte, x uint32) []byte {
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], x)
+	return append(out, buf[:]...)
+}
+
 func ReadUint32(x []byte) (uint32, []byte, error) {
 	if len(x) < 4 {
 		return 0, nil, fmt.Errorf("too short to contain uint32")

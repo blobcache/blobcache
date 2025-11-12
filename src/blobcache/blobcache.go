@@ -256,6 +256,7 @@ type Service interface {
 	HandleAPI
 	VolumeAPI
 	TxAPI
+	QueueAPI
 }
 
 // CheckBlob checks that the data matches the expected CID.

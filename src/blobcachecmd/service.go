@@ -69,11 +69,10 @@ func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pe
 	return &nh, nil
 }
 
-// VolumeAPI
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	// Determine which CLI command to invoke based on the volume spec
 	var args []string
-	
+
 	switch {
 	case vspec.Local != nil:
 		// Local volume: mkvol.local [--host HOST] [--hash HASH] [--max-size SIZE]
@@ -87,11 +86,11 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 		if vspec.Local.MaxSize > 0 {
 			args = append(args, "--max-size", fmt.Sprint(vspec.Local.MaxSize))
 		}
-		
+
 	case vspec.Remote != nil:
 		// Remote volume: mkvol.remote <endpoint> <volid>
 		args = []string{"mkvol.remote", vspec.Remote.Endpoint.String(), vspec.Remote.Volume.String()}
-		
+
 	case vspec.Vault != nil:
 		// Vault volume: mkvol.vault [--hash HASH] [--secret SECRET] <handle>
 		args = []string{"mkvol.vault"}
@@ -104,19 +103,19 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 			args = append(args, "--secret", secretHex)
 		}
 		args = append(args, vspec.Vault.X.String())
-		
+
 	case vspec.Git != nil:
 		// Git volumes not yet implemented in CLI
 		return nil, fmt.Errorf("git volumes not yet implemented via CLI")
-		
+
 	case vspec.Consensus != nil:
 		// Consensus volumes not exposed via CLI
 		return nil, fmt.Errorf("consensus volumes not supported via CLI")
-		
+
 	default:
 		return nil, fmt.Errorf("no volume backend specified")
 	}
-	
+
 	// Parse the handle from the CLI output
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
 	str, err := s.runParse(args, re)
@@ -354,6 +353,22 @@ func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blob
 
 func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
 	return s.run([]string{"tx", "visit-links", h.String()}, nil, nil)
+}
+
+func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	return nil, fmt.Errorf("CreateQueue not implemented")
+}
+
+func (s *Service) Next(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	return 0, fmt.Errorf("Next not implemented")
+}
+
+func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return nil, fmt.Errorf("Insert not implemented")
+}
+
+func (s *Service) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {
+	return fmt.Errorf("SubToVolume not implemented")
 }
 
 func (s *Service) runParse(args []string, re *regexp.Regexp) (string, error) {

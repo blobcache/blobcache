@@ -996,6 +996,22 @@ func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets 
 	return setErrTxOID(txn.backend.VisitLinks(ctx, targets), txh.OID)
 }
 
+func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	return nil, fmt.Errorf("CreateQueue not implemented")
+}
+
+func (s *Service) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	return 0, fmt.Errorf("Next not implemented")
+}
+
+func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return nil, fmt.Errorf("Insert not implemented")
+}
+
+func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
+	return fmt.Errorf("SubToVolume not implemented")
+}
+
 // handleKey computes a map key from a handle.
 func handleKey(h blobcache.Handle) [32]byte {
 	return blake3.Sum256(slices.Concat(h.OID[:], h.Secret[:]))
