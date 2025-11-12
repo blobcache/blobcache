@@ -20,21 +20,12 @@ type QueueAPI interface {
 	// Next reads from the queue.
 	// It reads into buf until buf is full or another criteria is fulfilled.
 	Next(ctx context.Context, q Handle, buf []Message, opts NextOpts) error
-	// Enqueue adds the messages to the end of the queue.
-	Enqueue(ctx context.Context, from *Endpoint, q Handle, msgs []Message) error
+	// Insert adds the messages to the end of the queue.
+	Insert(ctx context.Context, from *Endpoint, q Handle, msgs []Message) error
 
 	// SubscribeToVolume causes all changes to a Volume's message to be
 	// writen as message to the queue.
 	SubscribeToVolume(ctx context.Context, q Handle, vol Handle) error
-
-	// Publish sends data to all queues on the specified topic.
-	Publish(ctx context.Context, from *Endpoint, tid TID, data []byte) error
-	// Subscribe causes any messages published on topic to be delivered
-	// to the queue.
-	// Subscribe is idempotent.
-	Subscribe(ctx context.Context, q Handle, tid TID) error
-	// Unsubscribe removes the topic from the queues subscriptions.
-	Unsubscribe(ctx context.Context, q Handle, tid TID) error
 }
 
 type NextOpts struct {
