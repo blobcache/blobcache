@@ -68,9 +68,8 @@ func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pe
 	return &nh, nil
 }
 
-// VolumeAPI
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	// Use HTTP client for precise spec support (hash algo, sizes, etc.).
+	// TODO: remove this
 	cli := bcclient.NewClient(s.APIAddr)
 	return cli.CreateVolume(ctx, host, vspec)
 }
@@ -120,14 +119,6 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 		return nil, err
 	}
 	return &h, nil
-}
-
-func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
-	data, err := json.Marshal(cond)
-	if err != nil {
-		return err
-	}
-	return s.run([]string{"await"}, data, nil)
 }
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
@@ -307,6 +298,22 @@ func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blob
 
 func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
 	return s.run([]string{"tx", "visit-links", h.String()}, nil, nil)
+}
+
+func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	return nil, fmt.Errorf("CreateQueue not implemented")
+}
+
+func (s *Service) Next(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	return 0, fmt.Errorf("Next not implemented")
+}
+
+func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return nil, fmt.Errorf("Insert not implemented")
+}
+
+func (s *Service) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {
+	return fmt.Errorf("SubToVolume not implemented")
 }
 
 func (s *Service) runParse(args []string, re *regexp.Regexp) (string, error) {

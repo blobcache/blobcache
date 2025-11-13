@@ -66,14 +66,6 @@ func (v *Vault) AccessSubVolume(ctx context.Context, target blobcache.OID) (blob
 	return v.inner.AccessSubVolume(ctx, target)
 }
 
-func (v *Vault) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
-	lr, ok := v.inner.(volumes.LinkReader)
-	if !ok {
-		return fmt.Errorf("inner volume does not support LinkReader")
-	}
-	return lr.ReadLinks(ctx, dst)
-}
-
 func (v *Vault) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
 	return v.inner.GetBackend()
 }

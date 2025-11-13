@@ -36,12 +36,6 @@ type ShareResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
-type AwaitReq struct {
-	Cond blobcache.Conditions `json:"cond"`
-}
-
-type AwaitResp struct{}
-
 type OpenFromReq struct {
 	Base   blobcache.Handle    `json:"base"`
 	Target blobcache.OID       `json:"target"`
@@ -96,14 +90,6 @@ type BeginTxResp struct {
 }
 
 // Tx messages.
-
-type CreateSubVolumeReq struct {
-	Spec blobcache.VolumeSpec `json:"spec"`
-}
-
-type CreateSubVolumeResp struct {
-	Volume blobcache.VolumeInfo `json:"volume"`
-}
 
 type InspectTxReq struct {
 	Tx blobcache.Handle `json:"tx"`
@@ -201,3 +187,34 @@ type VisitLinksReq struct {
 }
 
 type VisitLinksResp struct{}
+
+// Queue messages.
+
+type CreateQueueReq struct {
+	Host *blobcache.Endpoint `json:"host,omitempty"`
+	Spec blobcache.QueueSpec `json:"spec"`
+}
+
+type CreateQueueResp struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type NextReq struct {
+	Opts blobcache.NextOpts `json:"opts"`
+	Max  int                `json:"max"`
+}
+
+type NextResp struct {
+	Messages []blobcache.Message `json:"messages"`
+}
+
+type InsertReq struct {
+	From     *blobcache.Endpoint `json:"from,omitempty"`
+	Messages []blobcache.Message `json:"messages"`
+}
+
+type SubToVolumeReq struct {
+	Volume blobcache.Handle `json:"volume"`
+}
+
+type SubToVolumeResp struct{}
