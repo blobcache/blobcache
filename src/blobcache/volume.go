@@ -19,12 +19,38 @@ type Endpoint struct {
 	IPPort netip.AddrPort `json:"ip_port"`
 }
 
-func (e Endpoint) String() string {
-	return fmt.Sprintf("%v@%v", e.Peer, e.IPPort)
+const EndpointSize = PeerIDSize + 16 + 2
+
+func (e Endpoint) Marshal(out []byte) []byte {
+	out = append(out, e.Peer[:]...)
+
+	ipaddrData, err := e.IPPort.AppendBinary(nil)
+	if err != nil {
+		panic(err)
+	}
+	for len(ipaddrData) < 16+2 { // 16 bytes for the IP address, 2 bytes for the port
+		ipaddrData = append(ipaddrData, 0)
+	}
+	out = append(out, ipaddrData...)
+	return out
 }
 
-func (e Endpoint) IsZero() bool {
-	return e.Peer.IsZero() && e.IPPort == netip.AddrPort{}
+func (e *Endpoint) Unmarshal(data []byte) error {
+	if len(data) < PeerIDSize+16+2 {
+		return fmt.Errorf("too small to be endpoint")
+	}
+	e.Peer, data = PeerID(data[:PeerIDSize]), data[PeerIDSize:]
+	ipaddrData := data[:16+2]
+	ipaddr, err := netip.ParseAddrPort(string(ipaddrData))
+	if err != nil {
+		return err
+	}
+	e.IPPort = ipaddr
+	return nil
+}
+
+func (e Endpoint) String() string {
+	return fmt.Sprintf("%s@%s", e.Peer.String(), e.IPPort.String())
 }
 
 func ParseEndpoint(s string) (Endpoint, error) {
@@ -131,7 +157,7 @@ func (v VolumeBackend[T]) String() string {
 	}
 	if v.Remote != nil {
 		sb.WriteString("remote:")
-		sb.WriteString(v.Remote.Endpoint.String())
+		sb.WriteString(v.Remote.Endpoint.Peer.String())
 		sb.WriteString(" ")
 		sb.WriteString(v.Remote.Volume.String())
 	}

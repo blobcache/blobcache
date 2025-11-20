@@ -108,10 +108,6 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, target bl
 	return h, err
 }
 
-func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
-	return bcp.Await(ctx, s.node, s.ep, cond)
-}
-
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
 	h, info, err := bcp.BeginTx(ctx, s.node, s.ep, volh, txp)
 	if err != nil {
@@ -216,6 +212,22 @@ func (s *Service) Unlink(ctx context.Context, tx blobcache.Handle, targets []blo
 
 func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
 	return bcp.VisitLinks(ctx, s.node, s.ep, tx, targets)
+}
+
+func (s *Service) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	return bcp.CreateQueue(ctx, s.node, s.ep, qspec)
+}
+
+func (s *Service) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	return bcp.Next(ctx, s.node, s.ep, qh, buf, opts)
+}
+
+func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return bcp.Insert(ctx, s.node, s.ep, from, qh, msgs)
+}
+
+func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
+	return bcp.SubToVolume(ctx, s.node, s.ep, qh, volh)
 }
 
 // getHashFunc finds the hash function for a transaction.

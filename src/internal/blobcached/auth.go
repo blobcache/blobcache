@@ -72,7 +72,6 @@ const (
 	Action_LINK_FROM   Action = "LINK_FROM"
 	Action_LINK_TO     Action = "LINK_TO"
 	Action_UNLINK_FROM Action = "UNLINK_FROM"
-	Action_AWAIT       Action = "AWAIT"
 	Action_CLONE       Action = "CLONE"
 	Action_CREATE      Action = "CREATE"
 )
@@ -101,8 +100,6 @@ func (a Action) ToSet() blobcache.ActionSet {
 		return blobcache.Action_TX_LINK_FROM
 	case Action_UNLINK_FROM:
 		return blobcache.Action_TX_UNLINK_FROM
-	case Action_AWAIT:
-		return blobcache.Action_VOLUME_AWAIT
 	case Action_CLONE:
 		return blobcache.Action_VOLUME_CLONE
 	case Action_CREATE:
@@ -124,7 +121,6 @@ func AllActions() []Action {
 		Action_LINK_TO,
 		Action_UNLINK_FROM,
 
-		Action_AWAIT,
 		Action_CLONE,
 		Action_CREATE,
 	}
@@ -154,8 +150,6 @@ func ParseAction(x []byte) (Action, error) {
 		return Action_LINK_TO, nil
 	case "UNLINK_FROM":
 		return Action_UNLINK_FROM, nil
-	case "AWAIT":
-		return Action_AWAIT, nil
 	case "CLONE":
 		return Action_CLONE, nil
 	case "CREATE":
@@ -174,7 +168,7 @@ func DefaultActionsFile() (ret string) {
 	}
 	ret += appendLine(ret, "all", AllActions()...)
 	ret += appendLine(ret, "look",
-		Action_LOAD, Action_GET, Action_COPY_FROM, Action_LINK_TO, Action_AWAIT,
+		Action_LOAD, Action_GET, Action_COPY_FROM, Action_LINK_TO,
 	)
 	ret += "touch @look SAVE POST DELETE COPY_TO\n"
 	return ret

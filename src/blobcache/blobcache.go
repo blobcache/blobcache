@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha3"
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -109,53 +108,6 @@ type PeerID = inet256.ID
 
 const PeerIDSize = inet256.AddrSize
 
-// TID is a Topic ID
-// It uniquely identifies a Topic
-type TID [32]byte
-
-func (tid TID) IsZero() bool {
-	return tid == (TID{})
-}
-
-func (tid TID) String() string {
-	return hex.EncodeToString(tid[:])
-}
-
-func (tid *TID) Unmarshal(data []byte) error {
-	if len(data) < 32 {
-		return fmt.Errorf("too small to be topic id")
-	}
-	copy(tid[:], data)
-	return nil
-}
-
-func (tid TID) Key() [32]byte {
-	return sha3.Sum256(tid[:])
-}
-
-// Conditions is a set of conditions to await.
-type Conditions struct {
-	AllEqual []Handle  `json:"all_equal,omitempty"`
-	NOTEqual *NOTEqual `json:"not,omitempty"`
-}
-
-func (c Conditions) Marshal(out []byte) []byte {
-	data, err := json.Marshal(c)
-	if err != nil {
-		panic(err)
-	}
-	return append(out, data...)
-}
-
-func (c *Conditions) Unmarshal(data []byte) error {
-	return json.Unmarshal(data, c)
-}
-
-type NOTEqual struct {
-	Volume Handle
-	Value  []byte
-}
-
 // TxParams are parameters for a transaction.
 // The zero value is a read-only transaction.
 type TxParams struct {
@@ -242,8 +194,7 @@ type VolumeAPI interface {
 	// base is the handle of a Volume, which links to the object.
 	// the base Volume's schema must be a Container.
 	OpenFrom(ctx context.Context, base Handle, x OID, mask ActionSet) (*Handle, error)
-	// Await waits for a set of conditions to be met.
-	Await(ctx context.Context, cond Conditions) error
+
 	// BeginTx begins a new transaction, on a Volume.
 	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
 	// CloneVolume clones a Volume, copying it's configuration, blobs, and cell data.
@@ -297,15 +248,6 @@ type TxAPI interface {
 	VisitLinks(ctx context.Context, tx Handle, targets []OID) error
 }
 
-type TopicMessage struct {
-	// Endpoint is the endpoint where the message came from or is going.
-	Endpoint Endpoint `json:"endpoint"`
-	// Topic is the topic that the message is speaking on.
-	Topic TID `json:"topic"`
-	// Payload data to deliver.
-	Payload []byte `json:"payload"`
-}
-
 type Service interface {
 	// Endpoint returns the endpoint of the service.
 	// If the endpoint is the zero value, the service is not listening for peers.
@@ -314,6 +256,7 @@ type Service interface {
 	HandleAPI
 	VolumeAPI
 	TxAPI
+	QueueAPI
 }
 
 // CheckBlob checks that the data matches the expected CID.

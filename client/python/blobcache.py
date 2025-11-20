@@ -196,10 +196,6 @@ class Client:
         req = {"handles": [str(h) for h in handles]}
         self._do_json("POST", "/KeepAlive", data=req)
 
-    def await_cond(self, cond: Conditions):
-        req = {"cond": asdict(cond)}
-        self._do_json("POST", "/Await", data=req)
-
     def begin_tx(self, vol: Handle, mutate: bool) -> Handle:
         req = {"volume": str(vol), "params": {"Mutate": mutate}}
         resp = self._do_json("POST", "/tx/", secret=vol.secret, data=req)

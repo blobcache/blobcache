@@ -24,18 +24,10 @@ type Volume interface {
 	GetBackend() blobcache.VolumeBackend[blobcache.OID]
 
 	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error)
-	// Await blocks until the volume root changes away from prev to something else.
-	// The next state is written to next.
-	Await(ctx context.Context, prev []byte, next *[]byte) error
+
 	// AccessSubVolume returns the rights granted to access a subvolume.
 	// Returns 0 if there is no link to the target.
 	AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error)
-}
-
-// LinkReader is an optional interface that volumes can implement to provide
-// efficient bulk reading of all links.
-type LinkReader interface {
-	ReadLinks(ctx context.Context, dst LinkSet) error
 }
 
 // Tx is a consistent view of a volume, during a transaction.

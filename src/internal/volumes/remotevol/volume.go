@@ -50,10 +50,6 @@ func (v *Volume) Handle() blobcache.Handle {
 	return v.h
 }
 
-func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
-	return bcp.Await(ctx, v.n, v.ep, blobcache.Conditions{})
-}
-
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
 	txh, info, err := bcp.BeginTx(ctx, v.n, v.ep, v.h, spec)
 	if err != nil {

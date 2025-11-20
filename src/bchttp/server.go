@@ -54,14 +54,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return &EndpointResp{Endpoint: ep}, nil
 		})
-	case r.URL.Path == "/Await":
-		handleRequest(w, r, func(ctx context.Context, req AwaitReq) (*AwaitResp, error) {
-			err := s.Service.Await(ctx, req.Cond)
-			if err != nil {
-				return nil, err
-			}
-			return &AwaitResp{}, nil
-		})
 	case r.URL.Path == "/KeepAlive":
 		handleRequest(w, r, func(ctx context.Context, req KeepAliveReq) (*KeepAliveResp, error) {
 			err := s.Service.KeepAlive(ctx, req.Handles)
@@ -86,6 +78,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return &ShareResp{Handle: *handle}, nil
 		})
+	case strings.HasPrefix(r.URL.Path, "/queue/"):
+		s.handleQueue(w, r)
 	case strings.HasPrefix(r.URL.Path, "/volume/"):
 		s.handleVolume(w, r)
 	case strings.HasPrefix(r.URL.Path, "/tx/"):
@@ -286,6 +280,67 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 			return &VisitLinksResp{}, nil
+		})
+	default:
+		http.Error(w, fmt.Sprintf("unsupported method %v", method), http.StatusNotFound)
+	}
+}
+
+func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/queue/":
+		handleRequest(w, r, func(ctx context.Context, req CreateQueueReq) (*CreateQueueResp, error) {
+			qh, err := s.Service.CreateQueue(ctx, req.Host, req.Spec)
+			if err != nil {
+				return nil, err
+			}
+			return &CreateQueueResp{Handle: *qh}, nil
+		})
+		return
+	}
+	var queueIDStr string
+	var method string
+	if _, err := fmt.Sscanf(r.URL.Path, "/queue/%32s.%s", &queueIDStr, &method); err != nil {
+		http.Error(w, "could not parse path "+r.URL.Path, http.StatusBadRequest)
+		return
+	}
+	var h blobcache.Handle
+	if _, err := hex.Decode(h.OID[:], []byte(queueIDStr)); err != nil {
+		http.Error(w, "could not decode queue id", http.StatusBadRequest)
+		return
+	}
+	secretStr := r.Header.Get("X-Secret")
+	if _, err := hex.Decode(h.Secret[:], []byte(secretStr)); err != nil {
+		http.Error(w, "could not decode secret", http.StatusBadRequest)
+		return
+	}
+	switch method {
+	case "Next":
+		handleRequest(w, r, func(ctx context.Context, req NextReq) (*NextResp, error) {
+			if req.Max < 0 {
+				return nil, fmt.Errorf("max cannot be negative")
+			}
+			buf := make([]blobcache.Message, req.Max)
+			n, err := s.Service.Next(ctx, h, buf, req.Opts)
+			if err != nil {
+				return nil, err
+			}
+			return &NextResp{Messages: buf[:n]}, nil
+		})
+	case "Insert":
+		handleRequest(w, r, func(ctx context.Context, req InsertReq) (*blobcache.InsertResp, error) {
+			resp, err := s.Service.Insert(ctx, req.From, h, req.Messages)
+			if err != nil {
+				return nil, err
+			}
+			return resp, nil
+		})
+	case "SubToVolume":
+		handleRequest(w, r, func(ctx context.Context, req SubToVolumeReq) (*SubToVolumeResp, error) {
+			if err := s.Service.SubToVolume(ctx, h, req.Volume); err != nil {
+				return nil, err
+			}
+			return &SubToVolumeResp{}, nil
 		})
 	default:
 		http.Error(w, fmt.Sprintf("unsupported method %v", method), http.StatusNotFound)

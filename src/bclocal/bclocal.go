@@ -156,7 +156,7 @@ func New(env Env, cfg Config) (*Service, error) {
 	s.volSys.consensus = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
 		Hub:        &s.hub,
-		Send: func(tm blobcache.TopicMessage) error {
+		Send: func(tm blobcache.Message) error {
 			node := s.node.Load()
 			if node == nil {
 				return fmt.Errorf("cannot send, no node")
@@ -739,10 +739,6 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 	return &vol.info, nil
 }
 
-func (s *Service) Await(ctx context.Context, cond blobcache.Conditions) error {
-	return fmt.Errorf("Await not implemented")
-}
-
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {
 	if err := s.mountRoot(ctx); err != nil {
 		return nil, err
@@ -998,6 +994,22 @@ func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets 
 		return err
 	}
 	return setErrTxOID(txn.backend.VisitLinks(ctx, targets), txh.OID)
+}
+
+func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	return nil, fmt.Errorf("CreateQueue not implemented")
+}
+
+func (s *Service) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	return 0, fmt.Errorf("Next not implemented")
+}
+
+func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return nil, fmt.Errorf("Insert not implemented")
+}
+
+func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
+	return fmt.Errorf("SubToVolume not implemented")
 }
 
 // handleKey computes a map key from a handle.
