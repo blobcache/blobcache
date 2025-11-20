@@ -81,17 +81,17 @@ var mkVolVaultCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		
+
 		hashAlgo := blobcache.HashAlgo_BLAKE3_256
 		if ha, ok := hashAlgoParam.LoadOpt(c); ok {
 			hashAlgo = ha
 		}
-		
+
 		secret := blobcache.Secret{}
 		if s, ok := secretParam.LoadOpt(c); ok {
 			secret = s
 		}
-		
+
 		h, err := svc.CreateVolume(c.Context, nil, blobcache.VolumeSpec{
 			Vault: &blobcache.VolumeBackend_Vault[blobcache.Handle]{
 				X:        volHParam.Load(c),
@@ -286,7 +286,7 @@ var secretParam = star.Optional[blobcache.Secret]{
 	ShortDoc: "the secret for vault encryption (hex string)",
 	Parse: func(s string) (blobcache.Secret, error) {
 		var secret blobcache.Secret
-		err := secret.UnmarshalJSON([]byte(`"` + s + `"`))
+		err := secret.UnmarshalText([]byte(s))
 		return secret, err
 	},
 }
