@@ -260,6 +260,17 @@ func (v *VolumeBackend_Vault[T]) Validate() error {
 
 type Secret [32]byte
 
+func (s *Secret) UnmarshalText(data []byte) error {
+	n, err := hex.Decode(data, s[:])
+	if err != nil {
+		return err
+	}
+	if n < len(s) {
+		return fmt.Errorf("too short too contain 256 bit secret")
+	}
+	return nil
+}
+
 func (s Secret) MarshalJSON() ([]byte, error) {
 	return json.Marshal(hex.EncodeToString(s[:]))
 }

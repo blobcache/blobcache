@@ -71,9 +71,40 @@ var mkVolVaultCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "create a new vault volume",
 	},
+	Flags: map[string]star.Flag{
+		"hash":   hashAlgoParam,
+		"secret": secretParam,
+	},
 	Pos: []star.Positional{volHParam},
 	F: func(c star.Context) error {
-		return fmt.Errorf("not yet implemented")
+		svc, err := openService(c)
+		if err != nil {
+			return err
+		}
+
+		hashAlgo := blobcache.HashAlgo_BLAKE3_256
+		if ha, ok := hashAlgoParam.LoadOpt(c); ok {
+			hashAlgo = ha
+		}
+
+		secret := blobcache.Secret{}
+		if s, ok := secretParam.LoadOpt(c); ok {
+			secret = s
+		}
+
+		h, err := svc.CreateVolume(c.Context, nil, blobcache.VolumeSpec{
+			Vault: &blobcache.VolumeBackend_Vault[blobcache.Handle]{
+				X:        volHParam.Load(c),
+				HashAlgo: hashAlgo,
+				Secret:   secret,
+			},
+		})
+		if err != nil {
+			return err
+		}
+		c.Printf("Volume successfully created.\n\n")
+		c.Printf("HANDLE: %v\n", *h)
+		return nil
 	},
 }
 
@@ -247,5 +278,15 @@ var maxSizeParam = star.Optional[int64]{
 			return 0, err
 		}
 		return n, nil
+	},
+}
+
+var secretParam = star.Optional[blobcache.Secret]{
+	ID:       "secret",
+	ShortDoc: "the secret for vault encryption (hex string)",
+	Parse: func(s string) (blobcache.Secret, error) {
+		var secret blobcache.Secret
+		err := secret.UnmarshalText([]byte(s))
+		return secret, err
 	},
 }
