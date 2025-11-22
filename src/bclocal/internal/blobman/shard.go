@@ -146,6 +146,6 @@ func (fk FileKey) TablePath() string {
 	return filepath.Join(p, shard.TableFilename(fk.Gen))
 }
 
-func shardIDAndKey(x CID, depth int) (ShardID, shard.Key) {
+func shardIDAndKey(x Key, depth int) (ShardID, shard.Key) {
 	return shardIDFromBytes(x[:depth]), shard.KeyFromBytes(x[depth:])
 }
