@@ -48,7 +48,7 @@ func TestStorePutGetSingle(t *testing.T) {
 	require.Equal(t, val, got)
 }
 
-func TestStorePutGetBatch(t *testing.T) {
+func TestPutGetBatch(t *testing.T) {
 	st := setup(t, 256, 1024)
 
 	const N = 2000

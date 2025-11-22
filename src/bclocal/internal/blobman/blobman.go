@@ -3,7 +3,6 @@ package blobman
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"runtime"
 	"sync"
@@ -167,7 +166,6 @@ func (db *Store) put(tr *trie, key Key, depth int, data []byte) (changed bool, n
 		return false, nil, err
 	}
 	shardID := ShardIDFromBytes(key.Bytes()[:depth])
-	log.Println("put", shardID.Path())
 
 	// first check if the key already exists in this shard.
 	if sh.LocalExists(key) {
