@@ -1,4 +1,4 @@
-package blobman
+package shard
 
 import (
 	"errors"

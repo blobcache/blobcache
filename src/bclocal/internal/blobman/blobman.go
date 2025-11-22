@@ -3,11 +3,13 @@ package blobman
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
 
+	"blobcache.io/blobcache/src/bclocal/internal/blobman/shard"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -26,9 +28,9 @@ type Store struct {
 func New(root *os.Root) *Store {
 	st := &Store{
 		root:        root,
-		maxTableLen: DefaultMaxTableLen,
-		maxPackSize: DefaultMaxPackSize,
-		trie:        trie{shard: newShard(root)},
+		maxTableLen: shard.DefaultMaxTableLen,
+		maxPackSize: shard.DefaultMaxPackSize,
+		trie:        trie{shard: shard.New(root)},
 	}
 	return st
 }
@@ -99,7 +101,7 @@ func (db *Store) Maintain() error {
 	eg.SetLimit(1)
 	db.trie.walk(func(shard *Shard) {
 		eg.Go(func() error {
-			return shard.load(db.maxTableSize(), db.maxPackSize)
+			return shard.Hydrate(db.maxTableSize(), db.maxPackSize)
 		})
 	})
 	return eg.Wait()
@@ -116,7 +118,7 @@ func (db *Store) Close() error {
 }
 
 func (db *Store) maxTableSize() uint32 {
-	return db.maxTableLen * TableEntrySize
+	return db.maxTableLen * shard.TableEntrySize
 }
 
 // trieChild loads a child from the trie.
@@ -161,10 +163,11 @@ func (db *Store) trieChild(tr *trie, parentID ShardID, childIdx uint8, create bo
 // the next shard to visit is returned.
 func (db *Store) put(tr *trie, key Key, depth int, data []byte) (changed bool, next *trie, _ error) {
 	sh := tr.shard
-	if err := sh.load(db.maxTableSize(), db.maxPackSize); err != nil {
+	if err := sh.Hydrate(db.maxTableSize(), db.maxPackSize); err != nil {
 		return false, nil, err
 	}
-	shardID := key.ShardID(depth * 8)
+	shardID := ShardIDFromBytes(key.Bytes()[:depth])
+	log.Println("put", shardID.Path())
 
 	// first check if the key already exists in this shard.
 	if sh.LocalExists(key) {
@@ -189,7 +192,7 @@ func (db *Store) put(tr *trie, key Key, depth int, data []byte) (changed bool, n
 		// The shard does have space, try appending to it.
 		ok, err := sh.LocalAppend(key, data)
 		if err != nil {
-			if IsErrShardFull(err) {
+			if shard.IsErrShardFull(err) {
 				// we lost a race, and the shard became full.
 				// rerun this function on this shard.
 				return false, tr, nil
@@ -209,10 +212,9 @@ func (db *Store) put(tr *trie, key Key, depth int, data []byte) (changed bool, n
 
 func (db *Store) get(tr *trie, key Key, depth int, fn func(data []byte)) (bool, error) {
 	sh := tr.shard
-	if err := sh.load(db.maxTableSize(), db.maxPackSize); err != nil {
+	if err := sh.Hydrate(db.maxTableSize(), db.maxPackSize); err != nil {
 		return false, err
 	}
-	shardID := key.ShardID(depth * 8)
 
 	if found, err := sh.LocalGet(key, fn); err != nil {
 		return false, err
@@ -221,6 +223,7 @@ func (db *Store) get(tr *trie, key Key, depth int, fn func(data []byte)) (bool, 
 	}
 
 	childIdx := key.Uint8(depth)
+	shardID := ShardIDFromBytes(key.Bytes()[:depth])
 	child, err := db.trieChild(tr, shardID, childIdx, false)
 	if err != nil {
 		return false, err
@@ -233,10 +236,10 @@ func (db *Store) get(tr *trie, key Key, depth int, fn func(data []byte)) (bool, 
 
 func (db *Store) delete(tr *trie, key Key, depth int) (*trie, error) {
 	sh := tr.shard
-	if err := sh.load(db.maxTableSize(), db.maxPackSize); err != nil {
+	if err := sh.Hydrate(db.maxTableSize(), db.maxPackSize); err != nil {
 		return nil, err
 	}
-	shardID := key.ShardID(depth * 8)
+	shardID := ShardIDFromBytes(key.Bytes()[:depth])
 	if _, err := sh.LocalDelete(key); err != nil {
 		return nil, err
 	}
