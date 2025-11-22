@@ -9,8 +9,11 @@ import (
 	"sync/atomic"
 
 	"blobcache.io/blobcache/src/bclocal/internal/blobman/shard"
+	"blobcache.io/blobcache/src/blobcache"
 	"golang.org/x/sync/errgroup"
 )
+
+type CID = blobcache.CID
 
 // Store stores blobs on in the filesystem.
 type Store struct {
@@ -37,8 +40,8 @@ func New(root *os.Root) *Store {
 // Put finds a spot for key, and writes data to it.
 // If the key already exists, then the write is ignored and false is returned.
 // If some data with key does not exist in the system after this call, then an error is returned.
-func (db *Store) Put(key Key, data []byte) (bool, error) {
-	if key == (Key{}) {
+func (db *Store) Put(key CID, data []byte) (bool, error) {
+	if key == (CID{}) {
 		return false, fmt.Errorf("blobman.Put: cannot insert the zero key")
 	}
 	if len(data) > int(db.maxPackSize) {
@@ -47,7 +50,7 @@ func (db *Store) Put(key Key, data []byte) (bool, error) {
 	return db.putLoop(&db.trie, key, 0, data)
 }
 
-func (db *Store) putLoop(tr *trie, key Key, depth int, data []byte) (bool, error) {
+func (db *Store) putLoop(tr *trie, key CID, depth int, data []byte) (bool, error) {
 	for range 128 {
 		inserted, next, err := db.put(tr, key, depth, data)
 		if err != nil {
@@ -67,12 +70,12 @@ func (db *Store) putLoop(tr *trie, key Key, depth int, data []byte) (bool, error
 
 // Get finds key if it exists and calls fn with the data.
 // The data must not be used outside the callback.
-func (db *Store) Get(key Key, fn func(data []byte)) (bool, error) {
+func (db *Store) Get(key CID, fn func(data []byte)) (bool, error) {
 	return db.get(&db.trie, key, 0, fn)
 }
 
 // Delete overwrites any tables containing key with a tombstone.
-func (db *Store) Delete(key Key) error {
+func (db *Store) Delete(key CID) error {
 	for tr := &db.trie; tr != nil; {
 		next, err := db.delete(tr, key, 0)
 		if err != nil {
@@ -160,20 +163,21 @@ func (db *Store) trieChild(tr *trie, parentID ShardID, childIdx uint8, create bo
 
 // put recursively traverses the trie, and inserts key and data into the appropriate shard.
 // the next shard to visit is returned.
-func (db *Store) put(tr *trie, key Key, depth int, data []byte) (changed bool, next *trie, _ error) {
+func (db *Store) put(tr *trie, key CID, depth int, data []byte) (changed bool, next *trie, _ error) {
 	sh := tr.shard
 	if err := sh.Hydrate(db.maxTableSize(), db.maxPackSize); err != nil {
 		return false, nil, err
 	}
-	shardID := ShardIDFromBytes(key.Bytes()[:depth])
+	shardID := ShardIDFromBytes(key[:depth])
+	lk := shard.KeyFromBytes(key[depth:])
 
 	// first check if the key already exists in this shard.
-	if sh.LocalExists(key) {
+	if sh.LocalExists(lk) {
 		// already exists, nothing to do, return false and nil.
 		return false, nil, nil
 	}
 	// then check if the child exists
-	childIdx := key.Uint8(depth)
+	childIdx := key[depth]
 	child, err := db.trieChild(tr, shardID, childIdx, false)
 	if err != nil {
 		return false, nil, err
@@ -188,7 +192,7 @@ func (db *Store) put(tr *trie, key Key, depth int, data []byte) (changed bool, n
 	// if the pack or table is full, then we need to go to a new child.
 	if sh.HasSpace(len(data)) {
 		// The shard does have space, try appending to it.
-		ok, err := sh.LocalAppend(key, data)
+		ok, err := sh.LocalAppend(lk, data)
 		if err != nil {
 			if shard.IsErrShardFull(err) {
 				// we lost a race, and the shard became full.
@@ -208,20 +212,21 @@ func (db *Store) put(tr *trie, key Key, depth int, data []byte) (changed bool, n
 	return false, child, nil
 }
 
-func (db *Store) get(tr *trie, key Key, depth int, fn func(data []byte)) (bool, error) {
+func (db *Store) get(tr *trie, key CID, depth int, fn func(data []byte)) (bool, error) {
 	sh := tr.shard
 	if err := sh.Hydrate(db.maxTableSize(), db.maxPackSize); err != nil {
 		return false, err
 	}
 
-	if found, err := sh.LocalGet(key, fn); err != nil {
+	lk := shard.KeyFromBytes(key[depth:])
+	if found, err := sh.LocalGet(lk, fn); err != nil {
 		return false, err
 	} else if found {
 		return true, nil
 	}
 
-	childIdx := key.Uint8(depth)
-	shardID := ShardIDFromBytes(key.Bytes()[:depth])
+	childIdx := key[depth]
+	shardID := ShardIDFromBytes(key[:depth])
 	child, err := db.trieChild(tr, shardID, childIdx, false)
 	if err != nil {
 		return false, err
@@ -232,16 +237,17 @@ func (db *Store) get(tr *trie, key Key, depth int, fn func(data []byte)) (bool, 
 	return db.get(child, key, depth+1, fn)
 }
 
-func (db *Store) delete(tr *trie, key Key, depth int) (*trie, error) {
+func (db *Store) delete(tr *trie, key CID, depth int) (*trie, error) {
 	sh := tr.shard
 	if err := sh.Hydrate(db.maxTableSize(), db.maxPackSize); err != nil {
 		return nil, err
 	}
-	shardID := ShardIDFromBytes(key.Bytes()[:depth])
-	if _, err := sh.LocalDelete(key); err != nil {
+	shardID := ShardIDFromBytes(key[:depth])
+	lk := shard.KeyFromBytes(key[depth:])
+	if _, err := sh.LocalDelete(lk); err != nil {
 		return nil, err
 	}
-	childIdx := key.Uint8(int(depth))
+	childIdx := key[depth]
 	child, err := db.trieChild(tr, shardID, childIdx, false)
 	if err != nil {
 		return nil, err

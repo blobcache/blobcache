@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"math"
 	"os"
 
@@ -117,17 +116,12 @@ func (idx *Table) Tombstone(slot uint32) {
 	})
 }
 
-var crc32Table = crc32.MakeTable(crc32.Castagnoli)
-
 // Entry is a single entry in the table.
 type Entry struct {
 	Key Key
 
 	Offset uint32
 	Len    uint32
-
-	CRC    uint32
-	CRCNeg uint32
 }
 
 func (ent *Entry) IsTombstone() bool {
@@ -137,22 +131,12 @@ func (ent *Entry) IsTombstone() bool {
 func (ent *Entry) save(buf *[TableEntrySize]byte) {
 	data := ent.Key.Data()
 	copy(buf[:], data[:])
-	binary.LittleEndian.PutUint32(buf[16:20], ent.Offset)
-	binary.LittleEndian.PutUint32(buf[20:24], ent.Len)
-
-	checksum := crc32.Checksum(buf[:24], crc32Table)
-	binary.LittleEndian.PutUint32(buf[24:28], checksum)
-	binary.LittleEndian.PutUint32(buf[28:32], ^checksum)
+	binary.LittleEndian.PutUint32(buf[24:28], ent.Offset)
+	binary.LittleEndian.PutUint32(buf[28:32], ent.Len)
 }
 
-func (ent *Entry) load(buf *[TableEntrySize]byte) bool {
-	ent.Key = KeyFromBytes(buf[:16])
-	ent.Offset = binary.LittleEndian.Uint32(buf[16:20])
-	ent.Len = binary.LittleEndian.Uint32(buf[20:24])
-
-	actual := crc32.Checksum(buf[:24], crc32Table)
-	expected := binary.LittleEndian.Uint32(buf[24:28])
-	expectedInv := binary.LittleEndian.Uint32(buf[28:32])
-
-	return actual == expected && expectedInv == ^expected
+func (ent *Entry) load(buf *[TableEntrySize]byte) {
+	ent.Key = KeyFromBytes(buf[:])
+	ent.Offset = binary.LittleEndian.Uint32(buf[24:28])
+	ent.Len = binary.LittleEndian.Uint32(buf[28:32])
 }

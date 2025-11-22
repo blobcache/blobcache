@@ -12,7 +12,6 @@ import (
 )
 
 type (
-	Key   = shard.Key
 	Shard = shard.Shard
 )
 
@@ -50,13 +49,11 @@ func OpenShard(root *os.Root, prefix ShardID, maxTableSize, maxPackSize uint32) 
 	return sh, nil
 }
 
-func KeyFromBytes(x []byte) Key {
-	return shard.KeyFromBytes(x)
-}
-
 // ShardID is a prefix of at most 120 bits.
 // ShardID takes up 128 bits.
 // A prefix refers to a set of keys.
+// This does not belong in the shard package because Shards don't
+// know of their own ID or anything about the other shards in the system.
 type ShardID struct {
 	data    [15]byte
 	numBits uint8
@@ -147,4 +144,8 @@ func (fk FileKey) PackPath() string {
 func (fk FileKey) TablePath() string {
 	p := fk.ShardID.Path()
 	return filepath.Join(p, shard.TableFilename(fk.Gen))
+}
+
+func shardIDAndKey(x CID, depth uint8) (ShardID, shard.Key) {
+	return ShardIDFromBytes(x[:depth]), shard.KeyFromBytes(x[depth:])
 }

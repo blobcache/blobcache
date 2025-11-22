@@ -12,15 +12,12 @@ import (
 	"lukechampine.com/blake3"
 )
 
-func mkKey(t testing.TB, i int) Key {
+func mkKey(t testing.TB, i int) CID {
 	t.Helper()
 	var b [8]byte
 	binary.LittleEndian.PutUint64(b[:8], uint64(i))
 	h := blake3.Sum256(b[:])
-	return Key{
-		binary.LittleEndian.Uint64(h[:8]),
-		binary.LittleEndian.Uint64(h[8:]),
-	}
+	return CID(h)
 }
 
 func TestStorePutGetSingle(t *testing.T) {
@@ -52,7 +49,7 @@ func TestPutGetBatch(t *testing.T) {
 	st := setup(t, 256, 1024)
 
 	const N = 2000
-	keys := make([]Key, N)
+	keys := make([]CID, N)
 	vals := make([][]byte, N)
 	for i := range N {
 		keys[i] = mkKey(t, i)
@@ -82,7 +79,7 @@ func TestStoreGetMissing(t *testing.T) {
 func TestPutDelete(t *testing.T) {
 	st := setup(t, 256, 1024)
 
-	var keys []Key
+	var keys []CID
 	for i := 0; i < 10; i++ {
 		key := mkKey(t, i)
 		val := []byte("hello-world")
@@ -112,7 +109,7 @@ func TestPutReloadGet(t *testing.T) {
 	st := New(root)
 	val := []byte("hello-world")
 
-	var keys []Key
+	var keys []CID
 	for i := 0; i < 10; i++ {
 		key := mkKey(t, i)
 		ok, err := st.Put(key, val)
@@ -184,13 +181,13 @@ func TestGetAfterRestartWithChildShard(t *testing.T) {
 	val := make([]byte, 500)
 	_, _ = rand.Read(val)
 
-	for _, k := range []Key{key0, key1, key2} {
+	for _, k := range []CID{key0, key1, key2} {
 		ok, err := st.Put(k, val)
 		require.NoError(t, err)
 		require.True(t, ok)
 	}
 	// Verify all are readable before restart.
-	for _, k := range []Key{key0, key1, key2} {
+	for _, k := range []CID{key0, key1, key2} {
 		found, err := st.Get(k, func([]byte) {})
 		require.NoError(t, err)
 		require.True(t, found)
@@ -218,7 +215,7 @@ func BenchmarkGet(b *testing.B) {
 	st := setup(b, shard.DefaultMaxTableLen, shard.DefaultMaxPackSize)
 
 	const numKeys = 1e5
-	var keys []Key
+	var keys []CID
 	for i := 0; i < numKeys; i++ {
 		key := mkKey(b, i)
 		_, err := st.Put(key, []byte("hello-world"))

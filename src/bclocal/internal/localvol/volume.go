@@ -395,7 +395,7 @@ func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, buf []byte, opt
 		return 0, err
 	}
 	defer unlock()
-	return v.sys.readBlobData(blobKey(cid), buf)
+	return v.sys.readBlobData(cid, buf)
 }
 
 func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {

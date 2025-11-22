@@ -2,81 +2,70 @@ package shard
 
 import (
 	"encoding/binary"
+	"math/bits"
 	"slices"
 )
 
-// Key is a 128 bit key.
+// Key is a 192 bit key.
 // The 0th bit is considered the first bit, and that is at k[0] & (1 << 0).
-type Key [2]uint64
+type Key [3]uint64
 
 func KeyFromBytes(b []byte) Key {
 	return Key{
-		binary.LittleEndian.Uint64(b[:8]),
-		binary.LittleEndian.Uint64(b[8:]),
+		binary.LittleEndian.Uint64(b[0:8]),
+		binary.LittleEndian.Uint64(b[8:16]),
+		binary.LittleEndian.Uint64(b[16:24]),
 	}
 }
 
 func KeyCompare(a, b Key) int {
-	dataA := a.Data()
-	dataB := b.Data()
-	return slices.Compare(dataA[:], dataB[:])
+	return slices.Compare(a[:], b[:])
 }
 
 // RotateAway specifies the amount of bits to rotate the key away from the 0th bit.
+// The rotation is performed away from zero (towards more significant bit positions) modulo the key length.
 func (k Key) RotateAway(i int) Key {
-	return Key{k[0]>>i | k[1]<<(64-i), k[0]<<i | k[1]>>(64-i)}
+	if i >= 64 {
+		panic("rotations larger than 64 not supported")
+	}
+	return Key{
+		k[0]<<i | maskLow(bits.RotateLeft64(k[2], i), i),
+		k[1]<<i | maskLow(bits.RotateLeft64(k[0], i), i),
+		k[2]<<i | maskLow(bits.RotateLeft64(k[1], i), i),
+	}
 }
 
-// ShiftIn shifts the key into 0.
-// The lowest bits are discarded, zeros are shifted in to the highest bits.
-func (k Key) ShiftIn(i int) Key {
-	return Key{k[0]>>i | k[1]<<(64-i), k[0]<<i | k[1]>>(64-i)}
+// maskLow applies a mask which *includes* the low bits
+func maskLow(x uint64, n int) uint64 {
+	return x & ((1 << n) - 1)
 }
 
 // Uint8 returns the 8 bit integer at the given index.
-// Indexes are interpretted modulo 16.
+// Indexes are interpretted modulo 24.
 // Uint8(0) is bits [0, 7], Uint8(1) is bits [8, 15].
 func (k Key) Uint8(i int) uint8 {
-	idx := i % 16
-	if idx < 8 {
-		return uint8(k[0] >> (idx * 8))
-	}
-	return uint8(k[1] >> ((idx - 8) * 8))
+	return k.Data()[i%k.Uint8Len()]
 }
 
 // Uint8Len returns the number of 8 bit integers in the key.
 func (k Key) Uint8Len() int {
-	return 16
-}
-
-// Uint16 returns the 16 bit integer at the given index.
-// Indexes are interpretted modulo 8.
-// Uint16(0) is bits [0, 15], Uint16(1) is bits [16, 31].
-func (k Key) Uint16(i int) uint16 {
-	idx := i % 8
-	if idx < 4 {
-		return uint16(k[0] >> (idx * 16))
-	}
-	return uint16(k[1] >> ((idx - 4) * 16))
+	return 24
 }
 
 // Uint64 returns the 64 bit integer at the given index.
 // The index is 0 or 1.
 func (k Key) Uint64(i int) uint64 {
-	if i&1 == 0 {
-		return k[0]
-	} else {
-		return k[1]
-	}
+	return k[i]
 }
 
 func (k Key) IsZero() bool {
 	return k == Key{}
 }
 
-func (k Key) Data() (ret [16]byte) {
-	binary.LittleEndian.PutUint64(ret[:8], k[0])
-	binary.LittleEndian.PutUint64(ret[8:], k[1])
+func (k Key) Data() (ret [24]byte) {
+	binary.LittleEndian.PutUint64(ret[0:8], k[0])
+	binary.LittleEndian.PutUint64(ret[8:16], k[1])
+	binary.LittleEndian.PutUint64(ret[16:24], k[2])
 	return ret
 }
 
