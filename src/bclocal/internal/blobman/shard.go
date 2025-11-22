@@ -82,8 +82,13 @@ func ShardIDFromBytes(x []byte) ShardID {
 // Child appends the given index to the shard id and returns the new shard id.
 func (sh ShardID) Child(k uint8) ShardID {
 	sh2 := sh
+	idx := sh2.numBits / 8
+	if idx >= uint8(len(sh2.data)) {
+		// additional children cannot be represented.
+		panic(sh2)
+	}
+	sh2.data[idx] = k
 	sh2.numBits += 8
-	sh2.data[sh2.numBits/8] = k
 	return sh2
 }
 
