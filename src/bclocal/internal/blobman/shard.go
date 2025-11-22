@@ -59,7 +59,7 @@ type ShardID struct {
 	numBits uint8
 }
 
-func NewShardID(data [15]byte, numBits uint8) ShardID {
+func newShardID(data [15]byte, numBits uint8) ShardID {
 	if numBits%8 != 0 {
 		panic("numBits must be a multiple of 8")
 	}
@@ -70,10 +70,10 @@ func NewShardID(data [15]byte, numBits uint8) ShardID {
 	return ShardID{data: data, numBits: numBits}
 }
 
-func ShardIDFromBytes(x []byte) ShardID {
+func shardIDFromBytes(x []byte) ShardID {
 	data := [15]byte{}
 	copy(data[:], x)
-	return NewShardID(data, uint8(len(x)*8))
+	return newShardID(data, uint8(len(x)*8))
 }
 
 // Child appends the given index to the shard id and returns the new shard id.
@@ -146,6 +146,6 @@ func (fk FileKey) TablePath() string {
 	return filepath.Join(p, shard.TableFilename(fk.Gen))
 }
 
-func shardIDAndKey(x CID, depth uint8) (ShardID, shard.Key) {
-	return ShardIDFromBytes(x[:depth]), shard.KeyFromBytes(x[depth:])
+func shardIDAndKey(x CID, depth int) (ShardID, shard.Key) {
+	return shardIDFromBytes(x[:depth]), shard.KeyFromBytes(x[depth:])
 }

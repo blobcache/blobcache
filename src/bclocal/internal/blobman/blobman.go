@@ -168,8 +168,7 @@ func (db *Store) put(tr *trie, key CID, depth int, data []byte) (changed bool, n
 	if err := sh.Hydrate(db.maxTableSize(), db.maxPackSize); err != nil {
 		return false, nil, err
 	}
-	shardID := ShardIDFromBytes(key[:depth])
-	lk := shard.KeyFromBytes(key[depth:])
+	shardID, lk := shardIDAndKey(key, depth)
 
 	// first check if the key already exists in this shard.
 	if sh.LocalExists(lk) {
@@ -218,7 +217,7 @@ func (db *Store) get(tr *trie, key CID, depth int, fn func(data []byte)) (bool, 
 		return false, err
 	}
 
-	lk := shard.KeyFromBytes(key[depth:])
+	shardID, lk := shardIDAndKey(key, depth)
 	if found, err := sh.LocalGet(lk, fn); err != nil {
 		return false, err
 	} else if found {
@@ -226,7 +225,6 @@ func (db *Store) get(tr *trie, key CID, depth int, fn func(data []byte)) (bool, 
 	}
 
 	childIdx := key[depth]
-	shardID := ShardIDFromBytes(key[:depth])
 	child, err := db.trieChild(tr, shardID, childIdx, false)
 	if err != nil {
 		return false, err
@@ -242,8 +240,7 @@ func (db *Store) delete(tr *trie, key CID, depth int) (*trie, error) {
 	if err := sh.Hydrate(db.maxTableSize(), db.maxPackSize); err != nil {
 		return nil, err
 	}
-	shardID := ShardIDFromBytes(key[:depth])
-	lk := shard.KeyFromBytes(key[depth:])
+	shardID, lk := shardIDAndKey(key, depth)
 	if _, err := sh.LocalDelete(lk); err != nil {
 		return nil, err
 	}
