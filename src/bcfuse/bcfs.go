@@ -100,7 +100,7 @@ func (fs *FS[K]) Flush(ctx context.Context) error {
 	}
 
 	// Begin a write transaction
-	tx, err := bcsdk.BeginTx(ctx, fs.svc, fs.vol, blobcache.TxParams{Mutate: true})
+	tx, err := bcsdk.BeginTx(ctx, fs.svc, fs.vol, blobcache.TxParams{Modify: true})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -141,7 +141,7 @@ func (fs *FS[K]) PutExtent(ctx context.Context, id K, startAt int64, data []byte
 	return sqlutil.DoTx(ctx, fs.db, func(tx *sqlx.Tx) error {
 		// Remove overlapping extents
 		_, err := tx.Exec(`
-			DELETE FROM extents 
+			DELETE FROM extents
 			WHERE id = ? AND (
 				(start < ? AND "end" > ?) OR
 				(start >= ? AND start < ?)

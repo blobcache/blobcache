@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/cloudflare/circl/sign/ed25519"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -64,6 +65,23 @@ func (s *Service) Close() error {
 		return err
 	}
 	return s.eg.Wait()
+}
+
+// AwaitReady pings the server in a loop and awaits a response.
+// Any error returned will be from ctx.Err()
+func (s *Service) AwaitReady(ctx context.Context) error {
+	tick := time.NewTicker(time.Second / 8)
+	defer tick.Stop()
+	for {
+		if err := bcp.Ping(ctx, s.node, s.ep); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+		}
+	}
 }
 
 func (s *Service) start(bgCtx context.Context) {

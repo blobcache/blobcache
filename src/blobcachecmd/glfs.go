@@ -45,7 +45,7 @@ var glfsInitCmd = star.Command{
 			return err
 		}
 		tx, err := bcsdk.BeginTx(c, svc, *volh, blobcache.TxParams{
-			Mutate: true,
+			Modify: true,
 		})
 		if err != nil {
 			return err
@@ -275,7 +275,7 @@ func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f
 
 func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f func(ag *glfs.Machine, dst schema.WO, src schema.RO, root glfs.Ref) (*glfs.Ref, error)) error {
 	tx, err := bcsdk.BeginTx(ctx, s, volh, blobcache.TxParams{
-		Mutate: true,
+		Modify: true,
 	})
 	if err != nil {
 		return err

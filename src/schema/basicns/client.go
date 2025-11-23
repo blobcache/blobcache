@@ -20,7 +20,7 @@ func (c *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string
 	if err != nil {
 		return nil, err
 	}
-	txn, err := bcsdk.BeginTx(ctx, c.Service, nsh, blobcache.TxParams{Mutate: true})
+	txn, err := bcsdk.BeginTx(ctx, c.Service, nsh, blobcache.TxParams{Modify: true})
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (c *Client) PutEntry(ctx context.Context, volh blobcache.Handle, name strin
 	if err != nil {
 		return err
 	}
-	txn, err := bcsdk.BeginTx(ctx, c.Service, volh, blobcache.TxParams{Mutate: true})
+	txn, err := bcsdk.BeginTx(ctx, c.Service, volh, blobcache.TxParams{Modify: true})
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func (c *Client) DeleteEntry(ctx context.Context, volh blobcache.Handle, name st
 	if err != nil {
 		return err
 	}
-	txn, err := bcsdk.BeginTx(ctx, c.Service, volh, blobcache.TxParams{Mutate: true})
+	txn, err := bcsdk.BeginTx(ctx, c.Service, volh, blobcache.TxParams{Modify: true})
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func (c *Client) GC(ctx context.Context, volh blobcache.Handle) error {
 		return err
 	}
 	txn, err := bcsdk.BeginTx(ctx, c.Service, volh, blobcache.TxParams{
-		Mutate: true,
+		Modify: true,
 		GC:     true,
 	})
 	if err != nil {

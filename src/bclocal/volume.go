@@ -63,7 +63,7 @@ func ensureRootVolume(ba *pebble.Batch, spec blobcache.VolumeSpec) (*blobcache.V
 	}
 	info := blobcache.VolumeInfo{
 		ID:           rootOID,
-		VolumeConfig: spec.Params(),
+		VolumeConfig: spec.Config(),
 		Backend:      blobcache.VolumeBackendToOID(spec),
 	}
 	if err := putVolume(ba, info); err != nil {

@@ -22,10 +22,8 @@ func TestDefaultNoAccess(t *testing.T) {
 	// create a volume on svc1 so there is something to try to access.
 	volh, err := svc1.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 		Local: &blobcache.VolumeBackend_Local{
-			VolumeConfig: blobcache.VolumeConfig{
-				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-				MaxSize:  1 << 20,
-			},
+			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+			MaxSize:  1 << 20,
 		},
 	})
 	require.NoError(t, err)
@@ -57,10 +55,17 @@ func TestAPI(t *testing.T) {
 func TestMultiNode(t *testing.T) {
 	t.Parallel()
 	blobcachetests.TestMultiNode(t, func(t testing.TB, n int) []blobcache.Service {
+		ctx := testutil.Context(t)
 		svcs := make([]blobcache.Service, n)
 		for i := range svcs {
 			// NewTestService will use an allowAllPolicy
-			svcs[i] = bclocal.NewTestService(t)
+			svc := bclocal.NewTestService(t)
+			for j := range svcs[:i] {
+				ep, err := svcs[j].Endpoint(ctx)
+				require.NoError(t, err)
+				require.NoError(t, svc.Ping(ctx, ep))
+			}
+			svcs[i] = svc
 		}
 		return svcs
 	})

@@ -94,7 +94,7 @@ func (tx *Tx) Volume() volumes.Volume {
 }
 
 func (tx *Tx) Commit(ctx context.Context) error {
-	if !tx.params.Mutate {
+	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
 	var root *[]byte
@@ -113,7 +113,7 @@ func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
 }
 
 func (tx *Tx) Save(ctx context.Context, src []byte) error {
-	if !tx.params.Mutate {
+	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
 	tx.root = append(tx.root[:0], src...)
@@ -167,7 +167,7 @@ func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
 }
 
 func (tx *Tx) Link(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet, targetVol volumes.Volume) error {
-	if !tx.params.Mutate {
+	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
 	rvol, ok := targetVol.(*Volume)
@@ -181,14 +181,14 @@ func (tx *Tx) Link(ctx context.Context, target blobcache.OID, mask blobcache.Act
 }
 
 func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {
-	if !tx.params.Mutate {
+	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
 	return bcp.Unlink(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
 }
 
 func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
-	if !tx.params.Mutate {
+	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
 	if !tx.params.GC {

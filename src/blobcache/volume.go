@@ -138,10 +138,16 @@ func (v *VolumeBackend[T]) Deps() iter.Seq[T] {
 	}
 }
 
-func (v VolumeBackend[T]) Params() VolumeConfig {
+func (v VolumeBackend[T]) Config() VolumeConfig {
 	switch {
 	case v.Local != nil:
-		return v.Local.VolumeConfig
+		v := v.Local
+		return VolumeConfig{
+			Schema:   v.Schema,
+			HashAlgo: v.HashAlgo,
+			MaxSize:  v.MaxSize,
+			Salted:   v.Salted,
+		}
 	case v.Git != nil:
 		return v.Git.VolumeConfig
 	default:
@@ -252,11 +258,29 @@ func DefaultVolumeParams() VolumeConfig {
 }
 
 type VolumeBackend_Local struct {
-	VolumeConfig
+	Schema   SchemaSpec `json:"schema"`
+	HashAlgo HashAlgo   `json:"hash_algo"`
+	MaxSize  int64      `json:"max_size"`
+	Salted   bool       `json:"salted"`
+}
+
+func VolumeBackend_LocalFromConfig(x VolumeConfig) *VolumeBackend_Local {
+	return &VolumeBackend_Local{
+		Schema:   x.Schema,
+		HashAlgo: x.HashAlgo,
+		MaxSize:  x.MaxSize,
+		Salted:   x.Salted,
+	}
 }
 
 func (v *VolumeBackend_Local) Validate() error {
-	if err := v.VolumeConfig.Validate(); err != nil {
+	vcfg := VolumeConfig{
+		Schema:   v.Schema,
+		HashAlgo: v.HashAlgo,
+		MaxSize:  v.MaxSize,
+		Salted:   v.Salted,
+	}
+	if err := vcfg.Validate(); err != nil {
 		return err
 	}
 	return nil
@@ -327,9 +351,7 @@ type handleOrOID interface {
 // DefaultLocalSpec provides sensible defaults for a local volume.
 func DefaultLocalSpec() VolumeSpec {
 	return VolumeSpec{
-		Local: &VolumeBackend_Local{
-			VolumeConfig: DefaultVolumeParams(),
-		},
+		Local: VolumeBackend_LocalFromConfig(DefaultVolumeParams()),
 	}
 }
 

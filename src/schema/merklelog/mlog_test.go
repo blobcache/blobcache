@@ -6,12 +6,27 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema"
-	"github.com/stretchr/testify/require"
-	"go.brendoncarroll.net/state/cadata"
+	"blobcache.io/blobcache/src/schema/schematests"
 )
+
+func TestTx(t *testing.T) {
+	schs := map[blobcache.SchemaName]schema.Constructor{
+		SchemaName: Constructor,
+		"":         schema.NoneConstructor,
+	}
+	svc, txh := schematests.Setup(t, schs, blobcache.VolumeBackend_Local{
+		Schema:   blobcache.SchemaSpec{Name: SchemaName},
+		MaxSize:  1 << 20,
+		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+	})
+	ctx := testutil.Context(t)
+	defer svc.Abort(ctx, txh)
+}
 
 func TestGet(t *testing.T) {
 	for i := 0; i < 10; i++ {
@@ -98,7 +113,7 @@ func makeState(t testing.TB, s schema.RW, xs []int) State {
 	return st
 }
 
-func cidFromInt(hf cadata.HashFunc, i int) blobcache.CID {
+func cidFromInt(hf func([]byte) blobcache.CID, i int) blobcache.CID {
 	return hf(fmt.Append(nil, i))
 }
 

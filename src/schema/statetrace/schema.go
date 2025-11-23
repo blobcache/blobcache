@@ -32,8 +32,10 @@ var _ schema.Constructor = Constructor
 
 func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema, error) {
 	var spec Spec
-	if err := json.Unmarshal(params, &spec); err != nil {
-		return nil, err
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &spec); err != nil {
+			return nil, err
+		}
 	}
 	inner, err := mkSchema(spec.X)
 	if err != nil {
@@ -56,15 +58,22 @@ func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema
 }
 
 func (sch *Schema[T]) ValidateChange(ctx context.Context, change schema.Change) error {
-	prev, err := sch.Mach.Parse(change.PrevCell)
-	if err != nil {
-		return err
-	}
 	next, err := sch.Mach.Parse(change.NextCell)
 	if err != nil {
 		return err
 	}
-	return sch.Mach.Validate(ctx, change.NextStore, prev, next)
+	if len(change.PrevCell) > 0 {
+		prev, err := sch.Mach.Parse(change.PrevCell)
+		if err != nil {
+			return err
+		}
+		return sch.Mach.Validate(ctx, change.NextStore, prev, next)
+	}
+	return sch.ValidateState(ctx, change.NextStore, next)
+}
+
+func (sch *Schema[T]) ValidateState(ctx context.Context, s schema.RO, root Root[T]) error {
+	return nil
 }
 
 type opaque []byte

@@ -76,14 +76,14 @@ func (n *Node[K]) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 	}
 
 	// Begin read transaction
-	txh, err := n.fs.svc.BeginTx(ctx, n.fs.vol, blobcache.TxParams{Mutate: false})
+	txh, err := n.fs.svc.BeginTx(ctx, n.fs.vol, blobcache.TxParams{Modify: false})
 	if err != nil {
 		return nil, syscall.EIO
 	}
 	defer func() { _ = n.fs.svc.Abort(ctx, *txh) }()
 
 	// Create transaction wrapper
-	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Modify: false})
 	if err != nil {
 		return nil, syscall.EIO
 	}
@@ -137,7 +137,7 @@ func (n *Node[K]) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	}
 
 	// Begin read transaction
-	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Modify: false})
 	if err != nil {
 		return nil, syscall.EIO
 	}
@@ -178,7 +178,7 @@ func (n *Node[K]) Create(ctx context.Context, name string, flags uint32, mode ui
 	}
 
 	// Begin write transaction
-	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: true})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Modify: true})
 	if err != nil {
 		return nil, nil, 0, syscall.EIO
 	}
@@ -238,7 +238,7 @@ func (n *Node[K]) Unlink(ctx context.Context, name string) syscall.Errno {
 	}
 
 	// Begin write transaction
-	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: true})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Modify: true})
 	if err != nil {
 		return syscall.EIO
 	}
@@ -273,7 +273,7 @@ func (n *Node[K]) Read(ctx context.Context, f fs.FileHandle, dest []byte, off in
 	}
 
 	// Begin read transaction
-	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Mutate: false})
+	tx, err := bcsdk.BeginTx(ctx, n.fs.svc, n.fs.vol, blobcache.TxParams{Modify: false})
 	if err != nil {
 		return nil, syscall.EIO
 	}
