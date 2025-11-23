@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"blobcache.io/blobcache/src/bclocal/internal/blobman"
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
@@ -89,8 +88,8 @@ type RefCount uint32
 
 // blobRefCountIncr must be called with a lock on the blob.
 // blob ref counts are the number of times a blob is referenced (excluding delete operations) in the LOCAL_VOLUME_BLOBS table.
-func blobRefCountIncr(ba *pebble.Batch, cidp blobman.Key, delta int32) (RefCount, error) {
-	k := pdb.TKey{TableID: dbtab.TID_BLOB_REF_COUNT, Key: cidp.Bytes()}.Marshal(nil)
+func blobRefCountIncr(ba *pebble.Batch, cid blobcache.CID, delta int32) (RefCount, error) {
+	k := pdb.TKey{TableID: dbtab.TID_BLOB_REF_COUNT, Key: cid[:16]}.Marshal(nil)
 	n, err := pdb.IncrUint32(ba, k, delta, false)
 	if err != nil {
 		return 0, err
@@ -99,8 +98,8 @@ func blobRefCountIncr(ba *pebble.Batch, cidp blobman.Key, delta int32) (RefCount
 }
 
 // blobRefCountGet gets the reference count for a blob.
-func blobRefCountGet(ba pdb.RO, cidp blobman.Key) (RefCount, error) {
-	k := pdb.TKey{TableID: dbtab.TID_BLOB_REF_COUNT, Key: cidp.Bytes()}.Marshal(nil)
+func blobRefCountGet(ba pdb.RO, cid blobcache.CID) (RefCount, error) {
+	k := pdb.TKey{TableID: dbtab.TID_BLOB_REF_COUNT, Key: cid[:16]}.Marshal(nil)
 	v, closer, err := ba.Get(k)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
@@ -126,10 +125,3 @@ const (
 	// This is set by the Visit operation, and is only valid during a GC transaction.
 	volumeBlobFlag_VISITED = 1 << 1
 )
-
-// blobKey returns the key used by the blob manager to access the blob.
-func blobKey(cid blobcache.CID) blobman.Key {
-	first := binary.LittleEndian.Uint64(cid[:8])
-	second := binary.LittleEndian.Uint64(cid[8:16])
-	return blobman.Key{first, second}
-}

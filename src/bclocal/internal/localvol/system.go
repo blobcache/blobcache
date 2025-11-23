@@ -1,6 +1,7 @@
 package localvol
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -53,7 +54,7 @@ type System struct {
 	// - Post could potentially increment the refCount, and ingest blob data.
 	// - Delete could potentially decrement the refCount, and delete blob data.
 	// - Add could potentially increment the refCount, but does not ingest blob data.
-	blobLocks mapOfLocks[blobman.Key]
+	blobLocks mapOfLocks[blobcache.CID]
 }
 
 type Env struct {
@@ -128,13 +129,12 @@ func (ls *System) GCBlobs(ctx context.Context, lvid ID) error {
 		}
 
 		if err := func() error {
-			k := blobKey(cid)
-			if err := ls.blobLocks.Lock(ctx, k); err != nil {
+			if err := ls.blobLocks.Lock(ctx, cid); err != nil {
 				return err
 			}
-			defer ls.blobLocks.Unlock(k)
+			defer ls.blobLocks.Unlock(cid)
 			return ls.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
-				return ls.blobs.Delete(blobKey(cid))
+				return ls.blobs.Delete(cid)
 			})
 		}(); err != nil {
 			return err
@@ -312,7 +312,7 @@ func (s *System) gc(ctx context.Context, volID ID, mvid pdb.MVTag) error {
 		// Iterate grouped by cidPrefix. For each group, if the latest included row is non-tombstoned
 		// and this transaction did not mark VISITED, then write a tombstone at mvid.
 		var (
-			curCID    blobman.Key
+			curCID    [16]byte
 			curInit   bool
 			latestLen int
 			visited   bool
@@ -334,14 +334,14 @@ func (s *System) gc(ctx context.Context, volID ID, mvid pdb.MVTag) error {
 			if err != nil {
 				return err
 			}
-			cidp := blobman.KeyFromBytes(mvk.Key[8:])
+			cidp := mvk.Key[8:]
 
 			// New group
-			if !curInit || cidp != curCID {
+			if !curInit || !bytes.Equal(cidp, curCID[:]) {
 				if err := flush(); err != nil {
 					return err
 				}
-				curCID = cidp
+				copy(curCID[:], cidp)
 				curInit = true
 				latestLen = -1
 				visited = false
@@ -371,17 +371,16 @@ func (s *System) postBlob(ctx context.Context, volID ID, mvid pdb.MVTag, cid blo
 		return nil
 	}
 
-	k := blobKey(cid)
-	if err := s.blobLocks.Lock(ctx, k); err != nil {
+	if err := s.blobLocks.Lock(ctx, cid); err != nil {
 		return err
 	}
-	defer s.blobLocks.Unlock(k)
+	defer s.blobLocks.Unlock(cid)
 	if err := s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 		if yes, err := existsBlobMeta(ba, cid); err != nil {
 			return err
 		} else if !yes {
 			// need to add the blob
-			if _, err := s.blobs.Put(k, data); err != nil {
+			if _, err := s.blobs.Put(cid, data); err != nil {
 				return err
 			}
 
@@ -404,11 +403,10 @@ func (s *System) postBlob(ctx context.Context, volID ID, mvid pdb.MVTag, cid blo
 
 // getBlob is the main entry point for the Get operation.
 func (s *System) getBlob(volID ID, mvid pdb.MVTag, cid blobcache.CID, buf []byte) (int, error) {
-	k := blobKey(cid)
 	var n int
 	if err := s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 		excluding2 := excludeExcluding(excluding, mvid)
-		mvr, closer, err := pdb.MVGet(ba, dbtab.TID_LOCAL_VOLUME_BLOBS, slices.Concat(volID.Marshal(nil), k.Bytes()), excluding2)
+		mvr, closer, err := pdb.MVGet(ba, dbtab.TID_LOCAL_VOLUME_BLOBS, slices.Concat(volID.Marshal(nil), cid[:16]), excluding2)
 		if err != nil {
 			return err
 		}
@@ -418,7 +416,7 @@ func (s *System) getBlob(volID ID, mvid pdb.MVTag, cid blobcache.CID, buf []byte
 			return cadata.ErrNotFound{Key: cid}
 		}
 		// read into buffer
-		n, err = s.readBlobData(k, buf)
+		n, err = s.readBlobData(cid, buf)
 		if err != nil {
 			return err
 		}
@@ -443,7 +441,8 @@ func (s *System) deleteBlob(volID ID, mvid pdb.MVTag, cids []blobcache.CID) erro
 	// but that's the callers fault, and any order is valid.
 	return s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 		for _, cid := range cids {
-			if err := tombVolumeBlob(ba, volID, mvid, blobKey(cid)); err != nil {
+			cidp := [16]byte(cid[:16])
+			if err := tombVolumeBlob(ba, volID, mvid, cidp); err != nil {
 				return err
 			}
 		}
@@ -544,10 +543,9 @@ func (s *System) isVisited(volID ID, mvid pdb.MVTag, cids []blobcache.CID, dst [
 // If the record exists, then the flags and true and returned.
 // If any error occurs, then (0, false, err) is returned.
 func (s *System) getVolumeBlob(db pdb.RO, volID ID, cid blobcache.CID, mvid pdb.MVTag) (uint8, bool, error) {
-	bk := blobKey(cid)
 	k := pdb.TKey{
 		TableID: dbtab.TID_LOCAL_VOLUME_BLOBS,
-		Key:     slices.Concat(volID.Marshal(nil), bk.Bytes(), mvid.Marshal(nil)),
+		Key:     slices.Concat(volID.Marshal(nil), cid[:16], mvid.Marshal(nil)),
 	}
 	val, closer, err := db.Get(k.Marshal(nil))
 	if err != nil {
@@ -566,7 +564,7 @@ func (s *System) getVolumeBlob(db pdb.RO, volID ID, cid blobcache.CID, mvid pdb.
 	return val[0], true, nil
 }
 
-func (s *System) readBlobData(k blobman.Key, buf []byte) (int, error) {
+func (s *System) readBlobData(k blobcache.CID, buf []byte) (int, error) {
 	var n int
 	if found, err := s.blobs.Get(k, func(data []byte) {
 		n = copy(buf, data)
@@ -615,7 +613,7 @@ func setVolumeBlob(ba *pebble.Batch, volID ID, mvid pdb.MVTag, cid blobcache.CID
 	}
 	if len(val) == 0 {
 		// anytime we add a (non-tombstone) reference to a blob in the VOLUME_BLOBS table, we have to increment the ref count.
-		if _, err := blobRefCountIncr(ba, blobKey(cid), 1); err != nil {
+		if _, err := blobRefCountIncr(ba, cid, 1); err != nil {
 			return err
 		}
 	}
@@ -624,10 +622,10 @@ func setVolumeBlob(ba *pebble.Batch, volID ID, mvid pdb.MVTag, cid blobcache.CID
 
 // unsetVolumeBlob writes an empty value to the LOCAL_VOLUME_BLOBS table.
 // empty values are tombstones, which will eventually be cleaned up by the vacuum process.
-func tombVolumeBlob(ba *pebble.Batch, volID ID, mvid pdb.MVTag, cidp blobman.Key) error {
+func tombVolumeBlob(ba *pebble.Batch, volID ID, mvid pdb.MVTag, cidp [16]byte) error {
 	k := pdb.MVKey{
 		TableID: dbtab.TID_LOCAL_VOLUME_BLOBS,
-		Key:     slices.Concat(volID.Marshal(nil), cidp.Bytes()),
+		Key:     slices.Concat(volID.Marshal(nil), cidp[:]),
 		Version: mvid,
 	}
 	return ba.Set(k.Marshal(nil), nil, nil)
