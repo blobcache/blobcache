@@ -178,7 +178,7 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
 	args := []string{"begin", volh.String()}
-	if txp.Mutate {
+	if txp.Modify {
 		args = append(args, "--mutate")
 	}
 	if txp.GC {

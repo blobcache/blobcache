@@ -57,9 +57,7 @@ func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
 
 func (v *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
 	return blobcache.VolumeBackend[blobcache.OID]{
-		Local: &blobcache.VolumeBackend_Local{
-			VolumeConfig: v.params,
-		},
+		Local: blobcache.VolumeBackend_LocalFromConfig(v.params),
 	}
 }
 

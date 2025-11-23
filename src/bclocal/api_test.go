@@ -22,10 +22,8 @@ func TestDefaultNoAccess(t *testing.T) {
 	// create a volume on svc1 so there is something to try to access.
 	volh, err := svc1.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 		Local: &blobcache.VolumeBackend_Local{
-			VolumeConfig: blobcache.VolumeConfig{
-				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-				MaxSize:  1 << 20,
-			},
+			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+			MaxSize:  1 << 20,
 		},
 	})
 	require.NoError(t, err)

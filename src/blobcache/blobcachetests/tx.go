@@ -19,8 +19,8 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
 		for _, p := range []blobcache.TxParams{
-			{Mutate: false},
-			{Mutate: true},
+			{Modify: false},
+			{Modify: true},
 		} {
 			txh, err := s.BeginTx(ctx, volh, p)
 			require.NoError(t, err)
@@ -32,7 +32,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	t.Run("TxCommit", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
-		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: true})
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Modify: true})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		err = s.Save(ctx, *txh, []byte{1, 2, 3})
@@ -43,7 +43,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	t.Run("TxCommitReadOnly", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
-		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: false})
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Modify: false})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		err = s.Save(ctx, *txh, []byte{1, 2, 3})
@@ -54,7 +54,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	t.Run("TxReadOnly", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
-		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: false})
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Modify: false})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 
@@ -66,7 +66,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	t.Run("PostExists", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
-		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Mutate: true})
+		txh, err := s.BeginTx(ctx, volh, blobcache.TxParams{Modify: true})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 
@@ -77,7 +77,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	})
 	t.Run("PostGet", func(t *testing.T) {
 		s, volh := mk(t)
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 
 		data1 := []byte("hello world")
 		cid := Post(t, s, txh, data1, blobcache.PostOpts{})
@@ -88,7 +88,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		s, volh := mk(t)
 		hf := defaultLocalSpec().Local.HashAlgo.HashFunc()
 
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		data1 := []byte("hello world")
 		require.False(t, Exists(t, s, txh, hf(nil, data1)))
 		Post(t, s, txh, data1, blobcache.PostOpts{})
@@ -99,14 +99,14 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	t.Run("1WriterNReaders", func(t *testing.T) {
 		s, volh := mk(t)
 
-		wtxh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		wtxh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		buf := Load(t, s, wtxh)
 		require.Equal(t, []byte{}, buf)
 
 		// Open 10 readers.
 		rtxhs := make([]blobcache.Handle, 10)
 		for i := range rtxhs {
-			rtxhs[i] = BeginTx(t, s, volh, blobcache.TxParams{Mutate: false})
+			rtxhs[i] = BeginTx(t, s, volh, blobcache.TxParams{Modify: false})
 			defer Abort(t, s, rtxhs[i])
 		}
 		// commit the write transaction.
@@ -120,7 +120,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		}
 
 		// this reader should see the new root.
-		rtxh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		rtxh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		defer Abort(t, s, rtxh)
 		buf2 := Load(t, s, rtxh)
 		require.Equal(t, root2, buf2)
@@ -130,11 +130,11 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		const N = 10
 		for i := 0; i < N; i++ {
 			func() {
-				wtxh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+				wtxh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 				SaveCommit(t, s, wtxh, []byte{byte(i)})
 			}()
 		}
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: false})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: false})
 		defer Abort(t, s, txh)
 		buf := Load(t, s, txh)
 		require.Equal(t, []byte{9}, buf)
@@ -142,7 +142,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	t.Run("Visited", func(t *testing.T) {
 		// check to see if IsVisited and Visit work.
 		s, volh := mk(t)
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true, GC: true})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GC: true})
 		defer Abort(t, s, txh)
 
 		hf := defaultLocalSpec().Local.HashAlgo.HashFunc()
@@ -163,7 +163,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
 		// 1.
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		defer s.Abort(ctx, txh)
 		var cids []blobcache.CID
 		for i := 0; i < 20; i++ {
@@ -173,7 +173,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		}
 		Commit(t, s, txh)
 		// 2.
-		txh = BeginTx(t, s, volh, blobcache.TxParams{Mutate: true, GC: true})
+		txh = BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GC: true})
 		defer s.Abort(ctx, txh)
 		for i, cid := range cids {
 			if i%2 > 0 {
@@ -202,7 +202,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
 		// Open a transaction add 20 blobs, the commit.
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		defer s.Abort(ctx, txh)
 		var cids []blobcache.CID
 		for i := 0; i < 20; i++ {
@@ -216,7 +216,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		for i := 0; i < 3; i++ {
 			// Open a GC transaction, for each blob, check that it is unvisited, then mark it visited.
 			// This transaction should be a no-op.
-			txh = BeginTx(t, s, volh, blobcache.TxParams{Mutate: true, GC: true})
+			txh = BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GC: true})
 			defer s.Abort(ctx, txh)
 			for _, cid := range cids {
 				vis := IsVisited(t, s, txh, []blobcache.CID{cid})
@@ -232,7 +232,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		// This test checks that blobs posted, but not visited, are still removed by GC.
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true, GC: true})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GC: true})
 		defer s.Abort(ctx, txh)
 		var cids []blobcache.CID
 		for i := 0; i < 20; i++ {
@@ -256,11 +256,9 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		// Create a spec for NONE schema volumes.
 		noneSpec := blobcache.VolumeSpec{
 			Local: &blobcache.VolumeBackend_Local{
-				VolumeConfig: blobcache.VolumeConfig{
-					Schema:   blobcache.SchemaSpec{Name: blobcache.Schema_NONE},
-					HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-					MaxSize:  1 << 21,
-				},
+				Schema:   blobcache.SchemaSpec{Name: blobcache.Schema_NONE},
+				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+				MaxSize:  1 << 21,
 			},
 		}
 
@@ -268,7 +266,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		vol1h := rootVolh
 		for i := 0; i < 10; i++ {
 			// Open a transaction on the current volume.
-			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Mutate: true})
+			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Modify: true})
 
 			// Create a new child volume.
 			vol2h, fqoid := CreateOnSameHost(t, s, vol1h, noneSpec)
@@ -288,7 +286,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		vol1h = rootVolh
 		for i := 0; i < 10; i++ {
 			// Open a read-only transaction.
-			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Mutate: false})
+			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Modify: false})
 			defer Abort(t, s, txh)
 
 			// Load the child OID from the parent's cell.

@@ -37,7 +37,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, nil, defaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: false})
+		txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Modify: false})
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		buf := []byte{1, 2, 3} // arbitrary data
@@ -63,7 +63,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 				volh, err := s.CreateVolume(ctx, nil, spec)
 				require.NoError(t, err)
 				require.NotNil(t, volh)
-				txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Mutate: true})
+				txh, err := s.BeginTx(ctx, *volh, blobcache.TxParams{Modify: true})
 				require.NoError(t, err)
 				require.NotNil(t, txh)
 				defer s.Abort(ctx, *txh)
@@ -85,7 +85,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		volh, err := s.CreateVolume(ctx, nil, spec)
 		require.NoError(t, err)
 
-		txh := BeginTx(t, s, *volh, blobcache.TxParams{Mutate: true})
+		txh := BeginTx(t, s, *volh, blobcache.TxParams{Modify: true})
 		defer s.Abort(ctx, txh)
 		data := make([]byte, 1025)
 		_, err = s.Post(ctx, txh, data, blobcache.PostOpts{})
@@ -99,10 +99,8 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			s := mk(t)
 			volh, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Local: &blobcache.VolumeBackend_Local{
-					VolumeConfig: blobcache.VolumeConfig{
-						HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-						MaxSize:  1 << 21,
-					},
+					HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+					MaxSize:  1 << 21,
 				},
 			})
 			require.NoError(t, err)
@@ -116,10 +114,8 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			s := mk(t)
 			volh1, err := s.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Local: &blobcache.VolumeBackend_Local{
-					VolumeConfig: blobcache.VolumeConfig{
-						HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-						MaxSize:  1 << 21,
-					},
+					HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+					MaxSize:  1 << 21,
 				},
 			})
 			require.NoError(t, err)
@@ -151,7 +147,7 @@ func TestManyBlobs(t *testing.T, singleTx bool, mk func(t testing.TB) blobcache.
 	cids := make(chan blobcache.CID, N)
 
 	// post all the blobs
-	txh := BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+	txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 	defer s.Abort(ctx, txh)
 	wg := sync.WaitGroup{}
 	for w := 0; w < numWorkers; w++ {
@@ -176,7 +172,7 @@ func TestManyBlobs(t *testing.T, singleTx bool, mk func(t testing.TB) blobcache.
 
 	// check that all the blobs exist
 	if !singleTx {
-		txh = BeginTx(t, s, volh, blobcache.TxParams{Mutate: true})
+		txh = BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		defer s.Abort(ctx, txh)
 	}
 	for w := 0; w < numWorkers; w++ {

@@ -8,6 +8,7 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
+	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 
 	_ "blobcache.io/blobcache/src/schema/basicns"
@@ -21,6 +22,8 @@ func TestService(t *testing.T) {
 		require.NoError(t, err)
 		client, err := Dial(privateKey, blobcachetests.Endpoint(t, server))
 		require.NoError(t, err)
+		ctx := testutil.Context(t)
+		client.AwaitReady(ctx)
 		return client
 	})
 }

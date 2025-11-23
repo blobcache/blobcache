@@ -111,7 +111,8 @@ const PeerIDSize = inet256.AddrSize
 // TxParams are parameters for a transaction.
 // The zero value is a read-only transaction.
 type TxParams struct {
-	Mutate bool
+	// Modify is true if the transaction will change the Volume's state.
+	Modify bool
 	// GC causes the transaction to remove all blobs that have not been
 	// observed in the transaction.
 	// This happens at the end of the transaction.
@@ -120,7 +121,7 @@ type TxParams struct {
 }
 
 func (tp TxParams) Validate() error {
-	if tp.GC && !tp.Mutate {
+	if tp.GC && !tp.Modify {
 		return fmt.Errorf("mutate must be true if GC is set")
 	}
 	return nil

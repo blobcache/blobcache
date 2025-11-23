@@ -101,7 +101,7 @@ func Unlink(t testing.TB, s blobcache.Service, txh blobcache.Handle, volh blobca
 
 func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx *bcsdk.Tx) ([]byte, error)) {
 	ctx := testutil.Context(t)
-	tx, err := bcsdk.BeginTx(ctx, s, volh, blobcache.TxParams{Mutate: true})
+	tx, err := bcsdk.BeginTx(ctx, s, volh, blobcache.TxParams{Modify: true})
 	require.NoError(t, err)
 	data, err := f(tx)
 	require.NoError(t, err)

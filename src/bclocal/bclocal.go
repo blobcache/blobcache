@@ -1077,9 +1077,9 @@ func (s *Service) makeVault(ctx context.Context, backend blobcache.VolumeBackend
 func (s *Service) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSpec) (blobcache.VolumeConfig, error) {
 	switch {
 	case vspec.Local != nil:
-		return vspec.Local.VolumeConfig, nil
+		return vspec.Config(), nil
 	case vspec.Git != nil:
-		return vspec.Git.VolumeConfig, nil
+		return vspec.Config(), nil
 	case vspec.Remote != nil:
 		vol, err := s.volSys.remote.Up(ctx, *vspec.Remote)
 		if err != nil {

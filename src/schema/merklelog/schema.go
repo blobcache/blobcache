@@ -28,9 +28,12 @@ type Schema struct {
 // Constructor is a schema constructor
 func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema, error) {
 	var spec Params
-	if err := json.Unmarshal(params, &spec); err != nil {
-		return nil, err
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &spec); err != nil {
+			return nil, err
+		}
 	}
+
 	x, err := mkSchema(spec.X)
 	if err != nil {
 		return nil, err

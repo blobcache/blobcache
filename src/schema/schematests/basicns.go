@@ -6,9 +6,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
+	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/basicns"
 )
 
@@ -93,7 +95,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		nsc := basicns.Client{Service: s}
 		require.NoError(t, nsc.PutEntry(ctx, blobcache.Handle{}, "vol1", *volh))
 
-		txh, err := s.BeginTx(ctx, nsh, blobcache.TxParams{Mutate: true})
+		txh, err := s.BeginTx(ctx, nsh, blobcache.TxParams{Modify: true})
 		require.NoError(t, err)
 		data := []byte("this is not a valid CID")
 		require.False(t, len(data) == len(blobcache.CID{}))
@@ -179,4 +181,15 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 			}
 		}
 	})
+}
+
+// Setup performs generic setup to prepare a Volume with the desired schema.
+func Setup(t testing.TB, schs map[blobcache.SchemaName]schema.Constructor, spec blobcache.VolumeBackend_Local) (blobcache.Service, blobcache.Handle) {
+	t.Helper()
+	env := bclocal.NewTestEnv(t)
+	env.Schemas = schs
+	svc := bclocal.NewTestServiceFromEnv(t, env)
+	vspec := blobcache.VolumeSpec{Local: &spec}
+	h := blobcachetests.CreateVolume(t, svc, nil, vspec)
+	return svc, h
 }

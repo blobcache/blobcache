@@ -172,7 +172,7 @@ func (v *Tx) Commit(ctx context.Context) error {
 	// don't call beginOp here, we want to get a write lock.
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	if !v.txp.Mutate {
+	if !v.txp.Modify {
 		return blobcache.ErrTxReadOnly{Op: "Commit"}
 	}
 	if v.isDone {
@@ -450,7 +450,7 @@ func (vtx *Tx) init(ctx context.Context) error {
 	var ttx *tries.Tx
 	if len(rootCtext) == 0 {
 		var err error
-		if !vtx.txp.Mutate {
+		if !vtx.txp.Modify {
 			s = schema.NewMem(vtx.inner.Hash, vtx.inner.MaxSize())
 		}
 		ttx, err = vtx.vol.tmach.NewTxOnEmpty(ctx, s)

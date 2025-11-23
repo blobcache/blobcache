@@ -16,6 +16,10 @@ type Teller interface {
 	Tell(ctx context.Context, remote blobcache.Endpoint, req Message) error
 }
 
+func Ping(ctx context.Context, tp Asker) error {
+	return nil
+}
+
 func Drop(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle) error {
 	var resp DropResp
 	if _, err := doAsk(ctx, tp, ep, MT_HANDLE_DROP, DropReq{Handle: h}, &resp); err != nil {

@@ -24,7 +24,7 @@ var beginTxCmd = star.Command{
 		for _, arg := range c.Extra {
 			switch arg {
 			case "--mutate":
-				txp.Mutate = true
+				txp.Modify = true
 			case "--gc":
 				txp.GC = true
 			default:

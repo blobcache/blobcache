@@ -186,7 +186,7 @@ func (ls *System) doRW(fn func(ba *pebble.Batch, ignore func(pdb.MVTag) bool) er
 }
 
 func (ls *System) beginTx(ctx context.Context, vol *Volume, params blobcache.TxParams) (_ volumes.Tx, retErr error) {
-	if !params.Mutate {
+	if !params.Modify {
 		sp := ls.db.NewSnapshot()
 		return newLocalTxnRO(ls, vol, sp), nil
 	}
@@ -216,7 +216,7 @@ func (ls *System) beginTx(ctx context.Context, vol *Volume, params blobcache.TxP
 	}
 
 	txParams := blobcache.TxParams{
-		Mutate: params.Mutate,
+		Modify: params.Modify,
 		GC:     params.GC,
 	}
 	sch, err := ls.getSchema(vol.params.Schema)
