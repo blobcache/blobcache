@@ -16,13 +16,19 @@ type Teller interface {
 	Tell(ctx context.Context, remote blobcache.Endpoint, req Message) error
 }
 
-func Ping(ctx context.Context, tp Asker) error {
+func Ping(ctx context.Context, tp Asker, ep blobcache.Endpoint) error {
+	var resp Message
+	var req Message
+	req.SetCode(MT_PING)
+	if err := tp.Ask(ctx, ep, req, &resp); err != nil {
+		return err
+	}
 	return nil
 }
 
 func Drop(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle) error {
 	var resp DropResp
-	if _, err := doAsk(ctx, tp, ep, MT_HANDLE_DROP, DropReq{Handle: h}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_DROP, DropReq{Handle: h}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -30,7 +36,7 @@ func Drop(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Hand
 
 func KeepAlive(ctx context.Context, tp Asker, ep blobcache.Endpoint, hs []blobcache.Handle) error {
 	var resp KeepAliveResp
-	if _, err := doAsk(ctx, tp, ep, MT_HANDLE_KEEP_ALIVE, KeepAliveReq{Handles: hs}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_KEEP_ALIVE, KeepAliveReq{Handles: hs}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -38,7 +44,7 @@ func KeepAlive(ctx context.Context, tp Asker, ep blobcache.Endpoint, hs []blobca
 
 func Share(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	var resp ShareResp
-	if _, err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE, ShareReq{Handle: h, Peer: to, Mask: mask}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE, ShareReq{Handle: h, Peer: to, Mask: mask}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil
@@ -46,7 +52,7 @@ func Share(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Han
 
 func InspectHandle(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle) (*blobcache.HandleInfo, error) {
 	var resp InspectHandleResp
-	if _, err := doAsk(ctx, tp, ep, MT_HANDLE_INSPECT, InspectHandleReq{Handle: h}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_INSPECT, InspectHandleReq{Handle: h}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Info, nil
@@ -54,7 +60,7 @@ func InspectHandle(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobc
 
 func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFiatResp
-	if _, err := doAsk(ctx, tp, ep, MT_OPEN_FIAT, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_OPEN_FIAT, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
 		return nil, nil, err
 	}
 	if err := resp.Info.HashAlgo.Validate(); err != nil {
@@ -65,7 +71,7 @@ func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobc
 
 func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFromResp
-	if _, err := doAsk(ctx, tp, ep, MT_OPEN_FROM, OpenFromReq{Base: base, Target: target, Mask: mask}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_OPEN_FROM, OpenFromReq{Base: base, Target: target, Mask: mask}, &resp); err != nil {
 		return nil, nil, err
 	}
 	if err := resp.Info.HashAlgo.Validate(); err != nil {
@@ -76,7 +82,7 @@ func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcac
 
 func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	var resp CreateVolumeResp
-	if _, err := doAsk(ctx, tp, ep, MT_CREATE_VOLUME, CreateVolumeReq{Spec: vspec}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_CREATE_VOLUME, CreateVolumeReq{Spec: vspec}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil
@@ -84,7 +90,7 @@ func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vspec bl
 
 func CloneVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	var resp CloneVolumeResp
-	if _, err := doAsk(ctx, tp, ep, MT_VOLUME_CLONE, CloneVolumeReq{Volume: volh}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_VOLUME_CLONE, CloneVolumeReq{Volume: volh}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil
@@ -92,7 +98,7 @@ func CloneVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, caller *b
 
 func BeginTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, *blobcache.TxInfo, error) {
 	var resp BeginTxResp
-	if _, err := doAsk(ctx, tp, ep, MT_VOLUME_BEGIN_TX, BeginTxReq{Volume: volh, Params: txp}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_VOLUME_BEGIN_TX, BeginTxReq{Volume: volh, Params: txp}, &resp); err != nil {
 		return nil, nil, err
 	}
 	return &resp.Tx, &resp.Info, nil
@@ -100,7 +106,7 @@ func BeginTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, volh blobcach
 
 func InspectTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle) (*blobcache.TxInfo, error) {
 	var resp InspectTxResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_INSPECT, InspectTxReq{Tx: tx}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_INSPECT, InspectTxReq{Tx: tx}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Info, nil
@@ -108,7 +114,7 @@ func InspectTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcach
 
 func Commit(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, root *[]byte) error {
 	var resp CommitResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_COMMIT, CommitReq{Tx: tx, Root: root}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_COMMIT, CommitReq{Tx: tx, Root: root}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -116,7 +122,7 @@ func Commit(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.H
 
 func Abort(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle) error {
 	var resp AbortResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_ABORT, AbortReq{Tx: tx}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_ABORT, AbortReq{Tx: tx}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -124,7 +130,7 @@ func Abort(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Ha
 
 func Load(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, dst *[]byte) error {
 	var resp LoadResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_LOAD, LoadReq{Tx: tx}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_LOAD, LoadReq{Tx: tx}, &resp); err != nil {
 		return err
 	}
 	*dst = append((*dst)[:0], resp.Root...)
@@ -133,7 +139,7 @@ func Load(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Han
 
 func Save(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, src []byte) error {
 	var resp SaveResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_SAVE, SaveReq{Tx: tx, Root: src}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_SAVE, SaveReq{Tx: tx, Root: src}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -210,7 +216,7 @@ func Get(ctx context.Context, tp Asker, ep blobcache.Endpoint, txh blobcache.Han
 
 func Exists(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
 	var resp ExistsResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_EXISTS, ExistsReq{Tx: tx, CIDs: cids}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_EXISTS, ExistsReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
 	copy(dst, resp.Exists)
@@ -219,7 +225,7 @@ func Exists(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.H
 
 func Delete(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID) error {
 	var resp DeleteResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_DELETE, DeleteReq{Tx: tx, CIDs: cids}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_DELETE, DeleteReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -227,7 +233,7 @@ func Delete(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.H
 
 func AddFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
 	var resp AddFromResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_ADD_FROM, AddFromReq{Tx: tx, CIDs: cids, Srcs: srcTxns}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_ADD_FROM, AddFromReq{Tx: tx, CIDs: cids, Srcs: srcTxns}, &resp); err != nil {
 		return err
 	}
 	copy(success, resp.Added)
@@ -236,7 +242,7 @@ func AddFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.
 
 func Visit(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID) error {
 	var resp VisitResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_VISIT, VisitReq{Tx: tx, CIDs: cids}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_VISIT, VisitReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -247,7 +253,7 @@ func IsVisited(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcach
 		return fmt.Errorf("cids and dst must have the same length")
 	}
 	var resp IsVisitedResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_IS_VISITED, IsVisitedReq{Tx: tx, CIDs: cids}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_IS_VISITED, IsVisitedReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
 	copy(dst, resp.Visited)
@@ -256,7 +262,7 @@ func IsVisited(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcach
 
 func Link(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
 	var resp LinkResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_LINK, LinkReq{Tx: tx, Subvol: subvol, Mask: mask}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_LINK, LinkReq{Tx: tx, Subvol: subvol, Mask: mask}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -264,7 +270,7 @@ func Link(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Han
 
 func Unlink(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.OID) error {
 	var resp UnlinkResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_UNLINK, UnlinkReq{Tx: tx, Targets: targets}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_UNLINK, UnlinkReq{Tx: tx, Targets: targets}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -272,17 +278,17 @@ func Unlink(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.H
 
 func VisitLinks(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.OID) error {
 	var resp VisitLinksResp
-	if _, err := doAsk(ctx, tp, ep, MT_TX_VISIT_LINKS, VisitLinksReq{Tx: tx, Targets: targets}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_VISIT_LINKS, VisitLinksReq{Tx: tx, Targets: targets}, &resp); err != nil {
 		return err
 	}
 	return nil
 }
 
 func InspectVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vol blobcache.Handle) (*blobcache.VolumeInfo, error) {
-	resp, err := doAsk(ctx, tp, ep, MT_VOLUME_INSPECT, InspectVolumeReq{
+	resp := &InspectVolumeResp{}
+	if err := doAsk(ctx, tp, ep, MT_VOLUME_INSPECT, InspectVolumeReq{
 		Volume: vol,
-	}, &InspectVolumeResp{})
-	if err != nil {
+	}, resp); err != nil {
 		return nil, err
 	}
 	return &resp.Info, nil
@@ -290,7 +296,7 @@ func InspectVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vol blo
 
 func CreateQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
 	var resp CreateQueueResp
-	if _, err := doAsk(ctx, tp, ep, MT_QUEUE_CREATE, CreateQueueReq{Spec: qspec}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_QUEUE_CREATE, CreateQueueReq{Spec: qspec}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil
@@ -298,7 +304,7 @@ func CreateQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qspec blo
 
 func Next(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
 	var resp NextResp
-	if _, err := doAsk(ctx, tp, ep, MT_QUEUE_NEXT, NextReq{Opts: opts, Max: len(buf)}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_QUEUE_NEXT, NextReq{Opts: opts, Max: len(buf)}, &resp); err != nil {
 		return 0, err
 	}
 	return len(resp.Messages), nil
@@ -306,7 +312,7 @@ func Next(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Han
 
 func Insert(ctx context.Context, tp Asker, ep blobcache.Endpoint, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
 	var resp InsertResp
-	if _, err := doAsk(ctx, tp, ep, MT_QUEUE_INSERT, InsertReq{Messages: msgs}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_QUEUE_INSERT, InsertReq{Messages: msgs}, &resp); err != nil {
 		return nil, err
 	}
 	return &blobcache.InsertResp{Success: resp.Success}, nil
@@ -314,7 +320,7 @@ func Insert(ctx context.Context, tp Asker, ep blobcache.Endpoint, from *blobcach
 
 func SubToVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, volh blobcache.Handle) error {
 	var resp SubToVolumeResp
-	if _, err := doAsk(ctx, tp, ep, MT_QUEUE_SUB_TO_VOLUME, SubToVolumeReq{Queue: qh, Volume: volh}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_QUEUE_SUB_TO_VOLUME, SubToVolumeReq{Queue: qh, Volume: volh}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -327,30 +333,25 @@ func TopicSend(ctx context.Context, tp Teller, tmsg blobcache.Message) error {
 	return doTell(ctx, tp, tmsg.Endpoint, MT_TOPIC_TELL, ttm)
 }
 
-func doAsk[Req Sendable, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Asker, remote blobcache.Endpoint, code MessageType, req Req, zeroResp Resp) (Resp, error) {
+func doAsk[Req Sendable, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Asker, remote blobcache.Endpoint, code MessageType, req Req, resp Resp) error {
 	reqData := req.Marshal(nil)
 	var reqMsg Message
 	reqMsg.SetCode(code)
 	reqMsg.SetBody(reqData)
 	var respMsg Message
 	if err := node.Ask(ctx, remote, reqMsg, &respMsg); err != nil {
-		var zero Resp
-		return zero, err
+		return err
 	}
 	if respMsg.Header().Code().IsError() {
-		var zero Resp
-		return zero, parseWireError(respMsg.Header().Code(), respMsg.Body())
+		return parseWireError(respMsg.Header().Code(), respMsg.Body())
 	}
 	if !respMsg.Header().Code().IsOK() {
-		var zero Resp
-		return zero, fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
+		return fmt.Errorf("reply message has non-OK code: %d", respMsg.Header().Code())
 	}
-	resp := zeroResp
 	if err := resp.Unmarshal(respMsg.Body()); err != nil {
-		var zero Resp
-		return zero, err
+		return err
 	}
-	return resp, nil
+	return nil
 }
 
 func doTell(ctx context.Context, tp Teller, ep blobcache.Endpoint, code MessageType, x Sendable) error {

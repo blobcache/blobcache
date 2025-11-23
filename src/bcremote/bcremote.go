@@ -73,7 +73,7 @@ func (s *Service) AwaitReady(ctx context.Context) error {
 	tick := time.NewTicker(time.Second / 8)
 	defer tick.Stop()
 	for {
-		if err := bcp.Ping(ctx, s.node); err == nil {
+		if err := bcp.Ping(ctx, s.node, s.ep); err == nil {
 			return nil
 		}
 		select {

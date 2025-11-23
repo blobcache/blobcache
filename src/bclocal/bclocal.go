@@ -231,6 +231,14 @@ func (s *Service) Serve(ctx context.Context, pc net.PacketConn) error {
 	return err
 }
 
+func (s *Service) Ping(ctx context.Context, ep blobcache.Endpoint) error {
+	node, err := s.grabNode(ctx)
+	if err != nil {
+		return err
+	}
+	return bcp.Ping(ctx, node, ep)
+}
+
 func (s *Service) LocalID() blobcache.PeerID {
 	return inet256.NewID(s.env.PrivateKey.Public().(inet256.PublicKey))
 }
@@ -590,28 +598,32 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcac
 	}
 }
 
+func (s *Service) grabNode(ctx context.Context) (*bcnet.Node, error) {
+	var node *bcnet.Node
+	// we will need the node to handle this.
+	for i := 0; i < 10 && node == nil; i++ {
+		node = s.node.Load()
+		if node != nil {
+			break
+		}
+		select {
+		case <-time.After(100 * time.Millisecond):
+		case <-ctx.Done():
+			return nil, fmt.Errorf("bclocal: node is not running. Cannot call CreateVolume with a non-nil host")
+		}
+	}
+	if node == nil {
+		return nil, fmt.Errorf("bclocal: node is not running. Cannot call CreateVolume with a non-nil host")
+	}
+	return node, nil
+}
+
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	if err := vspec.Validate(); err != nil {
 		return nil, err
 	}
 
 	if host != nil && host.Peer != s.LocalID() {
-		var node *bcnet.Node
-		// we will need the node to handle this.
-		for i := 0; i < 10 && node == nil; i++ {
-			node = s.node.Load()
-			if node != nil {
-				break
-			}
-			select {
-			case <-time.After(100 * time.Millisecond):
-			case <-ctx.Done():
-				return nil, fmt.Errorf("bclocal: node is not running. Cannot call CreateVolume with a non-nil host")
-			}
-		}
-		if node == nil {
-			return nil, fmt.Errorf("bclocal: node is not running. Cannot call CreateVolume with a non-nil host")
-		}
 		return s.createRemoteVolume(ctx, *host, vspec)
 	}
 
@@ -660,7 +672,10 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 // createRemoteVolume calls CreateVolume on a remote node
 // it then creates a new local volume with a new random OID
 func (s *Service) createRemoteVolume(ctx context.Context, host blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	node := s.node.Load()
+	node, err := s.grabNode(ctx)
+	if err != nil {
+		return nil, err
+	}
 	// the request is for a remote node.
 	rvh, err := bcp.CreateVolume(ctx, node, host, vspec)
 	if err != nil {
