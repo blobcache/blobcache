@@ -44,13 +44,13 @@ type Parser[T any] = func(data []byte) (T, error)
 // Parse parses the Root from data.
 func Parse[State Marshaler](data []byte, parseState Parser[State]) (Root[State], error) {
 	if len(data) < 1 {
-		return Root[State]{}, fmt.Errorf("ledger: data too short")
+		return Root[State]{}, fmt.Errorf("statetrace: data too short")
 	}
 	historyLen := int(data[0])
 	data = data[1:]
 	historySize := historyLen * blobcache.CIDSize
 	if historySize > len(data) {
-		return Root[State]{}, fmt.Errorf("ledger: history size %d is greater than data %d", historySize, len(data))
+		return Root[State]{}, fmt.Errorf("history size %d is greater than data %d", historySize, len(data))
 	}
 	history, err := merklelog.Parse(data[:historySize])
 	if err != nil {

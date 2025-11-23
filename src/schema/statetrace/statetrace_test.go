@@ -7,11 +7,36 @@ import (
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/merklelog"
+	"blobcache.io/blobcache/src/schema/schematests"
 	"github.com/stretchr/testify/require"
 )
+
+func TestTx(t *testing.T) {
+	vspec := blobcache.VolumeBackend_Local{
+		Schema: blobcache.SchemaSpec{
+			Name: SchemaName,
+			Params: jsonMarshal(Spec{
+				HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+			}),
+		},
+		HashAlgo: blobcache.HashAlgo_BLAKE3_256,
+		MaxSize:  1 << 20,
+	}
+	schs := map[blobcache.SchemaName]schema.Constructor{
+		blobcache.Schema_NONE: schema.NoneConstructor,
+		SchemaName:            Constructor,
+	}
+	svc, volh := schematests.Setup(t, schs, vspec)
+	txh := blobcachetests.BeginTx(t, svc, volh, blobcache.TxParams{Modify: true})
+	ctx := testutil.Context(t)
+	defer svc.Abort(ctx, txh)
+	blobcachetests.Save(t, svc, txh, Root[autoMarshal[int]]{}.Marshal(nil))
+	blobcachetests.Commit(t, svc, txh)
+}
 
 func TestMarshal(t *testing.T) {
 	type state = autoMarshal[int]
@@ -74,4 +99,12 @@ func (s *autoMarshal[T]) Unmarshal(data []byte) error {
 func autoParse[T any](data []byte) (autoMarshal[T], error) {
 	var auto autoMarshal[T]
 	return auto, auto.Unmarshal(data)
+}
+
+func jsonMarshal(x any) []byte {
+	data, err := json.Marshal(x)
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
