@@ -2,7 +2,7 @@
 # Build the blobcache binary for the current platform.
 build: capnp
 	mkdir -p ./build/out
-	CGO_ENABLED=0 go build -o ./build/out/blobcache ./cmd/blobcache 
+	CGO_ENABLED=0 go build -o ./build/out/blobcache ./cmd/blobcache
 
 # Build the blobcache binary for amd64 linux.
 build-amd64-linux:
@@ -18,8 +18,8 @@ testv:
 capnp:
 	cd ./src/internal/tries/triescnp && ./build.sh
 
-docker-build: build-amd64-linux
-	podman build --tag blobcache .
+build-images: build-amd64-linux
+	./etc/build_images.sh
 
 # Installs just the blobcache binary to /usr/bin/blobcache
 install-unix: build
