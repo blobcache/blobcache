@@ -55,10 +55,17 @@ func TestAPI(t *testing.T) {
 func TestMultiNode(t *testing.T) {
 	t.Parallel()
 	blobcachetests.TestMultiNode(t, func(t testing.TB, n int) []blobcache.Service {
+		ctx := testutil.Context(t)
 		svcs := make([]blobcache.Service, n)
 		for i := range svcs {
 			// NewTestService will use an allowAllPolicy
-			svcs[i] = bclocal.NewTestService(t)
+			svc := bclocal.NewTestService(t)
+			for j := range svcs[:i] {
+				ep, err := svcs[j].Endpoint(ctx)
+				require.NoError(t, err)
+				require.NoError(t, svc.Ping(ctx, ep))
+			}
+			svcs[i] = svc
 		}
 		return svcs
 	})
