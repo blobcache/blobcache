@@ -21,6 +21,9 @@ capnp:
 build-images: build-amd64-linux
 	./etc/build_images.sh
 
+publish:
+	./etc/push_images.sh
+
 # Installs just the blobcache binary to /usr/bin/blobcache
 install-unix: build
 	sudo cp ./build/out/blobcache /usr/bin/blobcache
