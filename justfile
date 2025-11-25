@@ -2,12 +2,24 @@
 # Build the blobcache binary for the current platform.
 build: capnp
 	mkdir -p ./build/out
-	CGO_ENABLED=0 go build -o ./build/out/blobcache ./cmd/blobcache
+	./build/go_exec.sh ./build/out/blobcache ./cmd/blobcache
 
 # Build the blobcache binary for amd64 linux.
-build-amd64-linux:
+build-amd64-linux: capnp
 	mkdir -p ./build/out
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o ./build/out/blobcache_amd64-linux ./cmd/blobcache
+	GOARCH=amd64 GOOS=linux ./build/go_exec.sh ./build/out/blobcache_amd64-linux ./cmd/blobcache
+
+build-arm64-linux: capnp
+    mkdir -p ./build/out
+    GOARCH=arm64 GOOS=linux ./build/go_exec.sh ./build/out/blobcache_arm64-linux ./cmd/blobcache
+
+build-arm64-darwin: capnp
+	mkdir -p ./build/out
+	GOARCH=arm64 GOOS=darwin ./build/go_exec.sh ./build/out/blobcache_arm64-darwin ./cmd/blobcache
+
+build-amd64-darwin: capnp
+
+build-exec: build-amd64-linux build-arm64-linux build-arm64-darwin
 
 test:
 	go test ./...
@@ -19,10 +31,15 @@ capnp:
 	cd ./src/internal/tries/triescnp && ./build.sh
 
 build-images: build-amd64-linux
-	./etc/build_images.sh
+	./build/build_images.sh
 
 publish:
-	./etc/push_images.sh
+	./build/push_images.sh
+
+release:
+    just build-exec
+    just build-images
+    just publish
 
 # Installs just the blobcache binary to /usr/bin/blobcache
 install-unix: build
