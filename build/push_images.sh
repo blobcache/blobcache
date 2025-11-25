@@ -2,7 +2,7 @@
 set -xve
 
 # Fetch tags from get_tags.sh and store the output
-TAGS=$(./etc/get_tags.sh)
+TAGS=$(./build/get_tags.sh)
 
 # Build and tag the image with each fetched tag
 for tag in $TAGS; do

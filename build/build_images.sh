@@ -2,7 +2,7 @@
 set -xve
 
 # Fetch tags from get_tags.sh and store the output
-TAGS=$(./etc/get_tags.sh)
+TAGS=$(./build/get_tags.sh)
 
 # Remove old blobcache images
 podman images --format "{{.Repository}}:{{.Tag}}" | grep "blobcache" | xargs -r podman rmi --force
