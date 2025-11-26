@@ -22,6 +22,52 @@ body {
   line-height: 1.6;
 }
 
+.corner-icons {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+  z-index: 1000;
+}
+
+.corner-icon {
+  width: 2.6rem;
+  height: 2.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(15, 22, 36, 0.75);
+  border: 1px solid rgba(65, 105, 225, 0.35);
+  color: var(--text);
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 10px 25px rgba(6, 10, 19, 0.4);
+}
+
+.corner-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.corner-icon:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 15px 30px rgba(6, 10, 19, 0.55);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
 .hero {
   max-width: 900px;
   margin: 0 auto;
