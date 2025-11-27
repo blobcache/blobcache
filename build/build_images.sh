@@ -5,7 +5,7 @@ set -xve
 TAGS=$(./build/get_tags.sh)
 
 # Remove old blobcache images
-podman images --format "{{.Repository}}:{{.Tag}}" | grep "blobcache" | xargs -r podman rmi --force
+./build/rm_images.sh
 
 # Build and tag the image with each fetched tag
 for tag in $TAGS; do

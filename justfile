@@ -30,6 +30,10 @@ testv:
 capnp:
 	cd ./src/internal/tries/triescnp && ./build.sh
 
+clean:
+	rm -f ./build/out/*
+	./build/rm_images.sh
+
 build-images: build-amd64-linux
 	./build/build_images.sh
 
