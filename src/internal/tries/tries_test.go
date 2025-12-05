@@ -22,7 +22,7 @@ func TestPutGet(t *testing.T) {
 	require.NoError(t, err)
 	// put
 	for i := range N {
-		buf := []byte(fmt.Sprintf("test-value-%d", i))
+		buf := fmt.Appendf(nil, "test-value-%d", i)
 		key := cadata.DefaultHash(buf)
 		x, err = op.Put(ctx, s, *x, key[:], buf)
 		require.NoError(t, err)

@@ -3,7 +3,9 @@ package tries
 import (
 	"bytes"
 	"context"
+	"fmt"
 
+	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/streams"
 )
@@ -41,42 +43,63 @@ func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
 }
 
 // MinEntry returns the first entry >= gteq
-func (o *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []byte) (*Entry, error) {
-	node, err := o.getNode(ctx, s, IndexEntry(root))
+func (mach *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []byte) (*Entry, error) {
+	node, err := mach.getNode(ctx, s, Index(root))
 	if err != nil {
 		return nil, err
 	}
 	gteq = compressKey(root.Prefix, gteq)
-	ents, err := node.Entries()
+	ent, err := mach.minEntry(ctx, s, *node, gteq)
 	if err != nil {
 		return nil, err
 	}
+	if ent != nil {
+		ent.Key = expandKey(root.Prefix, ent.Key)
+	}
+	return ent, nil
+}
 
-		for _, ent := range ents {
-			if len(ent.Key) == 0 {
-				if bytes.Equal(gteq, ent.Key) {
-					return expandEntry(root.Prefix, ent), nil
-				}
-				continue
-			}
-			if bytes.Compare(ent.Key, gteq) >= 0 {
-				var idx IndexEntry
-				if err := idx.FromEntry(*ent); err != nil {
-					return nil, err
-				}
-				minEnt, err := mach.MinEntry(ctx, s, Root(idx), gteq)
-				if err != nil {
-					return nil, err
-				}
-				return expandEntry(root.Prefix, minEnt), nil
-			}
+func (mach *Machine) minEntry(ctx context.Context, s schema.RO, node triescnp.Node, gteq []byte) (*Entry, error) {
+	el, err := node.Entries()
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < el.Len(); i++ {
+		xent := el.At(i)
+		k, err := xent.Key()
+		if err != nil {
+			return nil, err
 		}
-	} else {
-		for _, ent := range ents {
-			if bytes.Compare(ent.Key, gteq) >= 0 {
-				return expandEntry(root.Prefix, ent), nil
+
+		switch xent.Which() {
+		case triescnp.Entry_Which_value:
+			if bytes.Compare(k, gteq) >= 0 {
+				var ent Entry
+				if err := ent.fromCNP(xent); err != nil {
+					return nil, err
+				}
+				ent.Key = expandKey(ent.Key, k)
 			}
+
+		case triescnp.Entry_Which_index:
+			var ient Index
+			if err := ient.fromCNP(xent); err != nil {
+				return nil, err
+			}
+			var gteq2 []byte
+			if bytes.Compare(gteq, k) <= 0 {
+				gteq2 = compressKey(gteq, k)
+			}
+			ent, err := mach.MinEntry(ctx, s, Root(ient), gteq2)
+			if err != nil {
+				return nil, err
+			}
+			ent.Key = expandKey(ent.Key, k)
+			return ent, nil
+		default:
+			return nil, fmt.Errorf("unknown entry type: %v", xent.Which())
 		}
 	}
+	// no entry >= gteq
 	return nil, nil
 }

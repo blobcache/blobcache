@@ -7,16 +7,16 @@ import (
 	"iter"
 	"slices"
 
-	"blobcache.io/blobcache/src/internal/tries/triescnp"
-	"blobcache.io/blobcache/src/schema"
 	"capnproto.org/go/capnp/v3"
 	"github.com/pkg/errors"
-	"go.brendoncarroll.net/state/cadata"
+
+	"blobcache.io/blobcache/src/internal/tries/triescnp"
+	"blobcache.io/blobcache/src/schema"
 )
 
 // getNode returns node at x.
 // all the entries will be in compressed form.
-func (o *Machine) getNode(ctx context.Context, s schema.RO, x IndexEntry) (*triescnp.Node, error) {
+func (o *Machine) getNode(ctx context.Context, s schema.RO, x Index) (*triescnp.Node, error) {
 	var n triescnp.Node
 	if err := o.getF(ctx, s, x.Ref, func(data []byte) error {
 		data = slices.Clone(data)
@@ -32,21 +32,24 @@ func (o *Machine) getNode(ctx context.Context, s schema.RO, x IndexEntry) (*trie
 	}); err != nil {
 		return nil, err
 	}
-	ents, err := n.Entries()
+	el, err := n.Entries()
 	if err != nil {
 		return nil, err
 	}
-	if err := validateEntries(ents); err != nil {
+	if err := validateEntries(el); err != nil {
 		return nil, err
 	}
-	if err := checkIndexEntries(ctx, s, x, ents); err != nil {
+	if err := checkEntries(ctx, s, x, el); err != nil {
 		return nil, err
 	}
 	return &n, nil
 }
 
 // postNode creates a new node with ents, ents will be split if necessary
-func (mach *Machine) postNode(ctx context.Context, s schema.WO, node triescnp.Node) (*IndexEntry, error) {
+func (mach *Machine) postNode(ctx context.Context, s schema.RW, node triescnp.Node, allowSplit bool) (*Index, error) {
+	if !allowSplit {
+		return nil, fmt.Errorf("node cannot be split further")
+	}
 	data, err := capnp.Canonicalize(capnp.Struct(node))
 	if err != nil {
 		return nil, err
@@ -60,35 +63,15 @@ func (mach *Machine) postNode(ctx context.Context, s schema.WO, node triescnp.No
 		if valEnt != nil {
 			entsLen++
 		}
-		node2, err := triescnp.NewNode(nil)
-		if err != nil {
-			return nil, err
-		}
-		ents, err := node2.NewEntries(int32(entsLen))
-		if err != nil {
-			return nil, err
-		}
+		var ents []Entry
 		if valEnt != nil {
-			ent := ents.At(0)
-			if err := ent.SetKey(valEnt.Key); err != nil {
-				return nil, err
-			}
-			if err := ent.SetValue(valEnt.Value); err != nil {
-				return nil, err
-			}
+			ents = append(ents, *valEnt)
 		}
-		for i := 0; i < len(idxEnts); i++ {
-			ent := ents.At(i + (entsLen - len(idxEnts)))
-			if err := idxEnts[i].toCNP(&ent); err != nil {
-				return nil, err
-			}
-		}
-
-		node = node2
-		data, err = capnp.Canonicalize(capnp.Struct(node2))
+		node2, err := mkNode(ents, idxEnts)
 		if err != nil {
 			return nil, err
 		}
+		return mach.postNode(ctx, s, node2, false)
 	}
 
 	// base case: encrypt and post to store, create IndexEntry
@@ -110,7 +93,7 @@ func (mach *Machine) postNode(ctx context.Context, s schema.WO, node triescnp.No
 	if err != nil {
 		return nil, err
 	}
-	return &IndexEntry{
+	return &Index{
 		Prefix: prefix,
 		Ref: Ref{
 			CID:    ref.CID,
@@ -121,28 +104,92 @@ func (mach *Machine) postNode(ctx context.Context, s schema.WO, node triescnp.No
 	}, nil
 }
 
-func (o *Machine) split(ctx context.Context, s schema.WO, node triescnp.Node) (*Entry, []IndexEntry, error) {
-	ents, err := node.Entries()
+func (mach *Machine) split(ctx context.Context, s schema.RW, node triescnp.Node) (*Entry, []Index, error) {
+	ents, ients, err := unmkNode(node)
 	if err != nil {
 		return nil, nil, err
 	}
-	if ents.Len() < 2 {
-		return nil, nil, ErrCannotSplit
-	}
-	e, groups := groupEntries(ents)
-	var children []IndexEntry
+	e, groups := groupEntries(slices.Values(ents))
+
 	for _, childEnts := range groups {
-		childRoot, err := mach.postNode(ctx, s, childEnts)
+		node2, err := mkNode(childEnts, nil)
 		if err != nil {
 			return nil, nil, err
 		}
-		children = append(children, *childRoot)
+		childRoot, err := mach.postNode(ctx, s, node2, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		ients = append(ients, *childRoot)
 	}
-	return e, children, nil
+	ients, err = mach.compactIndexes(ctx, s, ients)
+	if err != nil {
+		return nil, nil, err
+	}
+	return e, ients, nil
 }
 
-func (mach *Machine) collapse(ctx context.Context, s cadata.Store, children []Root) ([]*Entry, error) {
+// compactIndexes looks for indexes with overlapping prefixes, and merges them.
+func (mach *Machine) compactIndexes(ctx context.Context, s schema.RW, ients []Index) ([]Index, error) {
+	slices.SortStableFunc(ients, indexComp)
+	var merged []Index
+	for i := 0; i < len(ients); i++ {
+		toMerge := []Index{ients[i]}
+		for j := i + 1; j < len(ients); j++ {
+			if !prefixesOverlap(ients[i].Prefix, ients[j].Prefix) {
+				break
+			}
+			toMerge = append(toMerge, ients[j])
+		}
+		m, err := mach.mergeIndexes(ctx, s, toMerge)
+		if err != nil {
+			return nil, err
+		}
+		merged = append(merged, *m)
+	}
+	return merged, nil
+}
+
+func (mach *Machine) mergeIndexes(ctx context.Context, s schema.RW, ients []Index) (*Index, error) {
+	if len(ients) == 0 {
+		return nil, fmt.Errorf("cannot merge 0 indexes")
+	}
+	for i := 0; i < len(ients); i++ {
+		if !bytes.Equal(ients[i].Prefix, ients[i+1].Prefix) {
+			return nil, fmt.Errorf("cannot merge non-equal indexes")
+		}
+	}
+	var ents []Entry
+	var idxs []Index
+	for _, ient := range ients {
+		node, err := mach.getNode(ctx, s, ient)
+		if err != nil {
+			return nil, err
+		}
+		ents, idxs, err := unmkNode(*node)
+		if err != nil {
+			return nil, err
+		}
+		ents = append(ents, ents...)
+		idxs = append(idxs, idxs...)
+	}
+	node, err := mkNode(ents, idxs)
+	if err != nil {
+		return nil, err
+	}
+	return mach.postNode(ctx, s, node, true)
+}
+
+// collapse takes multiple nodes by reference, and attemps to consolidate all
+// their data into a single node.
+// Expect collapse to return ErrCannotCollapse, if the data cannot fit into a single node.
+func (o *Machine) collapse(ctx context.Context, s schema.RW, children []Root) ([]*Entry, error) {
 	panic("collapse not implemented")
+}
+
+// prefixesOverlaps checks if either a is a prefix of b or b is a prefix of a
+func prefixesOverlap(a, b []byte) bool {
+	return bytes.HasPrefix(a, b) || bytes.HasPrefix(b, a)
 }
 
 func compressKey(prefix, x []byte) []byte {
@@ -153,10 +200,7 @@ func compressKey(prefix, x []byte) []byte {
 }
 
 func expandKey(prefix, x []byte) []byte {
-	var y []byte
-	y = append(y, prefix...)
-	y = append(y, x...)
-	return y
+	return slices.Concat(prefix, x)
 }
 
 func compressEntry(prefix []byte, ent *Entry) *Entry {
@@ -219,13 +263,32 @@ func validateEntries(ents triescnp.Entry_List) error {
 	return nil
 }
 
-func checkIndexEntries(ctx context.Context, s schema.RO, x IndexEntry, ents triescnp.Entry_List) error {
+// checkEntries checks that the entries are in sorted order.
+func checkEntries(ctx context.Context, s schema.RO, x Index, ents triescnp.Entry_List) error {
 	var actualSum uint64
+	var lastKey []byte
 	for i := 0; i < ents.Len(); i++ {
-		ent := ents.At(i)
-		switch ent.Which() {
+		x := ents.At(i)
+		k, err := x.Key()
+		if err != nil {
+			return err
+		}
+		// check that the keys do not have overlapping prefixes
+		if i > 0 {
+			if prefixesOverlap(k, lastKey) {
+				return errors.Errorf("entries must not be prefixes of one another")
+			}
+			if bytes.Compare(k, lastKey) <= 0 {
+				return errors.Errorf("entries must be sorted")
+			}
+		}
+		lastKey = k
+
+		switch x.Which() {
+		case triescnp.Entry_Which_value:
+			actualSum += 1
 		case triescnp.Entry_Which_index:
-			idx, err := ent.Index()
+			idx, err := x.Index()
 			if err != nil {
 				return err
 			}
@@ -245,6 +308,8 @@ func checkIndexEntries(ctx context.Context, s schema.RO, x IndexEntry, ents trie
 				return errors.Errorf("index reference %s does not exist", ref.CID)
 			}
 			actualSum += idx.Count()
+		default:
+			return fmt.Errorf("unsupported entry type %v", x.Which())
 		}
 	}
 	if actualSum != x.Count {
@@ -253,10 +318,10 @@ func checkIndexEntries(ctx context.Context, s schema.RO, x IndexEntry, ents trie
 	return nil
 }
 
-func groupEntries(ents iter.Seq[*Entry]) (local *Entry, groups [256][]*Entry) {
+func groupEntries(ents iter.Seq[Entry]) (local *Entry, groups [256][]Entry) {
 	for ent := range ents {
 		if len(ent.Key) == 0 {
-			local = ent
+			local = &ent
 			continue
 		}
 		b := ent.Key[0]

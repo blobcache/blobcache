@@ -16,22 +16,22 @@ var (
 
 type Span = state.ByteSpan
 
-type Root IndexEntry
+type Root Index
 
 func (x *Root) Marshal(out []byte) []byte {
-	idx := IndexEntry(*x)
+	idx := Index(*x)
 	return idx.Marshal(out)
 }
 
 func ParseRoot(x []byte) (*Root, error) {
-	var idx IndexEntry
+	var idx Index
 	if err := idx.Unmarshal(x); err != nil {
 		return nil, err
 	}
 	return (*Root)(&idx), nil
 }
 
-func (o *Machine) Validate(ctx context.Context, s schema.RO, x IndexEntry) error {
+func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
 	// getEntries includes validation
 	node, err := o.getNode(ctx, s, x)
 	if err != nil {
@@ -41,7 +41,7 @@ func (o *Machine) Validate(ctx context.Context, s schema.RO, x IndexEntry) error
 	if err != nil {
 		return err
 	}
-	if err := checkIndexEntries(ctx, s, x, ents); err != nil {
+	if err := checkEntries(ctx, s, x, ents); err != nil {
 		return err
 	}
 	for i := 0; i < ents.Len(); i++ {

@@ -28,8 +28,8 @@ func NewMachine(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
 	}
 }
 
-func (mach *Machine) NewEmpty(ctx context.Context, s schema.WO) (*Root, error) {
-	idx, err := mach.PostSlice(ctx, s, nil)
+func (o *Machine) NewEmpty(ctx context.Context, s schema.RW) (*Root, error) {
+	idx, err := o.PostSlice(ctx, s, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -37,24 +37,12 @@ func (mach *Machine) NewEmpty(ctx context.Context, s schema.WO) (*Root, error) {
 }
 
 // PostSlice returns a new instance containing ents
-func (o *Machine) PostSlice(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
-	node, err := triescnp.NewRootNode(nil)
+func (o *Machine) PostSlice(ctx context.Context, s schema.RW, ents []Entry) (*Root, error) {
+	node, err := mkNode(ents, nil)
 	if err != nil {
 		return nil, err
 	}
-	ents2, err := node.NewEntries(int32(len(ents)))
-	if err != nil {
-		return nil, err
-	}
-	for i := range ents {
-		if err := ents2.At(i).SetKey(ents[i].Key); err != nil {
-			return nil, err
-		}
-		if err := ents2.At(i).SetValue(ents[i].Value); err != nil {
-			return nil, err
-		}
-	}
-	idx, err := o.postNode(ctx, s, node)
+	idx, err := o.postNode(ctx, s, node, true)
 	if err != nil {
 		return nil, err
 	}
@@ -62,73 +50,46 @@ func (o *Machine) PostSlice(ctx context.Context, s schema.WO, ents []*Entry) (*R
 }
 
 // Get retrieves a value at key if it exists, otherwise ErrNotFound is returned
-func (mach *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte, dst *[]byte) (bool, error) {
+func (o *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte, dst *[]byte) (bool, error) {
 	if !bytes.HasPrefix(key, root.Prefix) {
 		return false, nil
 	}
 	key = compressKey(root.Prefix, key)
-	node, err := o.getNode(ctx, s, IndexEntry(root))
+	node, err := o.getNode(ctx, s, Index(root))
 	if err != nil {
 		return false, err
 	}
-	ents, err := node.Entries()
+	el, err := node.Entries()
 	if err != nil {
-		return err
+		return false, err
 	}
-	for i := 0; i < ents.Len(); i++ {
-		ent := ents.At(i)
+	for i := 0; i < el.Len(); i++ {
+		ent := el.At(i)
 		entKey, err := ent.Key()
 		if err != nil {
-			return err
+			return false, err
+		}
+		if !bytes.HasPrefix(entKey, key) {
+			continue
 		}
 		switch ent.Which() {
 		case triescnp.Entry_Which_value:
 			if bytes.Equal(key, entKey) {
-				v, err := ent.Value()
+				val, err := ent.Value()
 				if err != nil {
-					return err
-				}
-				*dst = append((*dst)[:0], v...)
-				return nil
-			}
-		case triescnp.Entry_Which_index:
-			idx, err := ent.Index()
-			if err != nil {
-				return err
-			}
-			idxData, err := idx.Ref()
-			if err != nil {
-				return err
-			}
-			idx2, err := parseRef(idxData)
-			if err != nil {
-				return err
-			}
-			return o.Get(ctx, s, Root(*idx2), key, dst)
-		default:
-			return errors.Errorf("unsupported entry type: %s", ent.Which())
-		}
-	}
-	if root.IsParent {
-		for _, ent := range ents {
-			if len(ent.Key) == 0 && len(key) == 0 {
-				*dst = append((*dst)[:0], ent.Value...)
-				return true, nil
-			}
-			if bytes.HasPrefix(key, ent.Key) {
-				var idx IndexEntry
-				if err := idx.FromEntry(*ent); err != nil {
 					return false, err
 				}
-				return mach.Get(ctx, s, Root(idx), key, dst)
-			}
-		}
-	} else {
-		for _, ent := range ents {
-			if bytes.Equal(key, ent.Key) {
-				*dst = append((*dst)[:0], ent.Value...)
+				*dst = append((*dst)[:0], val...)
 				return true, nil
 			}
+		case triescnp.Entry_Which_index:
+			var ient Index
+			if err := ient.fromCNP(ent); err != nil {
+				return false, err
+			}
+			return o.Get(ctx, s, Root(ient), key, dst)
+		default:
+			return false, errors.Errorf("unsupported entry type: %s", ent.Which())
 		}
 	}
 	return false, nil
@@ -136,11 +97,9 @@ func (mach *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte
 
 // Put returns a copy of root where key maps to value, and all other mappings are unchanged.
 func (mach *Machine) Put(ctx context.Context, s schema.RW, root Root, key, value []byte) (*Root, error) {
-	tx := mach.NewTx(root)
-	if err := tx.Put(ctx, s, key, value); err != nil {
-		return nil, err
-	}
-	return tx.Flush(ctx, s)
+	return mach.BatchEdit(ctx, s, root, func(yield func(Op) bool) {
+		yield(OpPut(key, value))
+	})
 }
 
 // Delete removes
@@ -148,26 +107,9 @@ func (mach *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []
 	if !bytes.HasPrefix(key, root.Prefix) {
 		return &root, nil
 	}
-	key = compressKey(root.Prefix, key)
-	if root.IsParent {
-		panic("deleting from parent not implemented")
-	} else {
-		xs, err := o.getNode(ctx, s, IndexEntry(root), false)
-		if err != nil {
-			return nil, err
-		}
-		var ys []*Entry
-		for _, ent := range xs {
-			if !bytes.Equal(key, ent.Key) {
-				ys = append(ys, ent)
-			}
-		}
-		idx, err := mach.postLeaf(ctx, s, ys)
-		if err != nil {
-			return nil, err
-		}
-		return (*Root)(idx), nil
-	}
+	return mach.BatchEdit(ctx, s, root, func(yield func(Op) bool) {
+		yield(OpDelete(key))
+	})
 }
 
 // BatchEdit applies a batch of operations to a root, returning a new root.
@@ -177,41 +119,52 @@ func (mach *Machine) BatchEdit(ctx context.Context, s schema.RW, root Root, opsS
 	slices.SortFunc(ops, func(a, b Op) int {
 		return bytes.Compare(a.Key, b.Key)
 	})
-	if root.IsParent {
-		e, children, err := o.getParent(ctx, s, IndexEntry(root), true)
-		if err != nil {
-			return nil, err
-		}
-		localOp, groups := groupOps(slices.Values(ops))
-		if localOp != nil {
-			e = localOp.Entry()
-		}
-		for i := range groups {
-			group := groups[i]
-			child := children[i]
-			child2, err := mach.BatchEdit(ctx, s, Root(child), slices.Values(group))
-			if err != nil {
-				return nil, err
-			}
-			children[i] = IndexEntry(*child2)
-		}
-		idx, err := mach.postParent(ctx, s, children[:], e)
-		if err != nil {
-			return nil, err
-		}
-		return (*Root)(idx), nil
-	} else {
-		xs, err := o.getNode(ctx, s, IndexEntry(root), true)
-		if err != nil {
-			return nil, err
-		}
-		ys := applyOps(nil, xs, ops)
-		idx, err := mach.postNode(ctx, s, ys)
-		if err != nil {
-			return nil, err
-		}
-		return (*Root)(idx), nil
+
+	node, err := mach.getNode(ctx, s, Index(root))
+	if err != nil {
+		return nil, err
 	}
+	ents, ients, err := unmkNode(*node)
+	if err != nil {
+		return nil, err
+	}
+
+	var localEdits []Op
+	childEdits := make([][]Op, len(ients))
+	for _, op := range ops {
+		var foundIndex bool
+		for j, ient := range ients {
+			if bytes.HasPrefix(op.Key, ient.Prefix) {
+				childEdits[j] = append(childEdits[j], op)
+				foundIndex = true
+				break
+			}
+		}
+		if !foundIndex {
+			localEdits = append(localEdits, op)
+		}
+	}
+
+	// apply all the local edits
+	ents = applyOps(nil, ents, localEdits)
+	// apply all the edits to children and replace the IndexEntries
+	for i, ops := range childEdits {
+		ient := ients[i]
+		root2, err := mach.BatchEdit(ctx, s, Root(ient), slices.Values(ops))
+		if err != nil {
+			return nil, err
+		}
+		ients[i] = Index(*root2)
+	}
+	node2, err := mkNode(ents, ients)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := mach.postNode(ctx, s, node2, true)
+	if err != nil {
+		return nil, err
+	}
+	return (*Root)(ret), nil
 }
 
 // Op is a single operation on the trie.
@@ -244,9 +197,9 @@ func (op Op) Entry() *Entry {
 	return &Entry{Key: op.Key, Value: op.Value}
 }
 
-// applyOps returns a sequence that can be used to read the new entries after applying the ops.
+// applyOps applies ops to ents, and appends the result to out.
 // Both ents, and ops must be sorted.
-func applyOps(out []*Entry, ents []*Entry, ops []Op) []*Entry {
+func applyOps(out []Entry, ents []Entry, ops []Op) []Entry {
 	var i, j int
 	for i < len(ents) && j < len(ops) {
 		cmp := bytes.Compare(ents[i].Key, ops[j].Key)
@@ -255,13 +208,13 @@ func applyOps(out []*Entry, ents []*Entry, ops []Op) []*Entry {
 			out = append(out, ents[i])
 			i++
 		case cmp > 0:
-			out = append(out, &Entry{Key: ops[j].Key, Value: ops[j].Value})
+			out = append(out, Entry{Key: ops[j].Key, Value: ops[j].Value})
 			j++
 		default:
 			if ops[j].IsDelete() {
 				i++
 			} else {
-				out = append(out, &Entry{Key: ops[j].Key, Value: ops[j].Value})
+				out = append(out, Entry{Key: ops[j].Key, Value: ops[j].Value})
 			}
 			i++
 			j++
@@ -275,7 +228,7 @@ func applyOps(out []*Entry, ents []*Entry, ops []Op) []*Entry {
 		// no more ents, just create entries for any puts
 		op := ops[j]
 		if !op.IsDelete() {
-			out = append(out, &Entry{Key: op.Key, Value: op.Value})
+			out = append(out, Entry{Key: op.Key, Value: op.Value})
 		}
 	}
 	return out
