@@ -1,132 +1,102 @@
 package tries
 
 import (
+	"bytes"
+	"fmt"
+	"slices"
+
 	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	capnp "capnproto.org/go/capnp/v3"
 )
 
-// Entry represents a key-value pair in the trie
+// Entry represents a key-value pair in the trie.
+// See-also: IndexEntry for entries that refer to other nodes.
+// and VNodeEntry for entries that contain other nodes inline.
 type Entry struct {
 	Key   []byte
 	Value []byte
 }
 
-func (e *Entry) Marshal() ([]byte, error) {
-	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+func (ent *Entry) fromCNP(x triescnp.Entry) error {
+	if x.Which() != triescnp.Entry_Which_value {
+		return fmt.Errorf("wrong entry type %v", x.Which())
+	}
+	val, err := x.Value()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	capnpEnt, err := triescnp.NewRootEntry(seg)
+	key, err := x.Key()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if err := capnpEnt.SetKey(e.Key); err != nil {
-		return nil, err
-	}
-	if err := capnpEnt.SetValue(e.Value); err != nil {
-		return nil, err
-	}
-	return msg.Marshal()
+	ent.Value = val
+	ent.Key = key
+	return nil
 }
 
-func (e *Entry) Unmarshal(data []byte) error {
-	msg, err := capnp.Unmarshal(data)
-	if err != nil {
+func (ent *Entry) toCNP(x triescnp.Entry) error {
+	if err := x.SetValue(ent.Value); err != nil {
 		return err
 	}
-	capnpEnt, err := triescnp.ReadRootEntry(msg)
-	if err != nil {
-		return err
-	}
-	e.Key, err = capnpEnt.Key()
-	if err != nil {
-		return err
-	}
-	e.Value, err = capnpEnt.Value()
-	if err != nil {
+	if err := x.SetKey(ent.Key); err != nil {
 		return err
 	}
 	return nil
 }
 
-// Node represents a trie node containing multiple entries
-type Node struct {
-	Entries []*Entry
-}
-
-// Marshal serializes a Node using Cap'n Proto
-func (n *Node) Marshal() ([]byte, error) {
-	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
-	if err != nil {
-		return nil, err
-	}
-
-	capnpNode, err := triescnp.NewRootNode(seg)
-	if err != nil {
-		return nil, err
-	}
-
-	entList, err := capnpNode.NewEntries(int32(len(n.Entries)))
-	if err != nil {
-		return nil, err
-	}
-
-	for i, ent := range n.Entries {
-		capnpEnt := entList.At(i)
-		if err := capnpEnt.SetKey(ent.Key); err != nil {
-			return nil, err
-		}
-		if err := capnpEnt.SetValue(ent.Value); err != nil {
-			return nil, err
-		}
-	}
-
-	return msg.Marshal()
-}
-
-// UnmarshalNode deserializes a Node using Cap'n Proto
-func (n *Node) Unmarshal(data []byte) error {
-	msg, err := capnp.Unmarshal(data)
-	if err != nil {
-		return err
-	}
-	capnpNode, err := triescnp.ReadRootNode(msg)
-	if err != nil {
-		return err
-	}
-	entList, err := capnpNode.Entries()
-	if err != nil {
-		return err
-	}
-	n.Entries = make([]*Entry, 0, entList.Len())
-	for i := 0; i < entList.Len(); i++ {
-		capnpEnt := entList.At(i)
-		key, err := capnpEnt.Key()
-		if err != nil {
-			return err
-		}
-		value, err := capnpEnt.Value()
-		if err != nil {
-			return err
-		}
-		n.Entries = append(n.Entries, &Entry{
-			Key:   key,
-			Value: value,
-		})
-	}
-	return nil
+func entryComp(a, b Entry) int {
+	return bytes.Compare(a.Key, b.Key)
 }
 
 // Index represents metadata about a trie node reference
 type Index struct {
-	// Ref is the reference to the node.
-	Ref Ref
 	// Prefix is the common prefix of all the entries in the referenced node.
 	Prefix []byte
+	// Ref is the reference to the node.
+	Ref Ref
 	// Count is the cumulative number of entries transitively reachable from this node.
 	Count uint64
-	// IsParent is true if the node at Ref is a parent node.
-	IsParent bool
+}
+
+func (idx *Index) fromCNP(x triescnp.Entry) error {
+	if x.Which() != triescnp.Entry_Which_index {
+		return fmt.Errorf("cannot convert entry (%s) to index", x.Which())
+	}
+	key, err := x.Key()
+	if err != nil {
+		return err
+	}
+	idx.Prefix = key
+	idx2, err := x.Index()
+	if err != nil {
+		return err
+	}
+	refData, err := idx2.Ref()
+	if err != nil {
+		return err
+	}
+	ref, err := parseRef(refData)
+	if err != nil {
+		return err
+	}
+	idx.Ref = *ref
+	idx.Count = idx2.Count()
+	return nil
+}
+
+func (idx *Index) toCNP(ent *triescnp.Entry) error {
+	if err := ent.SetKey(idx.Prefix); err != nil {
+		return err
+	}
+	idx2, err := ent.NewIndex()
+	if err != nil {
+		return err
+	}
+	if err := idx2.SetRef(marshalRef(idx.Ref)); err != nil {
+		return err
+	}
+	idx2.SetCount(idx.Count)
+	return nil
 }
 
 // Marshal serializes an Index using Cap'n Proto
@@ -142,9 +112,7 @@ func (idx *Index) Marshal(out []byte) []byte {
 	if err := capnpIdx.SetRef(marshalRef(idx.Ref)); err != nil {
 		panic(err)
 	}
-	capnpIdx.SetPrefix(idx.Prefix)
 	capnpIdx.SetCount(idx.Count)
-	capnpIdx.SetIsParent(idx.IsParent)
 	data, err := msg.Marshal()
 	if err != nil {
 		panic(err)
@@ -171,7 +139,6 @@ func (idx *Index) Unmarshal(data []byte) error {
 		return err
 	}
 	idx.Ref = *ref2
-	idx.IsParent = capnpIdx.IsParent()
 	idx.Count = capnpIdx.Count()
 	return nil
 }
@@ -191,4 +158,108 @@ func (idx *Index) FromEntry(ent Entry) error {
 	}
 	idx.Prefix = ent.Key
 	return nil
+}
+
+func indexComp(a, b Index) int {
+	return bytes.Compare(a.Prefix, b.Prefix)
+}
+
+type VNodeEntry struct {
+	Prefix []byte
+	Node   triescnp.Node
+}
+
+// mkNode returns a new node from a list of entries.
+func mkNode(ents []Entry, ients []Index) (triescnp.Node, error) {
+	slices.SortStableFunc(ents, entryComp)
+	slices.SortStableFunc(ients, indexComp)
+	_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	if err != nil {
+		panic(err)
+	}
+	node, err := triescnp.NewRootNode(seg)
+	if err != nil {
+		panic(err)
+	}
+	el, err := node.NewEntries(int32(len(ents) + len(ients)))
+	if err != nil {
+		return triescnp.Node{}, err
+	}
+
+	i, j := 0, 0
+	for k := 0; k < el.Len(); k++ {
+		if i < len(ents) && (j >= len(ients) || bytes.Compare(ents[i].Key, ients[j].Prefix) < 0) {
+			ent := ents[i]
+			slot := el.At(k)
+			if err := slot.SetKey(ent.Key); err != nil {
+				return triescnp.Node{}, err
+			}
+			if err := slot.SetValue(ent.Value); err != nil {
+				return triescnp.Node{}, err
+			}
+			i++
+			continue
+		}
+
+		idx := ients[j]
+		slot := el.At(k)
+		if err := slot.SetKey(idx.Prefix); err != nil {
+			return triescnp.Node{}, err
+		}
+		idxCNP, err := slot.NewIndex()
+		if err != nil {
+			return triescnp.Node{}, err
+		}
+		if err := idxCNP.SetRef(marshalRef(idx.Ref)); err != nil {
+			return triescnp.Node{}, err
+		}
+		idxCNP.SetCount(idx.Count)
+		j++
+	}
+
+	return node, nil
+}
+
+// unmkNode converts a node into slices of Entries, and Indexes.
+// any
+func unmkNode(node triescnp.Node) ([]Entry, []Index, error) {
+	var ents []Entry
+	var idxs []Index
+	el, err := node.Entries()
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := 0; i < el.Len(); i++ {
+		x := el.At(i)
+		switch x.Which() {
+		case triescnp.Entry_Which_index:
+			var ient Index
+			if err := ient.fromCNP(x); err != nil {
+				return nil, nil, err
+			}
+			idxs = append(idxs, ient)
+		case triescnp.Entry_Which_value:
+			key, err := x.Key()
+			if err != nil {
+				return nil, nil, err
+			}
+			value, err := x.Value()
+			if err != nil {
+				return nil, nil, err
+			}
+			ents = append(ents, Entry{Key: key, Value: value})
+		case triescnp.Entry_Which_vnode:
+			node2, err := x.Vnode()
+			if err != nil {
+				return nil, nil, err
+			}
+			ents2, idxs2, err := unmkNode(node2)
+			if err != nil {
+				return nil, nil, err
+			}
+			ents = append(ents, ents2...)
+			idxs = append(idxs, idxs2...)
+		}
+	}
+	return ents, idxs, nil
 }

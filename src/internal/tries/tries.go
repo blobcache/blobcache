@@ -30,22 +30,18 @@ func ParseRoot(x []byte) (*Root, error) {
 	return (*Root)(&idx), nil
 }
 
-func (mach *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
+func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
 	// getEntries includes validation
-	ents, err := mach.getNode(ctx, s, x, false)
+	node, err := o.getNode(ctx, s, x)
 	if err != nil {
 		return err
 	}
-	if x.IsParent {
-		for _, ent := range ents {
-			var idx Index
-			if err := idx.FromEntry(*ent); err != nil {
-				return err
-			}
-			if err := mach.Validate(ctx, s, idx); err != nil {
-				return err
-			}
-		}
+	ents, err := node.Entries()
+	if err != nil {
+		return err
+	}
+	if err := checkEntries(ctx, s, x, ents); err != nil {
+		return err
 	}
 	return nil
 }

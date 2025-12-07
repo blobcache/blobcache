@@ -285,7 +285,6 @@ func (v *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobca
 	if err != nil {
 		return 0, err
 	} else if ref == nil {
-		panic("get")
 		return 0, blobcache.ErrNotFound{Key: cid}
 	}
 	s := volumes.NewUnsaltedStore(v.inner)
@@ -365,7 +364,6 @@ func (v *Tx) Visit(ctx context.Context, ptcids []blobcache.CID) error {
 			return err
 		}
 		if ref == nil {
-			panic("visit")
 			return blobcache.ErrNotFound{Key: ptcid}
 		}
 		if err := putRef(ctx, v.newTx, s, ptcid, *ref); err != nil {

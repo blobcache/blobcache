@@ -22,7 +22,7 @@ func TestPutGet(t *testing.T) {
 	require.NoError(t, err)
 	// put
 	for i := range N {
-		buf := []byte(fmt.Sprintf("test-value-%d", i))
+		buf := fmt.Appendf(nil, "test-value-%d", i)
 		key := cadata.DefaultHash(buf)
 		x, err = op.Put(ctx, s, *x, key[:], buf)
 		require.NoError(t, err)
@@ -30,7 +30,7 @@ func TestPutGet(t *testing.T) {
 	t.Logf("put %d blobs", s.Len())
 	// get
 	for i := range N {
-		expected := []byte(fmt.Sprintf("test-value-%d", i))
+		expected := fmt.Appendf(nil, "test-value-%d", i)
 		key := cadata.DefaultHash(expected)
 		var actual []byte
 		found, err := op.Get(ctx, s, *x, key[:], &actual)

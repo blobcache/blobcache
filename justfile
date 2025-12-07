@@ -21,7 +21,7 @@ build-amd64-darwin: capnp
 
 build-exec: build-amd64-linux build-arm64-linux build-arm64-darwin
 
-test:
+test: capnp
 	go test ./...
 
 testv:
