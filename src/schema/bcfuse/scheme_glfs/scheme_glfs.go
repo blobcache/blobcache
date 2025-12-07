@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"blobcache.io/blobcache/src/bcfuse"
 	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/schema/bcfuse"
 	"blobcache.io/glfs"
 	"go.brendoncarroll.net/exp/streams"
 )

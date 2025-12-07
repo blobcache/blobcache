@@ -1,11 +1,11 @@
 package blobcachecmd
 
 import (
-	"blobcache.io/blobcache/src/bcfuse"
-	"blobcache.io/blobcache/src/bcfuse/scheme_glfs"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/sqlutil"
 	"blobcache.io/blobcache/src/schema/basicns"
+	"blobcache.io/blobcache/src/schema/bcfuse"
+	"blobcache.io/blobcache/src/schema/bcfuse/scheme_glfs"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"

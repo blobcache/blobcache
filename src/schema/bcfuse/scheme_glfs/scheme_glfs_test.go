@@ -3,8 +3,8 @@ package scheme_glfs
 import (
 	"testing"
 
-	"blobcache.io/blobcache/src/bcfuse"
 	_ "blobcache.io/blobcache/src/schema/basicns"
+	"blobcache.io/blobcache/src/schema/bcfuse"
 )
 
 func TestSchemeGLFS(t *testing.T) {
