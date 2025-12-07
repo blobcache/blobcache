@@ -20,7 +20,7 @@ type Tx struct {
 }
 
 // NewTx creates a new transaction based on an existing Trie
-func (m *Machine) NewTx(prevRoot Root) *Tx {
+func (mach *Machine) NewTx(prevRoot Root) *Tx {
 	return &Tx{
 		prevRoot: prevRoot,
 		mach:     mach,
@@ -28,8 +28,8 @@ func (m *Machine) NewTx(prevRoot Root) *Tx {
 }
 
 // NewTxOnEmpty creates a new Tx based on an empty Trie.
-func (m *Machine) NewTxOnEmpty(ctx context.Context) *Tx {
-	return m.NewTx(Root{})
+func (mach *Machine) NewTxOnEmpty() *Tx {
+	return mach.NewTx(Root{})
 }
 
 // Put creates or replace the entry for key, such that it points to value.
@@ -46,12 +46,15 @@ func (tx *Tx) Put(ctx context.Context, s schema.RW, key []byte, value []byte) er
 
 // Get retrieves a key from the store, and writes the value to dst.
 func (tx *Tx) Get(ctx context.Context, s schema.RO, key []byte, dst *[]byte) (bool, error) {
-	if val, ok := tx.edits[string(key)]; ok {
-		if val.IsDelete() {
+	if op, ok := tx.edits[string(key)]; ok {
+		if op.IsDelete() {
 			return false, nil
 		}
-		*dst = append((*dst)[:0], val.Value...)
+		*dst = append((*dst)[:0], op.Value...)
 		return true, nil
+	}
+	if !tx.prevRootIsValid() {
+		return false, nil
 	}
 	return tx.mach.Get(ctx, s, tx.prevRoot, key, dst)
 }
@@ -71,7 +74,7 @@ func (tx *Tx) Queued() int {
 // Flush applies the edits to the previous root, and returns the new root.
 // The transaction can continue, after this.
 func (tx *Tx) Flush(ctx context.Context, s schema.RW) (*Root, error) {
-	if tx.prevRoot.Ref.CID.IsZero() {
+	if !tx.prevRootIsValid() {
 		root, err := tx.mach.NewEmpty(ctx, s)
 		if err != nil {
 			return nil, err

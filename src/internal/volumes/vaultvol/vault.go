@@ -166,10 +166,6 @@ func (v *Tx) Save(ctx context.Context, src []byte) error {
 	}
 	defer release()
 
-	if !v.txp.Modify {
-		return blobcache.ErrTxReadOnly{Op: "Save"}
-	}
-
 	v.cellMu.Lock()
 	defer v.cellMu.Unlock()
 	v.cell = append(v.cell[:0], src...)
@@ -266,10 +262,6 @@ func (v *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (bl
 	}
 	defer release()
 
-	if !v.txp.Modify {
-		return blobcache.CID{}, blobcache.ErrTxReadOnly{Op: "Post"}
-	}
-
 	s := volumes.NewUnsaltedStore(v.inner)
 	cid := v.inner.Hash(nil, data)
 	ref, err := v.vol.cmach.Post(ctx, s, data)
@@ -293,10 +285,6 @@ func (v *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobca
 	if err != nil {
 		return 0, err
 	} else if ref == nil {
-		panic("get")
-		return 0, blobcache.ErrNotFound{Key: cid}
-	}
-	if ref == nil {
 		return 0, blobcache.ErrNotFound{Key: cid}
 	}
 	s := volumes.NewUnsaltedStore(v.inner)
@@ -376,7 +364,6 @@ func (v *Tx) Visit(ctx context.Context, ptcids []blobcache.CID) error {
 			return err
 		}
 		if ref == nil {
-			panic("visit")
 			return blobcache.ErrNotFound{Key: ptcid}
 		}
 		if err := putRef(ctx, v.newTx, s, ptcid, *ref); err != nil {
@@ -447,9 +434,6 @@ func (v *Tx) translateCIDs(ctx context.Context, ptcids []blobcache.CID) ([]blobc
 		} else if ref == nil {
 			ctcids = append(ctcids, blobcache.CID{})
 			continue
-		}
-		if ref == nil {
-			return nil, fmt.Errorf("vault has no mapping for %v", ptcid)
 		}
 		ctcids = append(ctcids, ref.CID)
 	}
