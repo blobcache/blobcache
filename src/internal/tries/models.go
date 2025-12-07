@@ -220,23 +220,24 @@ func mkNode(ents []Entry, ients []Index) (triescnp.Node, error) {
 	return node, nil
 }
 
-// nodeAll returns an iterator over all the entries in the node.
+// unmkNode converts a node into slices of Entries, and Indexes.
+// any
 func unmkNode(node triescnp.Node) ([]Entry, []Index, error) {
-	var ret []Entry
-	var ret2 []Index
-	children, err := node.Entries()
+	var ents []Entry
+	var idxs []Index
+	el, err := node.Entries()
 	if err != nil {
 		return nil, nil, err
 	}
-	for i := 0; i < children.Len(); i++ {
-		x := children.At(i)
+	for i := 0; i < el.Len(); i++ {
+		x := el.At(i)
 		switch x.Which() {
 		case triescnp.Entry_Which_index:
 			var ient Index
 			if err := ient.fromCNP(x); err != nil {
 				return nil, nil, err
 			}
-			ret2 = append(ret2, ient)
+			idxs = append(idxs, ient)
 		case triescnp.Entry_Which_value:
 			key, err := x.Key()
 			if err != nil {
@@ -246,8 +247,19 @@ func unmkNode(node triescnp.Node) ([]Entry, []Index, error) {
 			if err != nil {
 				return nil, nil, err
 			}
-			ret = append(ret, Entry{Key: key, Value: value})
+			ents = append(ents, Entry{Key: key, Value: value})
+		case triescnp.Entry_Which_vnode:
+			node2, err := x.Vnode()
+			if err != nil {
+				return nil, nil, err
+			}
+			ents2, idxs2, err := unmkNode(node2)
+			if err != nil {
+				return nil, nil, err
+			}
+			ents = append(ents, ents2...)
+			idxs = append(idxs, idxs2...)
 		}
 	}
-	return ret, ret2, nil
+	return ents, idxs, nil
 }

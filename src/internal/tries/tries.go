@@ -3,7 +3,6 @@ package tries
 import (
 	"context"
 
-	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state"
@@ -43,14 +42,6 @@ func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
 	}
 	if err := checkEntries(ctx, s, x, ents); err != nil {
 		return err
-	}
-	for i := 0; i < ents.Len(); i++ {
-		ent := ents.At(i)
-		switch ent.Which() {
-		case triescnp.Entry_Which_value:
-			continue
-		}
-		return errors.Errorf("invalid entry: %s", ent.Which())
 	}
 	return nil
 }

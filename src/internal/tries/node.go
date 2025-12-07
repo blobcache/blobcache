@@ -36,9 +36,6 @@ func (o *Machine) getNode(ctx context.Context, s schema.RO, x Index) (*triescnp.
 	if err != nil {
 		return nil, err
 	}
-	if err := validateEntries(el); err != nil {
-		return nil, err
-	}
 	if err := checkEntries(ctx, s, x, el); err != nil {
 		return nil, err
 	}
@@ -251,29 +248,6 @@ func compressEntries(xs []*Entry) ([]byte, []*Entry) {
 		ys[i] = compressEntry(lcp, xs[i])
 	}
 	return lcp, ys
-}
-
-func validateEntries(ents triescnp.Entry_List) error {
-	var lastKey []byte
-	for i := 0; i < ents.Len(); i++ {
-		ent := ents.At(i)
-		k, err := ent.Key()
-		if err != nil {
-			return err
-		}
-		if i > 0 {
-			if len(k) > 0 && len(lastKey) > 0 {
-				if bytes.HasPrefix(k, lastKey) || bytes.HasPrefix(lastKey, k) {
-					return errors.Errorf("entries must not be prefixes of one another")
-				}
-			}
-			if bytes.Compare(k, lastKey) <= 0 {
-				return errors.Errorf("entries must be sorted")
-			}
-		}
-		lastKey = k
-	}
-	return nil
 }
 
 // checkEntries checks that the entries are in sorted order.
