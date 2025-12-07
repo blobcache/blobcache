@@ -35,6 +35,9 @@ func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
 	} else if ent == nil {
 		return streams.EOS()
 	}
+	if ent == nil {
+		return streams.EOS()
+	}
 
 	it.lastKey = append(it.lastKey[:0], ent.Key...)
 	dst.Key = append(dst.Key[:0], ent.Key...)

@@ -262,8 +262,10 @@ func validateEntries(ents triescnp.Entry_List) error {
 			return err
 		}
 		if i > 0 {
-			if bytes.HasPrefix(k, lastKey) || bytes.HasPrefix(lastKey, k) {
-				return errors.Errorf("entries must not be prefixes of one another")
+			if len(k) > 0 && len(lastKey) > 0 {
+				if bytes.HasPrefix(k, lastKey) || bytes.HasPrefix(lastKey, k) {
+					return errors.Errorf("entries must not be prefixes of one another")
+				}
 			}
 			if bytes.Compare(k, lastKey) <= 0 {
 				return errors.Errorf("entries must be sorted")
@@ -286,8 +288,10 @@ func checkEntries(ctx context.Context, s schema.RO, x Index, ents triescnp.Entry
 		}
 		// check that the keys do not have overlapping prefixes
 		if i > 0 {
-			if prefixesOverlap(k, lastKey) {
-				return errors.Errorf("entries must not be prefixes of one another")
+			if len(k) > 0 && len(lastKey) > 0 {
+				if prefixesOverlap(k, lastKey) {
+					return errors.Errorf("entries must not be prefixes of one another")
+				}
 			}
 			if bytes.Compare(k, lastKey) <= 0 {
 				return errors.Errorf("entries must be sorted")
