@@ -23,7 +23,7 @@ var beginTxCmd = star.Command{
 		txp := blobcache.TxParams{}
 		for _, arg := range c.Extra {
 			switch arg {
-			case "--mutate":
+			case "--modify":
 				txp.Modify = true
 			case "--gc":
 				txp.GC = true
