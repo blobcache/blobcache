@@ -13,13 +13,6 @@ var (
 	ErrCannotSplit    = errors.Errorf("cannot split, < 2 entries")
 )
 
-// ErrNotFound is returned when a key cannot be found.
-type ErrNotFound = state.ErrNotFound[[]byte]
-
-func IsErrNotFound(err error) bool {
-	return state.IsErrNotFound[[]byte](err)
-}
-
 type Span = state.ByteSpan
 
 type Root Index
@@ -37,9 +30,9 @@ func ParseRoot(x []byte) (*Root, error) {
 	return (*Root)(&idx), nil
 }
 
-func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
+func (mach *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
 	// getEntries includes validation
-	ents, err := o.getNode(ctx, s, x, false)
+	ents, err := mach.getNode(ctx, s, x, false)
 	if err != nil {
 		return err
 	}
@@ -49,7 +42,7 @@ func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
 			if err := idx.FromEntry(*ent); err != nil {
 				return err
 			}
-			if err := o.Validate(ctx, s, idx); err != nil {
+			if err := mach.Validate(ctx, s, idx); err != nil {
 				return err
 			}
 		}

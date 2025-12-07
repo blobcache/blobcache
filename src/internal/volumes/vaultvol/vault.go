@@ -132,6 +132,10 @@ func (tx *Tx) Volume() volumes.Volume {
 	return tx.vol
 }
 
+func (tx *Tx) Params() blobcache.TxParams {
+	return tx.txp
+}
+
 func (v *Tx) Load(ctx context.Context, dst *[]byte) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
@@ -280,10 +284,13 @@ func (v *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobca
 	ref, err := v.getRef(ctx, cid)
 	if err != nil {
 		return 0, err
+	} else if ref == nil {
+		panic("get")
+		return 0, blobcache.ErrNotFound{Key: cid}
 	}
 	s := volumes.NewUnsaltedStore(v.inner)
 	// get and decrypt the ciphertext blob
-	return v.vol.cmach.Get(ctx, s, ref, buf)
+	return v.vol.cmach.Get(ctx, s, *ref, buf)
 }
 
 func (v *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
@@ -297,6 +304,9 @@ func (v *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
 		ref, err := v.getRef(ctx, cid)
 		if err != nil {
 			return err
+		}
+		if ref == nil {
+			return nil
 		}
 		if err := v.inner.Delete(ctx, []blobcache.CID{ref.CID}); err != nil {
 			return err
@@ -354,7 +364,11 @@ func (v *Tx) Visit(ctx context.Context, ptcids []blobcache.CID) error {
 		if err != nil {
 			return err
 		}
-		if err := putRef(ctx, v.newTx, s, ptcid, ref); err != nil {
+		if ref == nil {
+			panic("visit")
+			return blobcache.ErrNotFound{Key: ptcid}
+		}
+		if err := putRef(ctx, v.newTx, s, ptcid, *ref); err != nil {
 			return err
 		}
 		ctcids = append(ctcids, ref.CID)
@@ -398,7 +412,7 @@ func (v *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
 }
 
 // getRef returns the crypto ref for the plaintext CID
-func (v *Tx) getRef(ctx context.Context, ptcid blobcache.CID) (bccrypto.Ref, error) {
+func (v *Tx) getRef(ctx context.Context, ptcid blobcache.CID) (*bccrypto.Ref, error) {
 	v.trieMu.RLock()
 	defer v.trieMu.RUnlock()
 	s := volumes.NewUnsaltedStore(v.inner)
@@ -418,11 +432,10 @@ func (v *Tx) translateCIDs(ctx context.Context, ptcids []blobcache.CID) ([]blobc
 	for _, ptcid := range ptcids {
 		ref, err := v.getRef(ctx, ptcid)
 		if err != nil {
-			if tries.IsErrNotFound(err) {
-				ctcids = append(ctcids, blobcache.CID{})
-				continue
-			}
 			return nil, err
+		} else if ref == nil {
+			ctcids = append(ctcids, blobcache.CID{})
+			continue
 		}
 		ctcids = append(ctcids, ref.CID)
 	}
@@ -446,17 +459,9 @@ func (vtx *Tx) init(ctx context.Context) error {
 	if err := vtx.inner.Load(ctx, &rootCtext); err != nil {
 		return err
 	}
-	var s schema.WO = volumes.NewUnsaltedStore(vtx.inner)
 	var ttx *tries.Tx
 	if len(rootCtext) == 0 {
-		var err error
-		if !vtx.txp.Modify {
-			s = schema.NewMem(vtx.inner.Hash, vtx.inner.MaxSize())
-		}
-		ttx, err = vtx.vol.tmach.NewTxOnEmpty(ctx, s)
-		if err != nil {
-			return err
-		}
+		ttx = vtx.vol.tmach.NewTxOnEmpty()
 	} else {
 		rootPtext, err := vtx.vol.aeadOpen(nil, rootCtext)
 		if err != nil {
@@ -470,10 +475,7 @@ func (vtx *Tx) init(ctx context.Context) error {
 	}
 
 	if vtx.txp.GC {
-		newTx, err := vtx.vol.tmach.NewTxOnEmpty(ctx, s)
-		if err != nil {
-			return err
-		}
+		newTx := vtx.vol.tmach.NewTxOnEmpty()
 		vtx.newTx = newTx
 	}
 	vtx.ttx = ttx
@@ -518,12 +520,11 @@ func saveCell(ctx context.Context, tx *tries.Tx, cm *bccrypto.Machine, s schema.
 
 func loadCell(ctx context.Context, tx *tries.Tx, cm *bccrypto.Machine, s schema.RO, dst *[]byte) error {
 	var refData []byte
-	if err := tx.Get(ctx, s, []byte{}, &refData); err != nil {
-		if tries.IsErrNotFound(err) {
-			*dst = (*dst)[:0]
-			return nil
-		}
+	if found, err := tx.Get(ctx, s, []byte{}, &refData); err != nil {
 		return err
+	} else if !found {
+		*dst = (*dst)[:0]
+		return nil
 	}
 	var ref bccrypto.Ref
 	if err := ref.Unmarshal(refData); err != nil {
@@ -535,16 +536,18 @@ func loadCell(ctx context.Context, tx *tries.Tx, cm *bccrypto.Machine, s schema.
 	})
 }
 
-func getRef(ctx context.Context, ttx *tries.Tx, s schema.RO, ptcid blobcache.CID) (bccrypto.Ref, error) {
+func getRef(ctx context.Context, ttx *tries.Tx, s schema.RO, ptcid blobcache.CID) (*bccrypto.Ref, error) {
 	var crefData []byte
-	if err := ttx.Get(ctx, s, ptcid[:], &crefData); err != nil {
-		return bccrypto.Ref{}, err
+	if found, err := ttx.Get(ctx, s, ptcid[:], &crefData); err != nil {
+		return nil, err
+	} else if !found {
+		return nil, nil
 	}
 	var ref bccrypto.Ref
 	if err := ref.Unmarshal(crefData); err != nil {
-		return ref, err
+		return nil, err
 	}
-	return ref, nil
+	return &ref, nil
 }
 
 func putRef(ctx context.Context, ttx *tries.Tx, s schema.RW, ptcid blobcache.CID, ref bccrypto.Ref) error {

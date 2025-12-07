@@ -19,19 +19,17 @@ type Tx struct {
 	edits map[string]Op
 }
 
-func (m *Machine) NewTx(prevRoot Root) *Tx {
+// NewTx creates a new transaction based on an existing Trie
+func (mach *Machine) NewTx(prevRoot Root) *Tx {
 	return &Tx{
 		prevRoot: prevRoot,
-		mach:     m,
+		mach:     mach,
 	}
 }
 
-func (m *Machine) NewTxOnEmpty(ctx context.Context, s schema.WO) (*Tx, error) {
-	root, err := m.NewEmpty(ctx, s)
-	if err != nil {
-		return nil, err
-	}
-	return m.NewTx(*root), nil
+// NewTxOnEmpty creates a new Tx based on an empty Trie.
+func (mach *Machine) NewTxOnEmpty() *Tx {
+	return mach.NewTx(Root{})
 }
 
 // Put creates or replace the entry for key, such that it points to value.
@@ -47,13 +45,16 @@ func (tx *Tx) Put(ctx context.Context, s schema.RW, key []byte, value []byte) er
 }
 
 // Get retrieves a key from the store, and writes the value to dst.
-func (tx *Tx) Get(ctx context.Context, s schema.RO, key []byte, dst *[]byte) error {
-	if val, ok := tx.edits[string(key)]; ok {
-		if val.IsDelete() {
-			return ErrNotFound{Key: key}
+func (tx *Tx) Get(ctx context.Context, s schema.RO, key []byte, dst *[]byte) (bool, error) {
+	if op, ok := tx.edits[string(key)]; ok {
+		if op.IsDelete() {
+			return false, nil
 		}
-		*dst = append((*dst)[:0], val.Value...)
-		return nil
+		*dst = append((*dst)[:0], op.Value...)
+		return true, nil
+	}
+	if !tx.prevRootIsValid() {
+		return false, nil
 	}
 	return tx.mach.Get(ctx, s, tx.prevRoot, key, dst)
 }
@@ -73,6 +74,13 @@ func (tx *Tx) Queued() int {
 // Flush applies the edits to the previous root, and returns the new root.
 // The transaction can continue, after this.
 func (tx *Tx) Flush(ctx context.Context, s schema.RW) (*Root, error) {
+	if !tx.prevRootIsValid() {
+		root, err := tx.mach.NewEmpty(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		tx.prevRoot = *root
+	}
 	root, err := tx.mach.BatchEdit(ctx, s, tx.prevRoot, maps.Values(tx.edits))
 	if err != nil {
 		return nil, err
@@ -80,4 +88,8 @@ func (tx *Tx) Flush(ctx context.Context, s schema.RW) (*Root, error) {
 	clear(tx.edits)
 	tx.prevRoot = *root
 	return &tx.prevRoot, nil
+}
+
+func (tx *Tx) prevRootIsValid() bool {
+	return !tx.prevRoot.Ref.CID.IsZero()
 }

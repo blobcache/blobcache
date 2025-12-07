@@ -39,9 +39,9 @@ func parseRef(x []byte) (*Ref, error) {
 	return y, nil
 }
 
-func (o *Machine) post(ctx context.Context, s schema.WO, ptext []byte) (*Ref, error) {
+func (mach *Machine) post(ctx context.Context, s schema.WO, ptext []byte) (*Ref, error) {
 	l := len(ptext)
-	ref, err := o.crypto.Post(ctx, s, ptext)
+	ref, err := mach.crypto.Post(ctx, s, ptext)
 	if err != nil {
 		return nil, err
 	}
@@ -52,19 +52,19 @@ func (o *Machine) post(ctx context.Context, s schema.WO, ptext []byte) (*Ref, er
 	}, nil
 }
 
-func (o *Machine) getF(ctx context.Context, s schema.RO, ref Ref, fn func([]byte) error) error {
+func (mach *Machine) getF(ctx context.Context, s schema.RO, ref Ref, fn func([]byte) error) error {
 	key := blake3.Sum256(marshalRef(ref))
-	v, exists := o.cache.Get(key)
+	v, exists := mach.cache.Get(key)
 	if exists {
 		return fn(v.([]byte))
 	}
 	// TODO: populate cache
 	buf := make([]byte, ref.Length)
 	ref2 := bccrypto.Ref{CID: ref.CID, DEK: ref.DEK}
-	n, err := o.crypto.Get(ctx, s, ref2, buf)
+	n, err := mach.crypto.Get(ctx, s, ref2, buf)
 	if err != nil {
 		return err
 	}
-	o.cache.ContainsOrAdd(key, buf[:])
+	mach.cache.ContainsOrAdd(key, buf[:])
 	return fn(buf[:n])
 }

@@ -26,8 +26,8 @@ func NewMachine(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
 	}
 }
 
-func (o *Machine) NewEmpty(ctx context.Context, s schema.WO) (*Root, error) {
-	idx, err := o.PostSlice(ctx, s, nil)
+func (mach *Machine) NewEmpty(ctx context.Context, s schema.WO) (*Root, error) {
+	idx, err := mach.PostSlice(ctx, s, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -35,8 +35,8 @@ func (o *Machine) NewEmpty(ctx context.Context, s schema.WO) (*Root, error) {
 }
 
 // PostSlice returns a new instance containing ents
-func (o *Machine) PostSlice(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
-	idx, err := o.postNode(ctx, s, ents)
+func (mach *Machine) PostSlice(ctx context.Context, s schema.WO, ents []*Entry) (*Root, error) {
+	idx, err := mach.postNode(ctx, s, ents)
 	if err != nil {
 		return nil, err
 	}
@@ -44,43 +44,43 @@ func (o *Machine) PostSlice(ctx context.Context, s schema.WO, ents []*Entry) (*R
 }
 
 // Get retrieves a value at key if it exists, otherwise ErrNotFound is returned
-func (o *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte, dst *[]byte) error {
+func (mach *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte, dst *[]byte) (bool, error) {
 	if !bytes.HasPrefix(key, root.Prefix) {
-		return ErrNotFound{Key: key}
+		return false, nil
 	}
 	key = compressKey(root.Prefix, key)
-	ents, err := o.getNode(ctx, s, Index(root), false)
+	ents, err := mach.getNode(ctx, s, Index(root), false)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if root.IsParent {
 		for _, ent := range ents {
 			if len(ent.Key) == 0 && len(key) == 0 {
 				*dst = append((*dst)[:0], ent.Value...)
-				return nil
+				return true, nil
 			}
 			if bytes.HasPrefix(key, ent.Key) {
 				var idx Index
 				if err := idx.FromEntry(*ent); err != nil {
-					return err
+					return false, err
 				}
-				return o.Get(ctx, s, Root(idx), key, dst)
+				return mach.Get(ctx, s, Root(idx), key, dst)
 			}
 		}
 	} else {
 		for _, ent := range ents {
 			if bytes.Equal(key, ent.Key) {
 				*dst = append((*dst)[:0], ent.Value...)
-				return nil
+				return true, nil
 			}
 		}
 	}
-	return ErrNotFound{Key: key}
+	return false, nil
 }
 
 // Put returns a copy of root where key maps to value, and all other mappings are unchanged.
-func (o *Machine) Put(ctx context.Context, s schema.RW, root Root, key, value []byte) (*Root, error) {
-	tx := o.NewTx(root)
+func (mach *Machine) Put(ctx context.Context, s schema.RW, root Root, key, value []byte) (*Root, error) {
+	tx := mach.NewTx(root)
 	if err := tx.Put(ctx, s, key, value); err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (o *Machine) Put(ctx context.Context, s schema.RW, root Root, key, value []
 }
 
 // Delete removes
-func (o *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []byte) (*Root, error) {
+func (mach *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []byte) (*Root, error) {
 	if !bytes.HasPrefix(key, root.Prefix) {
 		return &root, nil
 	}
@@ -96,7 +96,7 @@ func (o *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []byt
 	if root.IsParent {
 		panic("deleting from parent not implemented")
 	} else {
-		xs, err := o.getNode(ctx, s, Index(root), false)
+		xs, err := mach.getNode(ctx, s, Index(root), false)
 		if err != nil {
 			return nil, err
 		}
@@ -106,7 +106,7 @@ func (o *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []byt
 				ys = append(ys, ent)
 			}
 		}
-		idx, err := o.postLeaf(ctx, s, ys)
+		idx, err := mach.postLeaf(ctx, s, ys)
 		if err != nil {
 			return nil, err
 		}
@@ -116,13 +116,13 @@ func (o *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []byt
 
 // BatchEdit applies a batch of operations to a root, returning a new root.
 // All ops produced by opsSeq will be collected and sorted.
-func (o *Machine) BatchEdit(ctx context.Context, s schema.RW, root Root, opsSeq iter.Seq[Op]) (*Root, error) {
+func (mach *Machine) BatchEdit(ctx context.Context, s schema.RW, root Root, opsSeq iter.Seq[Op]) (*Root, error) {
 	ops := slices.Collect(opsSeq)
 	slices.SortFunc(ops, func(a, b Op) int {
 		return bytes.Compare(a.Key, b.Key)
 	})
 	if root.IsParent {
-		e, children, err := o.getParent(ctx, s, Index(root), true)
+		e, children, err := mach.getParent(ctx, s, Index(root), true)
 		if err != nil {
 			return nil, err
 		}
@@ -133,24 +133,24 @@ func (o *Machine) BatchEdit(ctx context.Context, s schema.RW, root Root, opsSeq 
 		for i := range groups {
 			group := groups[i]
 			child := children[i]
-			child2, err := o.BatchEdit(ctx, s, Root(child), slices.Values(group))
+			child2, err := mach.BatchEdit(ctx, s, Root(child), slices.Values(group))
 			if err != nil {
 				return nil, err
 			}
 			children[i] = Index(*child2)
 		}
-		idx, err := o.postParent(ctx, s, children[:], e)
+		idx, err := mach.postParent(ctx, s, children[:], e)
 		if err != nil {
 			return nil, err
 		}
 		return (*Root)(idx), nil
 	} else {
-		xs, err := o.getNode(ctx, s, Index(root), true)
+		xs, err := mach.getNode(ctx, s, Index(root), true)
 		if err != nil {
 			return nil, err
 		}
 		ys := applyOps(nil, xs, ops)
-		idx, err := o.postNode(ctx, s, ys)
+		idx, err := mach.postNode(ctx, s, ys)
 		if err != nil {
 			return nil, err
 		}

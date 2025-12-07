@@ -832,6 +832,9 @@ func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) e
 	if err != nil {
 		return err
 	}
+	if p := tx.backend.Params(); !p.Modify {
+		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "SAVE"}
+	}
 	// validate against the schema.
 	var prevRoot []byte
 	if err := tx.backend.Load(ctx, &prevRoot); err != nil {
@@ -858,6 +861,9 @@ func (s *Service) Commit(ctx context.Context, txh blobcache.Handle) error {
 	tx, err := s.resolveTx(txh, true, 0) // anyone can commit the transaction if they opened it.
 	if err != nil {
 		return err
+	}
+	if p := tx.backend.Params(); !p.Modify {
+		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "COMMIT"}
 	}
 	if err := tx.backend.Commit(ctx); err != nil {
 		return setErrTxOID(err, txh.OID)
@@ -894,6 +900,10 @@ func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte, o
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_POST)
 	if err != nil {
 		return blobcache.CID{}, err
+	}
+
+	if p := txn.backend.Params(); !p.Modify {
+		return blobcache.CID{}, blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "POST"}
 	}
 	cid, err := txn.backend.Post(ctx, data, opts)
 	if err != nil {
@@ -940,6 +950,9 @@ func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobc
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_DELETE)
 	if err != nil {
 		return err
+	}
+	if p := txn.backend.Params(); !p.Modify {
+		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "DELETE"}
 	}
 	return setErrTxOID(txn.backend.Delete(ctx, cids), txh.OID)
 }
