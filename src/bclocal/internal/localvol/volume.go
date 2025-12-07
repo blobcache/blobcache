@@ -112,6 +112,10 @@ func (v *localTxnMut) Volume() volumes.Volume {
 	return v.vol
 }
 
+func (v *localTxnMut) Params() blobcache.TxParams {
+	return v.txParams
+}
+
 func (v *localTxnMut) MaxSize() int {
 	return int(v.vol.params.MaxSize)
 }
@@ -327,6 +331,10 @@ func (v *localTxnRO) checkClosed() (func(), error) {
 		return nil, blobcache.ErrTxDone{}
 	}
 	return v.mu.RUnlock, nil
+}
+
+func (v *localTxnRO) Params() blobcache.TxParams {
+	return blobcache.TxParams{}
 }
 
 func (v *localTxnRO) Abort(ctx context.Context) error {

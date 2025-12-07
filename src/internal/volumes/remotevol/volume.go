@@ -89,6 +89,10 @@ type Tx struct {
 	root []byte
 }
 
+func (tx *Tx) Params() blobcache.TxParams {
+	return tx.params
+}
+
 func (tx *Tx) Volume() volumes.Volume {
 	return tx.vol
 }

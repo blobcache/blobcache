@@ -23,11 +23,11 @@ type Walker struct {
 // w.ShouldWalk is called before walking a node, if false is returned the node is skipped
 // w.EntryFn is called for every entry in a node
 // w.NodeFn is called for the node after all the entries reachable from it have been walked.
-func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) error {
+func (mach *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) error {
 	if !w.ShouldWalk(root) {
 		return nil
 	}
-	ents, err := o.getNode(ctx, s, Index(root), true)
+	ents, err := mach.getNode(ctx, s, Index(root), true)
 	if err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) er
 					return err
 				}
 				eg.Go(func() error {
-					return o.Walk(ctx, s, Root(idx), w)
+					return mach.Walk(ctx, s, Root(idx), w)
 				})
 			}
 		}
@@ -63,8 +63,8 @@ func (o *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker) er
 
 // Sync ensures that data structure exists in dst, using src to retrieve missing pieces.
 // Sync is only correct if dangling references can be guarenteed to not exist in dst.
-func (o *Machine) Sync(ctx context.Context, dst schema.WO, src schema.RO, root Root, fn func(*Entry) error) error {
-	return o.Walk(ctx, src, root, Walker{
+func (mach *Machine) Sync(ctx context.Context, dst schema.WO, src schema.RO, root Root, fn func(*Entry) error) error {
+	return mach.Walk(ctx, src, root, Walker{
 		ShouldWalk: func(root Root) bool {
 			var exists [1]bool
 			err := dst.Exists(ctx, []blobcache.CID{root.Ref.CID}, exists[:])
@@ -80,8 +80,8 @@ func (o *Machine) Sync(ctx context.Context, dst schema.WO, src schema.RO, root R
 	})
 }
 
-func (o *Machine) Populate(ctx context.Context, s schema.RO, root Root, set cadata.Set, fn func(*Entry) error) error {
-	return o.Walk(ctx, s, root, Walker{
+func (mach *Machine) Populate(ctx context.Context, s schema.RO, root Root, set cadata.Set, fn func(*Entry) error) error {
+	return mach.Walk(ctx, s, root, Walker{
 		ShouldWalk: func(root Root) bool {
 			exists, err := set.Exists(ctx, root.Ref.CID)
 			if err != nil {

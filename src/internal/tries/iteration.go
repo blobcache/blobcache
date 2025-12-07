@@ -3,9 +3,9 @@ package tries
 import (
 	"bytes"
 	"context"
-	"io"
 
 	"blobcache.io/blobcache/src/schema"
+	"go.brendoncarroll.net/exp/streams"
 )
 
 type Iterator struct {
@@ -16,8 +16,8 @@ type Iterator struct {
 	lastKey []byte
 }
 
-func (o *Machine) NewIterator(s schema.RO, root Root, span Span) *Iterator {
-	return &Iterator{op: o, s: s, root: root, span: span}
+func (mach *Machine) NewIterator(s schema.RO, root Root, span Span) *Iterator {
+	return &Iterator{op: mach, s: s, root: root, span: span}
 }
 
 func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
@@ -29,10 +29,9 @@ func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
 	}
 	ent, err := it.op.MinEntry(ctx, it.s, it.root, gteq)
 	if err != nil {
-		if IsErrNotFound(err) {
-			err = io.EOF
-		}
 		return err
+	} else if ent == nil {
+		return streams.EOS()
 	}
 
 	it.lastKey = append(it.lastKey[:0], ent.Key...)
@@ -42,8 +41,8 @@ func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
 }
 
 // MinEntry returns the first entry >= gteq
-func (o *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []byte) (*Entry, error) {
-	ents, err := o.getNode(ctx, s, Index(root), false)
+func (mach *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []byte) (*Entry, error) {
+	ents, err := mach.getNode(ctx, s, Index(root), false)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +60,7 @@ func (o *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []b
 				if err := idx.FromEntry(*ent); err != nil {
 					return nil, err
 				}
-				minEnt, err := o.MinEntry(ctx, s, Root(idx), gteq)
+				minEnt, err := mach.MinEntry(ctx, s, Root(idx), gteq)
 				if err != nil {
 					return nil, err
 				}
@@ -75,5 +74,5 @@ func (o *Machine) MinEntry(ctx context.Context, s schema.RO, root Root, gteq []b
 			}
 		}
 	}
-	return nil, ErrNotFound{Key: gteq}
+	return nil, nil
 }

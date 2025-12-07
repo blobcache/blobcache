@@ -33,8 +33,9 @@ func TestPutGet(t *testing.T) {
 		expected := []byte(fmt.Sprintf("test-value-%d", i))
 		key := cadata.DefaultHash(expected)
 		var actual []byte
-		err := op.Get(ctx, s, *x, key[:], &actual)
+		found, err := op.Get(ctx, s, *x, key[:], &actual)
 		assert.NoError(t, err, "while fetching key %q", key[:])
+		assert.True(t, found)
 		assert.Equal(t, expected, actual)
 	}
 }

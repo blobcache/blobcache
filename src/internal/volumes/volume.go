@@ -32,6 +32,7 @@ type Volume interface {
 
 // Tx is a consistent view of a volume, during a transaction.
 type Tx interface {
+	Params() blobcache.TxParams
 	Commit(ctx context.Context) error
 	Abort(ctx context.Context) error
 
