@@ -50,7 +50,12 @@ func (mach *Machine) postNode(ctx context.Context, s schema.RW, node triescnp.No
 	if !allowSplit {
 		return nil, fmt.Errorf("node cannot be split further")
 	}
-	data, err := capnp.Canonicalize(capnp.Struct(node))
+	// TODO: use the canonical serialization here.
+	msg := node.Message()
+	if msg == nil {
+		return nil, fmt.Errorf("node has no message")
+	}
+	data, err := msg.Marshal()
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +80,6 @@ func (mach *Machine) postNode(ctx context.Context, s schema.RW, node triescnp.No
 	}
 
 	// base case: encrypt and post to store, create IndexEntry
-	var prefix []byte
 	var count uint64
 	ents, err := node.Entries()
 	if err != nil {
@@ -83,18 +87,25 @@ func (mach *Machine) postNode(ctx context.Context, s schema.RW, node triescnp.No
 	}
 	for i := 0; i < ents.Len(); i++ {
 		ent := ents.At(i)
-		key, err := ent.Key()
-		if err != nil {
-			return nil, err
+		switch ent.Which() {
+		case triescnp.Entry_Which_value:
+			count++
+		case triescnp.Entry_Which_index:
+			idx, err := ent.Index()
+			if err != nil {
+				return nil, err
+			}
+			count += idx.Count()
+		default:
+			return nil, fmt.Errorf("unsupported entry type %v", ent.Which())
 		}
-		prefix = longestCommonPrefix(prefix, key)
 	}
 	ref, err := mach.crypto.Post(ctx, s, data)
 	if err != nil {
 		return nil, err
 	}
 	return &Index{
-		Prefix: prefix,
+		Prefix: nil,
 		Ref: Ref{
 			CID:    ref.CID,
 			DEK:    ref.DEK,

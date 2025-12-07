@@ -25,7 +25,7 @@ func (ent *Entry) fromCNP(x triescnp.Entry) error {
 	if err != nil {
 		return err
 	}
-	key, err := x.Value()
+	key, err := x.Key()
 	if err != nil {
 		return err
 	}
@@ -35,22 +35,12 @@ func (ent *Entry) fromCNP(x triescnp.Entry) error {
 }
 
 func (ent *Entry) toCNP(x triescnp.Entry) error {
-	if err := x.SetValue(ent.Key); err != nil {
+	if err := x.SetValue(ent.Value); err != nil {
 		return err
 	}
 	if err := x.SetKey(ent.Key); err != nil {
 		return err
 	}
-	val, err := x.Value()
-	if err != nil {
-		return err
-	}
-	key, err := x.Value()
-	if err != nil {
-		return err
-	}
-	ent.Value = val
-	ent.Key = key
 	return nil
 }
 
@@ -98,13 +88,15 @@ func (idx *Index) toCNP(ent *triescnp.Entry) error {
 	if err := ent.SetKey(idx.Prefix); err != nil {
 		return err
 	}
-	idx2, err := triescnp.NewIndex(ent.Segment())
+	idx2, err := ent.NewIndex()
 	if err != nil {
 		return err
 	}
-	idx2.SetRef(marshalRef(idx.Ref))
+	if err := idx2.SetRef(marshalRef(idx.Ref)); err != nil {
+		return err
+	}
 	idx2.SetCount(idx.Count)
-	return ent.SetIndex(idx2)
+	return nil
 }
 
 // Marshal serializes an Index using Cap'n Proto
@@ -193,15 +185,38 @@ func mkNode(ents []Entry, ients []Index) (triescnp.Node, error) {
 	if err != nil {
 		return triescnp.Node{}, err
 	}
-	var i, j int
-	for i < len(ents) && j < len(ients) {
-		if bytes.Compare(ents[i].Key, ents[i].Key) < 0 {
+
+	i, j := 0, 0
+	for k := 0; k < el.Len(); k++ {
+		if i < len(ents) && (j >= len(ients) || bytes.Compare(ents[i].Key, ients[j].Prefix) < 0) {
+			ent := ents[i]
+			slot := el.At(k)
+			if err := slot.SetKey(ent.Key); err != nil {
+				return triescnp.Node{}, err
+			}
+			if err := slot.SetValue(ent.Value); err != nil {
+				return triescnp.Node{}, err
+			}
+			i++
+			continue
+		}
+
+		idx := ients[j]
+		slot := el.At(k)
+		if err := slot.SetKey(idx.Prefix); err != nil {
 			return triescnp.Node{}, err
 		}
-		if err := el.At(i).SetKey(ents[i].Key); err != nil {
+		idxCNP, err := slot.NewIndex()
+		if err != nil {
 			return triescnp.Node{}, err
 		}
+		if err := idxCNP.SetRef(marshalRef(idx.Ref)); err != nil {
+			return triescnp.Node{}, err
+		}
+		idxCNP.SetCount(idx.Count)
+		j++
 	}
+
 	return node, nil
 }
 

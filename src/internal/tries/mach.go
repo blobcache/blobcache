@@ -69,7 +69,7 @@ func (o *Machine) Get(ctx context.Context, s schema.RO, root Root, key []byte, d
 		if err != nil {
 			return false, err
 		}
-		if !bytes.HasPrefix(entKey, key) {
+		if !bytes.HasPrefix(key, entKey) {
 			continue
 		}
 		switch ent.Which() {
