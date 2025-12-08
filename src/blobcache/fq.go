@@ -2,7 +2,10 @@ package blobcache
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
+
+	"go.inet256.org/inet256/src/inet256"
 )
 
 // FQOID is a fully qualified object identifier.
@@ -13,35 +16,89 @@ type FQOID struct {
 	OID  OID
 }
 
-// URL is an Endpoint plus an OID.
+// URL is the location of an Object in the Blobcache Network
 type URL struct {
-	Endpoint Endpoint
-	OID      OID
+	Node   PeerID
+	IPPort *netip.AddrPort
+	Base   OID
+	Path   []string
+}
+
+func ParseURL(x string) (*URL, error) {
+	var u URL
+	if err := u.UnmarshalText([]byte(x)); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (u URL) String() string {
+	data, _ := u.MarshalText()
+	return string(data)
 }
 
 func (u URL) MarshalText() ([]byte, error) {
-	return fmt.Appendf(nil, "bc://%v@%v/%v", u.Endpoint.Peer, u.Endpoint.IPPort, u.OID), nil
+	var out []byte
+	out = fmt.Appendf(out, "bc://%v", u.Node)
+	if u.IPPort != nil {
+		out = fmt.Appendf(out, ":%v", u.IPPort)
+	}
+	out = fmt.Appendf(out, ":%v", u.Base)
+	return out, nil
 }
 
-func (u *URL) UnmarshalText(x []byte) error {
-	const prefix = "bc://"
-	if !strings.HasPrefix(string(x), prefix) {
+func (u *URL) UnmarshalText(xData []byte) error {
+	x := string(xData)
+	for _, prefix := range []string{"bc://", "bc::", "blobcache://"} {
+		var ok bool
+		if x, ok = strings.CutPrefix(x, prefix); ok {
+			break
+		}
+	}
+
+	parts := strings.Split(string(x), ":")
+	switch len(parts) {
+	case 2:
+		peerID, err := inet256.ParseAddrBase64([]byte(parts[0]))
+		if err != nil {
+			return err
+		}
+		oid, err := ParseOID(parts[1])
+		if err != nil {
+			return err
+		}
+		u.Node = peerID
+		u.IPPort = nil
+		u.Base = oid
+	case 3:
+		peerID, err := inet256.ParseAddrBase64([]byte(parts[0]))
+		if err != nil {
+			return err
+		}
+		ap, err := netip.ParseAddrPort(parts[1])
+		if err != nil {
+			return err
+		}
+		oid, err := ParseOID(parts[3])
+		if err != nil {
+			return err
+		}
+		u.Node = peerID
+		u.IPPort = &ap
+		u.Base = oid
+	default:
 		return fmt.Errorf("invalid FQOID: %s", x)
 	}
-	x = x[len(prefix):]
-	parts := strings.Split(string(x), "/")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid FQOID: %s", x)
-	}
-	ep, err := ParseEndpoint(parts[0])
-	if err != nil {
-		return err
-	}
-	oid, err := ParseOID(parts[1])
-	if err != nil {
-		return err
-	}
-	u.Endpoint = ep
-	u.OID = oid
+
 	return nil
+}
+
+func (u *URL) Endpoint() *Endpoint {
+	if u.IPPort == nil {
+		return nil
+	}
+	return &Endpoint{
+		Peer:   u.Node,
+		IPPort: *u.IPPort,
+	}
 }
