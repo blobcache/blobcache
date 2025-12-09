@@ -7,8 +7,8 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema/basicns"
-	"blobcache.io/blobcache/src/schema/schematests"
+	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/schema/jsonns"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,16 +27,17 @@ func TestDefaultNoAccess(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	nsc1 := basicns.Client{Service: svc1}
+	nsc1 := schema.NSClient{Service: svc1, Schema: jsonns.Schema{}}
 	require.NoError(t, err)
-	require.NoError(t, nsc1.PutEntry(ctx, blobcache.Handle{}, "name1", *volh))
+	require.NoError(t, nsc1.Put(ctx, blobcache.Handle{}, "name1", *volh, blobcache.Action_ALL))
 
-	nsc2 := basicns.Client{Service: svc2}
-	entry, err := nsc2.GetEntry(ctx, blobcache.Handle{}, "name1")
+	nsc2 := schema.NSClient{Service: svc2, Schema: jsonns.Schema{}}
+	var entry schema.NSEntry
+	found, err := nsc2.Get(ctx, blobcache.Handle{}, "name1", &entry)
 	require.NoError(t, err)
-	require.Nil(t, entry)
+	require.False(t, found)
 
-	err = nsc2.PutEntry(ctx, *volh, "any name", blobcache.Handle{})
+	err = nsc2.Put(ctx, *volh, "any name", blobcache.Handle{}, blobcache.Action_ALL)
 	require.Error(t, err)
 
 	names, err := nsc2.ListNames(ctx, *volh)
@@ -75,16 +76,5 @@ func TestManyBlobs(t *testing.T) {
 	t.Parallel()
 	blobcachetests.TestManyBlobs(t, false, func(t testing.TB) blobcache.Service {
 		return bclocal.NewTestService(t)
-	})
-}
-
-func TestBasicNS(t *testing.T) {
-	t.Parallel()
-	schematests.BasicNS(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
-		ctx := testutil.Context(t)
-		svc := bclocal.NewTestService(t)
-		nsh, err := svc.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
-		require.NoError(t, err)
-		return svc, *nsh
 	})
 }

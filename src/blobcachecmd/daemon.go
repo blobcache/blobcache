@@ -11,6 +11,7 @@ import (
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/internal/blobcached"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"go.brendoncarroll.net/star"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
@@ -52,8 +53,8 @@ var daemonEphemeralCmd = star.Command{
 		svc, err := bclocal.New(bclocal.Env{
 			Background: ctx,
 			StateDir:   stateDir,
-			Schemas:    bclocal.DefaultSchemas(),
-			Root:       bclocal.DefaultRoot(),
+			MkSchema:   schemareg.Factory,
+			Root:       schemareg.DefaultRoot(),
 			Policy:     &bclocal.AllOrNothingPolicy{},
 		}, bclocal.Config{})
 		if err != nil {

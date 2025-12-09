@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 )
 
@@ -16,12 +17,15 @@ type Factory = func(blobcache.SchemaSpec) (Schema, error)
 // Constructor is a function that constructs a Schema from its parameters.
 type Constructor = func(params json.RawMessage, mkSchema Factory) (Schema, error)
 
+// Value is the contents of a volume.
+type Value struct {
+	Cell  []byte
+	Store bcsdk.RO
+}
+
 // Change is a change to a Volume.
 type Change struct {
-	PrevCell  []byte
-	NextCell  []byte
-	PrevStore RO
-	NextStore RO
+	Prev, Next Value
 }
 
 // Schema is the most general Schema type.
@@ -43,7 +47,7 @@ type Link struct {
 type Opener interface {
 	Schema
 
-	OpenAs(ctx context.Context, s RO, root []byte, peer blobcache.PeerID) (blobcache.ActionSet, error)
+	OpenAs(ctx context.Context, s bcsdk.RO, root []byte, peer blobcache.PeerID) (blobcache.ActionSet, error)
 }
 
 // None is a Schema which does not impose any constraints on the contents of a volume.
@@ -57,37 +61,16 @@ func (None) ValidateChange(ctx context.Context, change Change) error {
 	return nil
 }
 
-// RO is read-only Store methods
-type RO interface {
-	Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error)
-	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
-	Hash(data []byte) blobcache.CID
-	MaxSize() int
-}
-
-type WO interface {
-	Post(ctx context.Context, data []byte) (blobcache.CID, error)
-	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
-	Hash(data []byte) blobcache.CID
-	MaxSize() int
-}
-
-// RW is Read-Write Store methods
-type RW interface {
-	RO
-	WO
-}
-
-// RWD is Read-Write-Delete Store methods
-type RWD interface {
-	RW
-	Delete(ctx context.Context, cids []blobcache.CID) error
-}
-
-func ExistsUnit(ctx context.Context, s RO, cid blobcache.CID) (bool, error) {
+func ExistsUnit(ctx context.Context, s bcsdk.RO, cid blobcache.CID) (bool, error) {
 	var dst [1]bool
 	if err := s.Exists(ctx, []blobcache.CID{cid}, dst[:]); err != nil {
 		return false, err
 	}
 	return dst[0], nil
 }
+
+type (
+	RO = bcsdk.RO
+	RW = bcsdk.RW
+	WO = bcsdk.WO
+)

@@ -57,8 +57,8 @@ var rootCmd = star.NewDir(
 		"tx":    txCmd,
 
 		// applications
+		"ns":         nsCmd,
 		"glfs":       glfsCmd,
-		"basicns":    basicnsCmd,
 		"fuse-mount": fuseMountCmd,
 	},
 )

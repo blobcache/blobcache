@@ -1,6 +1,6 @@
-// Package basicns provides a simple namespace implementation.
+// Package jsonns provides a simple namespace implementation.
 // All entries are stored in the root of the volume.
-package basicns
+package jsonns
 
 import (
 	"bytes"
@@ -11,32 +11,26 @@ import (
 	"slices"
 	"strings"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/slices2"
 	"go.brendoncarroll.net/state/cadata"
 )
 
-const SchemaName blobcache.SchemaName = "blobcache/basicns"
+const SchemaName blobcache.SchemaName = "blobcache/jsonns"
 
 func init() {
-	bclocal.AddDefaultSchema(SchemaName, Constructor)
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
 }
 
-type Entry struct {
-	Name   string
-	Target blobcache.OID
-	Rights blobcache.ActionSet
-}
+type Entry = schema.NSEntry
 
-func (ent *Entry) Link() schema.Link {
-	return schema.Link{
-		Target: ent.Target,
-		Rights: ent.Rights,
-	}
-}
+var (
+	_ schema.Schema    = &Schema{}
+	_ schema.Namespace = &Schema{}
+)
 
 type Schema struct{}
 
@@ -45,14 +39,14 @@ func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
 }
 
 func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) error {
-	_, err := sch.ListEntries(ctx, change.NextStore, change.NextCell)
+	_, err := sch.NSList(ctx, change.Next.Store, change.Next.Cell)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (sch Schema) ListEntries(ctx context.Context, s schema.RO, root []byte) ([]Entry, error) {
+func (sch Schema) NSList(ctx context.Context, s schema.RO, root []byte) ([]Entry, error) {
 	if len(root) == 0 {
 		return nil, nil
 	}
@@ -72,6 +66,50 @@ func (sch Schema) ListEntries(ctx context.Context, s schema.RO, root []byte) ([]
 	return ents, nil
 }
 
+func (sch Schema) NSGet(ctx context.Context, s schema.RO, root []byte, name string, dst *Entry) (bool, error) {
+	ents, err := sch.NSList(ctx, s, root)
+	if err != nil {
+		return false, err
+	}
+	for _, ent := range ents {
+		if ent.Name == name {
+			*dst = ent
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (sch Schema) NSPut(ctx context.Context, s schema.RW, root []byte, ent Entry) ([]byte, error) {
+	ents, err := sch.NSList(ctx, s, root)
+	if err != nil {
+		return nil, err
+	}
+	ents = append(ents, ent)
+	return saveEnts(ctx, s, ents)
+}
+
+func (sch Schema) NSDelete(ctx context.Context, s schema.RW, root []byte, name string) ([]byte, error) {
+	ents, err := sch.NSList(ctx, s, root)
+	if err != nil {
+		return nil, err
+	}
+	ents = slices.DeleteFunc(ents, func(ent Entry) bool { return ent.Name == name })
+	return saveEnts(ctx, s, ents)
+}
+
+func saveEnts(ctx context.Context, s schema.WO, ents []Entry) ([]byte, error) {
+	nsData, err := encodeNamespace(ents)
+	if err != nil {
+		return nil, err
+	}
+	cid, err := s.Post(ctx, nsData)
+	if err != nil {
+		return nil, err
+	}
+	return cid[:], nil
+}
+
 func (sch Schema) OpenAs(ctx context.Context, s schema.RO, root []byte, peer blobcache.PeerID) (blobcache.ActionSet, error) {
 	// Don't modify the volume's permissions for any particular user.
 	return blobcache.Action_ALL, nil
@@ -89,7 +127,7 @@ func (ns *Tx) loadEntries(ctx context.Context) ([]Entry, error) {
 	if err := ns.Tx.Load(ctx, &ns.Root); err != nil {
 		return nil, err
 	}
-	ents, err := ns.Schema.ListEntries(ctx, ns.Tx, ns.Root)
+	ents, err := ns.Schema.NSList(ctx, ns.Tx, ns.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -97,19 +135,15 @@ func (ns *Tx) loadEntries(ctx context.Context) ([]Entry, error) {
 }
 
 func (ns *Tx) saveEntries(ctx context.Context, ents []Entry) error {
-	nsData, err := encodeNamespace(ents)
+	root, err := saveEnts(ctx, ns.Tx, ents)
 	if err != nil {
 		return err
 	}
-	cid, err := ns.Tx.Post(ctx, nsData)
-	if err != nil {
-		return err
-	}
-	ns.Root = cid[:]
+	ns.Root = root[:]
 	return nil
 }
 
-func (ns *Tx) GetEntry(ctx context.Context, name string) (*Entry, error) {
+func (ns *Tx) NSGet(ctx context.Context, name string) (*Entry, error) {
 	ents, err := ns.loadEntries(ctx)
 	if err != nil {
 		return nil, err
@@ -123,7 +157,7 @@ func (ns *Tx) GetEntry(ctx context.Context, name string) (*Entry, error) {
 	return &ents[idx], nil
 }
 
-func (ns *Tx) PutEntry(ctx context.Context, name string, target blobcache.OID, rights blobcache.ActionSet) error {
+func (ns *Tx) NSPut(ctx context.Context, name string, target blobcache.OID, rights blobcache.ActionSet) error {
 	ent := Entry{Name: name, Target: target, Rights: rights}
 	ents, err := ns.loadEntries(ctx)
 	if err != nil {
@@ -140,7 +174,7 @@ func (ns *Tx) PutEntry(ctx context.Context, name string, target blobcache.OID, r
 	return ns.saveEntries(ctx, ents)
 }
 
-func (ns *Tx) DeleteEntry(ctx context.Context, name string) error {
+func (ns *Tx) NSDelete(ctx context.Context, name string) error {
 	ents, err := ns.loadEntries(ctx)
 	if err != nil {
 		return err
@@ -196,15 +230,28 @@ func (ns *Tx) VisitAll(ctx context.Context) error {
 	return nil
 }
 
+// GC performs garbage collection on the namespace.
+func GC(ctx context.Context, svc blobcache.Service, volh blobcache.Handle) error {
+	tx, err := bcsdk.BeginTx(ctx, svc, volh, blobcache.TxParams{GC: true, Modify: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	nstx := Tx{Tx: tx}
+
+	if err := nstx.VisitAll(ctx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func encodeNamespace(ents []Entry) ([]byte, error) {
 	slices.SortFunc(ents, func(a, b Entry) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	for i := 0; i < len(ents)-1; i++ {
-		if ents[i].Name == ents[i+1].Name {
-			return nil, fmt.Errorf("duplicate name: %s", ents[i].Name)
-		}
-	}
+	ents = slices.CompactFunc(ents, func(a, b Entry) bool {
+		return a.Name == b.Name
+	})
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 	for _, ent := range ents {

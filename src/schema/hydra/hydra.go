@@ -2,13 +2,14 @@
 package hydra
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 )
 
@@ -52,6 +53,11 @@ func ParseRoot(x []byte) (*Root, error) {
 	if err := r.Unmarshal(x); err != nil {
 		return nil, err
 	}
+	if !slices.IsSortedFunc(r, func(a, b blobcache.CID) int {
+		return bytes.Compare(a[:], b[:])
+	}) {
+		return nil, fmt.Errorf("heads are not sorted")
+	}
 	return &r, nil
 }
 
@@ -86,13 +92,13 @@ func Constructor(paramsData json.RawMessage, mkSchema schema.Factory) (schema.Sc
 
 func (sch *Schema) ValidateChange(ctx context.Context, change schema.Change) error {
 	var root Root
-	if err := root.Unmarshal(change.NextCell); err != nil {
+	if err := root.Unmarshal(change.Next.Cell); err != nil {
 		return err
 	}
 	var prevCID blobcache.CID
 	for i, cid := range root {
 		var exists [1]bool
-		if err := change.NextStore.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
+		if err := change.Next.Store.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
 			return err
 		}
 		if !exists[0] {
@@ -122,5 +128,5 @@ func (sch *Schema) Merge(ctx context.Context, stores []schema.RO, srcs [][]byte,
 const SchemaName = "hydra"
 
 func init() {
-	bclocal.AddDefaultSchema(SchemaName, Constructor)
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
 }

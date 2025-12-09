@@ -6,36 +6,57 @@ import (
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/glfs"
 	"go.brendoncarroll.net/state/cadata"
 )
 
-var _ schema.Schema = &Schema{}
+const SchemaName blobcache.SchemaName = "glfs"
+
+func init() {
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
+}
+
+var (
+	_ schema.Schema = &Schema{}
+
+	_ schema.Constructor = Constructor
+)
+
+type Spec struct{}
+
+func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema, error) {
+	var spec Spec
+	if err := json.Unmarshal(params, &spec); err != nil {
+		return nil, err
+	}
+	return &Schema{Mach: glfs.NewMachine()}, nil
+}
 
 type Schema struct {
 	Mach *glfs.Machine
 }
 
 func (sch *Schema) ValidateChange(ctx context.Context, change schema.Change) error {
-	if len(change.PrevCell) == 0 {
-		nextRef, err := ParseRef(change.NextCell)
+	if len(change.Prev.Cell) == 0 {
+		nextRef, err := ParseRef(change.Next.Cell)
 		if err != nil {
 			return err
 		}
-		return sch.Mach.WalkRefs(ctx, change.NextStore, *nextRef, func(ref glfs.Ref) error {
+		return sch.Mach.WalkRefs(ctx, change.Next.Store, *nextRef, func(ref glfs.Ref) error {
 			return nil
 		})
 	}
-	prevRef, err := ParseRef(change.PrevCell)
+	prevRef, err := ParseRef(change.Prev.Cell)
 	if err != nil {
 		return err
 	}
-	nextRef, err := ParseRef(change.NextCell)
+	nextRef, err := ParseRef(change.Next.Cell)
 	if err != nil {
 		return err
 	}
-	return DiffRefs(ctx, change.NextStore, *prevRef, *nextRef, func(left, right *glfs.Ref) error { return nil })
+	return DiffRefs(ctx, change.Next.Store, *prevRef, *nextRef, func(left, right *glfs.Ref) error { return nil })
 }
 
 func ParseRef(root []byte) (*glfs.Ref, error) {

@@ -6,6 +6,7 @@ import (
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/internal/testutil"
 )
 
@@ -23,7 +24,7 @@ func TestTx(t *testing.T) {
 
 func setup(t testing.TB) (blobcache.Handle, blobcache.Service) {
 	env := bclocal.NewTestEnv(t)
-	env.Schemas[SchemaName] = Constructor
+	env.MkSchema = schemareg.Factory
 	svc := bclocal.NewTestServiceFromEnv(t, env)
 	spec := blobcache.DefaultLocalSpec()
 	spec.Local.Schema = blobcache.SchemaSpec{Name: SchemaName}

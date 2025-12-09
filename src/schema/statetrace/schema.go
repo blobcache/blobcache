@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 )
 
 const SchemaName = "blobcache/statetrace"
 
 func init() {
-	bclocal.AddDefaultSchema(SchemaName, Constructor)
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
 }
 
 var _ schema.Schema = &Schema[opaque]{}
@@ -47,10 +47,14 @@ func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema
 			ParseState: parseOpaque,
 			Verify: func(ctx context.Context, s schema.RO, prev, next opaque) error {
 				return inner.ValidateChange(ctx, schema.Change{
-					PrevCell:  prev,
-					NextCell:  next,
-					PrevStore: s,
-					NextStore: s,
+					Prev: schema.Value{
+						Cell:  prev,
+						Store: s,
+					},
+					Next: schema.Value{
+						Cell:  next,
+						Store: s,
+					},
 				})
 			},
 		},
@@ -58,18 +62,18 @@ func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema
 }
 
 func (sch *Schema[T]) ValidateChange(ctx context.Context, change schema.Change) error {
-	next, err := sch.Mach.Parse(change.NextCell)
+	next, err := sch.Mach.Parse(change.Next.Cell)
 	if err != nil {
 		return err
 	}
-	if len(change.PrevCell) > 0 {
-		prev, err := sch.Mach.Parse(change.PrevCell)
+	if len(change.Prev.Cell) > 0 {
+		prev, err := sch.Mach.Parse(change.Prev.Cell)
 		if err != nil {
 			return err
 		}
-		return sch.Mach.Validate(ctx, change.NextStore, prev, next)
+		return sch.Mach.Validate(ctx, change.Next.Store, prev, next)
 	}
-	return sch.ValidateState(ctx, change.NextStore, next)
+	return sch.ValidateState(ctx, change.Next.Store, next)
 }
 
 func (sch *Schema[T]) ValidateState(ctx context.Context, s schema.RO, root Root[T]) error {

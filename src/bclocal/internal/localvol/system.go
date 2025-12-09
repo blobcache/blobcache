@@ -58,11 +58,11 @@ type System struct {
 }
 
 type Env struct {
-	DB        *pebble.DB
-	BlobDir   *os.Root
-	HSys      HandleSystem
-	TxSys     *pdb.TxSys
-	GetSchema func(blobcache.SchemaSpec) (schema.Schema, error)
+	DB       *pebble.DB
+	BlobDir  *os.Root
+	HSys     HandleSystem
+	TxSys    *pdb.TxSys
+	MkSchema func(blobcache.SchemaSpec) (schema.Schema, error)
 }
 
 func New(cfg Config, env Env) System {
@@ -71,7 +71,7 @@ func New(cfg Config, env Env) System {
 		db:        env.DB,
 		hsys:      env.HSys,
 		blobs:     blobman.New(env.BlobDir),
-		getSchema: env.GetSchema,
+		getSchema: env.MkSchema,
 
 		txSys: env.TxSys,
 	}

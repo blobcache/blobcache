@@ -15,6 +15,7 @@ import (
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/ed25519"
@@ -55,8 +56,8 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 		StateDir:   d.StateDir,
 		PrivateKey: privateKey,
 		Policy:     pol,
-		Schemas:    bclocal.DefaultSchemas(),
-		Root:       bclocal.DefaultRoot(),
+		MkSchema:   schemareg.Factory,
+		Root:       schemareg.DefaultRoot(),
 	}, bclocal.Config{})
 	if err != nil {
 		return err

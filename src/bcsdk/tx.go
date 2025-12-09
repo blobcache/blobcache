@@ -223,6 +223,82 @@ func (tx *TxSalt) MaxSize() int {
 	return tx.maxSize
 }
 
+func View(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, fn func(s RO, root []byte) error) error {
+	tx, err := BeginTx(ctx, svc, volh, blobcache.TxParams{
+		Modify: false,
+	})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	var root []byte
+	if err := tx.Load(ctx, &root); err != nil {
+		return err
+	}
+	return fn(tx, root)
+}
+
+func View1[T any](ctx context.Context, svc blobcache.Service, volh blobcache.Handle, fn func(s RO, root []byte) (T, error)) (T, error) {
+	var zero T
+	tx, err := BeginTx(ctx, svc, volh, blobcache.TxParams{
+		Modify: false,
+	})
+	if err != nil {
+		return zero, err
+	}
+	defer tx.Abort(ctx)
+	var root []byte
+	if err := tx.Load(ctx, &root); err != nil {
+		return zero, err
+	}
+	return fn(tx, root)
+}
+
+// Modify performs a modifying transaction on the volume.
+func Modify(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, fn func(s RW, root []byte) ([]byte, error)) error {
+	tx, err := BeginTx(ctx, svc, volh, blobcache.TxParams{
+		Modify: true,
+	})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	var prev []byte
+	if err := tx.Load(ctx, &prev); err != nil {
+		return err
+	}
+	next, err := fn(tx, prev)
+	if err != nil {
+		return err
+	}
+	if err := tx.Save(ctx, next); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func ModifyTx(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, fn func(tx *Tx, s RW, root []byte) ([]byte, error)) error {
+	tx, err := BeginTx(ctx, svc, volh, blobcache.TxParams{
+		Modify: true,
+	})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	var prev []byte
+	if err := tx.Load(ctx, &prev); err != nil {
+		return err
+	}
+	next, err := fn(tx, tx, prev)
+	if err != nil {
+		return err
+	}
+	if err := tx.Save(ctx, next); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // ExistsSingle is a convenience function for checking if a single CID exists using the slice based API.
 func ExistsSingle(ctx context.Context, s interface {
 	Exists(ctx context.Context, txh Handle, cids []CID, dst []bool) error

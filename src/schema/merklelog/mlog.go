@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/schema"
 )
 
 type CID = blobcache.CID
@@ -59,7 +59,7 @@ func (s State) Len() (ret Pos) {
 }
 
 // Append appends a new CID to the state, it updates the state in place.
-func (s *State) Append(ctx context.Context, rws schema.RW, x blobcache.CID) error {
+func (s *State) Append(ctx context.Context, rws bcsdk.RW, x blobcache.CID) error {
 	for i := 0; ; i++ {
 		if len(s.Levels) <= i {
 			s.Levels = append(s.Levels, blobcache.CID{})
@@ -80,7 +80,7 @@ func (s *State) Append(ctx context.Context, rws schema.RW, x blobcache.CID) erro
 }
 
 // Get retrieves the CID at index i in the log.
-func Get(ctx context.Context, rs schema.RO, s State, i Pos) (blobcache.CID, error) {
+func Get(ctx context.Context, rs bcsdk.RO, s State, i Pos) (blobcache.CID, error) {
 	// Check if the position is within bounds
 	if i >= s.Len() {
 		return blobcache.CID{}, fmt.Errorf("merklelog: position %d out of bounds (length %d)", i, s.Len())
@@ -113,7 +113,7 @@ func Get(ctx context.Context, rs schema.RO, s State, i Pos) (blobcache.CID, erro
 }
 
 // getFromSubtree recursively traverses a subtree to find the element at the given position
-func (s State) getFromSubtree(ctx context.Context, rs schema.RO, root blobcache.CID, level int, pos Pos) (blobcache.CID, error) {
+func (s State) getFromSubtree(ctx context.Context, rs bcsdk.RO, root blobcache.CID, level int, pos Pos) (blobcache.CID, error) {
 	// If we're at level 0, this is a leaf node - return it directly
 	if level == 0 {
 		if pos == 0 {
@@ -141,7 +141,7 @@ func (s State) getFromSubtree(ctx context.Context, rs schema.RO, root blobcache.
 	}
 }
 
-func getNode(ctx context.Context, rs schema.RO, x blobcache.CID) (left, right blobcache.CID, _ error) {
+func getNode(ctx context.Context, rs bcsdk.RO, x blobcache.CID) (left, right blobcache.CID, _ error) {
 	buf := make([]byte, 32*2)
 	n, err := rs.Get(ctx, x, buf)
 	if err != nil {
@@ -156,7 +156,7 @@ func getNode(ctx context.Context, rs schema.RO, x blobcache.CID) (left, right bl
 // Includes returns (true, nil) if a references all of the data in b.
 // Includes returns (false, nil) if a cannot reference all of b's data.
 // Includes returns (false, err) if an error occurs.
-func Includes(ctx context.Context, rs schema.RO, a, b State) (bool, error) {
+func Includes(ctx context.Context, rs bcsdk.RO, a, b State) (bool, error) {
 	// If a has fewer elements than b, it cannot include all of b's data
 	if a.Len() < b.Len() {
 		return false, nil

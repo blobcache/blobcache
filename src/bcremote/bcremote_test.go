@@ -11,7 +11,7 @@ import (
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 
-	_ "blobcache.io/blobcache/src/schema/basicns"
+	_ "blobcache.io/blobcache/src/schema/jsonns"
 )
 
 func TestService(t *testing.T) {

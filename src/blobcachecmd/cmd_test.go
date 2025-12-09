@@ -11,7 +11,7 @@ import (
 	"blobcache.io/blobcache/src/internal/blobcached"
 	"github.com/stretchr/testify/require"
 
-	_ "blobcache.io/blobcache/src/schema/basicns"
+	_ "blobcache.io/blobcache/src/schema/jsonns"
 )
 
 func TestGLFS(t *testing.T) {
@@ -21,8 +21,8 @@ func TestGLFS(t *testing.T) {
 		bcclient.EnvBlobcacheAPI: apiUrl,
 	}
 
-	runCmd(t, env, []string{"--state", stateDir, "basicns", "createat", "vol1"})
-	runCmd(t, env, []string{"--state", stateDir, "basicns", "ls"})
+	runCmd(t, env, []string{"--state", stateDir, "ns", "create", "vol1"})
+	runCmd(t, env, []string{"--state", stateDir, "ns", "ls"})
 
 	runCmd(t, env, []string{"glfs", "init", "vol1"})
 	runCmd(t, env, []string{"glfs", "look", "vol1", "/"})
