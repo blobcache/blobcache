@@ -27,11 +27,11 @@ func TestDefaultNoAccess(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	nsc1 := schema.NSClient{Service: svc1, Protocol: basicns.Schema{}}
+	nsc1 := schema.NSClient{Service: svc1, Schema: basicns.Schema{}}
 	require.NoError(t, err)
 	require.NoError(t, nsc1.Put(ctx, blobcache.Handle{}, "name1", *volh, blobcache.Action_ALL))
 
-	nsc2 := schema.NSClient{Service: svc2, Protocol: basicns.Schema{}}
+	nsc2 := schema.NSClient{Service: svc2, Schema: basicns.Schema{}}
 	var entry schema.NSEntry
 	found, err := nsc2.Get(ctx, blobcache.Handle{}, "name1", &entry)
 	require.NoError(t, err)

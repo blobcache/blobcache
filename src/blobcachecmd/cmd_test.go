@@ -20,9 +20,8 @@ func TestGLFS(t *testing.T) {
 	env := map[string]string{
 		bcclient.EnvBlobcacheAPI: apiUrl,
 	}
-	t.SkipNow() // DO NOT MERGE WITHOUT REMOVING THIS
 
-	runCmd(t, env, []string{"--state", stateDir, "ns", "createat", "vol1"})
+	runCmd(t, env, []string{"--state", stateDir, "ns", "create", "vol1"})
 	runCmd(t, env, []string{"--state", stateDir, "ns", "ls"})
 
 	runCmd(t, env, []string{"glfs", "init", "vol1"})

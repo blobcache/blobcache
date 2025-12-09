@@ -286,8 +286,11 @@ func (r *ActionSet) Scan(x any) error {
 }
 
 func (r ActionSet) String() string {
-	if r == math.MaxUint64 {
+	switch r {
+	case math.MaxUint64:
 		return "ALL"
+	case 0:
+		return "NONE"
 	}
 	parts := []string{}
 	rs := map[ActionSet]string{

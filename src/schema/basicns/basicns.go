@@ -39,7 +39,7 @@ func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
 }
 
 func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) error {
-	_, err := sch.NSList(ctx, change.NextStore, change.NextCell)
+	_, err := sch.NSList(ctx, change.Next.Store, change.Next.Cell)
 	if err != nil {
 		return err
 	}

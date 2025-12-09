@@ -27,8 +27,8 @@ var bnsInit = star.Command{
 			return err
 		}
 		nsc := schema.NSClient{
-			Service:  s,
-			Protocol: basicns.Schema{},
+			Service: s,
+			Schema:  basicns.Schema{},
 		}
 		if err := nsc.Init(c, blobcache.Handle{}); err != nil {
 			return err
@@ -55,29 +55,6 @@ var bnsInit = star.Command{
 // 		c.Printf("Volume successfully created.\n\n")
 // 		c.Printf("HANDLE: %v\n", *volh)
 // 		c.Printf("NAME: %v\n", name)
-// 		return nil
-// 	},
-// }
-
-// var basicnsLsCmd = star.Command{
-// 	Metadata: star.Metadata{
-// 		Short: "lists volumes",
-// 	},
-// 	Flags: map[string]star.Flag{},
-// 	F: func(c star.Context) error {
-// 		s, err := openService(c)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		nsc := basicns.Client{Service: s}
-// 		ents, err := nsc.ListEntries(c, blobcache.Handle{})
-// 		if err != nil {
-// 			return err
-// 		}
-// 		c.Printf("%-16s\t%-32s\t%s\n", "RIGHTS", "OID", "NAME")
-// 		for _, ent := range ents {
-// 			c.Printf("%-16v\t%-32s\t%s\n", ent.Rights, ent.Target, ent.Name)
-// 		}
 // 		return nil
 // 	},
 // }

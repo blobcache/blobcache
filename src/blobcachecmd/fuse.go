@@ -28,7 +28,7 @@ var fuseMountCmd = star.Command{
 			return err
 		}
 		volName := volumeNameParam.Load(c)
-		nsc := schema.NSClient{Service: svc, Protocol: basicns.Schema{}}
+		nsc := schema.NSClient{Service: svc, Schema: basicns.Schema{}}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volName, blobcache.Action_ALL)
 		if err != nil {
 			return err

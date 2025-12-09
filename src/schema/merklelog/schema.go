@@ -46,38 +46,42 @@ func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema
 
 func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) error {
 	var states [2]State
-	if err := states[0].Unmarshal(change.PrevCell); err != nil {
+	if err := states[0].Unmarshal(change.Prev.Cell); err != nil {
 		return err
 	}
-	if err := states[1].Unmarshal(change.NextCell); err != nil {
+	if err := states[1].Unmarshal(change.Next.Cell); err != nil {
 		return err
 	}
-	if includes, err := Includes(ctx, change.NextStore, states[1], states[0]); err != nil {
+	if includes, err := Includes(ctx, change.Next.Store, states[1], states[0]); err != nil {
 		return err
 	} else if !includes {
 		return fmt.Errorf("merklelog: next state does not include prev state")
 	}
-	it := NewIterator(states[1], change.NextStore, states[0].Len(), states[1].Len())
+	it := NewIterator(states[1], change.Next.Store, states[0].Len(), states[1].Len())
 	spit := newSlidingPairIterator(it)
 	buf1 := make([]byte, sch.MaxRootSize)
 	buf2 := make([]byte, sch.MaxRootSize)
 	return streams.ForEach(ctx, spit, func(cids [2]CID) error {
-		n1, err := change.NextStore.Get(ctx, cids[0], buf1)
+		n1, err := change.Next.Store.Get(ctx, cids[0], buf1)
 		if err != nil {
 			return err
 		}
 		data1 := buf1[:n1]
-		n2, err := change.NextStore.Get(ctx, cids[1], buf2)
+		n2, err := change.Next.Store.Get(ctx, cids[1], buf2)
 		if err != nil {
 			return err
 		}
 		data2 := buf2[:n2]
 
 		return sch.X.ValidateChange(ctx, schema.Change{
-			PrevCell:  data1,
-			NextCell:  data2,
-			PrevStore: change.NextStore,
-			NextStore: change.NextStore,
+			Prev: schema.Value{
+				Cell:  data1,
+				Store: change.Prev.Store,
+			},
+			Next: schema.Value{
+				Cell:  data2,
+				Store: change.Next.Store,
+			},
 		})
 	})
 }

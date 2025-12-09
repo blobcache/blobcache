@@ -63,6 +63,7 @@ func NewTestService(t testing.TB) *Service {
 	return NewTestServiceFromEnv(t, NewTestEnv(t))
 }
 
+// TODO: move defaultSchemas to blobcached package
 var defaultSchemas = map[blobcache.SchemaName]schema.Constructor{
 	blobcache.Schema_NONE: schema.NoneConstructor,
 }

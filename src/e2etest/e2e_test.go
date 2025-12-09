@@ -65,7 +65,7 @@ func TestDaemonAuth(t *testing.T) {
 
 	svc, err := bcremote.Dial(clientPriv.(ed25519.PrivateKey), ep)
 	require.NoError(t, err)
-	nsc := schema.NSClient{Service: svc, Protocol: basicns.Schema{}}
+	nsc := schema.NSClient{Service: svc, Schema: basicns.Schema{}}
 	_, err = nsc.CreateAt(ctx, blobcache.Handle{}, "test-volume", blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 

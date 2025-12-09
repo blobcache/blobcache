@@ -17,12 +17,15 @@ type Factory = func(blobcache.SchemaSpec) (Schema, error)
 // Constructor is a function that constructs a Schema from its parameters.
 type Constructor = func(params json.RawMessage, mkSchema Factory) (Schema, error)
 
+// Value is the contents of a volume.
+type Value struct {
+	Cell  []byte
+	Store bcsdk.RO
+}
+
 // Change is a change to a Volume.
 type Change struct {
-	PrevCell  []byte
-	NextCell  []byte
-	PrevStore bcsdk.RO
-	NextStore bcsdk.RO
+	Prev, Next Value
 }
 
 // Schema is the most general Schema type.

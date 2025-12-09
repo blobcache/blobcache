@@ -846,10 +846,14 @@ func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) e
 		return err
 	}
 	change := schema.Change{
-		PrevCell:  prevRoot,
-		NextCell:  root,
-		PrevStore: src, // TODO: this should be a different store, using a snapshot from the start of the transaciton.
-		NextStore: src,
+		Prev: schema.Value{
+			Cell:  prevRoot,
+			Store: src, // TODO: Need to open read-only transaction for the previous version of the volume.
+		},
+		Next: schema.Value{
+			Cell:  root,
+			Store: src,
+		},
 	}
 	if err := sch.ValidateChange(ctx, change); err != nil {
 		return err
