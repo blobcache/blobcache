@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 )
 
 const SchemaName = "blobcache/statetrace"
 
 func init() {
-	bclocal.AddDefaultSchema(SchemaName, Constructor)
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
 }
 
 var _ schema.Schema = &Schema[opaque]{}

@@ -55,8 +55,8 @@ type Env struct {
 	// PrivateKey determines the node's identity.
 	// It must be provided if PacketConn is set.
 	PrivateKey ed25519.PrivateKey
-	// Schemas is the supported schemas.
-	Schemas map[blobcache.SchemaName]schema.Constructor
+	// MkSchema is the factory function to create a schema.
+	MkSchema schema.Factory
 	// Root is the spec to use for the root volume.
 	Root blobcache.VolumeSpec
 	// Policy control network access to the service.
@@ -109,6 +109,15 @@ func New(env Env, cfg Config) (*Service, error) {
 	if env.PrivateKey == nil {
 		return nil, fmt.Errorf("bclocal.New: PrivateKey cannot be nil")
 	}
+	if env.MkSchema == nil {
+		env.MkSchema = func(spec blobcache.SchemaSpec) (schema.Schema, error) {
+			if spec.Name != "" {
+				return nil, fmt.Errorf("unknown schema name: %s", spec.Name)
+			}
+			return schema.None{}, nil
+		}
+	}
+
 	dbPath := filepath.Join(env.StateDir, "pebble")
 	blobDirPath := filepath.Join(env.StateDir, "blob")
 	for _, dir := range []string{dbPath, blobDirPath} {
@@ -140,17 +149,11 @@ func New(env Env, cfg Config) (*Service, error) {
 	s.volSys.local = localvol.New(localvol.Config{
 		NoSync: s.cfg.NoSync,
 	}, localvol.Env{
-		DB:      db,
-		BlobDir: blobDir,
-		HSys:    &s.handles,
-		TxSys:   &s.txSys,
-		GetSchema: func(spec blobcache.SchemaSpec) (schema.Schema, error) {
-			factory := env.Schemas[spec.Name]
-			if factory == nil {
-				return nil, fmt.Errorf("unknown schema %s", spec.Name)
-			}
-			return factory(spec.Params, s.getSchema)
-		},
+		DB:       db,
+		BlobDir:  blobDir,
+		HSys:     &s.handles,
+		TxSys:    &s.txSys,
+		MkSchema: env.MkSchema,
 	})
 	s.volSys.remote = remotevol.New(&s.node)
 	s.volSys.consensus = consensusvol.New(consensusvol.Env{
@@ -319,15 +322,6 @@ func (s *Service) cleanupLoop(ctx context.Context) {
 		case <-tick.C:
 		}
 	}
-}
-
-// getSchema looks up a schema by name.
-func (s *Service) getSchema(spec blobcache.SchemaSpec) (schema.Schema, error) {
-	schema, exists := s.env.Schemas[spec.Name]
-	if !exists {
-		return nil, fmt.Errorf("unknown schema %s", spec.Name)
-	}
-	return schema(spec.Params, s.getSchema)
 }
 
 // addVolume adds a volume to the volumes map.
@@ -638,7 +632,7 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 		if vp.MaxSize > MaxMaxBlobSize {
 			return nil, fmt.Errorf("bclocal: only supports blobs up to %d, requested %d", MaxMaxBlobSize, vp.MaxSize)
 		}
-		if _, err := s.getSchema(vp.Schema); err != nil {
+		if _, err := s.env.MkSchema(vp.Schema); err != nil {
 			return nil, err
 		}
 		lvid, err := s.volSys.local.GenerateLocalID()
@@ -841,7 +835,7 @@ func (s *Service) Save(ctx context.Context, txh blobcache.Handle, root []byte) e
 		return err
 	}
 	src := volumes.NewUnsaltedStore(tx.backend)
-	sch, err := s.getSchema(tx.volume.info.Schema)
+	sch, err := s.env.MkSchema(tx.volume.info.Schema)
 	if err != nil {
 		return err
 	}

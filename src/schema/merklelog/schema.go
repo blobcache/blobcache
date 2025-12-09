@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/streams"
 )
@@ -87,5 +87,5 @@ func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) erro
 }
 
 func init() {
-	bclocal.AddDefaultSchema(SchemaName, Constructor)
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
 }

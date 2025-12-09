@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/star"
 	"go.brendoncarroll.net/stdctx/logctx"
@@ -199,7 +199,7 @@ func doNSOp(c star.Context, fn func(nsc schema.NSClient, volh blobcache.Handle) 
 	if err != nil {
 		return err
 	}
-	sch, err := mkSchema(vinfo.Schema)
+	sch, err := schemareg.Factory(vinfo.Schema)
 	if err != nil {
 		return err
 	}
@@ -209,15 +209,6 @@ func doNSOp(c star.Context, fn func(nsc schema.NSClient, volh blobcache.Handle) 
 	}
 	nsc := schema.NSClient{Service: bc, Schema: nssch}
 	return fn(nsc, rooth)
-}
-
-func mkSchema(spec blobcache.SchemaSpec) (schema.Schema, error) {
-	schs := bclocal.DefaultSchemas()
-	cons, ok := schs[spec.Name]
-	if !ok {
-		return nil, fmt.Errorf("schema not found %v", spec.Name)
-	}
-	return cons(spec.Params, nil)
 }
 
 // getNSRoot returns a handle to the volume containing the root namespace

@@ -6,12 +6,33 @@ import (
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/glfs"
 	"go.brendoncarroll.net/state/cadata"
 )
 
-var _ schema.Schema = &Schema{}
+const SchemaName blobcache.SchemaName = "glfs"
+
+func init() {
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
+}
+
+var (
+	_ schema.Schema = &Schema{}
+
+	_ schema.Constructor = Constructor
+)
+
+type Spec struct{}
+
+func Constructor(params json.RawMessage, mkSchema schema.Factory) (schema.Schema, error) {
+	var spec Spec
+	if err := json.Unmarshal(params, &spec); err != nil {
+		return nil, err
+	}
+	return &Schema{Mach: glfs.NewMachine()}, nil
+}
 
 type Schema struct {
 	Mach *glfs.Machine

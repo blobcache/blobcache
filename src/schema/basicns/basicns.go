@@ -11,9 +11,9 @@ import (
 	"slices"
 	"strings"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/slices2"
 	"go.brendoncarroll.net/state/cadata"
@@ -22,7 +22,7 @@ import (
 const SchemaName blobcache.SchemaName = "blobcache/basicns"
 
 func init() {
-	bclocal.AddDefaultSchema(SchemaName, Constructor)
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
 }
 
 type Entry = schema.NSEntry

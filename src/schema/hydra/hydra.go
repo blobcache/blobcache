@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"slices"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 )
 
@@ -128,5 +128,5 @@ func (sch *Schema) Merge(ctx context.Context, stores []schema.RO, srcs [][]byte,
 const SchemaName = "hydra"
 
 func init() {
-	bclocal.AddDefaultSchema(SchemaName, Constructor)
+	schemareg.AddDefaultSchema(SchemaName, Constructor)
 }

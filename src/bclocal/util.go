@@ -2,13 +2,11 @@ package bclocal
 
 import (
 	"context"
-	"fmt"
-	"maps"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -30,9 +28,9 @@ func NewTestEnv(t testing.TB) Env {
 
 		PrivateKey: privateKey,
 
-		Policy:  &allowAllPolicy{},
-		Schemas: DefaultSchemas(),
-		Root:    DefaultRoot(),
+		Policy:   &allowAllPolicy{},
+		MkSchema: schemareg.Factory,
+		Root:     schemareg.DefaultRoot(),
 	}
 }
 
@@ -61,35 +59,6 @@ func NewTestServiceFromEnv(t testing.TB, env Env) *Service {
 // It calls NewTestEnv and NewTestServiceFromEnv
 func NewTestService(t testing.TB) *Service {
 	return NewTestServiceFromEnv(t, NewTestEnv(t))
-}
-
-// TODO: move defaultSchemas to blobcached package
-var defaultSchemas = map[blobcache.SchemaName]schema.Constructor{
-	blobcache.Schema_NONE: schema.NoneConstructor,
-}
-
-func AddDefaultSchema(name blobcache.SchemaName, constructor schema.Constructor) {
-	if _, exists := defaultSchemas[name]; exists {
-		panic(fmt.Errorf("schema %s already exists", name))
-	}
-	defaultSchemas[name] = constructor
-}
-
-func DefaultSchemas() map[blobcache.SchemaName]schema.Constructor {
-	return maps.Clone(defaultSchemas)
-}
-
-// DefaultRoot returns the default root volume spec.
-// It uses the basicns schema and a 2MB byte max size.
-func DefaultRoot() blobcache.VolumeSpec {
-	const rootSchemaName = "blobcache/basicns"
-	return blobcache.VolumeSpec{
-		Local: &blobcache.VolumeBackend_Local{
-			Schema:   blobcache.SchemaSpec{Name: rootSchemaName},
-			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-			MaxSize:  1 << 22,
-		},
-	}
 }
 
 type noOpLogger struct{}

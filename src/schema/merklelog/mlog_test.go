@@ -16,8 +16,8 @@ import (
 
 func TestTx(t *testing.T) {
 	schs := map[blobcache.SchemaName]schema.Constructor{
-		SchemaName: Constructor,
 		"":         schema.NoneConstructor,
+		SchemaName: Constructor,
 	}
 	svc, txh := schematests.Setup(t, schs, blobcache.VolumeBackend_Local{
 		Schema:   blobcache.SchemaSpec{Name: SchemaName},

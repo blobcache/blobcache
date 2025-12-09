@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
@@ -113,10 +114,23 @@ func (nsc NSClient) Delete(ctx context.Context, nsh blobcache.Handle, name strin
 			// no change needed
 			return root, nil
 		}
-		if err := tx.Unlink(ctx, []blobcache.OID{ent.Target}); err != nil {
+		root, err = nsc.Schema.NSDelete(ctx, s, root, name)
+		if err != nil {
 			return nil, err
 		}
-		return nsc.Schema.NSDelete(ctx, s, root, name)
+		ents, err := nsc.Schema.NSList(ctx, s, root)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(ents, func(x NSEntry) bool {
+			return x.Target == ent.Target
+		}) {
+			// if the target is not referenced by any other entry, unlink it
+			if err := tx.Unlink(ctx, []blobcache.OID{ent.Target}); err != nil {
+				return nil, err
+			}
+		}
+		return root, nil
 	})
 }
 
@@ -208,6 +222,7 @@ func (nsc NSClient) GC(ctx context.Context, volh blobcache.Handle) error {
 	if err != nil {
 		return err
 	}
+	defer tx.Abort(ctx)
 	visit := func(cids []blobcache.CID, oids []blobcache.OID) error {
 		if len(cids) > 0 {
 			if err := tx.Visit(ctx, cids); err != nil {
@@ -228,7 +243,7 @@ func (nsc NSClient) GC(ctx context.Context, volh blobcache.Handle) error {
 	if err := gcsch.VisitAll(ctx, tx, root, visit); err != nil {
 		return err
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (nsc NSClient) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
