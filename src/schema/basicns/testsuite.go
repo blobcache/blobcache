@@ -1,4 +1,4 @@
-package schematests
+package basicns
 
 import (
 	"fmt"
@@ -6,23 +6,21 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"blobcache.io/blobcache/src/schema"
-	"blobcache.io/blobcache/src/schema/basicns"
 )
 
-// BasicNS tests that the BasicNS schema works on the Service.
-func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blobcache.Handle)) {
+// tests that the schema works on the Service.
+func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blobcache.Handle)) {
 	t.Run("PutEntryOpen", func(t *testing.T) {
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
 		volh := blobcachetests.CreateVolume(t, s, nil, blobcache.DefaultLocalSpec())
-		nsc := basicns.Client{Service: s}
-		err := nsc.PutEntry(ctx, nsh, "test-name", volh)
+		nsc := schema.NSClient{Service: s, Protocol: Schema{}}
+		err := nsc.Put(ctx, nsh, "test-name", volh, blobcache.Action_ALL)
 		require.NoError(t, err)
 		err = s.Drop(ctx, volh)
 		require.NoError(t, err)
@@ -35,7 +33,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
-		nsc := basicns.Client{Service: s}
+		nsc := schema.NSClient{Service: s}
 
 		names, err := nsc.ListNames(ctx, nsh)
 		require.NoError(t, err)
@@ -48,9 +46,9 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		nsc := basicns.Client{Service: s}
+		nsc := schema.NSClient{Service: s}
 		for i := 0; i < 10; i++ {
-			err = nsc.PutEntry(ctx, nsh, fmt.Sprintf("test-name-%d", i), *volh)
+			err = nsc.Put(ctx, nsh, fmt.Sprintf("test-name-%d", i), *volh, blobcache.Action_ALL)
 			require.NoError(t, err)
 		}
 		names, err := nsc.ListNames(ctx, nsh)
@@ -64,13 +62,13 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
 		volh := blobcachetests.CreateVolume(t, s, nil, blobcache.DefaultLocalSpec())
-		nsc := basicns.Client{Service: s}
-		err := nsc.PutEntry(ctx, nsh, "test-name", volh)
+		nsc := schema.NSClient{Service: s}
+		err := nsc.Put(ctx, nsh, "test-name", volh, blobcache.Action_ALL)
 		require.NoError(t, err)
 		names, err := nsc.ListNames(ctx, nsh)
 		require.NoError(t, err)
 		require.Contains(t, names, "test-name")
-		err = nsc.DeleteEntry(ctx, nsh, "test-name")
+		err = nsc.Delete(ctx, nsh, "test-name")
 		require.NoError(t, err)
 		names, err = nsc.ListNames(ctx, nsh)
 		require.NoError(t, err)
@@ -80,9 +78,9 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
-		nsc := basicns.Client{Service: s}
+		nsc := schema.NSClient{Service: s}
 		// Delets are idempotent, should not get an error.
-		err := nsc.DeleteEntry(ctx, nsh, "test-name")
+		err := nsc.Delete(ctx, nsh, "test-name")
 		require.NoError(t, err)
 	})
 	t.Run("Invalid", func(t *testing.T) {
@@ -92,8 +90,8 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		nsc := basicns.Client{Service: s}
-		require.NoError(t, nsc.PutEntry(ctx, blobcache.Handle{}, "vol1", *volh))
+		nsc := schema.NSClient{Service: s}
+		require.NoError(t, nsc.Put(ctx, blobcache.Handle{}, "vol1", *volh, blobcache.Action_ALL))
 
 		txh, err := s.BeginTx(ctx, nsh, blobcache.TxParams{Modify: true})
 		require.NoError(t, err)
@@ -107,13 +105,13 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
 		// Open the root namespace
-		nsc := basicns.Client{Service: s}
+		nsc := schema.NSClient{Service: s}
 
 		// Create 10 nested namespaces.
 		ns1h := nsh
 		for i := 0; i < 10; i++ {
 			subNSSpec := blobcache.DefaultLocalSpec()
-			subNSSpec.Local.Schema = blobcache.SchemaSpec{Name: basicns.SchemaName}
+			subNSSpec.Local.Schema = blobcache.SchemaSpec{Name: SchemaName}
 			ns2h, err := nsc.CreateAt(ctx, ns1h, "nested", subNSSpec)
 			require.NoError(t, err)
 			ns1h = *ns2h
@@ -121,7 +119,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 
 		ns1h = nsh
 		for i := 0; i < 10; i++ {
-			require.NotZero(t, ns1h.Secret) // This would cause basicns to call OpenFiat instead of OpenFrom.
+			require.NotZero(t, ns1h.Secret) // This would cause to call OpenFiat instead of OpenFrom.
 			ns2h, err := nsc.OpenAt(ctx, ns1h, "nested", blobcache.Action_ALL)
 			require.NoError(t, err)
 			ns1h = *ns2h
@@ -131,7 +129,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
-		nsc := basicns.Client{Service: s}
+		nsc := schema.NSClient{Service: s}
 		for i := 0; i < 10; i++ {
 			_, err := nsc.CreateAt(ctx, nsh, fmt.Sprintf("subvol-%d", i), blobcache.DefaultLocalSpec())
 			require.NoError(t, err)
@@ -146,7 +144,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
-		nsc := basicns.Client{Service: s}
+		nsc := schema.NSClient{Service: s}
 		mkName := func(x int) string {
 			return fmt.Sprintf("name-%d", x)
 		}
@@ -157,7 +155,7 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 			require.NoError(t, err)
 		}
 		// run GC
-		require.NoError(t, nsc.GC(ctx, nsh))
+		require.NoError(t, GC(ctx, s, nsh))
 		// open subvolumes
 		for i := range 10 {
 			name := mkName(i)
@@ -167,10 +165,10 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 		// delete even entries
 		for i := 0; i < 10; i += 2 {
 			name := mkName(i)
-			require.NoError(t, nsc.DeleteEntry(ctx, nsh, name))
+			require.NoError(t, nsc.Delete(ctx, nsh, name))
 		}
 		// GC
-		require.NoError(t, nsc.GC(ctx, nsh))
+		require.NoError(t, GC(ctx, s, nsh))
 		for i := range 10 {
 			name := mkName(i)
 			_, err := nsc.OpenAt(ctx, nsh, name, blobcache.Action_ALL)
@@ -181,15 +179,4 @@ func BasicNS(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh blo
 			}
 		}
 	})
-}
-
-// Setup performs generic setup to prepare a Volume with the desired schema.
-func Setup(t testing.TB, schs map[blobcache.SchemaName]schema.Constructor, spec blobcache.VolumeBackend_Local) (blobcache.Service, blobcache.Handle) {
-	t.Helper()
-	env := bclocal.NewTestEnv(t)
-	env.Schemas = schs
-	svc := bclocal.NewTestServiceFromEnv(t, env)
-	vspec := blobcache.VolumeSpec{Local: &spec}
-	h := blobcachetests.CreateVolume(t, svc, nil, vspec)
-	return svc, h
 }

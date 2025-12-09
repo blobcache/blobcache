@@ -27,6 +27,11 @@ func init() {
 
 type Entry = schema.NSEntry
 
+var (
+	_ schema.Schema    = &Schema{}
+	_ schema.Namespace = &Schema{}
+)
+
 type Schema struct{}
 
 func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
@@ -225,15 +230,28 @@ func (ns *Tx) VisitAll(ctx context.Context) error {
 	return nil
 }
 
+// GC performs garbage collection on the namespace.
+func GC(ctx context.Context, svc blobcache.Service, volh blobcache.Handle) error {
+	tx, err := bcsdk.BeginTx(ctx, svc, volh, blobcache.TxParams{GC: true, Modify: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	nstx := Tx{Tx: tx}
+
+	if err := nstx.VisitAll(ctx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func encodeNamespace(ents []Entry) ([]byte, error) {
 	slices.SortFunc(ents, func(a, b Entry) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	for i := 0; i < len(ents)-1; i++ {
-		if ents[i].Name == ents[i+1].Name {
-			return nil, fmt.Errorf("duplicate name: %s", ents[i].Name)
-		}
-	}
+	ents = slices.CompactFunc(ents, func(a, b Entry) bool {
+		return a.Name == b.Name
+	})
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 	for _, ent := range ents {

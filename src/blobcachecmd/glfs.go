@@ -39,7 +39,7 @@ var glfsInitCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := basicns.Client{Service: svc}
+		nsc := schema.NSClient{Service: svc, Protocol: basicns.Schema{}}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
@@ -82,7 +82,7 @@ var glfsLookCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := basicns.Client{Service: svc}
+		nsc := schema.NSClient{Service: svc, Protocol: basicns.Schema{}}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
@@ -134,7 +134,7 @@ var glfsImportCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := basicns.Client{Service: svc}
+		nsc := schema.NSClient{Service: svc, Protocol: basicns.Schema{}}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
@@ -176,7 +176,7 @@ var glfsReadCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := basicns.Client{Service: svc}
+		nsc := schema.NSClient{Service: svc, Protocol: basicns.Schema{}}
 		volh, err := nsc.OpenAt(c, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return err
@@ -211,7 +211,7 @@ var glfsSyncCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc := basicns.Client{Service: svc}
+		nsc := schema.NSClient{Service: svc, Protocol: basicns.Schema{}}
 
 		srcVolh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, srcVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
