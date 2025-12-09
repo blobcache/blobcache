@@ -8,7 +8,7 @@ import (
 	"blobcache.io/blobcache/src/schema/schematests"
 )
 
-func TestBasicNS(t *testing.T) {
+func TestJSONNS(t *testing.T) {
 	// Test cases for BasicNS
 	TestSuite(t, func(t testing.TB) (svc blobcache.Service, nsh blobcache.Handle) {
 		spec := blobcache.DefaultLocalSpec()
