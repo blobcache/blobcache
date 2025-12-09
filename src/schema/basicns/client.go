@@ -32,7 +32,7 @@ func (c *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string
 		return nil, err
 	}
 	nstx := Tx{Tx: txn}
-	if err := nstx.PutEntry(ctx, name, volh.OID, blobcache.Action_ALL); err != nil {
+	if err := nstx.NSPut(ctx, name, volh.OID, blobcache.Action_ALL); err != nil {
 		return nil, err
 	}
 	if err := nstx.Commit(ctx); err != nil {
@@ -52,7 +52,7 @@ func (c *Client) OpenAt(ctx context.Context, nsh blobcache.Handle, name string, 
 	}
 	defer txn.Abort(ctx)
 	nstx := Tx{Tx: txn}
-	ent, err := nstx.GetEntry(ctx, name)
+	ent, err := nstx.NSGet(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (c *Client) PutEntry(ctx context.Context, volh blobcache.Handle, name strin
 		return err
 	}
 	nstx := Tx{Tx: txn}
-	if err := nstx.PutEntry(ctx, name, target.OID, blobcache.Action_ALL); err != nil {
+	if err := nstx.NSPut(ctx, name, target.OID, blobcache.Action_ALL); err != nil {
 		return err
 	}
 	return nstx.Commit(ctx)
@@ -91,7 +91,7 @@ func (c *Client) DeleteEntry(ctx context.Context, volh blobcache.Handle, name st
 		return err
 	}
 	nstx := Tx{Tx: txn}
-	if err := nstx.DeleteEntry(ctx, name); err != nil {
+	if err := nstx.NSDelete(ctx, name); err != nil {
 		return err
 	}
 	return nstx.Commit(ctx)
@@ -136,7 +136,7 @@ func (c *Client) GetEntry(ctx context.Context, volh blobcache.Handle, name strin
 	}
 	defer txn.Abort(ctx)
 	nstx := Tx{Tx: txn}
-	return nstx.GetEntry(ctx, name)
+	return nstx.NSGet(ctx, name)
 }
 
 // GC performs garbage collection on the namespace.

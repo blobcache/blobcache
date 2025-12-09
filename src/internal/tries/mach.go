@@ -6,6 +6,7 @@ import (
 	"iter"
 	"slices"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bccrypto"
 	"blobcache.io/blobcache/src/internal/tries/triescnp"
@@ -103,7 +104,7 @@ func (mach *Machine) Put(ctx context.Context, s schema.RW, root Root, key, value
 }
 
 // Delete removes
-func (mach *Machine) Delete(ctx context.Context, s schema.RWD, root Root, key []byte) (*Root, error) {
+func (mach *Machine) Delete(ctx context.Context, s bcsdk.RWD, root Root, key []byte) (*Root, error) {
 	if !bytes.HasPrefix(key, root.Prefix) {
 		return &root, nil
 	}

@@ -3,18 +3,18 @@ package merklelog
 import (
 	"context"
 
-	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/bcsdk"
 	"go.brendoncarroll.net/exp/streams"
 )
 
 type Iterator struct {
 	state State
-	store schema.RO
+	store bcsdk.RO
 	beg   Pos
 	end   Pos
 }
 
-func NewIterator(state State, s schema.RO, beg, end Pos) *Iterator {
+func NewIterator(state State, s bcsdk.RO, beg, end Pos) *Iterator {
 	return &Iterator{
 		state: state,
 		store: s,
