@@ -14,11 +14,11 @@ import (
 // NSEntry represents an entry in a namespace.
 type NSEntry struct {
 	// Name is the key for this entry within the namespace.
-	Name string
+	Name string `json:"name"`
 	// Target is the OID of the entry.
-	Target blobcache.OID
+	Target blobcache.OID `json:"target"`
 	// Rights is the set of rights for the entry.
-	Rights blobcache.ActionSet
+	Rights blobcache.ActionSet `json:"rights"`
 }
 
 func (ent *NSEntry) Link() Link {

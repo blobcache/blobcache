@@ -18,6 +18,7 @@ const EnvVar_NSRoot = "BLOBCACHE_NS_ROOT"
 var nsCmd = star.NewDir(star.Metadata{
 	Short: "perform common operations on namespace volumes",
 }, map[string]star.Command{
+	"init":   nsInitCmd,
 	"ls":     nsListCmd,
 	"get":    nsGetCmd,
 	"del":    nsDeleteCmd,
@@ -25,6 +26,18 @@ var nsCmd = star.NewDir(star.Metadata{
 	"create": nsCreateCmd,
 	"open":   nsOpenCmd,
 })
+
+var nsInitCmd = star.Command{
+	F: func(c star.Context) error {
+		return doNSOp(c, func(nsc schema.NSClient, nsh blobcache.Handle) error {
+			if err := nsc.Init(c, nsh); err != nil {
+				return err
+			}
+			c.Printf("Namespace successfully initialized.\n\n")
+			return nil
+		})
+	},
+}
 
 var nsListCmd = star.Command{
 	Metadata: star.Metadata{
@@ -161,6 +174,23 @@ var nsOpenCmd = star.Command{
 	},
 }
 
+func openAt(c star.Context) (*blobcache.Handle, error) {
+	name := volNameParam.Load(c)
+	mask := blobcache.Action_ALL
+	var ret blobcache.Handle
+	if err := doNSOp(c, func(nsc schema.NSClient, nsh blobcache.Handle) error {
+		volh, err := nsc.OpenAt(c, nsh, name, mask)
+		if err != nil {
+			return err
+		}
+		ret = *volh
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return &ret, nil
+}
+
 var nsRootH = star.Optional[blobcache.Handle]{
 	ID: "nsrootH",
 	Parse: func(x string) (blobcache.Handle, error) {
@@ -182,33 +212,41 @@ var volNameParam = star.Required[string]{
 	Parse: star.ParseString,
 }
 
-func doNSOp(c star.Context, fn func(nsc schema.NSClient, volh blobcache.Handle) error) error {
+func getNS(c star.Context) (*schema.NSClient, *blobcache.Handle, error) {
 	rooth := getNSRoot(c)
 	bc, err := openService(c)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if rooth.Secret == ([16]byte{}) {
 		h, err := bc.OpenFiat(c, rooth.OID, blobcache.Action_ALL)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		rooth = *h
 	}
 	vinfo, err := bc.InspectVolume(c, rooth)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	sch, err := schemareg.Factory(vinfo.Schema)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	nssch, ok := sch.(schema.Namespace)
 	if !ok {
-		return fmt.Errorf("volume has a non-namespace Schema %v", vinfo.Schema.Name)
+		return nil, nil, fmt.Errorf("volume has a non-namespace Schema %v", vinfo.Schema.Name)
 	}
 	nsc := schema.NSClient{Service: bc, Schema: nssch}
-	return fn(nsc, rooth)
+	return &nsc, &rooth, nil
+}
+
+func doNSOp(c star.Context, fn func(nsc schema.NSClient, volh blobcache.Handle) error) error {
+	nsc, rooth, err := getNS(c)
+	if err != nil {
+		return err
+	}
+	return fn(*nsc, *rooth)
 }
 
 // getNSRoot returns a handle to the volume containing the root namespace

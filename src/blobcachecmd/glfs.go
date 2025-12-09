@@ -16,7 +16,6 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/glfsport"
 	"blobcache.io/blobcache/src/schema"
-	"blobcache.io/blobcache/src/schema/basicns"
 	glfsschema "blobcache.io/blobcache/src/schema/glfs"
 )
 
@@ -31,16 +30,18 @@ var glfsCmd = star.NewDir(star.Metadata{
 })
 
 var glfsInitCmd = star.Command{
-	Flags: map[string]star.Flag{},
-	Pos:   []star.Positional{volumeNameParam},
+	Flags: map[string]star.Flag{
+		"nsrh": nsRootH,
+		"nsr":  nsRoot,
+	},
+	Pos: []star.Positional{volNameParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		nsc := schema.NSClient{Service: svc, Schema: basicns.Schema{}}
-		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
+		volh, err := openAt(c)
 		if err != nil {
 			return err
 		}
@@ -74,16 +75,18 @@ var glfsInitCmd = star.Command{
 }
 
 var glfsLookCmd = star.Command{
-	Flags: map[string]star.Flag{},
-	Pos:   []star.Positional{volumeNameParam, srcPathParam},
+	Flags: map[string]star.Flag{
+		"nsrh": nsRootH,
+		"nsr":  nsRoot,
+	},
+	Pos: []star.Positional{volNameParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		nsc := schema.NSClient{Service: svc, Schema: basicns.Schema{}}
-		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
+		volh, err := openAt(c)
 		if err != nil {
 			return err
 		}
@@ -126,16 +129,18 @@ var glfsImportCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "import data from the local filesystem into a GLFS volume",
 	},
-	Flags: map[string]star.Flag{},
-	Pos:   []star.Positional{volumeNameParam, dstPathParam, srcPathParam},
+	Flags: map[string]star.Flag{
+		"nsrh": nsRootH,
+		"nsr":  nsRoot,
+	},
+	Pos: []star.Positional{volNameParam, dstPathParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		nsc := schema.NSClient{Service: svc, Schema: basicns.Schema{}}
-		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
+		volh, err := openAt(c)
 		if err != nil {
 			return err
 		}
@@ -168,16 +173,19 @@ var glfsReadCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "Read a file from a GLFS volume and write it to stdout",
 	},
-	Flags: map[string]star.Flag{},
-	Pos:   []star.Positional{volumeNameParam, srcPathParam},
+	Flags: map[string]star.Flag{
+
+		"nsrh": nsRootH,
+		"nsr":  nsRoot,
+	},
+	Pos: []star.Positional{volNameParam, srcPathParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		nsc := schema.NSClient{Service: svc, Schema: basicns.Schema{}}
-		volh, err := nsc.OpenAt(c, blobcache.Handle{}, volumeNameParam.Load(c), blobcache.Action_ALL)
+		volh, err := openAt(c)
 		if err != nil {
 			return err
 		}
@@ -203,21 +211,27 @@ var glfsSyncCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "sync efficiently sets the contents of the dst volume to the content of the src volume",
 	},
-	Flags: map[string]star.Flag{},
-	Pos:   []star.Positional{srcVolumeParam, dstVolumeParam},
+	Flags: map[string]star.Flag{
+		"nsrh": nsRootH,
+		"nsr":  nsRoot,
+	},
+	Pos: []star.Positional{srcVolumeParam, dstVolumeParam},
 	F: func(c star.Context) error {
 		ctx := c.Context
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		nsc := schema.NSClient{Service: svc, Schema: basicns.Schema{}}
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
 
-		srcVolh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, srcVolumeParam.Load(c), blobcache.Action_ALL)
+		srcVolh, err := nsc.OpenAt(c.Context, *nsh, srcVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return fmt.Errorf("failed to open source volume: %w", err)
 		}
-		dstVolh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, dstVolumeParam.Load(c), blobcache.Action_ALL)
+		dstVolh, err := nsc.OpenAt(c.Context, *nsh, dstVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return fmt.Errorf("failed to open destination volume: %w", err)
 		}

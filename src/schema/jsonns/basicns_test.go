@@ -1,4 +1,4 @@
-package basicns
+package jsonns
 
 import (
 	"testing"

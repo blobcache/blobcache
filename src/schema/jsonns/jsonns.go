@@ -1,6 +1,6 @@
-// Package basicns provides a simple namespace implementation.
+// Package jsonns provides a simple namespace implementation.
 // All entries are stored in the root of the volume.
-package basicns
+package jsonns
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 	"go.brendoncarroll.net/state/cadata"
 )
 
-const SchemaName blobcache.SchemaName = "blobcache/basicns"
+const SchemaName blobcache.SchemaName = "blobcache/jsonns"
 
 func init() {
 	schemareg.AddDefaultSchema(SchemaName, Constructor)
