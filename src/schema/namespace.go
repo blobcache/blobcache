@@ -61,7 +61,7 @@ type NSClient struct {
 	Schema  Namespace
 }
 
-func (nsc NSClient) Init(ctx context.Context, volh blobcache.Handle) error {
+func (nsc *NSClient) Init(ctx context.Context, volh blobcache.Handle) error {
 	sch, ok := nsc.Schema.(Initializer)
 	if !ok {
 		return fmt.Errorf("protocol does not support initialization")
@@ -78,7 +78,7 @@ func (nsc NSClient) Init(ctx context.Context, volh blobcache.Handle) error {
 	})
 }
 
-func (nsc NSClient) Put(ctx context.Context, nsh blobcache.Handle, name string, volh blobcache.Handle, mask blobcache.ActionSet) error {
+func (nsc *NSClient) Put(ctx context.Context, nsh blobcache.Handle, name string, volh blobcache.Handle, mask blobcache.ActionSet) error {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return err
@@ -86,7 +86,7 @@ func (nsc NSClient) Put(ctx context.Context, nsh blobcache.Handle, name string, 
 	if err := CheckName(name); err != nil {
 		return err
 	}
-	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, s bcsdk.RW, root []byte) ([]byte, error) {
+	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
 		if err := tx.Link(ctx, volh, mask); err != nil {
 			return nil, err
 		}
@@ -95,18 +95,18 @@ func (nsc NSClient) Put(ctx context.Context, nsh blobcache.Handle, name string, 
 			Target: volh.OID,
 			Rights: mask,
 		}
-		return nsc.Schema.NSPut(ctx, s, root, ent)
+		return nsc.Schema.NSPut(ctx, tx, root, ent)
 	})
 }
 
-func (nsc NSClient) Delete(ctx context.Context, nsh blobcache.Handle, name string) error {
+func (nsc *NSClient) Delete(ctx context.Context, nsh blobcache.Handle, name string) error {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return err
 	}
-	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, s bcsdk.RW, root []byte) ([]byte, error) {
+	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
 		var ent NSEntry
-		found, err := nsc.Schema.NSGet(ctx, s, root, name, &ent)
+		found, err := nsc.Schema.NSGet(ctx, tx, root, name, &ent)
 		if err != nil {
 			return nil, err
 		}
@@ -114,11 +114,11 @@ func (nsc NSClient) Delete(ctx context.Context, nsh blobcache.Handle, name strin
 			// no change needed
 			return root, nil
 		}
-		root, err = nsc.Schema.NSDelete(ctx, s, root, name)
+		root, err = nsc.Schema.NSDelete(ctx, tx, root, name)
 		if err != nil {
 			return nil, err
 		}
-		ents, err := nsc.Schema.NSList(ctx, s, root)
+		ents, err := nsc.Schema.NSList(ctx, tx, root)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +134,7 @@ func (nsc NSClient) Delete(ctx context.Context, nsh blobcache.Handle, name strin
 	})
 }
 
-func (nsc NSClient) Get(ctx context.Context, volh blobcache.Handle, name string, dst *NSEntry) (bool, error) {
+func (nsc *NSClient) Get(ctx context.Context, volh blobcache.Handle, name string, dst *NSEntry) (bool, error) {
 	volh, err := nsc.resolve(ctx, volh)
 	if err != nil {
 		return false, err
@@ -144,7 +144,7 @@ func (nsc NSClient) Get(ctx context.Context, volh blobcache.Handle, name string,
 	})
 }
 
-func (nsc NSClient) List(ctx context.Context, volh blobcache.Handle) ([]NSEntry, error) {
+func (nsc *NSClient) List(ctx context.Context, volh blobcache.Handle) ([]NSEntry, error) {
 	volh, err := nsc.resolve(ctx, volh)
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (nsc NSClient) List(ctx context.Context, volh blobcache.Handle) ([]NSEntry,
 	})
 }
 
-func (nsc NSClient) ListNames(ctx context.Context, volh blobcache.Handle) ([]string, error) {
+func (nsc *NSClient) ListNames(ctx context.Context, volh blobcache.Handle) ([]string, error) {
 	ents, err := nsc.List(ctx, volh)
 	if err != nil {
 		return nil, err
@@ -162,7 +162,7 @@ func (nsc NSClient) ListNames(ctx context.Context, volh blobcache.Handle) ([]str
 	return slices2.Map(ents, func(x NSEntry) string { return x.Name }), nil
 }
 
-func (nsc NSClient) OpenAt(ctx context.Context, nsh blobcache.Handle, name string, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (nsc *NSClient) OpenAt(ctx context.Context, nsh blobcache.Handle, name string, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return nil, err
@@ -182,24 +182,27 @@ func (nsc NSClient) OpenAt(ctx context.Context, nsh blobcache.Handle, name strin
 	return subvolh, nil
 }
 
-func (nsc NSClient) CreateAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+func (nsc *NSClient) CreateAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return nil, err
 	}
-	volh, err := nsc.Service.CreateVolume(ctx, nil, spec)
+	volh, _, err := bcsdk.CreateOnSameHost(ctx, nsc.Service, nsh, spec)
 	if err != nil {
 		return nil, err
 	}
-	if err := bcsdk.Modify(ctx, nsc.Service, nsh, func(s bcsdk.RW, root []byte) ([]byte, error) {
-		found, err := nsc.Schema.NSGet(ctx, s, root, name, new(NSEntry))
+	if err := bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
+		found, err := nsc.Schema.NSGet(ctx, tx, root, name, new(NSEntry))
 		if err != nil {
 			return nil, err
 		}
 		if found {
 			return nil, fmt.Errorf("ns: entry already exists at %s", name)
 		}
-		return nsc.Schema.NSPut(ctx, s, root, NSEntry{
+		if err := tx.Link(ctx, *volh, blobcache.Action_ALL); err != nil {
+			return nil, err
+		}
+		return nsc.Schema.NSPut(ctx, tx, root, NSEntry{
 			Name:   name,
 			Target: volh.OID,
 			Rights: blobcache.Action_ALL,
@@ -207,13 +210,11 @@ func (nsc NSClient) CreateAt(ctx context.Context, nsh blobcache.Handle, name str
 	}); err != nil {
 		return nil, err
 	}
-	if err := nsc.Put(ctx, nsh, name, *volh, blobcache.Action_ALL); err != nil {
-		return nil, err
-	}
 	return volh, nil
 }
 
-func (nsc NSClient) GC(ctx context.Context, volh blobcache.Handle) error {
+// GC garbage collects the volume
+func (nsc *NSClient) GC(ctx context.Context, volh blobcache.Handle) error {
 	gcsch, ok := nsc.Schema.(VisitAll)
 	if !ok {
 		return fmt.Errorf("cannot GC, schema does not support visit all")

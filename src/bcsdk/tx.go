@@ -256,6 +256,12 @@ func View1[T any](ctx context.Context, svc blobcache.Service, volh blobcache.Han
 
 // Modify performs a modifying transaction on the volume.
 func Modify(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, fn func(s RW, root []byte) ([]byte, error)) error {
+	return ModifyTx(ctx, svc, volh, func(tx *Tx, root []byte) ([]byte, error) {
+		return fn(tx, root)
+	})
+}
+
+func ModifyTx(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, fn func(tx *Tx, root []byte) ([]byte, error)) error {
 	tx, err := BeginTx(ctx, svc, volh, blobcache.TxParams{
 		Modify: true,
 	})
@@ -268,28 +274,6 @@ func Modify(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, f
 		return err
 	}
 	next, err := fn(tx, prev)
-	if err != nil {
-		return err
-	}
-	if err := tx.Save(ctx, next); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
-func ModifyTx(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, fn func(tx *Tx, s RW, root []byte) ([]byte, error)) error {
-	tx, err := BeginTx(ctx, svc, volh, blobcache.TxParams{
-		Modify: true,
-	})
-	if err != nil {
-		return err
-	}
-	defer tx.Abort(ctx)
-	var prev []byte
-	if err := tx.Load(ctx, &prev); err != nil {
-		return err
-	}
-	next, err := fn(tx, tx, prev)
 	if err != nil {
 		return err
 	}

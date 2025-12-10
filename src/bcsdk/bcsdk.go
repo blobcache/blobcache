@@ -22,7 +22,6 @@ func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.H
 	}
 	if host != nil {
 		svinfo, err := s.InspectVolume(ctx, *svolh)
-
 		if err != nil {
 			return nil, nil, err
 		}
@@ -30,7 +29,6 @@ func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.H
 		return svolh, &fqoid, err
 	} else {
 		ep, err := s.Endpoint(ctx)
-
 		if err != nil {
 			return nil, nil, err
 		}

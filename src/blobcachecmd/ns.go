@@ -1,6 +1,7 @@
 package blobcachecmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -225,22 +226,14 @@ func getNS(c star.Context) (*schema.NSClient, *blobcache.Handle, error) {
 		}
 		rooth = *h
 	}
-	vinfo, err := bc.InspectVolume(c, rooth)
+	nsc, err := NSClientForVolume(c, bc, rooth)
 	if err != nil {
 		return nil, nil, err
 	}
-	sch, err := schemareg.Factory(vinfo.Schema)
-	if err != nil {
-		return nil, nil, err
-	}
-	nssch, ok := sch.(schema.Namespace)
-	if !ok {
-		return nil, nil, fmt.Errorf("volume has a non-namespace Schema %v", vinfo.Schema.Name)
-	}
-	nsc := schema.NSClient{Service: bc, Schema: nssch}
 	return &nsc, &rooth, nil
 }
 
+// TODO: remove this and use getNS instead
 func doNSOp(c star.Context, fn func(nsc schema.NSClient, volh blobcache.Handle) error) error {
 	nsc, rooth, err := getNS(c)
 	if err != nil {
@@ -274,4 +267,24 @@ func getNSRoot(c star.Context) blobcache.Handle {
 	}
 	// Just return the root
 	return blobcache.Handle{}
+}
+
+// NSClientForVolume returns a NSClient configured with the Schema used by the given volume.
+func NSClientForVolume(ctx context.Context, svc blobcache.Service, nsvolh blobcache.Handle) (schema.NSClient, error) {
+	vinfo, err := svc.InspectVolume(ctx, nsvolh)
+	if err != nil {
+		return schema.NSClient{}, err
+	}
+	sch, err := schemareg.Factory(vinfo.Schema)
+	if err != nil {
+		return schema.NSClient{}, err
+	}
+	nssch, ok := sch.(schema.Namespace)
+	if !ok {
+		return schema.NSClient{}, fmt.Errorf("volume has a non-namespace Schema %v", vinfo.Schema.Name)
+	}
+	return schema.NSClient{
+		Service: svc,
+		Schema:  nssch,
+	}, nil
 }
