@@ -6,6 +6,14 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
+type Loader interface {
+	Load(ctx context.Context, dst *[]byte) error
+}
+
+type Saver interface {
+	Save(ctx context.Context, src []byte) error
+}
+
 // CreateOnSameHost creates a new subvolume on the same host as the base volume.
 func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.Handle, spec blobcache.VolumeSpec) (*blobcache.Handle, *blobcache.FQOID, error) {
 	info, err := s.InspectVolume(ctx, base)
@@ -36,5 +44,27 @@ func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.H
 			Peer: ep.Peer,
 			OID:  svolh.OID,
 		}, nil
+	}
+}
+
+func OpenURL(ctx context.Context, bc blobcache.Service, u blobcache.URL) (*blobcache.Handle, error) {
+	ep, err := bc.Endpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ep.Peer == u.Node {
+		volh, err := bc.OpenFiat(ctx, u.Base, blobcache.Action_ALL)
+		if err != nil {
+			return nil, err
+		}
+		return volh, nil
+	} else {
+		return bc.CreateVolume(ctx, nil, blobcache.VolumeSpec{
+			Remote: &blobcache.VolumeBackend_Remote{
+				Endpoint: ep,
+				Volume:   u.Base,
+				HashAlgo: "", // TODO,
+			},
+		})
 	}
 }

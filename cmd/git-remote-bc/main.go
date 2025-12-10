@@ -11,6 +11,7 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	defer os.Stderr.Sync()
 	log.Println("args:", os.Args)
 	u, err := blobcache.ParseURL(os.Args[2])
@@ -25,8 +26,13 @@ func main() {
 	}
 	log.Printf("connected to blobcache node %v", ep)
 
-	srv := bcgit.NewRemoteHelper(bc, *u)
-	if err := srv.Serve(os.Stdin, os.Stdout); err != nil {
+	rem, err := bcgit.OpenRemoteHelper(ctx, bc, *u)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rem.Close()
+	srv := bcgit.NewRemoteHelper(rem)
+	if err := srv.Serve(ctx, os.Stdin, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("OK")
