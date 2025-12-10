@@ -21,7 +21,7 @@ func TestAPI(t *testing.T) {
 	t.Log("built blobcache command. written to ", execPath)
 
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
-		_, apiAddr := blobcached.RunTestDaemon(t)
+		_, apiAddr := blobcached.BGTestDaemon(t)
 		return &blobcachecmd.Service{
 			APIAddr:  apiAddr,
 			ExecPath: execPath,

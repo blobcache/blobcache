@@ -22,7 +22,7 @@ var enableGitOut = true
 
 func TestLsRemote(t *testing.T) {
 	ctx := testutil.Context(t)
-	_, apiStr := blobcached.RunTestDaemon(t)
+	_, apiStr := blobcached.BGTestDaemon(t)
 	bc := bchttp.NewClient(nil, apiStr)
 	wd := t.TempDir()
 	testutil.BuildGoExec(t, filepath.Join(wd, "git-remote-bc"), "../../../cmd/git-remote-bc")
