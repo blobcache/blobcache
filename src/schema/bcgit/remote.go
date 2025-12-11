@@ -2,9 +2,7 @@ package bcgit
 
 import (
 	"context"
-	"iter"
 	"log"
-	"strings"
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
@@ -17,46 +15,16 @@ func Hash(x []byte) blobcache.CID {
 	return blobcache.HashAlgo_SHA2_256.HashFunc()(nil, x)
 }
 
-type GitRef = gitrh.Ref
-
-// FmtURL formats a URL
-func FmtURL(u blobcache.URL) string {
-	return "bc::" + strings.TrimPrefix(u.String(), "bc://")
-}
-
-func NewRemoteHelper(rem *Remote) gitrh.Server {
-	return gitrh.Server{
-		List: func(ctx context.Context) iter.Seq2[GitRef, error] {
-			return func(yield func(GitRef, error) bool) {
-				it, err := rem.Iterate(ctx)
-				if err != nil {
-					yield(GitRef{}, err)
-					return
-				}
-				var gr GitRef
-				for {
-					if err := it.Next(ctx, &gr); err != nil {
-						if !streams.IsEOS(err) {
-							yield(GitRef{}, err)
-						}
-						return
-					}
-					if !yield(gr, nil) {
-						return
-					}
-				}
-			}
+func DefaultVolumeSpec() blobcache.VolumeSpec {
+	return blobcache.VolumeSpec{
+		Local: &blobcache.VolumeBackend_Local{
+			HashAlgo: blobcache.HashAlgo_SHA2_256,
+			MaxSize:  1e7,
 		},
 	}
 }
 
-func OpenRemoteHelper(ctx context.Context, bc blobcache.Service, u blobcache.URL) (*Remote, error) {
-	volh, err := bcsdk.OpenURL(ctx, bc, u)
-	if err != nil {
-		return nil, err
-	}
-	return NewRemote(bc, *volh), nil
-}
+type GitRef = gitrh.Ref
 
 // Remote is a Git Remote backed by a Blobcache Volume
 type Remote struct {
@@ -103,20 +71,51 @@ func (rem *Remote) putRefs(ctx context.Context, refs []GitRef) error {
 	return tx.Commit(ctx)
 }
 
+func beginTTx(ctx context.Context, tmach *tries.Machine, tx *bcsdk.Tx) (*tries.Tx, error) {
+	root, err := tries.LoadRoot(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if root == nil {
+		return tmach.NewTxOnEmpty(), nil
+	} else {
+		return tmach.NewTx(*root), nil
+	}
+}
+
+func (rem *Remote) Push(ctx context.Context, src *gitrh.Store, refs []GitRef) error {
+	tx, err := bcsdk.BeginTx(ctx, rem.svc, rem.volh, blobcache.TxParams{Modify: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	ttx, err := beginTTx(ctx, rem.tmach, tx)
+	if err != nil {
+		return err
+	}
+	for _, ref := range refs {
+		log.Println("setting", ref.Name, "to", ref.Target)
+		if err := Sync(ctx, src, tx, ref.Target); err != nil {
+			return err
+		}
+		if err := ttx.Put(ctx, tx, []byte(ref.Name), ref.Target[:]); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 func (gr *Remote) Iterate(ctx context.Context) (streams.Iterator[GitRef], error) {
 	tx, err := bcsdk.BeginTx(ctx, gr.svc, gr.volh, blobcache.TxParams{})
 	if err != nil {
 		return nil, err
 	}
-	var rootData []byte
-	if err := tx.Load(ctx, &rootData); err != nil {
-		tx.Abort(ctx)
+	root, err := tries.LoadRoot(ctx, tx)
+	if err != nil {
 		return nil, err
 	}
-	root, err := tries.ParseRoot(rootData)
-	if err != nil {
-		tx.Abort(ctx)
-		return nil, err
+	if root == nil {
+		return streams.NewSlice[GitRef](nil, nil), nil
 	}
 	return &RefIterator{
 		tx: tx,
@@ -164,7 +163,6 @@ func (ri *RefIterator) Next(ctx context.Context, dst *GitRef) error {
 	if err := ri.it.Next(ctx, &ent); err != nil {
 		return err
 	}
-	log.Println("ent", string(ent.Key))
 	dst.Name = string(ent.Key)
 	dst.Target = [32]byte{}
 	copy(dst.Target[:], ent.Value)

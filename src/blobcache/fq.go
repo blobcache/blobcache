@@ -21,7 +21,8 @@ type URL struct {
 	Node   PeerID
 	IPPort *netip.AddrPort
 	Base   OID
-	Path   []string
+	Path   OIDPath
+	Extra  string
 }
 
 func ParseURL(x string) (*URL, error) {
