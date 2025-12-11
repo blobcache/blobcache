@@ -79,7 +79,7 @@ LOOP:
 		case `push`:
 			refSpec := args[0]
 			refParts := strings.Split(refSpec, ":")
-			src, dst := refParts[0], refParts[1]
+			src, dst := strings.TrimLeft(refParts[0], "+"), refParts[1]
 			desired, err := getRefTarget(src)
 			if err != nil {
 				return err
@@ -134,6 +134,44 @@ func printError(w io.Writer, refName, msg string) error {
 	return err
 }
 
+// MaxSize is the maximum allowed size of an object.
+const MaxSize = 1 << 24
+
+type Store struct {
+	SkipVerify bool
+}
+
+func (s *Store) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error) {
+	data, err := getObject(cid)
+	if err != nil {
+		return 0, err
+	}
+	if !s.SkipVerify {
+		actualCID := blobcache.CID(sha256.Sum256(data))
+		if actualCID != cid {
+			return 0, fmt.Errorf("sha256 does not match")
+		}
+	}
+	return copy(buf, data), nil
+}
+
+func (s *Store) MaxSize() int {
+	return MaxSize
+}
+
+func (s *Store) Hash(x []byte) blobcache.CID {
+	return sha256.Sum256(x)
+}
+
+func (s *Store) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	for i, cid := range cids {
+		var err error
+		if dst[i], err = objectExists(cid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func getRefTarget(name string) (blobcache.CID, error) {
 	c := exec.Command("git", "rev-parse", name)
 	stdout, err := c.Output()
@@ -179,18 +217,16 @@ func getObject(id blobcache.CID) ([]byte, error) {
 	return slices.Concat(header, []byte("\x00"), rawData), nil
 }
 
-type Store struct {
-	SkipVerify bool
-}
-
-func (s Store) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error) {
-	data, err := getObject(cid)
-	if err != nil {
-		return 0, err
+// objectExists calls into git to check it the object exist.
+func objectExists(cid blobcache.CID) (bool, error) {
+	c := exec.Command("git", "cat-file", "-e", hex.EncodeToString(cid[:]))
+	if err := c.Run(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			if ee.ExitCode() == 1 {
+				return false, nil
+			}
+		}
+		return false, err
 	}
-	actualCID := blobcache.CID(sha256.Sum256(data))
-	if actualCID != cid {
-		return 0, fmt.Errorf("sha256 does not match")
-	}
-	return copy(buf, data), nil
+	return true, nil
 }

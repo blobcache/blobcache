@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"iter"
-	"log"
 	"regexp"
 	"strings"
 
@@ -27,7 +26,7 @@ func NewRemoteHelper(rem *Remote) gitrh.Server {
 		Push: rem.Push,
 		List: func(ctx context.Context) iter.Seq2[GitRef, error] {
 			return func(yield func(GitRef, error) bool) {
-				it, err := rem.Iterate(ctx)
+				it, err := rem.OpenIterator(ctx)
 				if err != nil {
 					yield(GitRef{}, err)
 					return
@@ -58,8 +57,7 @@ func OpenRemoteHelper(ctx context.Context, bc blobcache.Service, u blobcache.URL
 }
 
 // Sync copies the transitive closure of the git object `id` from src to dst.
-func Sync(ctx context.Context, src *gitrh.Store, dst bcsdk.WO, id blobcache.CID) error {
-	log.Println("syncing", id)
+func Sync(ctx context.Context, src bcsdk.RO, dst bcsdk.WO, id blobcache.CID) error {
 	if ok, err := schema.ExistsUnit(ctx, dst, id); err != nil {
 		return err
 	} else if ok {
@@ -94,7 +92,6 @@ func listChildren(data []byte) (ret []blobcache.CID, _ error) {
 	}
 	ty := string(data[:eot])
 	content := data[eot+1:]
-	log.Println(ty, len(ty), len(content))
 	switch ty {
 	case "commit":
 		for _, m := range gitHashRegex.FindAll(content, -1) {
@@ -120,4 +117,4 @@ func listChildren(data []byte) (ret []blobcache.CID, _ error) {
 }
 
 var gitHashRegex = regexp.MustCompile(`[0-9a-f]{64}`)
-var treeEntHashRegex = regexp.MustCompile(`\d+ [\w.]+\x00(.{32})`)
+var treeEntHashRegex = regexp.MustCompile(`\d+ [\w.]+\x00.{32}`)

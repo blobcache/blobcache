@@ -51,26 +51,54 @@ func TestLsRemote(t *testing.T) {
 	require.Equal(t, len(refs), len(refsActual))
 }
 
-func TestPushRefs(t *testing.T) {
+func TestPushTags(t *testing.T) {
 	ctx := testutil.Context(t)
 	te := setup(t)
 	bc := te.Service
 
+	rem := NewRemote(bc, te.Volume)
 	gitInit(t, te)
-	putFile(t, te, "file1.txt", []byte("hello world"))
-	gitCommit(t, te, "file1.txt")
 	cmd(t, te, "git", "remote", "add", "test1", FmtURL(te.URL))
+
+	putFile(t, te, "file1.txt", fmt.Appendf(nil, "hello world"))
+	gitCommit(t, te, "file1.txt")
 	for i := 0; i < 5; i++ {
 		gitTag(t, te, fmt.Sprintf("tag-%d", i))
 	}
-	gitPushAll(t, te, "test1")
+	gitPushAllTags(t, te, "test1")
+
+	it, err := rem.OpenIterator(ctx)
+	require.NoError(t, err)
+	actualRefs, err := streams.Collect(ctx, it, 1<<20)
+	require.NoError(t, err)
+	require.Len(t, actualRefs, 5)
+	require.NoError(t, it.Close())
+}
+
+func TestPushBranch(t *testing.T) {
+	ctx := testutil.Context(t)
+	te := setup(t)
+	bc := te.Service
 
 	rem := NewRemote(bc, te.Volume)
-	it, err := rem.Iterate(ctx)
+	gitInit(t, te)
+	cmd(t, te, "git", "remote", "add", "test1", FmtURL(te.URL))
+	for i := range 10 {
+		putFile(t, te, "file1.txt", fmt.Appendf(nil, "hello world %d", i))
+		gitCommit(t, te, "file1.txt")
+		gitPush(t, te, "test1", "master")
+	}
+
+	// check what's there
+	it, err := rem.OpenIterator(ctx)
 	require.NoError(t, err)
-	require.NoError(t, streams.ForEach(ctx, it, func(gr GitRef) error {
-		return nil
-	}))
+	actualRefs, err := streams.Collect(ctx, it, 1<<20)
+	require.NoError(t, err)
+	require.Len(t, actualRefs, 1)
+	require.NoError(t, it.Close())
+}
+
+func TestPushPull(t *testing.T) {
 }
 
 func setup(t testing.TB) testEnv {
@@ -110,7 +138,10 @@ func putFile(t testing.TB, te testEnv, p string, data []byte) {
 }
 
 func gitInit(t testing.TB, te testEnv) {
-	cmd(t, te, "git", "init", "--object-format=sha256")
+	cmd(t, te, "git", "init",
+		"--object-format=sha256",
+		"-b", "master",
+	)
 }
 
 func gitCommit(t testing.TB, te testEnv, files ...string) {
@@ -118,9 +149,13 @@ func gitCommit(t testing.TB, te testEnv, files ...string) {
 	cmd(t, te, "git", "commit", "-m", "commit")
 }
 
-func gitPushAll(t testing.TB, te testEnv, remoteName string) {
+func gitPush(t testing.TB, te testEnv, remoteName, branch string) {
+	cmd(t, te, "git", "push", "-u", remoteName, branch)
+}
+
+func gitPushAllTags(t testing.TB, te testEnv, remoteName string) {
 	// to anyone reading this, don't do this on a real project, always push specific tags
-	cmd(t, te, "git", "push", "--tags", remoteName)
+	cmd(t, te, "git", "push", "--tags", "-f", remoteName)
 }
 
 func gitTag(t testing.TB, te testEnv, tagName string) {

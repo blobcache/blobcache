@@ -2,7 +2,6 @@ package bcgit
 
 import (
 	"context"
-	"log"
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
@@ -94,7 +93,6 @@ func (rem *Remote) Push(ctx context.Context, src *gitrh.Store, refs []GitRef) er
 		return err
 	}
 	for _, ref := range refs {
-		log.Println("setting", ref.Name, "to", ref.Target)
 		if err := Sync(ctx, src, tx, ref.Target); err != nil {
 			return err
 		}
@@ -102,29 +100,68 @@ func (rem *Remote) Push(ctx context.Context, src *gitrh.Store, refs []GitRef) er
 			return err
 		}
 	}
+	root, err := ttx.Flush(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if err := tries.SaveRoot(ctx, tx, *root); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
-func (gr *Remote) Iterate(ctx context.Context) (streams.Iterator[GitRef], error) {
-	tx, err := bcsdk.BeginTx(ctx, gr.svc, gr.volh, blobcache.TxParams{})
+func (rem *Remote) Fetch(ctx context.Context, w bcsdk.WO, refs map[string]blobcache.CID) error {
+	tx, err := bcsdk.BeginTx(ctx, rem.svc, rem.volh, blobcache.TxParams{})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	it, err := rem.openRefIterator(ctx, tx)
+	if err != nil {
+		return err
+	}
+	return streams.ForEach(ctx, it, func(gr GitRef) error {
+		if cid, exists := refs[gr.Name]; !exists {
+			return nil
+		} else if gr.Target == cid {
+			return nil
+		}
+		if err := Sync(ctx, tx, w, gr.Target); err != nil {
+			return nil
+		}
+		return nil
+	})
+}
+
+// OpenIterator returns an iterator impelementing steams.Iterator
+// If a non-nil RetIterator is returned (only happens when err == nil)
+// then it is the callers responsibility to close it or the underlying transaction
+// will remain open.
+func (rem *Remote) OpenIterator(ctx context.Context) (*RefIterator, error) {
+	tx, err := bcsdk.BeginTx(ctx, rem.svc, rem.volh, blobcache.TxParams{})
 	if err != nil {
 		return nil, err
 	}
+	return rem.openRefIterator(ctx, tx)
+}
+
+func (rem *Remote) openRefIterator(ctx context.Context, tx *bcsdk.Tx) (*RefIterator, error) {
 	root, err := tries.LoadRoot(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
 	if root == nil {
-		return streams.NewSlice[GitRef](nil, nil), nil
+		// omitting the root gives an empty iterator
+		return &RefIterator{tx: tx}, nil
 	}
 	return &RefIterator{
 		tx: tx,
-		it: gr.tmach.NewIterator(tx, *root, tries.Span{}),
+		it: rem.tmach.NewIterator(tx, *root, tries.Span{}),
 	}, nil
 }
 
-func (gr *Remote) GetRef(ctx context.Context, name string) (*GitRef, error) {
-	tx, err := bcsdk.BeginTx(ctx, gr.svc, gr.volh, blobcache.TxParams{})
+func (rem *Remote) GetRef(ctx context.Context, name string) (*GitRef, error) {
+	tx, err := bcsdk.BeginTx(ctx, rem.svc, rem.volh, blobcache.TxParams{})
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +171,7 @@ func (gr *Remote) GetRef(ctx context.Context, name string) (*GitRef, error) {
 		return nil, err
 	}
 	var val []byte
-	if found, err := gr.tmach.Get(ctx, tx, *root, []byte(name), &val); err != nil {
+	if found, err := rem.tmach.Get(ctx, tx, *root, []byte(name), &val); err != nil {
 		return nil, err
 	} else if !found {
 		return nil, nil
@@ -145,7 +182,7 @@ func (gr *Remote) GetRef(ctx context.Context, name string) (*GitRef, error) {
 	}), nil
 }
 
-func (gr *Remote) Close() error {
+func (rem *Remote) Close() error {
 	// TODO: we may need to renew the handle in the background
 	// adding this now means callers will get in the habit of calling it.
 	return nil
@@ -159,6 +196,9 @@ type RefIterator struct {
 }
 
 func (ri *RefIterator) Next(ctx context.Context, dst *GitRef) error {
+	if ri.it == nil {
+		return streams.EOS()
+	}
 	var ent tries.Entry
 	if err := ri.it.Next(ctx, &ent); err != nil {
 		return err
