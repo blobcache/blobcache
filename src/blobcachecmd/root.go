@@ -60,6 +60,7 @@ var rootCmd = star.NewDir(
 		"ns":         nsCmd,
 		"glfs":       glfsCmd,
 		"fuse-mount": fuseMountCmd,
+		"git":        gitCmd,
 	},
 )
 

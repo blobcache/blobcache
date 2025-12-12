@@ -48,3 +48,29 @@ func TestMarshal(t *testing.T) {
 		}
 	})
 }
+
+func TestParseURL(t *testing.T) {
+	type testCase struct {
+		I   string
+		O   *URL
+		Err error
+	}
+	u1 := URL{}
+	tcs := []testCase{
+		{
+			I: u1.String(),
+			O: &u1,
+		},
+	}
+	for i, tc := range tcs {
+		t.Run(fmt.Sprintf("%d-%s", i, tc.I), func(t *testing.T) {
+			u, err := ParseURL(tc.I)
+			if tc.Err != nil {
+				require.Equal(t, tc.Err, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.O, u)
+		})
+	}
+}

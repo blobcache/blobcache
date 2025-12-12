@@ -52,3 +52,9 @@ install-unix: build
 # Install blobcache with systemd service
 install-systemd: build
 	./etc/install-systemd.sh
+
+install-git-remote:
+    go install ./cmd/git-remote-bc
+
+ls-remote: install-git-remote
+    git ls-remote test1

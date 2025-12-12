@@ -11,15 +11,16 @@ import (
 )
 
 type Iterator struct {
-	op      *Machine
-	s       schema.RO
-	root    Root
+	m    *Machine
+	s    schema.RO
+	root Root
+
 	span    Span
 	lastKey []byte
 }
 
 func (mach *Machine) NewIterator(s schema.RO, root Root, span Span) *Iterator {
-	return &Iterator{op: mach, s: s, root: root, span: span}
+	return &Iterator{m: mach, s: s, root: root, span: span}
 }
 
 func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
@@ -29,7 +30,7 @@ func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
 	} else {
 		gteq = append([]byte{}, it.span.Begin...)
 	}
-	ent, err := it.op.MinEntry(ctx, it.s, it.root, gteq)
+	ent, err := it.m.MinEntry(ctx, it.s, it.root, gteq)
 	if err != nil {
 		return err
 	} else if ent == nil {
@@ -78,7 +79,7 @@ func (mach *Machine) minEntry(ctx context.Context, s schema.RO, node triescnp.No
 				if err := ent.fromCNP(xent); err != nil {
 					return nil, err
 				}
-				ent.Key = expandKey(ent.Key, k)
+				return &ent, nil
 			}
 
 		case triescnp.Entry_Which_index:

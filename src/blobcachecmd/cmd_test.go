@@ -16,7 +16,7 @@ import (
 
 func TestGLFS(t *testing.T) {
 	stateDir := t.TempDir()
-	_, apiUrl := blobcached.RunTestDaemon(t)
+	_, apiUrl := blobcached.BGTestDaemon(t)
 	env := map[string]string{
 		bcclient.EnvBlobcacheAPI: apiUrl,
 	}

@@ -3,8 +3,10 @@ package testutil
 import (
 	"context"
 	"net"
+	"os/exec"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
 )
@@ -38,4 +40,9 @@ func PacketConn(t testing.TB) net.PacketConn {
 		conn.Close()
 	})
 	return conn
+}
+
+func BuildGoExec(t testing.TB, dst string, mainPkg string) {
+	cmd := exec.Command("go", "build", "-o", dst, mainPkg)
+	require.NoError(t, cmd.Run())
 }

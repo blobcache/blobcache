@@ -61,7 +61,11 @@ func (None) ValidateChange(ctx context.Context, change Change) error {
 	return nil
 }
 
-func ExistsUnit(ctx context.Context, s bcsdk.RO, cid blobcache.CID) (bool, error) {
+type Exists interface {
+	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
+}
+
+func ExistsUnit(ctx context.Context, s Exists, cid blobcache.CID) (bool, error) {
 	var dst [1]bool
 	if err := s.Exists(ctx, []blobcache.CID{cid}, dst[:]); err != nil {
 		return false, err

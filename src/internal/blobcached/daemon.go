@@ -204,24 +204,31 @@ func AwaitHealthy(ctx context.Context, svc blobcache.Service) error {
 	}
 }
 
-// RunTestDaemon launches a test daemon and returns it and the API address.
+// BGTestDaemon launches a test daemon and returns it and the API address.
 // This function will block until the daemon is healthy.
 // The daemon will be stopped and cleaned up at the end of the test.
 // The test will fail during cleanup if the daemon fails to stop, and
 // The test will not complete until the daemon is successfully torn down.
-func RunTestDaemon(t testing.TB) (*Daemon, string) {
+func BGTestDaemon(t testing.TB) (*Daemon, string) {
 	ctx := testutil.Context(t)
 	ctx, cf := context.WithCancel(ctx)
+	var eg errgroup.Group
+	t.Cleanup(func() {
+		if err := eg.Wait(); err != nil {
+			t.Errorf("daemon cleanup: %v", err)
+		}
+	})
 	t.Cleanup(cf)
 	dir := t.TempDir()
 	d := Daemon{StateDir: dir}
 	pc := testutil.PacketConn(t)
 	lis := testutil.Listen(t)
-	go func() {
+	eg.Go(func() error {
 		if err := d.Run(ctx, pc, lis); err != nil {
 			t.Log(err)
 		}
-	}()
+		return nil
+	})
 	apiURL := lis.Addr().Network() + "://" + lis.Addr().String()
 	t.Cleanup(func() {
 		if err := pc.Close(); err != nil && !errors.Is(err, net.ErrClosed) {

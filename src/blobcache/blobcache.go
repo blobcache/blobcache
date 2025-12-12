@@ -63,6 +63,8 @@ func (o *OID) Unmarshal(data []byte) error {
 	return nil
 }
 
+type OIDPath = []OID
+
 func RandomOID() (ret OID) {
 	rand.Read(ret[:])
 	return ret
