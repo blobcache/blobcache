@@ -12,15 +12,17 @@ import (
 	"go.brendoncarroll.net/exp/streams"
 )
 
+const HashAlgo = blobcache.HashAlgo_SHA2_256
+
 func Hash(x []byte) blobcache.CID {
-	return blobcache.HashAlgo_SHA2_256.HashFunc()(nil, x)
+	return HashAlgo.HashFunc()(nil, x)
 }
 
 func DefaultVolumeSpec() blobcache.VolumeSpec {
 	return blobcache.VolumeSpec{
 		Local: &blobcache.VolumeBackend_Local{
 			HashAlgo: blobcache.HashAlgo_SHA2_256,
-			MaxSize:  1e7,
+			MaxSize:  gitrh.MaxSize,
 		},
 	}
 }
@@ -112,7 +114,7 @@ func (rem *Remote) Push(ctx context.Context, src *gitrh.Store, refs []GitRef) er
 	return tx.Commit(ctx)
 }
 
-func (rem *Remote) Fetch(ctx context.Context, ws *gitrh.Store, refs map[string]blobcache.CID) error {
+func (rem *Remote) Fetch(ctx context.Context, ws *gitrh.FastImporter, refs map[string]blobcache.CID) error {
 	tx, err := bcsdk.BeginTx(ctx, rem.svc, rem.volh, blobcache.TxParams{})
 	if err != nil {
 		return err

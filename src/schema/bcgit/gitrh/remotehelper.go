@@ -4,7 +4,6 @@ package gitrh
 import (
 	"bufio"
 	"bytes"
-	"compress/zlib"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,9 +13,9 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
 )
@@ -30,9 +29,27 @@ func (gr Ref) String() string {
 	return fmt.Sprintf("%s -> %x", gr.Name, gr.Target)
 }
 
+type Ctx struct {
+	Remote string
+	URL    string
+}
+
+func Main(fn func(Ctx) (*Server, error)) {
+	remoteName, url := os.Args[1], os.Args[2]
+	srv, err := fn(Ctx{Remote: remoteName, URL: url})
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	ctx := context.Background()
+	if err := srv.Serve(ctx, os.Stdin, os.Stdout); err != nil {
+		log.Fatal(err)
+	}
+}
+
 type Server struct {
 	List  func(context.Context) iter.Seq2[Ref, error]
-	Fetch func(ctx context.Context, s *Store, refs map[string]blobcache.CID) error
+	Fetch func(ctx context.Context, s *FastImporter, refs map[string]blobcache.CID) error
 	Push  func(ctx context.Context, s *Store, refs []Ref) error
 }
 
@@ -115,7 +132,10 @@ LOOP:
 		}
 		bufw.WriteString("\n")
 	} else if len(toFetch) > 0 {
-		s := &Store{}
+		s, err := newFastImporter()
+		if err != nil {
+			return err
+		}
 		if err := srv.Fetch(ctx, s, toFetch); err != nil {
 			return err
 		}
@@ -196,12 +216,81 @@ func (s *Store) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) er
 	return nil
 }
 
-func (s *Store) Post(ctx context.Context, buf []byte) (blobcache.CID, error) {
-	cid := blobcache.CID(sha256.Sum256(buf))
-	if err := postObject(cid, buf); err != nil {
+type FastImporter struct {
+	Store
+
+	mu      sync.RWMutex
+	cmd     *exec.Cmd
+	stdin   *io.PipeWriter
+	bw      *bufio.Writer
+	written map[blobcache.CID]struct{}
+}
+
+func newFastImporter() (*FastImporter, error) {
+	pr, pw := io.Pipe()
+	cmd := exec.Command("git", "fast-import")
+	cmd.Stdin = pr
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return &FastImporter{
+		cmd:     cmd,
+		stdin:   pw,
+		written: make(map[blobcache.CID]struct{}),
+	}, nil
+}
+
+func (s *FastImporter) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	// TODO: check map here.
+	return s.Store.Exists(ctx, cids, dst)
+}
+
+func (s *FastImporter) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
+	cid := blobcache.CID(sha256.Sum256(data))
+	s.mu.RLock()
+	if _, exists := s.written[cid]; exists {
+		s.mu.RUnlock()
+		return cid, nil
+	}
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.sendRaw(data); err != nil {
 		return blobcache.CID{}, err
 	}
 	return cid, nil
+}
+
+func (s *FastImporter) Close() error {
+	if err := s.bw.Flush(); err != nil {
+		return err
+	}
+	if err := s.stdin.Close(); err != nil {
+		return err
+	}
+	return s.cmd.Wait()
+}
+
+func (s *FastImporter) sendRaw(data []byte) error {
+	ty, err := TypeOf(data)
+	if err != nil {
+		return err
+	}
+	switch ty {
+	default:
+		return fmt.Errorf("fast importer: don't know how to write type %v", ty)
+	}
+	return nil
+}
+
+// TypeOf returns the type of the GitObject in data.
+func TypeOf(data []byte) (string, error) {
+	eot := bytes.Index(data, []byte{' '})
+	if eot == -1 {
+		return "", fmt.Errorf("could not parse type")
+	}
+	return string(data[:eot]), nil
 }
 
 func setRefTarget(ref string, target blobcache.CID) error {
@@ -215,23 +304,23 @@ func setRefTarget(ref string, target blobcache.CID) error {
 	return nil
 }
 
-func postObject(cid blobcache.CID, data []byte) error {
-	hexcid := hex.EncodeToString(cid[:])
-	p := filepath.Join(".git/objects", hexcid[:2], hexcid[2:])
-	if err := os.Mkdir(filepath.Dir(p), 0o755); err != nil && !os.IsExist(err) {
-		return err
-	}
-	var buf bytes.Buffer
-	w := zlib.NewWriter(&buf)
-	if _, err := w.Write(data); err != nil {
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-	log.Println("w", p)
-	return os.WriteFile(p, buf.Bytes(), 0o444)
-}
+// func postObject(cid blobcache.CID, data []byte) error {
+// 	hexcid := hex.EncodeToString(cid[:])
+// 	p := filepath.Join(".git/objects", hexcid[:2], hexcid[2:])
+// 	if err := os.Mkdir(filepath.Dir(p), 0o755); err != nil && !os.IsExist(err) {
+// 		return err
+// 	}
+// 	var buf bytes.Buffer
+// 	w := zlib.NewWriter(&buf)
+// 	if _, err := w.Write(data); err != nil {
+// 		return err
+// 	}
+// 	if err := w.Close(); err != nil {
+// 		return err
+// 	}
+// 	log.Println("w", p)
+// 	return os.WriteFile(p, buf.Bytes(), 0o444)
+// }
 
 func getRefTarget(name string) (blobcache.CID, error) {
 	c := exec.Command("git", "rev-parse", name)

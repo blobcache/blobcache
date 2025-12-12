@@ -1,11 +1,11 @@
 package bcgit
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"iter"
+	"log"
 	"regexp"
 	"strings"
 
@@ -90,35 +90,45 @@ func Sync(ctx context.Context, src bcsdk.RO, dst bcsdk.WO, id blobcache.CID) err
 }
 
 func listChildren(data []byte) (ret []blobcache.CID, _ error) {
-	eot := bytes.Index(data, []byte{' '})
-	if eot == -1 {
-		return nil, fmt.Errorf("could not parse type")
+	ty, err := gitrh.TypeOf(data)
+	if err != nil {
+		return nil, err
 	}
-	ty := string(data[:eot])
-	content := data[eot+1:]
+	content := data[len(ty)+1:]
 	switch ty {
 	case "commit":
 		for _, m := range gitHashRegex.FindAll(content, -1) {
 			var cid blobcache.CID
-			if _, err := hex.Decode(cid[:], m); err != nil {
+			if n, err := hex.Decode(cid[:], m); err != nil {
 				return nil, err
+			} else if n != 32 {
+				return nil, fmt.Errorf("commit contains hash of the wrong length %d", n)
 			}
 			ret = append(ret, cid)
 		}
-		return ret, nil
 	case "tree":
-		for _, m := range treeEntHashRegex.FindAll(content, -1) {
+		for _, grp := range treeEntHashRegex.FindAllSubmatch(content, -1) {
+			m := grp[1]
 			var cid blobcache.CID
-			copy(cid[:], m[len(m)-len(cid):])
+			copy(cid[:], m[:])
 			ret = append(ret, cid)
 		}
-		return ret, nil
+		if len(ret) == 0 && len(content) > 32 {
+			// TODO: fix the regexp
+			ret = append(ret, blobcache.CID(content[len(content)-32:]))
+		}
+		if len(ret) == 0 {
+			log.Println(treeEntHashRegex.Match(content[2:]))
+			log.Println("len", len(content))
+			panic(string(content[:len(content)-32]))
+		}
 	case "blob":
-		return nil, nil
 	default:
 		return nil, fmt.Errorf("cannot parse git object")
 	}
+	log.Println(ty, ret)
+	return ret, nil
 }
 
 var gitHashRegex = regexp.MustCompile(`[0-9a-f]{64}`)
-var treeEntHashRegex = regexp.MustCompile(`\d+ [\w.]+\x00.{32}`)
+var treeEntHashRegex = regexp.MustCompile(`[0-7]+ [ -~]+\x00([\s\S]{32})`)
