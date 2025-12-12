@@ -2,6 +2,8 @@ package bcgit
 
 import (
 	"context"
+	"log"
+	"maps"
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
@@ -110,7 +112,7 @@ func (rem *Remote) Push(ctx context.Context, src *gitrh.Store, refs []GitRef) er
 	return tx.Commit(ctx)
 }
 
-func (rem *Remote) Fetch(ctx context.Context, w bcsdk.WO, refs map[string]blobcache.CID) error {
+func (rem *Remote) Fetch(ctx context.Context, ws *gitrh.Store, refs map[string]blobcache.CID) error {
 	tx, err := bcsdk.BeginTx(ctx, rem.svc, rem.volh, blobcache.TxParams{})
 	if err != nil {
 		return err
@@ -120,17 +122,25 @@ func (rem *Remote) Fetch(ctx context.Context, w bcsdk.WO, refs map[string]blobca
 	if err != nil {
 		return err
 	}
-	return streams.ForEach(ctx, it, func(gr GitRef) error {
-		if cid, exists := refs[gr.Name]; !exists {
+	refs2 := map[string]blobcache.CID{}
+	if err := streams.ForEach(ctx, it, func(gr GitRef) error {
+		if pref, exists := refs[gr.Name]; !exists {
 			return nil
-		} else if gr.Target == cid {
+		} else if gr.Target == pref {
+			log.Println("skipping", gr.Name, "already up to date")
 			return nil
 		}
-		if err := Sync(ctx, tx, w, gr.Target); err != nil {
-			return nil
+		if err := Sync(ctx, tx, ws, gr.Target); err != nil {
+			return err
 		}
+		refs2[gr.Name] = gr.Target
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	clear(refs)
+	maps.Copy(refs, refs2)
+	return nil
 }
 
 // OpenIterator returns an iterator impelementing steams.Iterator

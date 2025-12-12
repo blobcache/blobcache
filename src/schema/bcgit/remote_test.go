@@ -99,6 +99,27 @@ func TestPushBranch(t *testing.T) {
 }
 
 func TestPushPull(t *testing.T) {
+	// ctx := testutil.Context(t)
+	te1 := setup(t)
+	te2 := te1.fork(t)
+
+	// git init in both repos
+	for _, te := range []testEnv{te1, te2} {
+		gitInit(t, te)
+		cmd(t, te, "git", "remote", "add", "test1", FmtURL(te.URL))
+	}
+	var content []byte
+	for i := range 3 {
+		content = fmt.Appendf(nil, "hello world %d", i)
+		putFile(t, te1, "file1.txt", content)
+		gitCommit(t, te1, "file1.txt")
+		gitPush(t, te1, "test1", "master")
+	}
+
+	gitPull(t, te2)
+	data, err := os.ReadFile(filepath.Join(te2.Dir, "file1.txt"))
+	require.NoError(t, err)
+	require.Equal(t, string(content), string(data))
 }
 
 func setup(t testing.TB) testEnv {
@@ -132,6 +153,23 @@ type testEnv struct {
 	URL     blobcache.URL
 }
 
+func (te testEnv) fork(t testing.TB) testEnv {
+	te2 := te
+
+	te2.Dir = t.TempDir()
+	copyFile(t,
+		filepath.Join(te.Dir, "git-remote-bc"),
+		filepath.Join(te2.Dir, "git-remote-bc"),
+	)
+	return te2
+}
+
+func copyFile(t testing.TB, src, dst string) {
+	data, err := os.ReadFile(src)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dst, data, 0o755))
+}
+
 func putFile(t testing.TB, te testEnv, p string, data []byte) {
 	p = filepath.Join(te.Dir, p)
 	require.NoError(t, os.WriteFile(p, data, 0644))
@@ -142,6 +180,8 @@ func gitInit(t testing.TB, te testEnv) {
 		"--object-format=sha256",
 		"-b", "master",
 	)
+	out := cmd(t, te, "git", "config", "extensions.objectFormat")
+	require.Equal(t, string(bytes.TrimSpace(out)), "sha256")
 }
 
 func gitCommit(t testing.TB, te testEnv, files ...string) {
@@ -168,6 +208,10 @@ func gitLsRemote(t testing.TB, te testEnv, remoteName string) []string {
 	return lines
 }
 
+func gitPull(t testing.TB, te testEnv) {
+	cmd(t, te, "git", "pull")
+}
+
 func cmd(t testing.TB, te testEnv, name string, args ...string) []byte {
 	t.Helper()
 	home, err := os.UserHomeDir()
@@ -175,9 +219,8 @@ func cmd(t testing.TB, te testEnv, name string, args ...string) []byte {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = te.Dir
 	cmd.Env = []string{
-		"HOME=" + home,
-		"PATH=/usr/bin:",
-		// TODO: don't use the system blobcache
+		"HOME=" + home,   // TODO: this is to make git shut up about name + email.
+		"PATH=/usr/bin:", // the trailing colon is very important.
 		"BLOBCACHE_API=" + te.APIStr,
 	}
 	var stdout bytes.Buffer

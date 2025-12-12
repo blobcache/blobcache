@@ -23,7 +23,8 @@ func FmtURL(u blobcache.URL) string {
 
 func NewRemoteHelper(rem *Remote) gitrh.Server {
 	return gitrh.Server{
-		Push: rem.Push,
+		Push:  rem.Push,
+		Fetch: rem.Fetch,
 		List: func(ctx context.Context) iter.Seq2[GitRef, error] {
 			return func(yield func(GitRef, error) bool) {
 				it, err := rem.OpenIterator(ctx)
@@ -79,8 +80,11 @@ func Sync(ctx context.Context, src bcsdk.RO, dst bcsdk.WO, id blobcache.CID) err
 		}
 	}
 	id2, err := dst.Post(ctx, data)
+	if err != nil {
+		return err
+	}
 	if id != id2 {
-		return fmt.Errorf("destination is not using sha256")
+		return fmt.Errorf("destination is not using sha256 %v vs. %v", id, id2)
 	}
 	return err
 }

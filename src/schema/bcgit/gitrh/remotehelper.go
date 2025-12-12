@@ -4,6 +4,7 @@ package gitrh
 import (
 	"bufio"
 	"bytes"
+	"compress/zlib"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,7 +12,9 @@ import (
 	"io"
 	"iter"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -29,10 +32,8 @@ func (gr Ref) String() string {
 
 type Server struct {
 	List  func(context.Context) iter.Seq2[Ref, error]
-	Fetch func(ctx context.Context)
+	Fetch func(ctx context.Context, s *Store, refs map[string]blobcache.CID) error
 	Push  func(ctx context.Context, s *Store, refs []Ref) error
-	//Import func(ctx context.Context) error
-	//Export func(ctx context.Context) error
 }
 
 func (srv *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
@@ -41,6 +42,7 @@ func (srv *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
 	bufw := bufio.NewWriter(w)
 
 	toPush := []Ref{}
+	toFetch := map[string]blobcache.CID{}
 LOOP:
 	for {
 		cmd, args, err := readCmd(bufr)
@@ -57,8 +59,6 @@ LOOP:
 				"list":  srv.List != nil,
 				"fetch": srv.Fetch != nil,
 				"push":  srv.Push != nil,
-				//"import": srv.Import != nil,
-				//"export": srv.Export != nil,
 			} {
 				if !fn {
 					continue
@@ -73,7 +73,11 @@ LOOP:
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(bufw, "%x %s\n", gr.Target, gr.Name)
+				log.Println("listing", hex.EncodeToString(gr.Target[:]))
+				bufw.WriteString(hex.EncodeToString(gr.Target[:]))
+				bufw.WriteString(" ")
+				bufw.WriteString(gr.Name)
+				bufw.WriteString("\n")
 			}
 			bufw.WriteString("\n")
 		case `push`:
@@ -86,6 +90,13 @@ LOOP:
 			}
 			ref := Ref{Name: dst, Target: desired}
 			toPush = append(toPush, ref)
+		case `fetch`:
+			var cid blobcache.CID
+			if _, err := hex.Decode(cid[:], []byte(args[0])); err != nil {
+				return err
+			}
+			name := args[1]
+			toFetch[name] = cid
 		case ``:
 			break LOOP
 		default:
@@ -102,6 +113,18 @@ LOOP:
 		for _, ref := range toPush {
 			printOk(bufw, ref.Name)
 		}
+		bufw.WriteString("\n")
+	} else if len(toFetch) > 0 {
+		s := &Store{}
+		if err := srv.Fetch(ctx, s, toFetch); err != nil {
+			return err
+		}
+		for name, target := range toFetch {
+			if err := setRefTarget(name, target); err != nil {
+				return err
+			}
+		}
+		log.Println("updated refs", len(toFetch))
 		bufw.WriteString("\n")
 	}
 	return bufw.Flush()
@@ -135,7 +158,7 @@ func printError(w io.Writer, refName, msg string) error {
 }
 
 // MaxSize is the maximum allowed size of an object.
-const MaxSize = 1 << 24
+const MaxSize = 1 << 23
 
 type Store struct {
 	SkipVerify bool
@@ -172,6 +195,44 @@ func (s *Store) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) er
 	}
 	return nil
 }
+
+func (s *Store) Post(ctx context.Context, buf []byte) (blobcache.CID, error) {
+	cid := blobcache.CID(sha256.Sum256(buf))
+	if err := postObject(cid, buf); err != nil {
+		return blobcache.CID{}, err
+	}
+	return cid, nil
+}
+
+func setRefTarget(ref string, target blobcache.CID) error {
+	c := exec.Command("git", "update-ref", ref, hex.EncodeToString(target[:]))
+	c.Stderr = os.Stderr
+	out, err := c.Output()
+	if err != nil {
+		return err
+	}
+	log.Println("set", ref, hex.EncodeToString(target[:]), string(out))
+	return nil
+}
+
+func postObject(cid blobcache.CID, data []byte) error {
+	hexcid := hex.EncodeToString(cid[:])
+	p := filepath.Join(".git/objects", hexcid[:2], hexcid[2:])
+	if err := os.Mkdir(filepath.Dir(p), 0o755); err != nil && !os.IsExist(err) {
+		return err
+	}
+	var buf bytes.Buffer
+	w := zlib.NewWriter(&buf)
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	log.Println("w", p)
+	return os.WriteFile(p, buf.Bytes(), 0o444)
+}
+
 func getRefTarget(name string) (blobcache.CID, error) {
 	c := exec.Command("git", "rev-parse", name)
 	stdout, err := c.Output()
@@ -199,7 +260,6 @@ func getObject(id blobcache.CID) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("git cat-file -t failed: %w", err)
 	}
-
 	objType := string(bytes.TrimSpace(typeOutput))
 
 	// Now get the raw object contents using the correct type
