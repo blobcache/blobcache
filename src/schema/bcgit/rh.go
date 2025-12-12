@@ -23,8 +23,10 @@ func FmtURL(u blobcache.URL) string {
 
 func NewRemoteHelper(rem *Remote) gitrh.Server {
 	return gitrh.Server{
-		Push:  rem.Push,
-		Fetch: rem.Fetch,
+		Push: rem.Push,
+		Fetch: func(ctx context.Context, s *gitrh.Store, refs map[string]blobcache.CID, dst map[string]blobcache.CID) error {
+			return rem.Fetch(ctx, s, refs, dst)
+		},
 		List: func(ctx context.Context) iter.Seq2[GitRef, error] {
 			return func(yield func(GitRef, error) bool) {
 				it, err := rem.OpenIterator(ctx)
@@ -90,12 +92,11 @@ func Sync(ctx context.Context, src bcsdk.RO, dst bcsdk.WO, id blobcache.CID) err
 }
 
 func listChildren(data []byte) (ret []blobcache.CID, _ error) {
-	ty, err := gitrh.TypeOf(data)
+	hdr, content, err := gitrh.SplitHeader(data)
 	if err != nil {
 		return nil, err
 	}
-	content := data[len(ty)+1:]
-	switch ty {
+	switch hdr.Type {
 	case "commit":
 		for _, m := range gitHashRegex.FindAll(content, -1) {
 			var cid blobcache.CID
@@ -117,16 +118,16 @@ func listChildren(data []byte) (ret []blobcache.CID, _ error) {
 			// TODO: fix the regexp
 			ret = append(ret, blobcache.CID(content[len(content)-32:]))
 		}
-		if len(ret) == 0 {
+		if len(ret) == 0 && hdr.Len != 0 {
 			log.Println(treeEntHashRegex.Match(content[2:]))
 			log.Println("len", len(content))
-			panic(string(content[:len(content)-32]))
+			panic("tree was parsed incorrectly.  This is a bug.")
 		}
 	case "blob":
 	default:
 		return nil, fmt.Errorf("cannot parse git object")
 	}
-	log.Println(ty, ret)
+	log.Println(hdr)
 	return ret, nil
 }
 

@@ -4,6 +4,7 @@ package gitrh
 import (
 	"bufio"
 	"bytes"
+	"compress/zlib"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,9 +14,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
-	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
 )
@@ -23,6 +25,7 @@ import (
 type Ref struct {
 	Name   string
 	Target [32]byte
+	SHA1   [20]byte
 }
 
 func (gr Ref) String() string {
@@ -48,9 +51,10 @@ func Main(fn func(Ctx) (*Server, error)) {
 }
 
 type Server struct {
-	List  func(context.Context) iter.Seq2[Ref, error]
-	Fetch func(ctx context.Context, s *FastImporter, refs map[string]blobcache.CID) error
-	Push  func(ctx context.Context, s *Store, refs []Ref) error
+	Remote string
+	List   func(context.Context) iter.Seq2[Ref, error]
+	Fetch  func(ctx context.Context, s *Store, toFetch map[string]blobcache.CID, updated map[string]blobcache.CID) error
+	Push   func(ctx context.Context, s *Store, refs []Ref) error
 }
 
 func (srv *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
@@ -73,9 +77,11 @@ LOOP:
 		switch cmd {
 		case `capabilities`:
 			for c, fn := range map[string]bool{
-				"list":  srv.List != nil,
-				"fetch": srv.Fetch != nil,
-				"push":  srv.Push != nil,
+				"list":          srv.List != nil,
+				"fetch":         srv.Fetch != nil,
+				"push":          srv.Push != nil,
+				"object-format": true,
+				"option":        true,
 			} {
 				if !fn {
 					continue
@@ -86,11 +92,11 @@ LOOP:
 			}
 			bufw.WriteString("\n")
 		case `list`:
+			bufw.WriteString(":object-format sha256\n")
 			for gr, err := range srv.List(ctx) {
 				if err != nil {
 					return err
 				}
-				log.Println("listing", hex.EncodeToString(gr.Target[:]))
 				bufw.WriteString(hex.EncodeToString(gr.Target[:]))
 				bufw.WriteString(" ")
 				bufw.WriteString(gr.Name)
@@ -108,12 +114,15 @@ LOOP:
 			ref := Ref{Name: dst, Target: desired}
 			toPush = append(toPush, ref)
 		case `fetch`:
-			var cid blobcache.CID
-			if _, err := hex.Decode(cid[:], []byte(args[0])); err != nil {
+			var h blobcache.CID
+			if _, err := hex.Decode(h[:], []byte(args[0])); err != nil {
 				return err
 			}
 			name := args[1]
-			toFetch[name] = cid
+			toFetch[name] = h
+		case `option`:
+			log.Println(args)
+			bufw.WriteString("ok\n")
 		case ``:
 			break LOOP
 		default:
@@ -132,19 +141,17 @@ LOOP:
 		}
 		bufw.WriteString("\n")
 	} else if len(toFetch) > 0 {
-		s, err := newFastImporter()
-		if err != nil {
+		s := &Store{}
+		updated := make(map[string]blobcache.CID)
+		if err := srv.Fetch(ctx, s, toFetch, updated); err != nil {
 			return err
 		}
-		if err := srv.Fetch(ctx, s, toFetch); err != nil {
-			return err
-		}
-		for name, target := range toFetch {
-			if err := setRefTarget(name, target); err != nil {
-				return err
-			}
-		}
-		log.Println("updated refs", len(toFetch))
+		// for name, target := range updated {
+		// 	if err := setRefTarget(srv.Remote, name, target); err != nil {
+		// 		return err
+		// 	}
+		// }
+		log.Println("updated refs", len(updated))
 		bufw.WriteString("\n")
 	}
 	return bufw.Flush()
@@ -184,6 +191,14 @@ type Store struct {
 	SkipVerify bool
 }
 
+func (s *Store) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
+	cid := blobcache.CID(sha256.Sum256(data))
+	if err := postObject(cid, data); err != nil {
+		return blobcache.CID{}, err
+	}
+	return cid, nil
+}
+
 func (s *Store) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, error) {
 	data, err := getObject(cid)
 	if err != nil {
@@ -216,72 +231,30 @@ func (s *Store) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) er
 	return nil
 }
 
-type FastImporter struct {
-	Store
-
-	mu      sync.RWMutex
-	cmd     *exec.Cmd
-	stdin   *io.PipeWriter
-	bw      *bufio.Writer
-	written map[blobcache.CID]struct{}
+type Header struct {
+	Type string
+	Len  int
 }
 
-func newFastImporter() (*FastImporter, error) {
-	pr, pw := io.Pipe()
-	cmd := exec.Command("git", "fast-import")
-	cmd.Stdin = pr
-	if err := cmd.Start(); err != nil {
-		return nil, err
+func SplitHeader(data []byte) (Header, []byte, error) {
+	i := bytes.Index(data, []byte("\x00"))
+	if i == -1 {
+		return Header{}, nil, fmt.Errorf("no git header found")
 	}
-	return &FastImporter{
-		cmd:     cmd,
-		stdin:   pw,
-		written: make(map[blobcache.CID]struct{}),
-	}, nil
-}
-
-func (s *FastImporter) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	// TODO: check map here.
-	return s.Store.Exists(ctx, cids, dst)
-}
-
-func (s *FastImporter) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
-	cid := blobcache.CID(sha256.Sum256(data))
-	s.mu.RLock()
-	if _, exists := s.written[cid]; exists {
-		s.mu.RUnlock()
-		return cid, nil
+	hdrData := data[:i]
+	rest := data[i+1:]
+	parts := strings.Split(string(hdrData), " ")
+	if len(parts) != 2 {
+		return Header{}, nil, fmt.Errorf("could not parse type and length")
 	}
-	s.mu.RUnlock()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.sendRaw(data); err != nil {
-		return blobcache.CID{}, err
-	}
-	return cid, nil
-}
-
-func (s *FastImporter) Close() error {
-	if err := s.bw.Flush(); err != nil {
-		return err
-	}
-	if err := s.stdin.Close(); err != nil {
-		return err
-	}
-	return s.cmd.Wait()
-}
-
-func (s *FastImporter) sendRaw(data []byte) error {
-	ty, err := TypeOf(data)
+	l, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return err
+		return Header{}, nil, err
 	}
-	switch ty {
-	default:
-		return fmt.Errorf("fast importer: don't know how to write type %v", ty)
-	}
-	return nil
+	return Header{
+		Type: parts[0],
+		Len:  l,
+	}, rest, nil
 }
 
 // TypeOf returns the type of the GitObject in data.
@@ -293,33 +266,57 @@ func TypeOf(data []byte) (string, error) {
 	return string(data[:eot]), nil
 }
 
-func setRefTarget(ref string, target blobcache.CID) error {
-	c := exec.Command("git", "update-ref", ref, hex.EncodeToString(target[:]))
-	c.Stderr = os.Stderr
-	out, err := c.Output()
-	if err != nil {
+// func setRefTarget(remote, ref string, target blobcache.CID) error {
+// 	c := exec.Command("git", "update-ref", ref, hex.EncodeToString(target[:]))
+// 	c.Stderr = os.Stderr
+// 	out, err := c.Output()
+// 	if err != nil {
+// 		return err
+// 	}
+// 	log.Println("set", ref, hex.EncodeToString(target[:]), string(out))
+// 	return nil
+// }
+
+func postObject(cid blobcache.CID, data []byte) error {
+	hexcid := hex.EncodeToString(cid[:])
+	p := filepath.Join(".git/objects", hexcid[:2], hexcid[2:])
+	if err := os.Mkdir(filepath.Dir(p), 0o755); err != nil && !os.IsExist(err) {
 		return err
 	}
-	log.Println("set", ref, hex.EncodeToString(target[:]), string(out))
-	return nil
+	var buf bytes.Buffer
+	w := zlib.NewWriter(&buf)
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	log.Println("w", p)
+	return os.WriteFile(p, buf.Bytes(), 0o444)
 }
 
 // func postObject(cid blobcache.CID, data []byte) error {
-// 	hexcid := hex.EncodeToString(cid[:])
-// 	p := filepath.Join(".git/objects", hexcid[:2], hexcid[2:])
-// 	if err := os.Mkdir(filepath.Dir(p), 0o755); err != nil && !os.IsExist(err) {
+// 	hdr, rest, err := SplitHeader(data)
+// 	if err != nil {
 // 		return err
 // 	}
-// 	var buf bytes.Buffer
-// 	w := zlib.NewWriter(&buf)
-// 	if _, err := w.Write(data); err != nil {
+// 	c := exec.Command("git", "hash-object", "-t", hdr.Type, "-w", "--stdin")
+// 	c.Stdin = bytes.NewReader(rest)
+// 	c.Stderr = os.Stderr
+// 	out, err := c.Output()
+// 	if err != nil {
 // 		return err
 // 	}
-// 	if err := w.Close(); err != nil {
+// 	out = bytes.TrimSpace(out)
+// 	var gitid blobcache.CID
+// 	if _, err := hex.Decode(gitid[:], out); err != nil {
 // 		return err
 // 	}
-// 	log.Println("w", p)
-// 	return os.WriteFile(p, buf.Bytes(), 0o444)
+// 	if cid != gitid {
+// 		return fmt.Errorf("git returned different hash %v vs. %v", cid, gitid)
+// 	}
+// 	log.Println("posted object", hex.EncodeToString(cid[:]))
+// 	return err
 // }
 
 func getRefTarget(name string) (blobcache.CID, error) {

@@ -116,7 +116,7 @@ func TestPushPull(t *testing.T) {
 		gitPush(t, te1, "test1", "master")
 	}
 
-	gitPull(t, te2)
+	gitPull(t, te2, "test1", "master")
 	data, err := os.ReadFile(filepath.Join(te2.Dir, "file1.txt"))
 	require.NoError(t, err)
 	require.Equal(t, string(content), string(data))
@@ -208,8 +208,8 @@ func gitLsRemote(t testing.TB, te testEnv, remoteName string) []string {
 	return lines
 }
 
-func gitPull(t testing.TB, te testEnv) {
-	cmd(t, te, "git", "pull")
+func gitPull(t testing.TB, te testEnv, remote, branch string) {
+	cmd(t, te, "git", "pull", remote, branch)
 }
 
 func cmd(t testing.TB, te testEnv, name string, args ...string) []byte {

@@ -2,8 +2,8 @@ package bcgit
 
 import (
 	"context"
+	"crypto/sha1"
 	"log"
-	"maps"
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
@@ -114,7 +114,7 @@ func (rem *Remote) Push(ctx context.Context, src *gitrh.Store, refs []GitRef) er
 	return tx.Commit(ctx)
 }
 
-func (rem *Remote) Fetch(ctx context.Context, ws *gitrh.FastImporter, refs map[string]blobcache.CID) error {
+func (rem *Remote) Fetch(ctx context.Context, ws bcsdk.WO, refs map[string]blobcache.CID, dst map[string]blobcache.CID) error {
 	tx, err := bcsdk.BeginTx(ctx, rem.svc, rem.volh, blobcache.TxParams{})
 	if err != nil {
 		return err
@@ -124,24 +124,24 @@ func (rem *Remote) Fetch(ctx context.Context, ws *gitrh.FastImporter, refs map[s
 	if err != nil {
 		return err
 	}
-	refs2 := map[string]blobcache.CID{}
 	if err := streams.ForEach(ctx, it, func(gr GitRef) error {
-		if pref, exists := refs[gr.Name]; !exists {
-			return nil
-		} else if gr.Target == pref {
-			log.Println("skipping", gr.Name, "already up to date")
+		h, err := sha1Of(ctx, tx, gr.Target)
+		if err != nil {
+			return err
+		}
+		gr.SHA1 = h
+		if _, exists := refs[gr.Name]; !exists {
 			return nil
 		}
+		log.Println("syncing", gr.Name)
 		if err := Sync(ctx, tx, ws, gr.Target); err != nil {
 			return err
 		}
-		refs2[gr.Name] = gr.Target
+		dst[gr.Name] = gr.Target
 		return nil
 	}); err != nil {
 		return err
 	}
-	clear(refs)
-	maps.Copy(refs, refs2)
 	return nil
 }
 
@@ -155,6 +155,16 @@ func (rem *Remote) OpenIterator(ctx context.Context) (*RefIterator, error) {
 		return nil, err
 	}
 	return rem.openRefIterator(ctx, tx)
+}
+
+func sha1Of(ctx context.Context, tx *bcsdk.Tx, cid blobcache.CID) ([20]byte, error) {
+	buf := make([]byte, tx.MaxSize())
+	n, err := tx.Get(ctx, cid, buf)
+	if err != nil {
+		return [20]byte{}, err
+	}
+	data := buf[:n]
+	return sha1.Sum(data), nil
 }
 
 func (rem *Remote) openRefIterator(ctx context.Context, tx *bcsdk.Tx) (*RefIterator, error) {
@@ -218,6 +228,13 @@ func (ri *RefIterator) Next(ctx context.Context, dst *GitRef) error {
 	dst.Name = string(ent.Key)
 	dst.Target = [32]byte{}
 	copy(dst.Target[:], ent.Value)
+	if dst.Target != ([32]byte{}) {
+		h, err := sha1Of(ctx, ri.tx, dst.Target)
+		if err != nil {
+			return err
+		}
+		dst.SHA1 = h
+	}
 	return nil
 }
 

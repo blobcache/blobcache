@@ -32,6 +32,7 @@ func main() {
 	}
 	defer rem.Close()
 	srv := bcgit.NewRemoteHelper(rem)
+	srv.Remote = os.Args[1]
 	if err := srv.Serve(ctx, os.Stdin, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
