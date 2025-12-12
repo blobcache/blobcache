@@ -20,7 +20,7 @@ import (
 	"go.brendoncarroll.net/exp/streams"
 )
 
-var enableGitOut = true
+var enableGitOut = false
 
 func TestLsRemote(t *testing.T) {
 	ctx := testutil.Context(t)
@@ -99,7 +99,6 @@ func TestPushBranch(t *testing.T) {
 }
 
 func TestPushPull(t *testing.T) {
-	// ctx := testutil.Context(t)
 	te1 := setup(t)
 	te2 := te1.fork(t)
 

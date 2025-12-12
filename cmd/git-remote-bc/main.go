@@ -8,34 +8,29 @@ import (
 	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema/bcgit"
+	"blobcache.io/blobcache/src/schema/bcgit/gitrh"
 )
 
 func main() {
 	ctx := context.Background()
-	defer os.Stderr.Sync()
-	log.Println("args:", os.Args)
-	u, err := blobcache.ParseURL(os.Args[2])
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("successfully parsed blobcache URL:", u)
-	bc := bcclient.NewClientFromEnv()
-	ep, err := bc.Endpoint(context.TODO())
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("connected to blobcache node %v", ep)
+	gitrh.Main(ctx, func(ghctx gitrh.Ctx) (*gitrh.Server, error) {
+		u, err := blobcache.ParseURL(os.Args[2])
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println("successfully parsed blobcache URL:", u)
+		bc := bcclient.NewClientFromEnv()
+		ep, err := bc.Endpoint(context.TODO())
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("connected to blobcache node %v", ep)
 
-	rem, err := bcgit.OpenRemoteHelper(ctx, bc, *u)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rem.Close()
-	srv := bcgit.NewRemoteHelper(rem)
-	srv.Remote = os.Args[1]
-	if err := srv.Serve(ctx, os.Stdin, os.Stdout); err != nil {
-		log.Fatal(err)
-	}
-	log.Println("OK")
-	os.Exit(0)
+		rem, err := bcgit.OpenRemoteHelper(ctx, bc, *u)
+		if err != nil {
+			log.Fatal(err)
+		}
+		srv := bcgit.NewRemoteHelper(rem)
+		return &srv, nil
+	})
 }

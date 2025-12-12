@@ -25,7 +25,6 @@ import (
 type Ref struct {
 	Name   string
 	Target [32]byte
-	SHA1   [20]byte
 }
 
 func (gr Ref) String() string {
@@ -37,24 +36,28 @@ type Ctx struct {
 	URL    string
 }
 
-func Main(fn func(Ctx) (*Server, error)) {
+// Main is a harness for the git-remote-helper
+// It takes care of reading from the arguments and running the server.
+// The setup function should handle initialization and return a server.
+func Main(ctx context.Context, setup func(grhctx Ctx) (*Server, error)) {
+	defer os.Stderr.Sync()
 	remoteName, url := os.Args[1], os.Args[2]
-	srv, err := fn(Ctx{Remote: remoteName, URL: url})
+	srv, err := setup(Ctx{Remote: remoteName, URL: url})
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
-	ctx := context.Background()
 	if err := srv.Serve(ctx, os.Stdin, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
+	log.Println("done")
+	os.Exit(0)
 }
 
 type Server struct {
-	Remote string
-	List   func(context.Context) iter.Seq2[Ref, error]
-	Fetch  func(ctx context.Context, s *Store, toFetch map[string]blobcache.CID, updated map[string]blobcache.CID) error
-	Push   func(ctx context.Context, s *Store, refs []Ref) error
+	List  func(context.Context) iter.Seq2[Ref, error]
+	Fetch func(ctx context.Context, s *Store, toFetch map[string]blobcache.CID, updated map[string]blobcache.CID) error
+	Push  func(ctx context.Context, s *Store, refs []Ref) error
 }
 
 func (srv *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
@@ -115,8 +118,10 @@ LOOP:
 			toPush = append(toPush, ref)
 		case `fetch`:
 			var h blobcache.CID
-			if _, err := hex.Decode(h[:], []byte(args[0])); err != nil {
+			if n, err := hex.Decode(h[:], []byte(args[0])); err != nil {
 				return err
+			} else if n != 32 {
+				return fmt.Errorf("fetch must request sha256")
 			}
 			name := args[1]
 			toFetch[name] = h
@@ -146,12 +151,6 @@ LOOP:
 		if err := srv.Fetch(ctx, s, toFetch, updated); err != nil {
 			return err
 		}
-		// for name, target := range updated {
-		// 	if err := setRefTarget(srv.Remote, name, target); err != nil {
-		// 		return err
-		// 	}
-		// }
-		log.Println("updated refs", len(updated))
 		bufw.WriteString("\n")
 	}
 	return bufw.Flush()
@@ -179,13 +178,8 @@ func printOk(w io.Writer, refName string) error {
 	return err
 }
 
-func printError(w io.Writer, refName, msg string) error {
-	_, err := fmt.Fprintf(w, "error %s %q\n", refName, msg)
-	return err
-}
-
 // MaxSize is the maximum allowed size of an object.
-const MaxSize = 1 << 23
+const MaxSize = 1 << 22
 
 type Store struct {
 	SkipVerify bool
@@ -257,26 +251,6 @@ func SplitHeader(data []byte) (Header, []byte, error) {
 	}, rest, nil
 }
 
-// TypeOf returns the type of the GitObject in data.
-func TypeOf(data []byte) (string, error) {
-	eot := bytes.Index(data, []byte{' '})
-	if eot == -1 {
-		return "", fmt.Errorf("could not parse type")
-	}
-	return string(data[:eot]), nil
-}
-
-// func setRefTarget(remote, ref string, target blobcache.CID) error {
-// 	c := exec.Command("git", "update-ref", ref, hex.EncodeToString(target[:]))
-// 	c.Stderr = os.Stderr
-// 	out, err := c.Output()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	log.Println("set", ref, hex.EncodeToString(target[:]), string(out))
-// 	return nil
-// }
-
 func postObject(cid blobcache.CID, data []byte) error {
 	hexcid := hex.EncodeToString(cid[:])
 	p := filepath.Join(".git/objects", hexcid[:2], hexcid[2:])
@@ -291,33 +265,8 @@ func postObject(cid blobcache.CID, data []byte) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	log.Println("w", p)
 	return os.WriteFile(p, buf.Bytes(), 0o444)
 }
-
-// func postObject(cid blobcache.CID, data []byte) error {
-// 	hdr, rest, err := SplitHeader(data)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	c := exec.Command("git", "hash-object", "-t", hdr.Type, "-w", "--stdin")
-// 	c.Stdin = bytes.NewReader(rest)
-// 	c.Stderr = os.Stderr
-// 	out, err := c.Output()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	out = bytes.TrimSpace(out)
-// 	var gitid blobcache.CID
-// 	if _, err := hex.Decode(gitid[:], out); err != nil {
-// 		return err
-// 	}
-// 	if cid != gitid {
-// 		return fmt.Errorf("git returned different hash %v vs. %v", cid, gitid)
-// 	}
-// 	log.Println("posted object", hex.EncodeToString(cid[:]))
-// 	return err
-// }
 
 func getRefTarget(name string) (blobcache.CID, error) {
 	c := exec.Command("git", "rev-parse", name)

@@ -23,7 +23,9 @@ func FmtURL(u blobcache.URL) string {
 
 func NewRemoteHelper(rem *Remote) gitrh.Server {
 	return gitrh.Server{
-		Push: rem.Push,
+		Push: func(ctx context.Context, s *gitrh.Store, refs []gitrh.Ref) error {
+			return rem.Push(ctx, s, refs)
+		},
 		Fetch: func(ctx context.Context, s *gitrh.Store, refs map[string]blobcache.CID, dst map[string]blobcache.CID) error {
 			return rem.Fetch(ctx, s, refs, dst)
 		},
@@ -34,6 +36,7 @@ func NewRemoteHelper(rem *Remote) gitrh.Server {
 					yield(GitRef{}, err)
 					return
 				}
+				defer it.Close()
 				var gr GitRef
 				for {
 					if err := it.Next(ctx, &gr); err != nil {
@@ -59,8 +62,8 @@ func OpenRemoteHelper(ctx context.Context, bc blobcache.Service, u blobcache.URL
 	return NewRemote(bc, *volh), nil
 }
 
-// Sync copies the transitive closure of the git object `id` from src to dst.
-func Sync(ctx context.Context, src bcsdk.RO, dst bcsdk.WO, id blobcache.CID) error {
+// SyncGit copies the transitive closure of the git object `id` from src to dst.
+func SyncGit(ctx context.Context, src bcsdk.RO, dst bcsdk.WO, id blobcache.CID) error {
 	if ok, err := schema.ExistsUnit(ctx, dst, id); err != nil {
 		return err
 	} else if ok {
@@ -77,7 +80,7 @@ func Sync(ctx context.Context, src bcsdk.RO, dst bcsdk.WO, id blobcache.CID) err
 		return err
 	}
 	for _, child := range children {
-		if err := Sync(ctx, src, dst, child); err != nil {
+		if err := SyncGit(ctx, src, dst, child); err != nil {
 			return err
 		}
 	}
@@ -119,15 +122,13 @@ func listChildren(data []byte) (ret []blobcache.CID, _ error) {
 			ret = append(ret, blobcache.CID(content[len(content)-32:]))
 		}
 		if len(ret) == 0 && hdr.Len != 0 {
-			log.Println(treeEntHashRegex.Match(content[2:]))
-			log.Println("len", len(content))
+			log.Printf("tree len=%d data=%q", len(content), content)
 			panic("tree was parsed incorrectly.  This is a bug.")
 		}
 	case "blob":
 	default:
 		return nil, fmt.Errorf("cannot parse git object")
 	}
-	log.Println(hdr)
 	return ret, nil
 }
 

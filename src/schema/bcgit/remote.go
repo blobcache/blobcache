@@ -2,14 +2,13 @@ package bcgit
 
 import (
 	"context"
-	"crypto/sha1"
-	"log"
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/tries"
 	"blobcache.io/blobcache/src/schema/bcgit/gitrh"
 	"go.brendoncarroll.net/exp/streams"
+	"go.brendoncarroll.net/stdctx/logctx"
 )
 
 const HashAlgo = blobcache.HashAlgo_SHA2_256
@@ -86,7 +85,7 @@ func beginTTx(ctx context.Context, tmach *tries.Machine, tx *bcsdk.Tx) (*tries.T
 	}
 }
 
-func (rem *Remote) Push(ctx context.Context, src *gitrh.Store, refs []GitRef) error {
+func (rem *Remote) Push(ctx context.Context, src bcsdk.RO, refs []GitRef) error {
 	tx, err := bcsdk.BeginTx(ctx, rem.svc, rem.volh, blobcache.TxParams{Modify: true})
 	if err != nil {
 		return err
@@ -97,7 +96,7 @@ func (rem *Remote) Push(ctx context.Context, src *gitrh.Store, refs []GitRef) er
 		return err
 	}
 	for _, ref := range refs {
-		if err := Sync(ctx, src, tx, ref.Target); err != nil {
+		if err := SyncGit(ctx, src, tx, ref.Target); err != nil {
 			return err
 		}
 		if err := ttx.Put(ctx, tx, []byte(ref.Name), ref.Target[:]); err != nil {
@@ -125,16 +124,14 @@ func (rem *Remote) Fetch(ctx context.Context, ws bcsdk.WO, refs map[string]blobc
 		return err
 	}
 	if err := streams.ForEach(ctx, it, func(gr GitRef) error {
-		h, err := sha1Of(ctx, tx, gr.Target)
-		if err != nil {
-			return err
-		}
-		gr.SHA1 = h
-		if _, exists := refs[gr.Name]; !exists {
+		if want, exists := refs[gr.Name]; !exists {
+			return nil
+		} else if gr.Target != want {
+			logctx.Infof(ctx, "skipping %v because the ref has changed", gr.Name)
 			return nil
 		}
-		log.Println("syncing", gr.Name)
-		if err := Sync(ctx, tx, ws, gr.Target); err != nil {
+		logctx.Infof(ctx, "syncing %v", gr.Name)
+		if err := SyncGit(ctx, tx, ws, gr.Target); err != nil {
 			return err
 		}
 		dst[gr.Name] = gr.Target
@@ -155,16 +152,6 @@ func (rem *Remote) OpenIterator(ctx context.Context) (*RefIterator, error) {
 		return nil, err
 	}
 	return rem.openRefIterator(ctx, tx)
-}
-
-func sha1Of(ctx context.Context, tx *bcsdk.Tx, cid blobcache.CID) ([20]byte, error) {
-	buf := make([]byte, tx.MaxSize())
-	n, err := tx.Get(ctx, cid, buf)
-	if err != nil {
-		return [20]byte{}, err
-	}
-	data := buf[:n]
-	return sha1.Sum(data), nil
 }
 
 func (rem *Remote) openRefIterator(ctx context.Context, tx *bcsdk.Tx) (*RefIterator, error) {
@@ -228,13 +215,6 @@ func (ri *RefIterator) Next(ctx context.Context, dst *GitRef) error {
 	dst.Name = string(ent.Key)
 	dst.Target = [32]byte{}
 	copy(dst.Target[:], ent.Value)
-	if dst.Target != ([32]byte{}) {
-		h, err := sha1Of(ctx, ri.tx, dst.Target)
-		if err != nil {
-			return err
-		}
-		dst.SHA1 = h
-	}
 	return nil
 }
 
