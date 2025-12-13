@@ -4,7 +4,7 @@ import (
 	"context"
 	"maps"
 
-	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/bcsdk"
 )
 
 // Tx is a transaction on a trie data structure.
@@ -12,6 +12,7 @@ import (
 // Tx is not thread-safe.
 type Tx struct {
 	mach     *Machine
+	s        bcsdk.RWD
 	prevRoot Root
 
 	// changes to be applied to the prevRoot
@@ -20,20 +21,21 @@ type Tx struct {
 }
 
 // NewTx creates a new transaction based on an existing Trie
-func (mach *Machine) NewTx(prevRoot Root) *Tx {
+func (mach *Machine) NewTx(s bcsdk.RWD, prevRoot Root) *Tx {
 	return &Tx{
-		prevRoot: prevRoot,
 		mach:     mach,
+		s:        s,
+		prevRoot: prevRoot,
 	}
 }
 
 // NewTxOnEmpty creates a new Tx based on an empty Trie.
-func (mach *Machine) NewTxOnEmpty() *Tx {
-	return mach.NewTx(Root{})
+func (mach *Machine) NewTxOnEmpty(s bcsdk.RWD) *Tx {
+	return mach.NewTx(s, Root{})
 }
 
 // Put creates or replace the entry for key, such that it points to value.
-func (tx *Tx) Put(ctx context.Context, s schema.RW, key []byte, value []byte) error {
+func (tx *Tx) Put(ctx context.Context, key []byte, value []byte) error {
 	if len(value) == 0 {
 		value = []byte{}
 	}
@@ -45,7 +47,7 @@ func (tx *Tx) Put(ctx context.Context, s schema.RW, key []byte, value []byte) er
 }
 
 // Get retrieves a key from the store, and writes the value to dst.
-func (tx *Tx) Get(ctx context.Context, s schema.RO, key []byte, dst *[]byte) (bool, error) {
+func (tx *Tx) Get(ctx context.Context, key []byte, dst *[]byte) (bool, error) {
 	if op, ok := tx.edits[string(key)]; ok {
 		if op.IsDelete() {
 			return false, nil
@@ -56,7 +58,7 @@ func (tx *Tx) Get(ctx context.Context, s schema.RO, key []byte, dst *[]byte) (bo
 	if !tx.prevRootIsValid() {
 		return false, nil
 	}
-	return tx.mach.Get(ctx, s, tx.prevRoot, key, dst)
+	return tx.mach.Get(ctx, tx.s, tx.prevRoot, key, dst)
 }
 
 func (tx *Tx) Delete(ctx context.Context, key []byte) error {
@@ -73,15 +75,15 @@ func (tx *Tx) Queued() int {
 
 // Flush applies the edits to the previous root, and returns the new root.
 // The transaction can continue, after this.
-func (tx *Tx) Flush(ctx context.Context, s schema.RW) (*Root, error) {
+func (tx *Tx) Flush(ctx context.Context) (*Root, error) {
 	if !tx.prevRootIsValid() {
-		root, err := tx.mach.NewEmpty(ctx, s)
+		root, err := tx.mach.NewEmpty(ctx, tx.s)
 		if err != nil {
 			return nil, err
 		}
 		tx.prevRoot = *root
 	}
-	root, err := tx.mach.BatchEdit(ctx, s, tx.prevRoot, maps.Values(tx.edits))
+	root, err := tx.mach.BatchEdit(ctx, tx.s, tx.prevRoot, maps.Values(tx.edits))
 	if err != nil {
 		return nil, err
 	}

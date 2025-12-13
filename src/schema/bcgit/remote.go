@@ -79,9 +79,9 @@ func beginTTx(ctx context.Context, tmach *tries.Machine, tx *bcsdk.Tx) (*tries.T
 		return nil, err
 	}
 	if root == nil {
-		return tmach.NewTxOnEmpty(), nil
+		return tmach.NewTxOnEmpty(tx), nil
 	} else {
-		return tmach.NewTx(*root), nil
+		return tmach.NewTx(tx, *root), nil
 	}
 }
 
@@ -99,11 +99,11 @@ func (rem *Remote) Push(ctx context.Context, src bcsdk.RO, refs []GitRef) error 
 		if err := SyncGit(ctx, src, tx, ref.Target); err != nil {
 			return err
 		}
-		if err := ttx.Put(ctx, tx, []byte(ref.Name), ref.Target[:]); err != nil {
+		if err := ttx.Put(ctx, []byte(ref.Name), ref.Target[:]); err != nil {
 			return err
 		}
 	}
-	root, err := ttx.Flush(ctx, tx)
+	root, err := ttx.Flush(ctx)
 	if err != nil {
 		return err
 	}
