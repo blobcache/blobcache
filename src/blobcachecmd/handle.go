@@ -11,13 +11,13 @@ var dropCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "drops a handle",
 	},
-	Pos: []star.Positional{volHParam},
+	Pos: []star.Positional{handleParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		if err := svc.Drop(c.Context, volHParam.Load(c)); err != nil {
+		if err := svc.Drop(c.Context, handleParam.Load(c)); err != nil {
 			return err
 		}
 		printOK(c, "DROP")
@@ -29,7 +29,7 @@ var shareCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "shares a handle",
 	},
-	Pos: []star.Positional{volHParam, peerParam},
+	Pos: []star.Positional{handleParam, peerParam},
 	Flags: map[string]star.Flag{
 		"mask": maskParam,
 	},
@@ -42,7 +42,7 @@ var shareCmd = star.Command{
 		if !maskOK {
 			mask = blobcache.Action_ALL
 		}
-		h, err := svc.Share(c.Context, volHParam.Load(c), peerParam.Load(c), mask)
+		h, err := svc.Share(c.Context, handleParam.Load(c), peerParam.Load(c), mask)
 		if err != nil {
 			return err
 		}
@@ -50,6 +50,12 @@ var shareCmd = star.Command{
 		c.Printf("HANDLE: %s\n", h.String())
 		return nil
 	},
+}
+
+var handleParam = star.Required[blobcache.Handle]{
+	ID:       "handle",
+	ShortDoc: "any handle",
+	Parse:    blobcache.ParseHandle,
 }
 
 var peerParam = star.Required[blobcache.PeerID]{
