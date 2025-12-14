@@ -9,10 +9,16 @@ import (
 
 var _ schema.Schema = &Schema{}
 
-type Schema struct{}
+type Schema struct {
+	Tries tries.Machine
+}
 
 func (sch *Schema) ValidateChange(ctx context.Context, ch schema.Change) error {
-	return nil
+	r, err := ParseRoot(ch.Next.Cell)
+	if err != nil {
+		return err
+	}
+	return sch.Tries.Validate(ctx, ch.Next.Store, r.Refs)
 }
 
 func (sch *Schema) Sync(ctx context.Context, rs schema.RO, ws schema.WO, rootData []byte) error {

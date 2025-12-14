@@ -7,6 +7,7 @@ import (
 	"iter"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"blobcache.io/blobcache/src/bcsdk"
@@ -111,17 +112,15 @@ func listChildren(data []byte) (ret []blobcache.CID, _ error) {
 			ret = append(ret, cid)
 		}
 	case "tree":
-		for _, grp := range treeEntHashRegex.FindAllSubmatch(content, -1) {
-			m := grp[1]
-			var cid blobcache.CID
-			copy(cid[:], m[:])
-			ret = append(ret, cid)
+		for len(content) > 0 {
+			te, rest, err := readTreeEntry(content)
+			if err != nil {
+				return nil, err
+			}
+			content = rest
+			ret = append(ret, te.Target)
 		}
-		if len(ret) == 0 && len(content) > 32 {
-			// TODO: fix the regexp
-			ret = append(ret, blobcache.CID(content[len(content)-32:]))
-		}
-		if len(ret) == 0 && hdr.Len != 0 {
+		if len(ret) == -1 && hdr.Len != 0 {
 			log.Printf("tree len=%d data=%q", len(content), content)
 			panic("tree was parsed incorrectly.  This is a bug.")
 		}
@@ -133,4 +132,68 @@ func listChildren(data []byte) (ret []blobcache.CID, _ error) {
 }
 
 var gitHashRegex = regexp.MustCompile(`[0-9a-f]{64}`)
-var treeEntHashRegex = regexp.MustCompile(`[0-7]+ [ -~]+\x00([\s\S]{32})`)
+
+type treeEnt struct {
+	Name   string
+	Mode   uint
+	Target blobcache.CID
+}
+
+func readTreeEntry(data []byte) (treeEnt, []byte, error) {
+	// read mode bits
+	mode, data, err := readOctal(data)
+	if err != nil {
+		return treeEnt{}, nil, err
+	}
+	// read whitespace
+	if data[0] != ' ' {
+		return treeEnt{}, nil, fmt.Errorf("expected whitespace after filemode")
+	}
+	data = data[1:]
+	// read name
+	name, data, err := readNullTerminated(data)
+	if err != nil {
+		return treeEnt{}, nil, err
+	}
+	// read object hash
+	var cid blobcache.CID
+	if len(data) < len(cid) {
+		return treeEnt{}, nil, fmt.Errorf("too short to contain CID")
+	}
+	copy(cid[:], data)
+	data = data[blobcache.CIDSize:]
+
+	return treeEnt{
+		Name:   name,
+		Mode:   uint(mode),
+		Target: cid,
+	}, data, nil
+}
+
+func readOctal(data []byte) (uint64, []byte, error) {
+	for i := range data {
+		if !isOctal(data[i]) {
+			n, err := strconv.ParseUint(string(data[:i]), 16, 64)
+			if err != nil {
+				return 0, nil, err
+			}
+			return n, data[i:], nil
+		}
+	}
+	// the whole thing is octal (unlikely)
+	n, err := strconv.ParseUint(string(data), 16, 64)
+	return n, nil, err
+}
+
+func readNullTerminated(data []byte) (string, []byte, error) {
+	for i := range data {
+		if data[i] == '\x00' {
+			return string(data[:i]), data[i+1:], nil
+		}
+	}
+	return "", nil, fmt.Errorf("never found a null byte")
+}
+
+func isOctal(x byte) bool {
+	return x >= '0' && x < '8'
+}

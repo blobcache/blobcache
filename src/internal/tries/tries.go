@@ -48,9 +48,9 @@ func SaveRoot(ctx context.Context, tx bcsdk.Saver, root Root) error {
 	return tx.Save(ctx, root.Marshal(nil))
 }
 
-func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
+func (o *Machine) Validate(ctx context.Context, s schema.RO, x Root) error {
 	// getEntries includes validation
-	node, err := o.getNode(ctx, s, x)
+	node, err := o.getNode(ctx, s, Index(x))
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
 	if err != nil {
 		return err
 	}
-	if err := checkEntries(ctx, s, x, ents); err != nil {
+	if err := checkEntries(ctx, s, Index(x), ents); err != nil {
 		return err
 	}
 	return nil
