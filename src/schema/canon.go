@@ -16,6 +16,12 @@ type VisitAll interface {
 	VisitAll(ctx context.Context, s bcsdk.RO, root []byte, visit func(cids []blobcache.CID, links []blobcache.OID) error) error
 }
 
+type Syncer interface {
+	// Sync ensures that all data transitively reachable from rootData
+	// has been copied from rs to ws.
+	Sync(ctx context.Context, rs bcsdk.RO, ws bcsdk.WO, rootData []byte) error
+}
+
 // KV is an interface for Schemas which support common Key-Value operations.
 type KV[K, V any] interface {
 	Put(ctx context.Context, s bcsdk.RW, root []byte, key K, value V) ([]byte, error)

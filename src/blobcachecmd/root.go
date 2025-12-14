@@ -49,8 +49,10 @@ var rootCmd = star.NewDir(
 		"clone":        cloneVolCmd,
 		"open-fiat":    openFiatCmd,
 		"open-from":    openFromCmd,
-		"await":        awaitCmd,
-		"drop":         dropCmd,
+
+		// handles
+		"drop":  dropCmd,
+		"share": shareCmd,
 
 		// transactions
 		"begin": beginTxCmd,
@@ -60,6 +62,7 @@ var rootCmd = star.NewDir(
 		"ns":         nsCmd,
 		"glfs":       glfsCmd,
 		"fuse-mount": fuseMountCmd,
+		"git":        gitCmd,
 	},
 )
 

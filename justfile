@@ -3,21 +3,23 @@
 build: capnp
 	mkdir -p ./build/out
 	./build/go_exec.sh ./build/out/blobcache ./cmd/blobcache
+	./build/go_exec.sh ./build/out/git-remote-bc ./cmd/git-remote-bc
 
 # Build the blobcache binary for amd64 linux.
 build-amd64-linux: capnp
 	mkdir -p ./build/out
 	GOARCH=amd64 GOOS=linux ./build/go_exec.sh ./build/out/blobcache_amd64-linux ./cmd/blobcache
+	GOARCH=amd64 GOOS=linux ./build/go_exec.sh ./build/out/git-remote-bc_amd64-linux ./cmd/git-remote-bc
 
 build-arm64-linux: capnp
     mkdir -p ./build/out
     GOARCH=arm64 GOOS=linux ./build/go_exec.sh ./build/out/blobcache_arm64-linux ./cmd/blobcache
+    GOARCH=arm64 GOOS=linux ./build/go_exec.sh ./build/out/git-remote-bc_arm64-linux ./cmd/git-remote-bc
 
 build-arm64-darwin: capnp
 	mkdir -p ./build/out
 	GOARCH=arm64 GOOS=darwin ./build/go_exec.sh ./build/out/blobcache_arm64-darwin ./cmd/blobcache
-
-build-amd64-darwin: capnp
+	GOARCH=arm64 GOOS=darwin ./build/go_exec.sh ./build/out/git-remote-bc_arm64-darwin ./cmd/git-remote-bc
 
 build-exec: build-amd64-linux build-arm64-linux build-arm64-darwin
 
@@ -48,6 +50,7 @@ release:
 # Installs just the blobcache binary to /usr/bin/blobcache
 install-unix: build
 	sudo cp ./build/out/blobcache /usr/bin/blobcache
+	sudo cp ./build/out/git-remote-bc /usr/bin/git-remote-bc
 
 # Install blobcache with systemd service
 install-systemd: build

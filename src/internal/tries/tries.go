@@ -3,6 +3,7 @@ package tries
 import (
 	"context"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/pkg/errors"
 	"go.brendoncarroll.net/state"
@@ -30,9 +31,26 @@ func ParseRoot(x []byte) (*Root, error) {
 	return (*Root)(&idx), nil
 }
 
-func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
+// LoadRoot loads the root node from the given loader.
+// LoadRoot returns (nil, nil) if the root is empty.
+func LoadRoot(ctx context.Context, ldr bcsdk.Loader) (*Root, error) {
+	var rootData []byte
+	if err := ldr.Load(ctx, &rootData); err != nil {
+		return nil, err
+	}
+	if len(rootData) == 0 {
+		return nil, nil
+	}
+	return ParseRoot(rootData)
+}
+
+func SaveRoot(ctx context.Context, tx bcsdk.Saver, root Root) error {
+	return tx.Save(ctx, root.Marshal(nil))
+}
+
+func (o *Machine) Validate(ctx context.Context, s schema.RO, x Root) error {
 	// getEntries includes validation
-	node, err := o.getNode(ctx, s, x)
+	node, err := o.getNode(ctx, s, Index(x))
 	if err != nil {
 		return err
 	}
@@ -40,7 +58,7 @@ func (o *Machine) Validate(ctx context.Context, s schema.RO, x Index) error {
 	if err != nil {
 		return err
 	}
-	if err := checkEntries(ctx, s, x, ents); err != nil {
+	if err := checkEntries(ctx, s, Index(x), ents); err != nil {
 		return err
 	}
 	return nil

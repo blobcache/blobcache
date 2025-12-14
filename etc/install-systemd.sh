@@ -4,7 +4,8 @@ set -xeuo pipefail
 # Blobcache systemd user installer script
 # This script installs the blobcache binary and systemd user service
 
-BINARY_PATH="./build/out/blobcache"
+BLOBCACHE_EXEC="./build/out/blobcache"
+GITRH_EXEC="./build/out/git-remote-bc"
 SERVICE_FILE="./etc/blobcache.service"
 
 # Check if the service is currently running
@@ -18,7 +19,8 @@ fi
 # Install systemd user service
 mkdir -p "$HOME/.config/systemd/user"
 
-sudo cp $BINARY_PATH "/usr/bin/blobcache"
+sudo cp $BLOBCACHE_EXEC "/usr/bin/blobcache"
+sudo cp $GITRH_EXEC "/usr/bin/git-remote-bc"
 cp $SERVICE_FILE "$HOME/.config/systemd/user/blobcache.service"
 
 # Reload systemd daemon to pick up any service file changes
