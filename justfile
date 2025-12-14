@@ -50,7 +50,7 @@ release:
 # Installs just the blobcache binary to /usr/bin/blobcache
 install-unix: build
 	sudo cp ./build/out/blobcache /usr/bin/blobcache
-	sudo cp ./biild/out/git-remote-bc /usr/bin/git-remote-bc
+	sudo cp ./build/out/git-remote-bc /usr/bin/git-remote-bc
 
 # Install blobcache with systemd service
 install-systemd: build
