@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"go.brendoncarroll.net/stdctx/logctx"
 )
 
 type Ref struct {
@@ -50,7 +51,7 @@ func Main(ctx context.Context, setup func(grhctx Ctx) (*Server, error)) {
 	if err := srv.Serve(ctx, os.Stdin, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
-	log.Println("done")
+	logctx.Debugf(ctx, "done")
 	os.Exit(0)
 }
 
@@ -61,7 +62,7 @@ type Server struct {
 }
 
 func (srv *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
-	log.Println("running protocol...")
+	logctx.Debugf(ctx, "running protocol...")
 	bufr := bufio.NewReader(r)
 	bufw := bufio.NewWriter(w)
 
@@ -69,7 +70,7 @@ func (srv *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
 	toFetch := map[string]blobcache.CID{}
 LOOP:
 	for {
-		cmd, args, err := readCmd(bufr)
+		cmd, args, err := readCmd(ctx, bufr)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -89,7 +90,7 @@ LOOP:
 				if !fn {
 					continue
 				}
-				log.Println("advertising", c)
+				logctx.Debugf(ctx, "advertising %v", c)
 				bufw.WriteString(c)
 				bufw.WriteString("\n")
 			}
@@ -126,7 +127,6 @@ LOOP:
 			name := args[1]
 			toFetch[name] = h
 		case `option`:
-			log.Println(args)
 			bufw.WriteString("ok\n")
 		case ``:
 			break LOOP
@@ -156,14 +156,14 @@ LOOP:
 	return bufw.Flush()
 }
 
-func readCmd(bufr *bufio.Reader) (string, []string, error) {
+func readCmd(ctx context.Context, bufr *bufio.Reader) (string, []string, error) {
 	lineData, err := bufr.ReadBytes('\n')
 	if err != nil {
 		return "", nil, err
 	}
 	lineData = bytes.TrimSpace(lineData)
 	line := string(lineData)
-	log.Println("git->:", line)
+	logctx.Debugf(ctx, "git->: %s", line)
 	parts := strings.Split(line, " ")
 	cmd := parts[0]
 	var args []string
@@ -253,6 +253,12 @@ func SplitHeader(data []byte) (Header, []byte, error) {
 
 func postObject(cid blobcache.CID, data []byte) error {
 	hexcid := hex.EncodeToString(cid[:])
+	if err := os.Mkdir(".git", 0o755); err != nil && !os.IsExist(err) {
+		return err
+	}
+	if err := os.Mkdir(".git/objects", 0o755); err != nil && !os.IsExist(err) {
+		return err
+	}
 	p := filepath.Join(".git/objects", hexcid[:2], hexcid[2:])
 	if err := os.Mkdir(filepath.Dir(p), 0o755); err != nil && !os.IsExist(err) {
 		return err

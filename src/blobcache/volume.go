@@ -50,11 +50,11 @@ func (e *Endpoint) Unmarshal(data []byte) error {
 }
 
 func (e Endpoint) String() string {
-	return fmt.Sprintf("%s@%s", e.Peer.String(), e.IPPort.String())
+	return fmt.Sprintf("%s:%s", e.Peer.String(), e.IPPort.String())
 }
 
 func ParseEndpoint(s string) (Endpoint, error) {
-	parts := strings.Split(s, "@")
+	parts := strings.SplitN(s, ":", 2)
 	if len(parts) != 2 {
 		return Endpoint{}, fmt.Errorf("invalid endpoint: %s", s)
 	}
