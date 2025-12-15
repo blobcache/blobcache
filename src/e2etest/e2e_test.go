@@ -25,7 +25,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/blobcached"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/schema/bcns"
 	"blobcache.io/blobcache/src/schema/jsonns"
 )
 
@@ -65,7 +65,7 @@ func TestDaemonAuth(t *testing.T) {
 
 	svc, err := bcremote.Dial(clientPriv.(ed25519.PrivateKey), ep)
 	require.NoError(t, err)
-	nsc := schema.NSClient{Service: svc, Schema: jsonns.Schema{}}
+	nsc := bcns.Client{Service: svc, Schema: jsonns.Schema{}}
 	_, err = nsc.CreateAt(ctx, blobcache.Handle{}, "test-volume", blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 

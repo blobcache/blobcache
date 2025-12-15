@@ -15,6 +15,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/schema/bcns"
 	"go.brendoncarroll.net/exp/slices2"
 	"go.brendoncarroll.net/state/cadata"
 )
@@ -25,11 +26,11 @@ func init() {
 	schemareg.AddDefaultSchema(SchemaName, Constructor)
 }
 
-type Entry = schema.NSEntry
+type Entry = bcns.Entry
 
 var (
-	_ schema.Schema    = &Schema{}
-	_ schema.Namespace = &Schema{}
+	_ schema.Schema  = &Schema{}
+	_ bcns.Namespace = &Schema{}
 )
 
 type Schema struct{}

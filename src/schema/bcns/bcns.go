@@ -1,4 +1,4 @@
-package schema
+package bcns
 
 import (
 	"context"
@@ -8,11 +8,12 @@ import (
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/slices2"
 )
 
-// NSEntry represents an entry in a namespace.
-type NSEntry struct {
+// Entry represents an entry in a namespace.
+type Entry struct {
 	// Name is the key for this entry within the namespace.
 	Name string `json:"name"`
 	// Target is the OID of the entry.
@@ -21,8 +22,8 @@ type NSEntry struct {
 	Rights blobcache.ActionSet `json:"rights"`
 }
 
-func (ent *NSEntry) Link() Link {
-	return Link{
+func (ent *Entry) Link() schema.Link {
+	return schema.Link{
 		Target: ent.Target,
 		Rights: ent.Rights,
 	}
@@ -43,26 +44,26 @@ func CheckName(name string) error {
 
 // Namespace is an interface for Schemas which support common Namespace operations.
 type Namespace interface {
-	NSList(ctx context.Context, s bcsdk.RO, root []byte) ([]NSEntry, error)
+	NSList(ctx context.Context, s bcsdk.RO, root []byte) ([]Entry, error)
 	// NSGet retrieves the entry at the given name.
 	// If the entry exists, it is returned in dst and true is returned.
 	// If the entry does not exist, dst is not modified and false is returned.
-	NSGet(ctx context.Context, s bcsdk.RO, root []byte, name string, dst *NSEntry) (bool, error)
+	NSGet(ctx context.Context, s bcsdk.RO, root []byte, name string, dst *Entry) (bool, error)
 	// Delete deletes the entry at the given name.
 	// Delete is idempotent, and does not fail if the entry does not exist.
 	NSDelete(ctx context.Context, s bcsdk.RW, root []byte, name string) ([]byte, error)
 	// Put performs an idempotent create or replace operation.
-	NSPut(ctx context.Context, s bcsdk.RW, root []byte, ent NSEntry) ([]byte, error)
+	NSPut(ctx context.Context, s bcsdk.RW, root []byte, ent Entry) ([]byte, error)
 }
 
-// NSClient allows manipulation of namespace volumes.
-type NSClient struct {
+// Client allows manipulation of namespace volumes.
+type Client struct {
 	Service blobcache.Service
 	Schema  Namespace
 }
 
-func (nsc *NSClient) Init(ctx context.Context, volh blobcache.Handle) error {
-	sch, ok := nsc.Schema.(Initializer)
+func (nsc *Client) Init(ctx context.Context, volh blobcache.Handle) error {
+	sch, ok := nsc.Schema.(schema.Initializer)
 	if !ok {
 		return fmt.Errorf("protocol does not support initialization")
 	}
@@ -78,7 +79,7 @@ func (nsc *NSClient) Init(ctx context.Context, volh blobcache.Handle) error {
 	})
 }
 
-func (nsc *NSClient) Put(ctx context.Context, nsh blobcache.Handle, name string, volh blobcache.Handle, mask blobcache.ActionSet) error {
+func (nsc *Client) Put(ctx context.Context, nsh blobcache.Handle, name string, volh blobcache.Handle, mask blobcache.ActionSet) error {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return err
@@ -90,7 +91,7 @@ func (nsc *NSClient) Put(ctx context.Context, nsh blobcache.Handle, name string,
 		if err := tx.Link(ctx, volh, mask); err != nil {
 			return nil, err
 		}
-		ent := NSEntry{
+		ent := Entry{
 			Name:   name,
 			Target: volh.OID,
 			Rights: mask,
@@ -99,13 +100,13 @@ func (nsc *NSClient) Put(ctx context.Context, nsh blobcache.Handle, name string,
 	})
 }
 
-func (nsc *NSClient) Delete(ctx context.Context, nsh blobcache.Handle, name string) error {
+func (nsc *Client) Delete(ctx context.Context, nsh blobcache.Handle, name string) error {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return err
 	}
 	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
-		var ent NSEntry
+		var ent Entry
 		found, err := nsc.Schema.NSGet(ctx, tx, root, name, &ent)
 		if err != nil {
 			return nil, err
@@ -122,7 +123,7 @@ func (nsc *NSClient) Delete(ctx context.Context, nsh blobcache.Handle, name stri
 		if err != nil {
 			return nil, err
 		}
-		if !slices.ContainsFunc(ents, func(x NSEntry) bool {
+		if !slices.ContainsFunc(ents, func(x Entry) bool {
 			return x.Target == ent.Target
 		}) {
 			// if the target is not referenced by any other entry, unlink it
@@ -134,7 +135,7 @@ func (nsc *NSClient) Delete(ctx context.Context, nsh blobcache.Handle, name stri
 	})
 }
 
-func (nsc *NSClient) Get(ctx context.Context, volh blobcache.Handle, name string, dst *NSEntry) (bool, error) {
+func (nsc *Client) Get(ctx context.Context, volh blobcache.Handle, name string, dst *Entry) (bool, error) {
 	volh, err := nsc.resolve(ctx, volh)
 	if err != nil {
 		return false, err
@@ -144,30 +145,30 @@ func (nsc *NSClient) Get(ctx context.Context, volh blobcache.Handle, name string
 	})
 }
 
-func (nsc *NSClient) List(ctx context.Context, volh blobcache.Handle) ([]NSEntry, error) {
+func (nsc *Client) List(ctx context.Context, volh blobcache.Handle) ([]Entry, error) {
 	volh, err := nsc.resolve(ctx, volh)
 	if err != nil {
 		return nil, err
 	}
-	return bcsdk.View1(ctx, nsc.Service, volh, func(s bcsdk.RO, root []byte) ([]NSEntry, error) {
+	return bcsdk.View1(ctx, nsc.Service, volh, func(s bcsdk.RO, root []byte) ([]Entry, error) {
 		return nsc.Schema.NSList(ctx, s, root)
 	})
 }
 
-func (nsc *NSClient) ListNames(ctx context.Context, volh blobcache.Handle) ([]string, error) {
+func (nsc *Client) ListNames(ctx context.Context, volh blobcache.Handle) ([]string, error) {
 	ents, err := nsc.List(ctx, volh)
 	if err != nil {
 		return nil, err
 	}
-	return slices2.Map(ents, func(x NSEntry) string { return x.Name }), nil
+	return slices2.Map(ents, func(x Entry) string { return x.Name }), nil
 }
 
-func (nsc *NSClient) OpenAt(ctx context.Context, nsh blobcache.Handle, name string, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (nsc *Client) OpenAt(ctx context.Context, nsh blobcache.Handle, name string, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return nil, err
 	}
-	var ent NSEntry
+	var ent Entry
 	found, err := nsc.Get(ctx, nsh, name, &ent)
 	if err != nil {
 		return nil, err
@@ -182,7 +183,7 @@ func (nsc *NSClient) OpenAt(ctx context.Context, nsh blobcache.Handle, name stri
 	return subvolh, nil
 }
 
-func (nsc *NSClient) CreateAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+func (nsc *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return nil, err
@@ -192,7 +193,7 @@ func (nsc *NSClient) CreateAt(ctx context.Context, nsh blobcache.Handle, name st
 		return nil, err
 	}
 	if err := bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
-		found, err := nsc.Schema.NSGet(ctx, tx, root, name, new(NSEntry))
+		found, err := nsc.Schema.NSGet(ctx, tx, root, name, new(Entry))
 		if err != nil {
 			return nil, err
 		}
@@ -202,7 +203,7 @@ func (nsc *NSClient) CreateAt(ctx context.Context, nsh blobcache.Handle, name st
 		if err := tx.Link(ctx, *volh, blobcache.Action_ALL); err != nil {
 			return nil, err
 		}
-		return nsc.Schema.NSPut(ctx, tx, root, NSEntry{
+		return nsc.Schema.NSPut(ctx, tx, root, Entry{
 			Name:   name,
 			Target: volh.OID,
 			Rights: blobcache.Action_ALL,
@@ -214,8 +215,8 @@ func (nsc *NSClient) CreateAt(ctx context.Context, nsh blobcache.Handle, name st
 }
 
 // GC garbage collects the volume
-func (nsc *NSClient) GC(ctx context.Context, volh blobcache.Handle) error {
-	gcsch, ok := nsc.Schema.(VisitAll)
+func (nsc *Client) GC(ctx context.Context, volh blobcache.Handle) error {
+	gcsch, ok := nsc.Schema.(schema.VisitAll)
 	if !ok {
 		return fmt.Errorf("cannot GC, schema does not support visit all")
 	}
@@ -247,7 +248,7 @@ func (nsc *NSClient) GC(ctx context.Context, volh blobcache.Handle) error {
 	return tx.Commit(ctx)
 }
 
-func (nsc NSClient) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
+func (nsc Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
 	if volh.Secret == ([16]byte{}) {
 		volh2, err := nsc.Service.OpenFiat(ctx, volh.OID, blobcache.Action_ALL)
 		if err != nil {

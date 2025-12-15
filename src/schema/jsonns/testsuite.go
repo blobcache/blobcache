@@ -9,7 +9,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/schema/bcns"
 )
 
 // tests that the schema works on the Service.
@@ -19,7 +19,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
 		volh := blobcachetests.CreateVolume(t, s, nil, blobcache.DefaultLocalSpec())
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 		err := nsc.Put(ctx, nsh, "test-name", volh, blobcache.Action_ALL)
 		require.NoError(t, err)
 		err = s.Drop(ctx, volh)
@@ -33,7 +33,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 
 		names, err := nsc.ListNames(ctx, nsh)
 		require.NoError(t, err)
@@ -46,7 +46,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 		for i := 0; i < 10; i++ {
 			err = nsc.Put(ctx, nsh, fmt.Sprintf("test-name-%d", i), *volh, blobcache.Action_ALL)
 			require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
 		volh := blobcachetests.CreateVolume(t, s, nil, blobcache.DefaultLocalSpec())
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 		err := nsc.Put(ctx, nsh, "test-name", volh, blobcache.Action_ALL)
 		require.NoError(t, err)
 		names, err := nsc.ListNames(ctx, nsh)
@@ -78,7 +78,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 		// Delets are idempotent, should not get an error.
 		err := nsc.Delete(ctx, nsh, "test-name")
 		require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		volh, err := s.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 		require.NoError(t, err)
 		require.NotNil(t, volh)
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 		require.NoError(t, nsc.Put(ctx, blobcache.Handle{}, "vol1", *volh, blobcache.Action_ALL))
 
 		txh, err := s.BeginTx(ctx, nsh, blobcache.TxParams{Modify: true})
@@ -105,7 +105,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
 		// Open the root namespace
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 
 		// Create 10 nested namespaces.
 		ns1h := nsh
@@ -129,7 +129,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 		for i := 0; i < 10; i++ {
 			_, err := nsc.CreateAt(ctx, nsh, fmt.Sprintf("subvol-%d", i), blobcache.DefaultLocalSpec())
 			require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestSuite(t *testing.T, mk func(t testing.TB) (svc blobcache.Service, nsh b
 		t.Parallel()
 		ctx := testutil.Context(t)
 		s, nsh := mk(t)
-		nsc := schema.NSClient{Service: s, Schema: Schema{}}
+		nsc := bcns.Client{Service: s, Schema: Schema{}}
 		mkName := func(x int) string {
 			return fmt.Sprintf("name-%d", x)
 		}

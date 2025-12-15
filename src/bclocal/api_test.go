@@ -7,7 +7,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema"
+	"blobcache.io/blobcache/src/schema/bcns"
 	"blobcache.io/blobcache/src/schema/jsonns"
 	"github.com/stretchr/testify/require"
 )
@@ -27,12 +27,12 @@ func TestDefaultNoAccess(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	nsc1 := schema.NSClient{Service: svc1, Schema: jsonns.Schema{}}
+	nsc1 := bcns.Client{Service: svc1, Schema: jsonns.Schema{}}
 	require.NoError(t, err)
 	require.NoError(t, nsc1.Put(ctx, blobcache.Handle{}, "name1", *volh, blobcache.Action_ALL))
 
-	nsc2 := schema.NSClient{Service: svc2, Schema: jsonns.Schema{}}
-	var entry schema.NSEntry
+	nsc2 := bcns.Client{Service: svc2, Schema: jsonns.Schema{}}
+	var entry bcns.Entry
 	found, err := nsc2.Get(ctx, blobcache.Handle{}, "name1", &entry)
 	require.NoError(t, err)
 	require.False(t, found)

@@ -3,9 +3,9 @@ package blobcachecmd
 import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/sqlutil"
-	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/bcfuse"
 	"blobcache.io/blobcache/src/schema/bcfuse/scheme_glfs"
+	"blobcache.io/blobcache/src/schema/bcns"
 	"blobcache.io/blobcache/src/schema/jsonns"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -28,7 +28,7 @@ var fuseMountCmd = star.Command{
 			return err
 		}
 		volName := volumeNameParam.Load(c)
-		nsc := schema.NSClient{Service: svc, Schema: jsonns.Schema{}}
+		nsc := bcns.Client{Service: svc, Schema: jsonns.Schema{}}
 		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volName, blobcache.Action_ALL)
 		if err != nil {
 			return err
