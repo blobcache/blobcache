@@ -34,10 +34,10 @@ type Node struct {
 
 	tp    *quic.Transport
 	mu    sync.RWMutex
-	conns map[blobcache.Endpoint]quic.Connection
+	conns map[blobcache.Endpoint]*quic.Conn
 
-	dialSF   singleflight.Group[blobcache.Endpoint, quic.Connection]
-	fromDial chan quic.Connection
+	dialSF   singleflight.Group[blobcache.Endpoint, *quic.Conn]
+	fromDial chan *quic.Conn
 }
 
 func New(privateKey ed25519.PrivateKey, pc net.PacketConn) *Node {
@@ -48,8 +48,8 @@ func New(privateKey ed25519.PrivateKey, pc net.PacketConn) *Node {
 		tp:         tp,
 		pc:         pc,
 		privateKey: privateKey,
-		conns:      make(map[blobcache.Endpoint]quic.Connection),
-		fromDial:   make(chan quic.Connection),
+		conns:      make(map[blobcache.Endpoint]*quic.Conn),
+		fromDial:   make(chan *quic.Conn),
 	}
 }
 
@@ -152,7 +152,7 @@ func (n *Node) Serve(ctx context.Context, srv Server) error {
 	}
 }
 
-func (n *Node) maybeSpawnHandler(ctx context.Context, ep blobcache.Endpoint, conn quic.Connection, fn messageHandler) {
+func (n *Node) maybeSpawnHandler(ctx context.Context, ep blobcache.Endpoint, conn *quic.Conn, fn messageHandler) {
 	if _, added := n.attemptAddConn(ep, conn); added {
 		go func() {
 			if err := n.handleConn(ctx, ep, conn, fn); err != nil {
@@ -166,7 +166,7 @@ func (n *Node) maybeSpawnHandler(ctx context.Context, ep blobcache.Endpoint, con
 
 // attemptAddConn gets the lock and adds the connection to the map if it is not already present.
 // If it is already present, it returns the existing connection and false.
-func (n *Node) attemptAddConn(ep blobcache.Endpoint, x quic.Connection) (quic.Connection, bool) {
+func (n *Node) attemptAddConn(ep blobcache.Endpoint, x *quic.Conn) (*quic.Conn, bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if prevConn, exists := n.conns[ep]; exists {
@@ -177,7 +177,7 @@ func (n *Node) attemptAddConn(ep blobcache.Endpoint, x quic.Connection) (quic.Co
 	}
 }
 
-func (n *Node) handleConn(ctx context.Context, remote blobcache.Endpoint, conn quic.Connection, fn messageHandler) error {
+func (n *Node) handleConn(ctx context.Context, remote blobcache.Endpoint, conn *quic.Conn, fn messageHandler) error {
 	defer conn.CloseWithError(0, "")
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
@@ -210,14 +210,14 @@ func (n *Node) handleConn(ctx context.Context, remote blobcache.Endpoint, conn q
 }
 
 // getConn returns a connection to the specified peer
-func (node *Node) getConn(ctx context.Context, ep blobcache.Endpoint) (quic.Connection, error) {
+func (node *Node) getConn(ctx context.Context, ep blobcache.Endpoint) (*quic.Conn, error) {
 	node.mu.RLock()
 	conn := node.conns[ep]
 	node.mu.RUnlock()
 	if conn != nil {
 		return conn, nil
 	}
-	conn, err, _ := node.dialSF.Do(ep, func() (quic.Connection, error) {
+	conn, err, _ := node.dialSF.Do(ep, func() (*quic.Conn, error) {
 		// check if there is a conn again.
 		node.mu.RLock()
 		conn := node.conns[ep]
@@ -241,9 +241,9 @@ func (node *Node) getConn(ctx context.Context, ep blobcache.Endpoint) (quic.Conn
 	return conn, err
 }
 
-// dialConn dials a new quic connection and returns it.
+// dialConn dials a new *quic.Conn and returns it.
 // It does not modify peers or take any locks.
-func (qt *Node) dialConn(ctx context.Context, ep blobcache.Endpoint) (quic.Connection, error) {
+func (qt *Node) dialConn(ctx context.Context, ep blobcache.Endpoint) (*quic.Conn, error) {
 	conn, err := qt.tp.Dial(ctx, net.UDPAddrFromAddrPort(ep.IPPort), qt.makeDialTlsConfig(ep.Peer), qt.makeQuicConfig())
 	if err != nil {
 		return nil, err
@@ -251,7 +251,7 @@ func (qt *Node) dialConn(ctx context.Context, ep blobcache.Endpoint) (quic.Conne
 	return conn, nil
 }
 
-func (qt *Node) handleStream(ctx context.Context, ep blobcache.Endpoint, s quic.Stream, fn messageHandler) error {
+func (qt *Node) handleStream(ctx context.Context, ep blobcache.Endpoint, s *quic.Stream, fn messageHandler) error {
 	var req Message
 	if _, err := req.ReadFrom(s); err != nil {
 		return err
@@ -264,7 +264,7 @@ func (qt *Node) handleStream(ctx context.Context, ep blobcache.Endpoint, s quic.
 	return s.Close()
 }
 
-func (qt *Node) handleUniStream(ctx context.Context, ep blobcache.Endpoint, s quic.ReceiveStream, fn messageHandler) error {
+func (qt *Node) handleUniStream(ctx context.Context, ep blobcache.Endpoint, s *quic.ReceiveStream, fn messageHandler) error {
 	var req Message
 	if _, err := req.ReadFrom(s); err != nil {
 		return err
@@ -335,7 +335,7 @@ func peerIDFromTLSState(tlsState tls.ConnectionState) (*blobcache.PeerID, error)
 	}
 }
 
-func ipPortFromConn(x quic.Connection) netip.AddrPort {
+func ipPortFromConn(x *quic.Conn) netip.AddrPort {
 	udpAddr := x.RemoteAddr().(*net.UDPAddr)
 	return udpAddr.AddrPort()
 }
