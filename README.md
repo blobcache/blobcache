@@ -12,8 +12,9 @@ Blobcache is a universal backend for E2EE applications.
 
 ## Quick Docs
 - [Why Blobcache?](./doc/0.2_Why_Blobcache.md)
-- [Concepts](/doc/1.0_Concepts.md)
-- [BCP vs. HTTP](/doc/9.01_BCP_vs_HTTP.md)
+- [Concepts](./doc/1.0_Concepts.md)
+- [BCP vs. HTTP](./doc/9.01_BCP_vs_HTTP.md)
+- [Blobcache Git Remote](./doc/)
 
 ## Getting Started
 
@@ -39,11 +40,12 @@ This would set the variable to the unix socket used by default in the systemd se
 export BLOBCACHE_API="unix:///run/user/$(id -u)/blobcache.sock"
 ```
 
-The environment variable is used by the `blobcache` command to talk to blobcache.
+The environment variable is used by the `blobcache` command to talk to the blobcache daemon.
 
 You can test that the CLI can connect to the daemon with
 ```shell
 $ blobcache endpoint
+JcJvfY9tFsfkHSwoMT8IEoSq1ZfxVYBAwpBRvJ0uUJA:[::]:6025
 ```
 
 ### Docker
