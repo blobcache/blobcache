@@ -109,11 +109,11 @@ func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
 // If it is going into the API, the it will be a VolumeBackend[Handle].
 // If it is coming out of the API, the it will be a VolumeBackend[OID].
 type VolumeBackend[T handleOrOID] struct {
-	Local     *VolumeBackend_Local     `json:"local,omitempty"`
-	Remote    *VolumeBackend_Remote    `json:"remote,omitempty"`
-	Git       *VolumeBackend_Git       `json:"git,omitempty"`
-	Vault     *VolumeBackend_Vault[T]  `json:"vault,omitempty"`
-	Consensus *VolumeBackend_Consensus `json:"consensus,omitempty"`
+	Local  *VolumeBackend_Local    `json:"local,omitempty"`
+	Remote *VolumeBackend_Remote   `json:"remote,omitempty"`
+	Git    *VolumeBackend_Git      `json:"git,omitempty"`
+	Vault  *VolumeBackend_Vault[T] `json:"vault,omitempty"`
+	Global *VolumeBackend_Global   `json:"consensus,omitempty"`
 }
 
 func (v *VolumeBackend[T]) Marshal(out []byte) []byte {
@@ -338,10 +338,45 @@ func (s *Secret) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type VolumeBackend_Consensus struct {
-	Schema   SchemaSpec `json:"schema"`
-	HashAlgo HashAlgo   `json:"hash_algo"`
-	MaxSize  int64      `json:"max_size"`
+type VolumeBackend_Global struct {
+	// Essence includes everything that will be used
+	// to produce the identifying TID
+	Essence GlobalEssence `json:"essence"`
+}
+
+func (vbg VolumeBackend_Global) Config() VolumeConfig {
+	return VolumeConfig{
+		HashAlgo: vbg.Essence.HashAlgo,
+		MaxSize:  vbg.Essence.MaxSize,
+		Salted:   vbg.Essence.Salted,
+		Schema:   vbg.Essence.Schema,
+	}
+}
+
+type GlobalEssence struct {
+	Init     CID           `json:"init"`
+	Protocol ConsensusAlgo `json:"protocol"`
+	Schema   SchemaSpec    `json:"schema"`
+	HashAlgo HashAlgo      `json:"hash_algo"`
+	MaxSize  int64         `json:"max_size"`
+	Salted   bool          `json:"salted"`
+}
+
+// ID is the ID of the Global Volume
+func (ess GlobalEssence) ID() CID {
+	hf := HashAlgo_CSHAKE256.HashFunc()
+	data, err := json.Marshal(ess)
+	if err != nil {
+		panic(err)
+	}
+	return hf(nil, data)
+}
+
+// TID is the topic that this Volume uses for coordination.
+func (ess GlobalEssence) TID() TID {
+	hf := HashAlgo_CSHAKE256.HashFunc()
+	cid := ess.ID()
+	return TID(hf(nil, cid[:]))
 }
 
 type handleOrOID interface {
