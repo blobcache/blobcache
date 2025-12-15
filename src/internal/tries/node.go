@@ -17,29 +17,30 @@ import (
 // getNode returns node at x.
 // all the entries will be in compressed form.
 func (o *Machine) getNode(ctx context.Context, s schema.RO, x Index) (*triescnp.Node, error) {
-	var n triescnp.Node
+	var node triescnp.Node
 	if err := o.getF(ctx, s, x.Ref, func(data []byte) error {
 		data = slices.Clone(data)
-		msg, err := capnp.Unmarshal(data)
+		msg, _, err := capnp.NewMessage(capnp.SingleSegment(data))
 		if err != nil {
 			return err
 		}
-		n, err = triescnp.ReadRootNode(msg)
+		n, err := triescnp.ReadRootNode(msg)
 		if err != nil {
 			return err
 		}
+		node = n
 		return nil
 	}); err != nil {
 		return nil, err
 	}
-	el, err := n.Entries()
+	el, err := node.Entries()
 	if err != nil {
 		return nil, err
 	}
 	if err := checkEntries(ctx, s, x, el); err != nil {
 		return nil, err
 	}
-	return &n, nil
+	return &node, nil
 }
 
 // postNode creates a new node with ents, ents will be split if necessary
@@ -48,11 +49,7 @@ func (mach *Machine) postNode(ctx context.Context, s schema.RW, node triescnp.No
 		return nil, fmt.Errorf("node cannot be split further")
 	}
 	// TODO: use the canonical serialization here.
-	msg := node.Message()
-	if msg == nil {
-		return nil, fmt.Errorf("node has no message")
-	}
-	data, err := msg.Marshal()
+	data, err := capnp.Canonicalize(capnp.Struct(node))
 	if err != nil {
 		return nil, err
 	}

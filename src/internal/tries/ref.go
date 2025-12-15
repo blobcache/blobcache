@@ -30,7 +30,7 @@ func marshalRef(x Ref) []byte {
 
 func parseRef(x []byte) (*Ref, error) {
 	if len(x) < refSize {
-		return nil, errors.Errorf("tries: data too small to be Ref")
+		return nil, errors.Errorf("tries: data too small to be Ref len=%d", len(x))
 	}
 	y := &Ref{DEK: bccrypto.DEK{}}
 	copy(y.CID[:], x[:32])

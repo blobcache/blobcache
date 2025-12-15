@@ -49,6 +49,7 @@ func Main(ctx context.Context, setup func(grhctx Ctx) (*Server, error)) {
 		return
 	}
 	if err := srv.Serve(ctx, os.Stdin, os.Stdout); err != nil {
+		os.Stderr.Sync()
 		log.Fatal(err)
 	}
 	logctx.Debugf(ctx, "done")
@@ -139,6 +140,7 @@ LOOP:
 	}
 	if len(toPush) > 0 {
 		if err := srv.Push(ctx, &Store{}, toPush); err != nil {
+			printError(bufw, err)
 			return err
 		}
 		for _, ref := range toPush {
@@ -175,6 +177,11 @@ func readCmd(ctx context.Context, bufr *bufio.Reader) (string, []string, error) 
 
 func printOk(w io.Writer, refName string) error {
 	_, err := fmt.Fprintf(w, "ok %s\n", refName)
+	return err
+}
+
+func printError(w io.Writer, err error) error {
+	_, err = fmt.Fprintf(w, "error %s\n", err.Error())
 	return err
 }
 

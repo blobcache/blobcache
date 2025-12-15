@@ -16,25 +16,30 @@ import (
 func TestPutGet(t *testing.T) {
 	ctx := context.TODO()
 	s := schema.NewTestStore(t)
-	op := NewMachine(nil, blobcache.HashAlgo_BLAKE3_256.HashFunc())
+	mach := NewMachine(nil, blobcache.HashAlgo_BLAKE3_256.HashFunc())
 	const N = 1000
 
-	x, err := op.PostSlice(ctx, s, nil)
+	x, err := mach.PostSlice(ctx, s, nil)
 	require.NoError(t, err)
 	// put
 	for i := range N {
 		buf := fmt.Appendf(nil, "test-value-%d", i)
 		key := cadata.DefaultHash(buf)
-		x, err = op.Put(ctx, s, *x, key[:], buf)
+		x, err = mach.Put(ctx, s, *x, key[:], buf)
 		require.NoError(t, err)
 	}
+	rootData := x.Marshal(nil)
+	x = nil // prevent accidental use below
+	root2, err := ParseRoot(rootData)
+	require.NoError(t, err)
+
 	t.Logf("put %d blobs", s.Len())
 	// get
 	for i := range N {
 		expected := fmt.Appendf(nil, "test-value-%d", i)
 		key := cadata.DefaultHash(expected)
 		var actual []byte
-		found, err := op.Get(ctx, s, *x, key[:], &actual)
+		found, err := mach.Get(ctx, s, *root2, key[:], &actual)
 		assert.NoError(t, err, "while fetching key %q", key[:])
 		assert.True(t, found)
 		assert.Equal(t, expected, actual)
@@ -76,6 +81,10 @@ func TestIterate(t *testing.T) {
 					}
 				}
 			})
+			require.NoError(t, err)
+
+			rootData := x.Marshal(nil)
+			x, err = ParseRoot(rootData)
 			require.NoError(t, err)
 
 			it := mach.NewIterator(s, *x, Span{})

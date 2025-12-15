@@ -51,37 +51,39 @@ func (rem *Remote) putRefs(ctx context.Context, refs []GitRef) error {
 		return err
 	}
 	defer tx.Abort(ctx)
-	root, err := tries.LoadRoot(ctx, tx)
+	root, err := LoadRoot(ctx, tx)
 	if err != nil {
 		return err
 	}
 	if root == nil {
-		root, err = rem.tmach.NewEmpty(ctx, tx)
+		troot, err := rem.tmach.NewEmpty(ctx, tx)
 		if err != nil {
 			return err
 		}
+		root = &Root{Refs: *troot}
 	}
 	for _, gr := range refs {
-		root, err = rem.tmach.Put(ctx, tx, *root, []byte(gr.Name), gr.Target[:])
+		troot, err := rem.tmach.Put(ctx, tx, root.Refs, []byte(gr.Name), gr.Target[:])
 		if err != nil {
 			return err
 		}
+		root.Refs = *troot
 	}
-	if err := tries.SaveRoot(ctx, tx, *root); err != nil {
+	if err := SaveRoot(ctx, tx, *root); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
 func beginTTx(ctx context.Context, tmach *tries.Machine, tx *bcsdk.Tx) (*tries.Tx, error) {
-	root, err := tries.LoadRoot(ctx, tx)
+	root, err := LoadRoot(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
 	if root == nil {
 		return tmach.NewTxOnEmpty(tx), nil
 	} else {
-		return tmach.NewTx(tx, *root), nil
+		return tmach.NewTx(tx, root.Refs), nil
 	}
 }
 
@@ -107,7 +109,7 @@ func (rem *Remote) Push(ctx context.Context, src bcsdk.RO, refs []GitRef) error 
 	if err != nil {
 		return err
 	}
-	if err := tries.SaveRoot(ctx, tx, *root); err != nil {
+	if err := SaveRoot(ctx, tx, Root{Refs: *root}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -155,7 +157,7 @@ func (rem *Remote) OpenIterator(ctx context.Context) (*RefIterator, error) {
 }
 
 func (rem *Remote) openRefIterator(ctx context.Context, tx *bcsdk.Tx) (*RefIterator, error) {
-	root, err := tries.LoadRoot(ctx, tx)
+	root, err := LoadRoot(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +167,7 @@ func (rem *Remote) openRefIterator(ctx context.Context, tx *bcsdk.Tx) (*RefItera
 	}
 	return &RefIterator{
 		tx: tx,
-		it: rem.tmach.NewIterator(tx, *root, tries.Span{}),
+		it: rem.tmach.NewIterator(tx, root.Refs, tries.Span{}),
 	}, nil
 }
 
@@ -175,12 +177,15 @@ func (rem *Remote) GetRef(ctx context.Context, name string) (*GitRef, error) {
 		return nil, err
 	}
 	defer tx.Abort(ctx)
-	root, err := tries.LoadRoot(ctx, tx)
+	root, err := LoadRoot(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
+	if root == nil {
+		return nil, nil
+	}
 	var val []byte
-	if found, err := rem.tmach.Get(ctx, tx, *root, []byte(name), &val); err != nil {
+	if found, err := rem.tmach.Get(ctx, tx, root.Refs, []byte(name), &val); err != nil {
 		return nil, err
 	} else if !found {
 		return nil, nil
