@@ -3,7 +3,6 @@ package tries
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"slices"
 
 	"blobcache.io/blobcache/src/internal/tries/triescnp"
@@ -111,7 +110,6 @@ func (idx *Index) Marshal(out []byte) []byte {
 		panic(err)
 	}
 	refData := marshalRef(idx.Ref)
-	log.Println("refData", refData)
 	if err := capnpIdx.SetRef(refData); err != nil {
 		panic(err)
 	}

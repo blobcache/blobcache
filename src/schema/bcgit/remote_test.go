@@ -20,7 +20,7 @@ import (
 	"go.brendoncarroll.net/exp/streams"
 )
 
-var enableGitOut = false
+var enableGitOut = true
 
 func TestLsRemote(t *testing.T) {
 	ctx := testutil.Context(t)
@@ -126,7 +126,7 @@ func setup(t testing.TB) testEnv {
 	bc := bchttp.NewClient(nil, apiStr)
 	wd := t.TempDir()
 	testutil.BuildGoExec(t, filepath.Join(wd, "git-remote-bc"), "../../../cmd/git-remote-bc")
-
+	copyFile(t, "/usr/bin/git", filepath.Join(wd, "git"))
 	ctx := testutil.Context(t)
 	gitVol, err := bc.CreateVolume(ctx, nil, DefaultVolumeSpec())
 	require.NoError(t, err)
@@ -218,8 +218,8 @@ func cmd(t testing.TB, te testEnv, name string, args ...string) []byte {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = te.Dir
 	cmd.Env = []string{
-		"HOME=" + home,   // TODO: this is to make git shut up about name + email.
-		"PATH=/usr/bin:", // the trailing colon is very important.
+		"HOME=" + home, // TODO: this is to make git shut up about name + email.
+		"PATH=:",       // sets the current working directory as the path.
 		"BLOBCACHE_API=" + te.APIStr,
 	}
 	var stdout bytes.Buffer
