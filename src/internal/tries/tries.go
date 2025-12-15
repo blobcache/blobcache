@@ -23,12 +23,17 @@ func (x *Root) Marshal(out []byte) []byte {
 	return idx.Marshal(out)
 }
 
+func (x *Root) Unmarshal(data []byte) error {
+	idx := (*Index)(x)
+	return idx.Unmarshal(data)
+}
+
 func ParseRoot(x []byte) (*Root, error) {
-	var idx Index
-	if err := idx.Unmarshal(x); err != nil {
+	var root Root
+	if err := root.Unmarshal(x); err != nil {
 		return nil, err
 	}
-	return (*Root)(&idx), nil
+	return &root, nil
 }
 
 // LoadRoot loads the root node from the given loader.

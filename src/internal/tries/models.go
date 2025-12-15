@@ -3,6 +3,7 @@ package tries
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"slices"
 
 	"blobcache.io/blobcache/src/internal/tries/triescnp"
@@ -34,7 +35,7 @@ func (ent *Entry) fromCNP(x triescnp.Entry) error {
 	return nil
 }
 
-func (ent *Entry) toCNP(x triescnp.Entry) error {
+func (ent *Entry) toCNP(x *triescnp.Entry) error {
 	if err := x.SetValue(ent.Value); err != nil {
 		return err
 	}
@@ -96,12 +97,12 @@ func (idx *Index) toCNP(ent *triescnp.Entry) error {
 		return err
 	}
 	idx2.SetCount(idx.Count)
-	return nil
+	return ent.SetIndex(idx2)
 }
 
 // Marshal serializes an Index using Cap'n Proto
 func (idx *Index) Marshal(out []byte) []byte {
-	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		panic(err)
 	}
@@ -109,11 +110,13 @@ func (idx *Index) Marshal(out []byte) []byte {
 	if err != nil {
 		panic(err)
 	}
-	if err := capnpIdx.SetRef(marshalRef(idx.Ref)); err != nil {
+	refData := marshalRef(idx.Ref)
+	log.Println("refData", refData)
+	if err := capnpIdx.SetRef(refData); err != nil {
 		panic(err)
 	}
 	capnpIdx.SetCount(idx.Count)
-	data, err := msg.Marshal()
+	data, err := capnp.Canonicalize(capnp.Struct(capnpIdx))
 	if err != nil {
 		panic(err)
 	}
@@ -122,7 +125,7 @@ func (idx *Index) Marshal(out []byte) []byte {
 
 // UnmarshalIndex deserializes an Index using Cap'n Proto
 func (idx *Index) Unmarshal(data []byte) error {
-	msg, err := capnp.Unmarshal(data)
+	msg, _, err := capnp.NewMessage(capnp.SingleSegment(data))
 	if err != nil {
 		return err
 	}
@@ -191,10 +194,10 @@ func mkNode(ents []Entry, ients []Index) (triescnp.Node, error) {
 		if i < len(ents) && (j >= len(ients) || bytes.Compare(ents[i].Key, ients[j].Prefix) < 0) {
 			ent := ents[i]
 			slot := el.At(k)
-			if err := slot.SetKey(ent.Key); err != nil {
+			if err := ent.toCNP(&slot); err != nil {
 				return triescnp.Node{}, err
 			}
-			if err := slot.SetValue(ent.Value); err != nil {
+			if err := el.Set(k, slot); err != nil {
 				return triescnp.Node{}, err
 			}
 			i++
@@ -203,20 +206,14 @@ func mkNode(ents []Entry, ients []Index) (triescnp.Node, error) {
 
 		idx := ients[j]
 		slot := el.At(k)
-		if err := slot.SetKey(idx.Prefix); err != nil {
+		if err := idx.toCNP(&slot); err != nil {
 			return triescnp.Node{}, err
 		}
-		idxCNP, err := slot.NewIndex()
-		if err != nil {
+		if err := el.Set(k, slot); err != nil {
 			return triescnp.Node{}, err
 		}
-		if err := idxCNP.SetRef(marshalRef(idx.Ref)); err != nil {
-			return triescnp.Node{}, err
-		}
-		idxCNP.SetCount(idx.Count)
 		j++
 	}
-
 	return node, nil
 }
 
@@ -239,15 +236,11 @@ func unmkNode(node triescnp.Node) ([]Entry, []Index, error) {
 			}
 			idxs = append(idxs, ient)
 		case triescnp.Entry_Which_value:
-			key, err := x.Key()
-			if err != nil {
+			var ent Entry
+			if err := ent.fromCNP(x); err != nil {
 				return nil, nil, err
 			}
-			value, err := x.Value()
-			if err != nil {
-				return nil, nil, err
-			}
-			ents = append(ents, Entry{Key: key, Value: value})
+			ents = append(ents, ent)
 		case triescnp.Entry_Which_vnode:
 			node2, err := x.Vnode()
 			if err != nil {
