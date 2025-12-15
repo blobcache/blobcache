@@ -39,13 +39,12 @@ clean:
 build-images: build-amd64-linux
 	./build/build_images.sh
 
-publish:
-	./build/push_images.sh
-
-release:
+release-build:
     just build-exec
     just build-images
-    just publish
+
+release-publish:
+	./build/push_images.sh
 
 # Installs just the blobcache binary to /usr/bin/blobcache
 install-unix: build
