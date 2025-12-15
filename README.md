@@ -14,7 +14,7 @@ Blobcache is a universal backend for E2EE applications.
 - [Why Blobcache?](./doc/0.2_Why_Blobcache.md)
 - [Concepts](./doc/1.0_Concepts.md)
 - [BCP vs. HTTP](./doc/9.01_BCP_vs_HTTP.md)
-- [Blobcache Git Remote](./doc/)
+- [Git Remote](./doc/6.01_Git_Remote.md)
 
 ## Getting Started
 
