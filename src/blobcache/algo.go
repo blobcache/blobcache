@@ -130,3 +130,5 @@ func (a AEADAlgo) Validate() error {
 	}
 	return nil
 }
+
+type ConsensusAlgo string

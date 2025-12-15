@@ -30,7 +30,7 @@ import (
 	"blobcache.io/blobcache/src/internal/pubsub"
 	"blobcache.io/blobcache/src/internal/svcgroup"
 	"blobcache.io/blobcache/src/internal/volumes"
-	"blobcache.io/blobcache/src/internal/volumes/consensusvol"
+	"blobcache.io/blobcache/src/internal/volumes/globalvol"
 	"blobcache.io/blobcache/src/internal/volumes/remotevol"
 	"blobcache.io/blobcache/src/internal/volumes/vaultvol"
 	"blobcache.io/blobcache/src/schema"
@@ -85,9 +85,9 @@ type Service struct {
 	txSys   pdb.TxSys
 
 	volSys struct {
-		local     localvol.System
-		remote    remotevol.System
-		consensus consensusvol.System
+		local  localvol.System
+		remote remotevol.System
+		global *globalvol.System
 	}
 	hub pubsub.Hub
 
@@ -156,7 +156,7 @@ func New(env Env, cfg Config) (*Service, error) {
 		MkSchema: env.MkSchema,
 	})
 	s.volSys.remote = remotevol.New(&s.node)
-	s.volSys.consensus = consensusvol.New(consensusvol.Env{
+	s.volSys.global = globalvol.New(globalvol.Env{
 		Background: s.env.Background,
 		Hub:        &s.hub,
 		Send: func(tm blobcache.Message) error {

@@ -108,7 +108,7 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 		// Git volumes not yet implemented in CLI
 		return nil, fmt.Errorf("git volumes not yet implemented via CLI")
 
-	case vspec.Consensus != nil:
+	case vspec.Global != nil:
 		// Consensus volumes not exposed via CLI
 		return nil, fmt.Errorf("consensus volumes not supported via CLI")
 
