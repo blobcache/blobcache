@@ -3,9 +3,7 @@ package blobcache
 import (
 	"bytes"
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"log"
 	"net/netip"
 	"slices"
 	"strings"
@@ -32,6 +30,7 @@ type URL struct {
 	// OpenFiat will be called on Base to get the first handle from the Node.
 	Base OID
 	// Path is the path of Volume links needed to reach the target object.
+	// It can be empty if the object is directly accessible by fiat.
 	Path OIDPath
 	// Extra is the part of the URL that was not parsed.
 	Extra string
@@ -57,6 +56,9 @@ func (u URL) MarshalText() ([]byte, error) {
 		out = fmt.Appendf(out, ":%v", u.IPPort)
 	}
 	out = fmt.Appendf(out, ":%v", u.Base)
+	for _, oid := range u.Path {
+		out = fmt.Appendf(out, ";%s", oid.String())
+	}
 	return out, nil
 }
 
@@ -115,24 +117,6 @@ func (u *URL) Endpoint() *Endpoint {
 		Peer:   u.Node,
 		IPPort: *u.IPPort,
 	}
-}
-
-func readSection(data []byte, fns ...func([]byte) ([]byte, error)) ([]byte, error) {
-	var retErr error
-	for _, fn := range fns {
-		part, rest, err := readUntilDelim(data, ':')
-		if err != nil {
-			return nil, err
-		}
-		log.Println("readSection part", string(part))
-		extra, err := fn(part)
-		if err == nil {
-			return slices.Concat(extra, rest), nil
-		} else {
-			retErr = errors.Join(retErr, err)
-		}
-	}
-	return nil, retErr
 }
 
 func readUntilDelim(x []byte, delim byte) ([]byte, []byte, error) {
