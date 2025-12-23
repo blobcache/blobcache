@@ -2,6 +2,7 @@ package blobcache
 
 import (
 	"fmt"
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -55,12 +56,17 @@ func TestParseURL(t *testing.T) {
 		O   *URL
 		Err error
 	}
+
 	u1 := URL{}
+	ap1 := netip.MustParseAddrPort("127.0.0.1:1234")
+	ap2 := netip.MustParseAddrPort("[::]:1234")
+	u2 := URL{IPPort: &ap1}
+	u3 := URL{IPPort: &ap2}
+
 	tcs := []testCase{
-		{
-			I: u1.String(),
-			O: &u1,
-		},
+		{I: u1.String(), O: &u1},
+		{I: u2.String(), O: &u2},
+		{I: u3.String(), O: &u3},
 	}
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d-%s", i, tc.I), func(t *testing.T) {

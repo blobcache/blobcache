@@ -48,24 +48,37 @@ func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.H
 }
 
 func OpenURL(ctx context.Context, bc blobcache.Service, u blobcache.URL) (*blobcache.Handle, error) {
-	ep, err := bc.Endpoint(ctx)
+	localEP, err := bc.Endpoint(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if ep.Peer == u.Node {
+	if localEP.Peer == u.Node {
 		volh, err := bc.OpenFiat(ctx, u.Base, blobcache.Action_ALL)
 		if err != nil {
 			return nil, err
 		}
 		return volh, nil
 	} else {
-		return bc.CreateVolume(ctx, nil, blobcache.VolumeSpec{
-			Remote: &blobcache.VolumeBackend_Remote{
-				Endpoint: ep,
-				Volume:   u.Base,
-				HashAlgo: "", // TODO,
-			},
-		})
+		// The Volume is not on the local peer.
+		// check if the URL has an IP and port.
+		if ep := u.Endpoint(); ep != nil {
+			return bc.CreateVolume(ctx, nil, blobcache.VolumeSpec{
+				Remote: &blobcache.VolumeBackend_Remote{
+					Endpoint: *ep,
+					Volume:   u.Base,
+					HashAlgo: "",
+				},
+			})
+		} else {
+			// there was no IP and port, so we create a Peer Volume instead.
+			return bc.CreateVolume(ctx, nil, blobcache.VolumeSpec{
+				Peer: &blobcache.VolumeBackend_Peer{
+					Peer:     u.Node,
+					Volume:   u.Base,
+					HashAlgo: "",
+				},
+			})
+		}
 	}
 }
 

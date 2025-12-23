@@ -111,6 +111,7 @@ func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
 type VolumeBackend[T handleOrOID] struct {
 	Local     *VolumeBackend_Local     `json:"local,omitempty"`
 	Remote    *VolumeBackend_Remote    `json:"remote,omitempty"`
+	Peer      *VolumeBackend_Peer      `json:"peer,omitempty"`
 	Git       *VolumeBackend_Git       `json:"git,omitempty"`
 	Vault     *VolumeBackend_Vault[T]  `json:"vault,omitempty"`
 	Consensus *VolumeBackend_Consensus `json:"consensus,omitempty"`
@@ -289,6 +290,17 @@ func (v *VolumeBackend_Local) Validate() error {
 type VolumeBackend_Remote struct {
 	Endpoint Endpoint `json:"endpoint"`
 	Volume   OID      `json:"volume"`
+	HashAlgo HashAlgo `json:"hash_algo"`
+}
+
+type VolumeBackend_Peer struct {
+	// Peer is the NodeID of the Node that controls the Volume.
+	Peer PeerID `json:"peer"`
+	// Volume is the OID of the Volume on the Node.
+	Volume OID `json:"volume"`
+	// HashAlgo is the HashAlgo used to hash the Volume.
+	// It must match the HashAlgo in the VolumeInfo when inspecting the Volume.
+	// It can also be empty to use whatever the remote Peer advertises.
 	HashAlgo HashAlgo `json:"hash_algo"`
 }
 
