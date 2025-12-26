@@ -109,6 +109,8 @@ func (u *URL) UnmarshalText(xData []byte) error {
 	return nil
 }
 
+// Endpoint returns the endpoint of the URL.
+// If the URL does not contain an IP address and port, then nil is returned.
 func (u *URL) Endpoint() *Endpoint {
 	if u.IPPort == nil {
 		return nil
@@ -117,6 +119,28 @@ func (u *URL) Endpoint() *Endpoint {
 		Peer:   u.Node,
 		IPPort: *u.IPPort,
 	}
+}
+
+func (u URL) BaseFQOID() FQOID {
+	return FQOID{
+		Peer: u.Node,
+		OID:  u.Base,
+	}
+}
+
+func (u URL) TargetFQOID() FQOID {
+	return FQOID{
+		Peer: u.Node,
+		OID:  u.Target(),
+	}
+}
+
+// Target returns the target of the URL.
+func (u URL) Target() OID {
+	if len(u.Path) == 0 {
+		return u.Base
+	}
+	return u.Path[len(u.Path)-1]
 }
 
 func readUntilDelim(x []byte, delim byte) ([]byte, []byte, error) {
