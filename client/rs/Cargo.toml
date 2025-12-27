@@ -1,0 +1,10 @@
+[package]
+name = "blobcache"
+version = "0.1.0"
+edition = "2024"
+homepage = "https://blobcache.io"
+repository = "https://github.com/blobcache/blobcache"
+description = "Library and Clients for Blobcache"
+license = "MPL-2.0"
+
+[dependencies]
