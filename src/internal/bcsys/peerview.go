@@ -5,10 +5,9 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/volumes"
 )
 
-type peerView[LK any, LV volumes.Volume] struct {
+type peerView[LK any, LV LocalVolume[LK]] struct {
 	*Service[LK, LV]
 	Caller blobcache.PeerID
 }

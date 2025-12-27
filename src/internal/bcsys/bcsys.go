@@ -15,6 +15,7 @@ import (
 	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/internal/pubsub"
 	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/internal/volumes/consensusvol"
 	"blobcache.io/blobcache/src/internal/volumes/remotevol"
 	"blobcache.io/blobcache/src/internal/volumes/vaultvol"
 	"blobcache.io/blobcache/src/schema"
@@ -33,13 +34,19 @@ const (
 	DefaultTxTTL = 1 * time.Minute
 )
 
+type LocalVolume[K any] interface {
+	volumes.Volume
+	Key() K
+}
+
 // LVParams are the parameters for a local volume
 type LVParams[K any] struct {
 	Key    K
-	Params blobcache.VolumeBackend_Local
+	Params blobcache.VolumeConfig
 }
 
-type Env[LK any, LV volumes.Volume] struct {
+type Env[LK any, LV LocalVolume[LK]] struct {
+	Background context.Context
 	PrivateKey ed25519.PrivateKey
 	// Root is the root volume.
 	// It will have the all-zero OID.
@@ -53,7 +60,6 @@ type Env[LK any, LV volumes.Volume] struct {
 	GenerateLK func() (LK, error)
 	LKToOID    func(LK) blobcache.OID
 	OIDToLK    func(blobcache.OID) (LK, error)
-	LKFromVol  func(LV) LK
 }
 
 type Config struct {
@@ -61,7 +67,7 @@ type Config struct {
 	MaxMaxBlobSize int64
 }
 
-func New[LK any, LV volumes.Volume](env Env[LK, LV], cfg Config) *Service[LK, LV] {
+func New[LK any, LV LocalVolume[LK]](env Env[LK, LV], cfg Config) *Service[LK, LV] {
 	s := &Service[LK, LV]{
 		env: env,
 		cfg: cfg,
@@ -70,10 +76,21 @@ func New[LK any, LV volumes.Volume](env Env[LK, LV], cfg Config) *Service[LK, LV
 	}
 	s.volSys.local = env.Local
 	s.volSys.remote = remotevol.New(&s.node)
+	s.volSys.global = consensusvol.New(consensusvol.Env{
+		Background: s.env.Background,
+		Hub:        &s.hub,
+		Send: func(tm blobcache.Message) error {
+			node := s.node.Load()
+			if node == nil {
+				return fmt.Errorf("cannot send, no node")
+			}
+			return bcp.TopicSend(s.env.Background, node, tm)
+		},
+	})
 	return s
 }
 
-type Service[LK any, LV volumes.Volume] struct {
+type Service[LK any, LV LocalVolume[LK]] struct {
 	env Env[LK, LV]
 	cfg Config
 
@@ -81,10 +98,15 @@ type Service[LK any, LV volumes.Volume] struct {
 	volSys struct {
 		local  volumes.System[LVParams[LK], LV]
 		remote remotevol.System
+		global consensusvol.System
 	}
-	hub     pubsub.Hub
-	mu      sync.RWMutex
+	hub pubsub.Hub
+
 	handles handleSystem
+	// mu guards the volumes and txns.
+	// pure handle operations like Drop, KeepAlive, Inspect, etc. do not require this lock.
+	// mu should always be taken for a superset of the time that the handle system's lock is taken.
+	mu      sync.RWMutex
 	volumes map[blobcache.OID]volume
 	txns    map[blobcache.OID]transaction
 }
@@ -137,6 +159,20 @@ func (s *Service[LK, LV]) Ping(ctx context.Context, ep blobcache.Endpoint) error
 
 func (s *Service[LK, LV]) LocalID() blobcache.PeerID {
 	return inet256.NewID(s.env.PrivateKey.Public().(inet256.PublicKey))
+}
+
+// AbortAll aborts all transactions.
+func (s *Service[LK, LV]) AbortAll(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for oid, txn := range s.txns {
+		if err := txn.backend.Abort(ctx); err != nil {
+			logctx.Warn(ctx, "aborting transaction", zap.Error(err))
+		}
+		s.handles.DropAllForOID(oid)
+		delete(s.txns, oid)
+	}
+	return nil
 }
 
 // Cleanup runs the full cleanup process.
@@ -212,6 +248,9 @@ func (s *Service[LK, LV]) mountVolume(ctx context.Context, oid blobcache.OID) er
 	info, err := s.inspectVolume(ctx, oid)
 	if err != nil {
 		return err
+	}
+	if info == nil {
+		return fmt.Errorf("volume %s not found", oid)
 	}
 	vol, err := s.makeVolume(ctx, oid, info.Backend)
 	if err != nil {
@@ -475,9 +514,13 @@ func (s *Service[LK, LV]) CreateVolume(ctx context.Context, host *blobcache.Endp
 	}
 
 	ve := VolumeEntry{
-		OID:     oid,
-		Schema:  vp.Schema,
-		MaxSize: vp.MaxSize,
+		OID: oid,
+
+		MaxSize:  vp.MaxSize,
+		HashAlgo: vp.HashAlgo,
+		Salted:   vp.Salted,
+		Schema:   vp.Schema,
+		Backend:  info.Backend,
 
 		Deps: nil,
 	}
@@ -608,8 +651,9 @@ func (s *Service[LK, LV]) InspectTx(ctx context.Context, txh blobcache.Handle) (
 	vol := txn.volume.backend
 	switch vol := vol.(type) {
 	case LV:
+		lk := vol.Key()
 		s.mu.RLock()
-		volInfo, exists := s.volumes[s.env.LKToOID(s.env.LKFromVol(vol))]
+		volInfo, exists := s.volumes[s.env.LKToOID(lk)]
 		s.mu.RUnlock()
 		if !exists {
 			return nil, fmt.Errorf("volume not found")
@@ -625,7 +669,7 @@ func (s *Service[LK, LV]) InspectTx(ctx context.Context, txh blobcache.Handle) (
 		switch inner := innerVol.(type) {
 		case LV:
 			s.mu.RLock()
-			lk := s.env.LKFromVol(inner)
+			lk := inner.Key()
 			volInfo, exists := s.volumes[s.env.LKToOID(lk)]
 			s.mu.RUnlock()
 			if !exists {
@@ -902,7 +946,7 @@ func (s *Service[LK, LV]) makeLocal(ctx context.Context, oid blobcache.OID, lk L
 	}
 	return s.volSys.local.Up(ctx, LVParams[LK]{
 		Key:    lk,
-		Params: *ve.Info().Backend.Local,
+		Params: blobcache.VolumeConfig(*ve.Info().Backend.Local),
 	})
 }
 

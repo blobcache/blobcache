@@ -13,17 +13,26 @@ type VolumeEntry struct {
 	Schema   blobcache.SchemaSpec
 	HashAlgo blobcache.HashAlgo
 	Salted   bool
-	Backend  blobcache.VolumeSpec
+	Backend  blobcache.VolumeBackend[blobcache.OID]
 
 	Deps []blobcache.OID
 }
 
 func (ve VolumeEntry) Info() *blobcache.VolumeInfo {
-	return &blobcache.VolumeInfo{}
+	return &blobcache.VolumeInfo{
+		ID:           ve.OID,
+		VolumeConfig: ve.Config(),
+		Backend:      ve.Backend,
+	}
 }
 
 func (ve VolumeEntry) Config() blobcache.VolumeConfig {
-	return blobcache.VolumeConfig{}
+	return blobcache.VolumeConfig{
+		MaxSize:  ve.MaxSize,
+		Schema:   ve.Schema,
+		HashAlgo: ve.HashAlgo,
+		Salted:   ve.Salted,
+	}
 }
 
 type MetadataStore interface {
