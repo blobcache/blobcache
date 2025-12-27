@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,7 +23,6 @@ import (
 	"go.brendoncarroll.net/tai64"
 	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
-	"lukechampine.com/blake3"
 )
 
 const (
@@ -216,6 +214,9 @@ func (s *Service[LK, LV]) Cleanup(ctx context.Context) ([]blobcache.OID, error) 
 // addVolume adds a volume to the volumes map.
 // It acquires mu exclusively, and returns false if the volume already exists.
 func (s *Service[LK, LV]) addVolume(oid blobcache.OID, vol volumes.Volume) bool {
+	if oid == (blobcache.OID{}) {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.volumes[oid]; exists {
@@ -233,6 +234,23 @@ func (s *Service[LK, LV]) addVolume(oid blobcache.OID, vol volumes.Volume) bool 
 		backend: vol,
 	}
 	return true
+}
+
+func (s *Service[LK, LV]) volByOID(x blobcache.OID) (volume, bool) {
+	if x == (blobcache.OID{}) {
+		rootVol := s.env.Root
+		return volume{
+			info: blobcache.VolumeInfo{
+				VolumeConfig: rootVol.GetParams(),
+				Backend:      rootVol.GetBackend(),
+			},
+			backend: rootVol,
+		}, true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	vol, exists := s.volumes[x]
+	return vol, exists
 }
 
 // mountVolume ensures the volume is available.
@@ -296,15 +314,10 @@ func (s *Service[LK, LV]) resolveVol(ctx context.Context, x blobcache.Handle) (v
 	if rights == 0 {
 		return volume{}, 0, blobcache.ErrInvalidHandle{Handle: x}
 	}
+	// If it is the root volume, then make up the volume struct on the spot.
 	if oid == (blobcache.OID{}) {
-		rootVol := s.env.Root
-		return volume{
-			info: blobcache.VolumeInfo{
-				VolumeConfig: rootVol.GetParams(),
-				Backend:      rootVol.GetBackend(),
-			},
-			backend: rootVol,
-		}, rights, nil
+		rootVol, _ := s.volByOID(oid)
+		return rootVol, rights, nil
 	}
 	vol, exists := s.volumes[oid]
 	if !exists {
@@ -455,7 +468,7 @@ func (s *Service[LK, LV]) OpenFrom(ctx context.Context, base blobcache.Handle, x
 			return nil, err
 		}
 		if volInfo == nil {
-			return nil, fmt.Errorf("volume not found")
+			return nil, fmt.Errorf("volume=%v has link to subvolume=%v, but that subvolume was not found", base.OID, x)
 		}
 
 		// create a handle first to prevent expiration
@@ -612,7 +625,7 @@ func (s *Service[LK, LV]) CloneVolume(ctx context.Context, caller *blobcache.Pee
 		return nil, err
 	}
 	if vinfo == nil {
-		return nil, fmt.Errorf("volume not found")
+		return nil, fmt.Errorf("CloneVolume: volume not found")
 	}
 	vinfo.ID = blobcache.RandomOID()
 	ve := VolumeEntry{}
@@ -667,34 +680,24 @@ func (s *Service[LK, LV]) InspectTx(ctx context.Context, txh blobcache.Handle) (
 	switch vol := vol.(type) {
 	case LV:
 		lk := vol.Key()
-		s.mu.RLock()
-		volInfo, exists := s.volumes[s.env.LKToOID(lk)]
-		s.mu.RUnlock()
-		if !exists {
-			return nil, fmt.Errorf("volume not found")
-		}
+		vp := vol.GetParams()
 		return &blobcache.TxInfo{
 			ID:       txh.OID,
-			Volume:   volInfo.info.ID,
-			MaxSize:  volInfo.info.MaxSize,
-			HashAlgo: volInfo.info.HashAlgo,
+			Volume:   s.env.LKToOID(lk),
+			MaxSize:  vp.MaxSize,
+			HashAlgo: vp.HashAlgo,
 		}, nil
 	case *vaultvol.Vault:
 		innerVol := vol.Inner()
 		switch inner := innerVol.(type) {
 		case LV:
-			s.mu.RLock()
+			vp := innerVol.GetParams()
 			lk := inner.Key()
-			volInfo, exists := s.volumes[s.env.LKToOID(lk)]
-			s.mu.RUnlock()
-			if !exists {
-				return nil, fmt.Errorf("volume not found")
-			}
 			return &blobcache.TxInfo{
 				ID:       txh.OID,
-				Volume:   volInfo.info.ID,
-				MaxSize:  volInfo.info.MaxSize,
-				HashAlgo: volInfo.info.HashAlgo,
+				Volume:   s.env.LKToOID(lk),
+				MaxSize:  vp.MaxSize,
+				HashAlgo: vp.HashAlgo,
 			}, nil
 		default:
 			return nil, fmt.Errorf("InspectTx not implemented for inner volume type:%T", inner)
@@ -921,16 +924,14 @@ func (s *Service[LK, LV]) SubToVolume(ctx context.Context, qh blobcache.Handle, 
 	return fmt.Errorf("SubToVolume not implemented")
 }
 
-// handleKey computes a map key from a handle.
-func handleKey(h blobcache.Handle) [32]byte {
-	return blake3.Sum256(slices.Concat(h.OID[:], h.Secret[:]))
-}
-
 // makeVolume constructs an in-memory volume object from a backend.
 // it does not create volumes in the database.
 func (s *Service[LK, LV]) makeVolume(ctx context.Context, oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume, error) {
 	if err := backend.Validate(); err != nil {
 		return nil, err
+	}
+	if oid == (blobcache.OID{}) {
+		return s.env.Root, nil
 	}
 	switch {
 	case backend.Local != nil:
@@ -970,9 +971,7 @@ func (s *Service[LK, LV]) makeGit(ctx context.Context, backend blobcache.VolumeB
 }
 
 func (s *Service[LK, LV]) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*vaultvol.Vault, error) {
-	s.mu.RLock()
-	volstate, exists := s.volumes[backend.X]
-	s.mu.RUnlock()
+	volstate, exists := s.volByOID(backend.X)
 	if !exists {
 		return nil, fmt.Errorf("inner volume not found: %v", backend.X)
 	}
