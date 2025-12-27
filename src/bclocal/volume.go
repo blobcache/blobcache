@@ -298,6 +298,4 @@ func readVolumeDepsTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]st
 	return nil
 }
 
-type linkSet = map[blobcache.OID]blobcache.ActionSet
-
 var allOnesOID = blobcache.OID(bytes.Repeat([]byte{0xff}, blobcache.OIDSize))
