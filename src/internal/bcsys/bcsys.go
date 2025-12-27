@@ -245,6 +245,9 @@ func (s *Service[LK, LV]) mountVolume(ctx context.Context, oid blobcache.OID) er
 	if exists {
 		return nil
 	}
+	if oid == (blobcache.OID{}) {
+		return nil
+	}
 	info, err := s.inspectVolume(ctx, oid)
 	if err != nil {
 		return err
@@ -292,6 +295,16 @@ func (s *Service[LK, LV]) resolveVol(ctx context.Context, x blobcache.Handle) (v
 	oid, rights := s.handles.Resolve(x)
 	if rights == 0 {
 		return volume{}, 0, blobcache.ErrInvalidHandle{Handle: x}
+	}
+	if oid == (blobcache.OID{}) {
+		rootVol := s.env.Root
+		return volume{
+			info: blobcache.VolumeInfo{
+				VolumeConfig: rootVol.GetParams(),
+				Backend:      rootVol.GetBackend(),
+			},
+			backend: rootVol,
+		}, rights, nil
 	}
 	vol, exists := s.volumes[oid]
 	if !exists {
@@ -396,8 +409,10 @@ func (s *Service[LK, LV]) InspectHandle(ctx context.Context, h blobcache.Handle)
 }
 
 func (s *Service[LK, LV]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	if err := s.mountVolume(ctx, x); err != nil {
-		return nil, err
+	if x != (blobcache.OID{}) {
+		if err := s.mountVolume(ctx, x); err != nil {
+			return nil, err
+		}
 	}
 	createdAt := time.Now()
 	expiresAt := createdAt.Add(DefaultVolumeTTL)
