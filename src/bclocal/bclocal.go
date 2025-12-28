@@ -130,7 +130,7 @@ func New(env Env, cfg Config) (*Service, error) {
 	})
 	rootVol := s.lvs.UpNoErr(localvol.Params{
 		Key:    0,
-		Params: blobcache.DefaultLocalSpec().Config(),
+		Params: s.env.Root.Config(),
 	})
 	s.sys = bcsys.New(bcsys.Env[localvol.ID, *localvol.Volume]{
 		Background: env.Background,
