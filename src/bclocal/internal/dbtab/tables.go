@@ -12,6 +12,8 @@ const (
 	// This is for database-wide transactions, rather than Volume transactions
 	// although one is implemented using the other.
 	TID_SYS_TXNS
+	// TID_MISC is for one off key value pairs
+	TID_MISC
 )
 
 const (

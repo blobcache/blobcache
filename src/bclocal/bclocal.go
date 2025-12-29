@@ -132,6 +132,11 @@ func New(env Env, cfg Config) (*Service, error) {
 		Key:    0,
 		Params: s.env.Root.Config(),
 	})
+	loidSalt, err := ensureOIDSalt(db)
+	if err != nil {
+		panic(err)
+	}
+
 	s.sys = bcsys.New(bcsys.Env[localvol.ID, *localvol.Volume]{
 		Background: env.Background,
 		PrivateKey: env.PrivateKey,
@@ -143,10 +148,10 @@ func New(env Env, cfg Config) (*Service, error) {
 		Local:      &s.lvs,
 		GenerateLK: s.lvs.GenerateLocalID,
 		OIDToLK: func(x blobcache.OID) (localvol.ID, error) {
-			return localvol.LocalIDFromOID(x)
+			return localvol.LocalIDFromOID(loidSalt, x)
 		},
 		LKToOID: func(x localvol.ID) blobcache.OID {
-			return localvol.OIDFromLocalID(x)
+			return localvol.OIDFromLocalID(loidSalt, x)
 		},
 	}, bcsys.Config{
 		MaxMaxBlobSize: MaxMaxBlobSize,

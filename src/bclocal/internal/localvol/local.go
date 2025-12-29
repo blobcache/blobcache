@@ -42,7 +42,7 @@ func aesDecrypt(key *[16]byte, src, dst []byte) {
 }
 
 // OIDFromLocalID maps a local volume ID to a Blobcache OID
-func OIDFromLocalID(x ID) blobcache.OID {
+func OIDFromLocalID(key *[16]byte, x ID) blobcache.OID {
 	if x == 0 {
 		// return the root volume ID.
 		return blobcache.OID{}
@@ -51,20 +51,18 @@ func OIDFromLocalID(x ID) blobcache.OID {
 	binary.BigEndian.PutUint64(buf[0:8], uint64(x))
 	binary.BigEndian.PutUint64(buf[8:16], uint64(x))
 
-	var key [16]byte
-	aesEncrypt(&key, buf[:], buf[:])
+	aesEncrypt(key, buf[:], buf[:])
 	return blobcache.OID(buf)
 }
 
 // LocalIDFromOID maps an OID to a LocalID
 // It reverses the mapping used by OIDFromLocalID
-func LocalIDFromOID(oid blobcache.OID) (ID, error) {
+func LocalIDFromOID(key *[16]byte, oid blobcache.OID) (ID, error) {
 	if oid == (blobcache.OID{}) {
 		return 0, nil
 	}
 	var buf [16]byte
-	var key [16]byte
-	aesDecrypt(&key, oid[:], buf[:])
+	aesDecrypt(key, oid[:], buf[:])
 	if !bytes.Equal(buf[:8], buf[8:16]) {
 		return 0, fmt.Errorf("OID is not for a local volume")
 	}
