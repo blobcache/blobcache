@@ -13,6 +13,7 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/bcsys"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cockroachdb/pebble"
@@ -23,14 +24,7 @@ type Config struct {
 	NoSync bool
 }
 
-type HandleSystem interface {
-	Resolve(blobcache.Handle) (blobcache.OID, blobcache.ActionSet)
-}
-
-type Params struct {
-	ID     ID
-	Params blobcache.VolumeConfig
-}
+type Params = bcsys.LVParams[ID]
 
 var _ volumes.System[Params, *Volume] = &System{}
 
@@ -39,7 +33,6 @@ type System struct {
 	cfg       Config
 	db        *pebble.DB
 	blobs     *blobman.Store
-	hsys      HandleSystem
 	getSchema schema.Factory
 
 	// txSys manages the transaction sequence number, and the set of active transactions.
@@ -60,7 +53,6 @@ type System struct {
 type Env struct {
 	DB       *pebble.DB
 	BlobDir  *os.Root
-	HSys     HandleSystem
 	TxSys    *pdb.TxSys
 	MkSchema func(blobcache.SchemaSpec) (schema.Schema, error)
 }
@@ -69,7 +61,6 @@ func New(cfg Config, env Env) System {
 	return System{
 		cfg:       cfg,
 		db:        env.DB,
-		hsys:      env.HSys,
 		blobs:     blobman.New(env.BlobDir),
 		getSchema: env.MkSchema,
 
@@ -86,10 +77,14 @@ func (ls *System) GenerateLocalID() (ID, error) {
 }
 
 func (ls *System) Up(ctx context.Context, params Params) (*Volume, error) {
-	if params.Params.MaxSize == 0 {
-		panic("here")
-	}
-	return newLocalVolume(ls, params.ID, params.Params), nil
+	return ls.UpNoErr(params), nil
+}
+
+// UpNoErr is like Up, but it always succeeds.
+// Up implements volume.System.Up, but this implementation
+// never errors, and doesn't need the context.
+func (ls *System) UpNoErr(params Params) *Volume {
+	return newLocalVolume(ls, params.Key, params.Params)
 }
 
 func (ls *System) Drop(ctx context.Context, vol *Volume) error {

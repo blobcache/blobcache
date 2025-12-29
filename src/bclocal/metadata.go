@@ -12,9 +12,74 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/bcsys"
 	"blobcache.io/blobcache/src/internal/sbe"
 	"github.com/cockroachdb/pebble"
 )
+
+var _ bcsys.MetadataStore = (*mdStore)(nil)
+
+// mdStore implements bcsys.MetadataStore
+type mdStore struct {
+	db *pebble.DB
+}
+
+// Delete implements bcsys.MetadataStore.
+func (s *mdStore) Delete(ctx context.Context, oid blobcache.OID) error {
+	ve := volumeEntry{
+		OID: oid,
+	}
+	return s.db.Delete(ve.Key(nil), nil)
+}
+
+// Get implements bcsys.MetadataStore.
+func (s *mdStore) Get(ctx context.Context, oid blobcache.OID, dst *bcsys.VolumeEntry) (bool, error) {
+	snp := s.db.NewSnapshot()
+	defer snp.Close()
+	ve, err := getVolume(snp, oid)
+	if err != nil {
+		return false, err
+	}
+	if ve == nil {
+		return false, nil
+	}
+	if err := json.Unmarshal(ve.Backend, &dst.Backend); err != nil {
+		return false, err
+	}
+	dst.OID = oid
+	dst.Schema = ve.Schema
+	dst.HashAlgo = blobcache.HashAlgo(ve.HashAlgo)
+	dst.MaxSize = ve.MaxSize
+	dst.Salted = ve.Salted
+	return true, nil
+}
+
+// Put implements bcsys.MetadataStore.
+func (s *mdStore) Put(ctx context.Context, oid blobcache.OID, ve bcsys.VolumeEntry) error {
+	w := s.db.NewBatch()
+	defer w.Close()
+
+	backendJSON, err := json.Marshal(ve.Backend)
+	if err != nil {
+		return err
+	}
+	ve2 := volumeEntry{
+		OID: oid,
+
+		Schema:   ve.Schema,
+		HashAlgo: string(ve.HashAlgo),
+		MaxSize:  ve.MaxSize,
+		Backend:  backendJSON,
+		Salted:   ve.Salted,
+	}
+	if err := w.Set(ve2.Key(nil), ve2.Value(nil), nil); err != nil {
+		return err
+	}
+	for range ve.Deps {
+		// TODO: set Volume deps in the database
+	}
+	return w.Commit(nil)
+}
 
 // putVolume writes to the VOLUMES table.
 // It does not commit the batch.
@@ -182,45 +247,6 @@ func dropVolume(ba pdb.WO, volID blobcache.OID) error {
 	return nil
 }
 
-func (s *Service) cleanupVolumes(ctx context.Context, db *pebble.DB, keep func(blobcache.OID) bool) error {
-	ba := db.NewIndexedBatch()
-	defer ba.Close()
-	iter, err := db.NewIterWithContext(ctx, &pebble.IterOptions{
-		LowerBound: pdb.TableLowerBound(dbtab.TID_VOLUMES),
-		UpperBound: pdb.TableUpperBound(dbtab.TID_VOLUMES),
-	})
-	if err != nil {
-		return err
-	}
-	defer iter.Close()
-
-	volumeDeps := make(map[blobcache.OID]struct{})
-	volumeLinks := make(map[blobcache.OID]struct{})
-	for iter.Next(); iter.Valid(); iter.Next() {
-		k, err := pdb.ParseTKey(iter.Key())
-		if err != nil {
-			return err
-		}
-		if len(k.Key) < blobcache.OIDSize {
-			return fmt.Errorf("volume key too short: %d", len(k.Key))
-		}
-		if keep(blobcache.OID(k.Key)) {
-			continue
-		}
-
-		clear(volumeDeps)
-		if err := readVolumeDepsTo(ba, blobcache.OID(k.Key), volumeDeps); err != nil {
-			return err
-		}
-		if len(volumeLinks) > 0 {
-			continue
-		}
-		clear(volumeLinks)
-		// TODO: read links to the volume.
-	}
-	return ba.Commit(nil)
-}
-
 func boolToUint8(b bool) uint8 {
 	if b {
 		return 1
@@ -297,7 +323,5 @@ func readVolumeDepsTo(sp pdb.RO, toVolID blobcache.OID, dst map[blobcache.OID]st
 	}
 	return nil
 }
-
-type linkSet = map[blobcache.OID]blobcache.ActionSet
 
 var allOnesOID = blobcache.OID(bytes.Repeat([]byte{0xff}, blobcache.OIDSize))

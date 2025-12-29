@@ -1,4 +1,4 @@
-package bclocal
+package bcsys
 
 import (
 	"context"
@@ -7,14 +7,12 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
-var _ blobcache.Service = &peerView{}
-
-type peerView struct {
-	*Service
+type peerView[LK any, LV LocalVolume[LK]] struct {
+	*Service[LK, LV]
 	Caller blobcache.PeerID
 }
 
-func (pv *peerView) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+func (pv *peerView[LK, LV]) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	pol := pv.Service.env.Policy
 	if !pol.CanCreate(pv.Caller) {
 		return nil, ErrNotAllowed{
@@ -28,7 +26,7 @@ func (pv *peerView) CreateVolume(ctx context.Context, host *blobcache.Endpoint, 
 	return pv.Service.CreateVolume(ctx, nil, vspec)
 }
 
-func (pv *peerView) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (pv *peerView[LK, LV]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	pol := pv.Service.env.Policy
 	if rights := pol.OpenFiat(pv.Caller, x); rights == 0 {
 		return nil, ErrNotAllowed{

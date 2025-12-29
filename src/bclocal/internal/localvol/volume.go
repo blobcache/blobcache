@@ -31,7 +31,7 @@ func newLocalVolume(sys *System, lvid ID, params blobcache.VolumeConfig) *Volume
 	}
 }
 
-func (v *Volume) ID() ID {
+func (v *Volume) Key() ID {
 	return v.lvid
 }
 

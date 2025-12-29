@@ -1,11 +1,13 @@
-package bclocal
+package bcsys
 
 import (
 	"crypto/rand"
+	"slices"
 	"sync"
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"lukechampine.com/blake3"
 )
 
 // handleSystem manages handles for a blobcache instance.
@@ -124,4 +126,9 @@ type handle struct {
 	createdAt time.Time
 	expiresAt time.Time // zero value means no expiration
 	rights    blobcache.ActionSet
+}
+
+// handleKey computes a map key from a handle.
+func handleKey(h blobcache.Handle) [32]byte {
+	return blake3.Sum256(slices.Concat(h.OID[:], h.Secret[:]))
 }
