@@ -18,7 +18,8 @@ type TxSys struct {
 
 func NewTxSys(db *pebble.DB, tabid TableID) TxSys {
 	return TxSys{
-		db: db,
+		db:    db,
+		table: tabid,
 	}
 }
 
