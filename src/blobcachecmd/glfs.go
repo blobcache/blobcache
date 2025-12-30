@@ -31,8 +31,7 @@ var glfsCmd = star.NewDir(star.Metadata{
 
 var glfsInitCmd = star.Command{
 	Flags: map[string]star.Flag{
-		"nsrh": nsRootH,
-		"nsr":  nsRoot,
+		"nsr": nsRoot,
 	},
 	Pos: []star.Positional{volNameParam},
 	F: func(c star.Context) error {
@@ -76,8 +75,7 @@ var glfsInitCmd = star.Command{
 
 var glfsLookCmd = star.Command{
 	Flags: map[string]star.Flag{
-		"nsrh": nsRootH,
-		"nsr":  nsRoot,
+		"nsr": nsRoot,
 	},
 	Pos: []star.Positional{volNameParam, srcPathParam},
 	F: func(c star.Context) error {
@@ -130,8 +128,7 @@ var glfsImportCmd = star.Command{
 		Short: "import data from the local filesystem into a GLFS volume",
 	},
 	Flags: map[string]star.Flag{
-		"nsrh": nsRootH,
-		"nsr":  nsRoot,
+		"nsr": nsRoot,
 	},
 	Pos: []star.Positional{volNameParam, dstPathParam, srcPathParam},
 	F: func(c star.Context) error {
@@ -174,9 +171,7 @@ var glfsReadCmd = star.Command{
 		Short: "Read a file from a GLFS volume and write it to stdout",
 	},
 	Flags: map[string]star.Flag{
-
-		"nsrh": nsRootH,
-		"nsr":  nsRoot,
+		"nsr": nsRoot,
 	},
 	Pos: []star.Positional{volNameParam, srcPathParam},
 	F: func(c star.Context) error {
@@ -212,8 +207,7 @@ var glfsSyncCmd = star.Command{
 		Short: "sync efficiently sets the contents of the dst volume to the content of the src volume",
 	},
 	Flags: map[string]star.Flag{
-		"nsrh": nsRootH,
-		"nsr":  nsRoot,
+		"nsr": nsRoot,
 	},
 	Pos: []star.Positional{srcVolumeParam, dstVolumeParam},
 	F: func(c star.Context) error {

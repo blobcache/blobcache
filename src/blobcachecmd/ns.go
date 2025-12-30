@@ -1,16 +1,11 @@
 package blobcachecmd
 
 import (
-	"context"
-	"errors"
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema/bcns"
 	"go.brendoncarroll.net/star"
-	"go.brendoncarroll.net/stdctx/logctx"
-	"go.uber.org/zap"
 )
 
 // EnvVar_NSRoot is the key for the environment variable that holds the root namespace
@@ -30,13 +25,15 @@ var nsCmd = star.NewDir(star.Metadata{
 
 var nsInitCmd = star.Command{
 	F: func(c star.Context) error {
-		return doNSOp(c, func(nsc bcns.Client, nsh blobcache.Handle) error {
-			if err := nsc.Init(c, nsh); err != nil {
-				return err
-			}
-			c.Printf("Namespace successfully initialized.\n\n")
-			return nil
-		})
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
+		if err := nsc.Init(c, *nsh); err != nil {
+			return err
+		}
+		c.Printf("Namespace successfully initialized.\n\n")
+		return nil
 	},
 }
 
@@ -45,21 +42,22 @@ var nsListCmd = star.Command{
 		Short: "List blobs in the namespace",
 	},
 	Flags: map[string]star.Flag{
-		"nsr":  nsRoot,
-		"nsrh": nsRootH,
+		"nsr": nsRoot,
 	},
 	F: func(c star.Context) error {
-		return doNSOp(c, func(nsc bcns.Client, nsh blobcache.Handle) error {
-			ents, err := nsc.List(c, nsh)
-			if err != nil {
-				return err
-			}
-			c.Printf("%-32s\t%-8s\t%s\n", "OID", "RIGHTS", "NAME")
-			for _, ent := range ents {
-				c.Printf("%-32s\t%-8s\t%s\n", ent.Target, ent.Rights, ent.Name)
-			}
-			return nil
-		})
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
+		ents, err := nsc.List(c, *nsh)
+		if err != nil {
+			return err
+		}
+		c.Printf("%-32s\t%-8s\t%s\n", "OID", "RIGHTS", "NAME")
+		for _, ent := range ents {
+			c.Printf("%-32s\t%-8s\t%s\n", ent.Target, ent.Rights, ent.Name)
+		}
+		return nil
 	},
 }
 
@@ -69,23 +67,24 @@ var nsGetCmd = star.Command{
 	},
 	Pos: []star.Positional{volNameParam},
 	Flags: map[string]star.Flag{
-		"nsr":  nsRoot,
-		"nsrh": nsRootH,
+		"nsr": nsRoot,
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
-		return doNSOp(c, func(nsc bcns.Client, nsh blobcache.Handle) error {
-			var ent bcns.Entry
-			found, err := nsc.Get(c, nsh, name, &ent)
-			if err != nil {
-				return err
-			}
-			if !found {
-				return fmt.Errorf("namespace does not have entry %s", name)
-			}
-			c.Printf("%-32s\t%-8s\t%s\n", ent.Target, ent.Rights, ent.Name)
-			return nil
-		})
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
+		var ent bcns.Entry
+		found, err := nsc.Get(c, *nsh, name, &ent)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("namespace does not have entry %s", name)
+		}
+		c.Printf("%-32s\t%-8s\t%s\n", ent.Target, ent.Rights, ent.Name)
+		return nil
 	},
 }
 
@@ -95,14 +94,15 @@ var nsDeleteCmd = star.Command{
 	},
 	Pos: []star.Positional{volNameParam},
 	Flags: map[string]star.Flag{
-		"nsr":  nsRoot,
-		"nsrh": nsRootH,
+		"nsr": nsRoot,
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
-		return doNSOp(c, func(nsc bcns.Client, nsh blobcache.Handle) error {
-			return nsc.Delete(c, nsh, name)
-		})
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
+		return nsc.Delete(c, *nsh, name)
 	},
 }
 
@@ -113,7 +113,6 @@ var nsPutCmd = star.Command{
 	Pos: []star.Positional{volNameParam, volHParam},
 	Flags: map[string]star.Flag{
 		"nsr":  nsRoot,
-		"nsrh": nsRootH,
 		"mask": maskParam,
 	},
 	F: func(c star.Context) error {
@@ -123,9 +122,11 @@ var nsPutCmd = star.Command{
 		if !ok {
 			mask = blobcache.Action_ALL
 		}
-		return doNSOp(c, func(nsc bcns.Client, nsh blobcache.Handle) error {
-			return nsc.Put(c, nsh, name, subvolh, mask)
-		})
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
+		return nsc.Put(c, *nsh, name, subvolh, mask)
 	},
 }
 
@@ -135,15 +136,16 @@ var nsCreateCmd = star.Command{
 	},
 	Pos: []star.Positional{volNameParam},
 	Flags: map[string]star.Flag{
-		"nsr":  nsRoot,
-		"nsrh": nsRootH,
+		"nsr": nsRoot,
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
-		return doNSOp(c, func(nsc bcns.Client, nsh blobcache.Handle) error {
-			_, err := nsc.CreateAt(c, nsh, name, blobcache.DefaultLocalSpec())
+		nsc, nsh, err := getNS(c)
+		if err != nil {
 			return err
-		})
+		}
+		_, err = nsc.CreateAt(c, *nsh, name, blobcache.DefaultLocalSpec())
+		return err
 	},
 }
 
@@ -152,8 +154,7 @@ var nsOpenCmd = star.Command{
 		Short: "Open a blob at a specific location in the namespace",
 	},
 	Flags: map[string]star.Flag{
-		"nsr":  nsRoot,
-		"nsrh": nsRootH,
+		"nsr": nsRoot,
 	},
 	Pos: []star.Positional{volNameParam, maskParam},
 	F: func(c star.Context) error {
@@ -162,50 +163,35 @@ var nsOpenCmd = star.Command{
 		if !ok {
 			mask = blobcache.Action_ALL
 		}
-		return doNSOp(c, func(nsc bcns.Client, nsh blobcache.Handle) error {
-			volh, err := nsc.OpenAt(c, nsh, name, mask)
-			if err != nil {
-				return err
-			}
-			c.Printf("Volume successfully created.\n\n")
-			c.Printf("HANDLE: %v\n", *volh)
-			c.Printf("NAME: %v\n", name)
-			return nil
-		})
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
+		volh, err := nsc.OpenAt(c, *nsh, name, mask)
+		if err != nil {
+			return err
+		}
+		c.Printf("Volume successfully created.\n\n")
+		c.Printf("HANDLE: %v\n", *volh)
+		c.Printf("NAME: %v\n", name)
+		return nil
 	},
+}
+
+var nsRoot = star.Optional[bcns.Objectish]{
+	ID:       "nsroot",
+	Parse:    bcns.ParseObjectish,
+	ShortDoc: "a handle or object id for the root",
 }
 
 func openAt(c star.Context) (*blobcache.Handle, error) {
 	name := volNameParam.Load(c)
 	mask := blobcache.Action_ALL
-	var ret blobcache.Handle
-	if err := doNSOp(c, func(nsc bcns.Client, nsh blobcache.Handle) error {
-		volh, err := nsc.OpenAt(c, nsh, name, mask)
-		if err != nil {
-			return err
-		}
-		ret = *volh
-		return nil
-	}); err != nil {
+	nsc, nsh, err := getNS(c)
+	if err != nil {
 		return nil, err
 	}
-	return &ret, nil
-}
-
-var nsRootH = star.Optional[blobcache.Handle]{
-	ID: "nsrootH",
-	Parse: func(x string) (blobcache.Handle, error) {
-		return blobcache.ParseHandle(x)
-	},
-	ShortDoc: "a handle to a volume containing a namespace",
-}
-
-var nsRoot = star.Optional[blobcache.OID]{
-	ID: "nsroot",
-	Parse: func(x string) (blobcache.OID, error) {
-		return blobcache.ParseOID(x)
-	},
-	ShortDoc: "the OID of a volume containing a namespace",
+	return nsc.OpenAt(c, *nsh, name, mask)
 }
 
 var volNameParam = star.Required[string]{
@@ -219,72 +205,28 @@ func getNS(c star.Context) (*bcns.Client, *blobcache.Handle, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if rooth.Secret == ([16]byte{}) {
-		h, err := bc.OpenFiat(c, rooth.OID, blobcache.Action_ALL)
-		if err != nil {
-			return nil, nil, err
-		}
-		rooth = *h
-	}
-	nsc, err := NSClientForVolume(c, bc, rooth)
+	nsvolh, err := rooth.Open(c, bc)
 	if err != nil {
 		return nil, nil, err
 	}
-	return &nsc, &rooth, nil
-}
-
-// TODO: remove this and use getNS instead
-func doNSOp(c star.Context, fn func(nsc bcns.Client, volh blobcache.Handle) error) error {
-	nsc, rooth, err := getNS(c)
+	nsc, err := bcns.ClientForVolume(c, bc, *nsvolh)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	return fn(*nsc, *rooth)
+	return nsc, nsvolh, nil
 }
 
 // getNSRoot returns a handle to the volume containing the root namespace
-func getNSRoot(c star.Context) blobcache.Handle {
-	if h, ok := nsRootH.LoadOpt(c); ok {
-		return h
-	}
-	if oid, ok := nsRoot.LoadOpt(c); ok {
-		// when the secret is empty, the Client will call OpenFiat
-		return blobcache.Handle{OID: oid}
+func getNSRoot(c star.Context) bcns.Objectish {
+	if objish, ok := nsRoot.LoadOpt(c); ok {
+		return objish
 	}
 	if rootStr, ok := c.Env[EnvVar_NSRoot]; ok {
-		var errs error
-		if h, err := blobcache.ParseHandle(rootStr); err == nil {
-			return h
-		} else {
-			errs = errors.Join(errs, err)
+		objish, err := bcns.ParseObjectish(rootStr)
+		if err == nil {
+			return objish
 		}
-		if h, err := blobcache.ParseHandle(rootStr); err == nil {
-			return h
-		} else {
-			errs = errors.Join(errs, err)
-		}
-		logctx.Error(c, "could not parse "+EnvVar_NSRoot, zap.Error(errs))
 	}
 	// Just return the root
-	return blobcache.Handle{}
-}
-
-// NSClientForVolume returns a NSClient configured with the Schema used by the given volume.
-func NSClientForVolume(ctx context.Context, svc blobcache.Service, nsvolh blobcache.Handle) (bcns.Client, error) {
-	vinfo, err := svc.InspectVolume(ctx, nsvolh)
-	if err != nil {
-		return bcns.Client{}, err
-	}
-	sch, err := schemareg.Factory(vinfo.Schema)
-	if err != nil {
-		return bcns.Client{}, err
-	}
-	nssch, ok := sch.(bcns.Namespace)
-	if !ok {
-		return bcns.Client{}, fmt.Errorf("volume has a non-namespace Schema %v", vinfo.Schema.Name)
-	}
-	return bcns.Client{
-		Service: svc,
-		Schema:  nssch,
-	}, nil
+	return bcns.Objectish{}
 }
