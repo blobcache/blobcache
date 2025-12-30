@@ -42,8 +42,7 @@ var gitURLFor = star.Command{
 		Short: "Create a new volume and format and format it as a git remote",
 	},
 	Flags: map[string]star.Flag{
-		"nsr":  nsRoot,
-		"nsrh": nsRootH,
+		"nsr": nsRoot,
 	},
 	Pos: []star.Positional{volNameParam},
 	F: func(c star.Context) error {
