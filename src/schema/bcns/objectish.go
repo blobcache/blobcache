@@ -95,7 +95,8 @@ func (oish *Objectish) Open(ctx context.Context, bc blobcache.Service) (*blobcac
 	return &nsh, nil
 }
 
-// ClientForVolume returns
+// ClientForVolume returns a Client configured to use the Namespace schema for the Volume
+// If the Volume does not have a known Schema or the Schema is not Namespace then an error is returned.
 func ClientForVolume(ctx context.Context, svc blobcache.Service, nsvolh blobcache.Handle) (*Client, error) {
 	vinfo, err := svc.InspectVolume(ctx, nsvolh)
 	if err != nil {
