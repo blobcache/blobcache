@@ -82,7 +82,7 @@ func (oish *Objectish) Open(ctx context.Context, bc blobcache.Service) (*blobcac
 	}
 
 	for _, name := range oish.Path {
-		nsc, err := ClientForVolume(ctx, bc, nsh)
+		nsc, err := clientForVolume(ctx, bc, nsh)
 		if err != nil {
 			return nil, fmt.Errorf("getting NSClient for %v: %w", nsh.OID, err)
 		}
@@ -97,7 +97,15 @@ func (oish *Objectish) Open(ctx context.Context, bc blobcache.Service) (*blobcac
 
 // ClientForVolume returns a Client configured to use the Namespace schema for the Volume
 // If the Volume does not have a known Schema or the Schema is not Namespace then an error is returned.
-func ClientForVolume(ctx context.Context, svc blobcache.Service, nsvolh blobcache.Handle) (*Client, error) {
+func ClientForVolume(ctx context.Context, svc blobcache.Service, nsvol Objectish) (*Client, error) {
+	nsvolh, err := nsvol.Open(ctx, svc)
+	if err != nil {
+		return nil, err
+	}
+	return clientForVolume(ctx, svc, *nsvolh)
+}
+
+func clientForVolume(ctx context.Context, svc blobcache.Service, nsvolh blobcache.Handle) (*Client, error) {
 	vinfo, err := svc.InspectVolume(ctx, nsvolh)
 	if err != nil {
 		return nil, err

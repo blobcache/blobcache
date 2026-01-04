@@ -209,7 +209,7 @@ func getNS(c star.Context) (*bcns.Client, *blobcache.Handle, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	nsc, err := bcns.ClientForVolume(c, bc, *nsvolh)
+	nsc, err := bcns.ClientForVolume(c, bc, rooth)
 	if err != nil {
 		return nil, nil, err
 	}
