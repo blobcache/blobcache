@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/groupfile"
 	"github.com/stretchr/testify/require"
 	"lukechampine.com/blake3"
 )
@@ -44,24 +45,32 @@ func TestParseIdentitiesFile(t *testing.T) {
 
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			memberships, err := ParseIdentitiesFile(strings.NewReader(tc.I))
+			ents, err := ParseIdentitiesFile([]byte(tc.I))
 			require.NoError(t, err)
-			require.Equal(t, tc.O, memberships)
+			require.Equal(t, tc.O, mFromE(ents))
 
 			// also check that we can write it back and get the same result.
 			buf := bytes.NewBuffer(nil)
-			require.NoError(t, WriteIdentitiesFile(buf, memberships))
-			memberships2, err := ParseIdentitiesFile(buf)
+			require.NoError(t, WriteIdentitiesFile(buf, ents))
+			ents2, err := ParseIdentitiesFile(buf.Bytes())
 			require.NoError(t, err)
-			require.Equal(t, memberships, memberships2)
+			require.Equal(t, ents, ents2)
 		})
 	}
 }
 
 func TestDefaultActionsFile(t *testing.T) {
-	actions, err := ParseActionsFile(strings.NewReader(DefaultActionsFile()))
+	actions, err := ParseActionsFile([]byte(DefaultActionsFile()))
 	require.NoError(t, err)
 	require.NotEmpty(t, actions)
+}
+
+func Unit[T any](x T) Member[T] {
+	return groupfile.Unit[GroupName, T](x)
+}
+
+func GroupRef[T any](x GroupName) Member[T] {
+	return groupfile.GroupRef[GroupName, T](x)
 }
 
 func TestParseActionsFile(t *testing.T) {
@@ -89,9 +98,10 @@ func TestParseActionsFile(t *testing.T) {
 	}
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			actions, err := ParseActionsFile(strings.NewReader(tc.I))
+			ents, err := ParseActionsFile([]byte(tc.I))
 			require.NoError(t, err)
-			require.Equal(t, tc.O, actions)
+			memberships2 := mFromE(ents)
+			require.Equal(t, tc.O, memberships2)
 		})
 	}
 }
@@ -124,8 +134,9 @@ func TestParseObjectsFile(t *testing.T) {
 	}
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			objects, err := ParseObjectsFile(strings.NewReader(tc.I))
+			ents, err := ParseObjectsFile([]byte(tc.I))
 			require.NoError(t, err)
+			objects := mFromE(ents)
 			require.Equal(t, tc.O, objects)
 		})
 	}
