@@ -241,11 +241,11 @@ func Parse[K GroupName, T any](data []byte, parseK func([]byte) (K, error), pars
 	return ret, nil
 }
 
-// Write writes the memberships to the writer, such that they can be parsed by ParseGroupsFile.
+// Write writes the memberships to the writer, such that they can be parsed by Parse.
 func Write[K GroupName, T any](w io.Writer, ents []Entry[K, T], format func(T) string) error {
 	bw := bufio.NewWriter(w)
 	for _, e := range ents {
-		if _, err := e.WriteTo(w, format); err != nil {
+		if _, err := e.WriteTo(bw, format); err != nil {
 			return nil
 		}
 	}
