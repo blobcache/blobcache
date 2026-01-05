@@ -327,7 +327,7 @@ var txLinkCmd = star.Command{
 			return err
 		}
 		printOK(c, "LINK")
-		c.Printf("linked -> %s\n", ltok.String())
+		c.Printf("TOKEN: %s\n", ltok.String())
 		return nil
 	},
 }
