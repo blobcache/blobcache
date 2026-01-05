@@ -69,9 +69,9 @@ func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobc
 	return &resp.Handle, &resp.Info, nil
 }
 
-func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
+func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFromResp
-	if err := doAsk(ctx, tp, ep, MT_OPEN_FROM, OpenFromReq{Base: base, Target: target, Mask: mask}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_OPEN_FROM, OpenFromReq{Base: base, Token: ltok, Mask: mask}, &resp); err != nil {
 		return nil, nil, err
 	}
 	if err := resp.Info.HashAlgo.Validate(); err != nil {
@@ -260,15 +260,15 @@ func IsVisited(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcach
 	return nil
 }
 
-func Link(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
+func Link(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
 	var resp LinkResp
 	if err := doAsk(ctx, tp, ep, MT_TX_LINK, LinkReq{Tx: tx, Subvol: subvol, Mask: mask}, &resp); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return &resp.Token, nil
 }
 
-func Unlink(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.OID) error {
+func Unlink(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.LinkToken) error {
 	var resp UnlinkResp
 	if err := doAsk(ctx, tp, ep, MT_TX_UNLINK, UnlinkReq{Tx: tx, Targets: targets}, &resp); err != nil {
 		return err
@@ -276,7 +276,7 @@ func Unlink(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.H
 	return nil
 }
 
-func VisitLinks(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.OID) error {
+func VisitLinks(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.LinkToken) error {
 	var resp VisitLinksResp
 	if err := doAsk(ctx, tp, ep, MT_TX_VISIT_LINKS, VisitLinksReq{Tx: tx, Targets: targets}, &resp); err != nil {
 		return err

@@ -35,21 +35,6 @@ type Schema interface {
 	ValidateChange(ctx context.Context, change Change) error
 }
 
-// Link is a reference from one volume to another.
-type Link struct {
-	// Target is the OID of the volume being referenced.
-	Target blobcache.OID
-	// Rights are the set of actions on the target, which are granted to the caller.
-	Rights blobcache.ActionSet
-}
-
-// Container is a Schema which can store Links to other volumes.
-type Opener interface {
-	Schema
-
-	OpenAs(ctx context.Context, s bcsdk.RO, root []byte, peer blobcache.PeerID) (blobcache.ActionSet, error)
-}
-
 // None is a Schema which does not impose any constraints on the contents of a volume.
 type None struct{}
 

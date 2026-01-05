@@ -433,7 +433,7 @@ func (s *Service[LK, LV]) OpenFiat(ctx context.Context, x blobcache.OID, mask bl
 	return &h, nil
 }
 
-func (s *Service[LK, LV]) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service[LK, LV]) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	baseVol, _, err := s.resolveVol(ctx, base)
 	if err != nil {
 		return nil, err
@@ -441,7 +441,7 @@ func (s *Service[LK, LV]) OpenFrom(ctx context.Context, base blobcache.Handle, x
 
 	switch baseVol := baseVol.backend.(type) {
 	case *remotevol.Volume:
-		rights, subvol, err := s.volSys.remote.OpenFrom(ctx, baseVol, x, mask)
+		rights, subvol, err := s.volSys.remote.OpenFrom(ctx, baseVol, ltok, mask)
 		if err != nil {
 			return nil, err
 		}
@@ -455,29 +455,29 @@ func (s *Service[LK, LV]) OpenFrom(ctx context.Context, base blobcache.Handle, x
 		return &h, nil
 
 	default:
-		rights, err := baseVol.AccessSubVolume(ctx, x)
+		rights, err := baseVol.AccessSubVolume(ctx, ltok)
 		if err != nil {
 			return nil, err
 		}
 		if rights == 0 {
-			return nil, blobcache.ErrNoLink{Base: base.OID, Target: x}
+			return nil, blobcache.ErrNoLink{Base: base.OID, Target: ltok.Target}
 		}
 
-		volInfo, err := s.inspectVolume(ctx, x)
+		volInfo, err := s.inspectVolume(ctx, ltok.Target)
 		if err != nil {
 			return nil, err
 		}
 		if volInfo == nil {
-			return nil, fmt.Errorf("volume=%v has link to subvolume=%v, but that subvolume was not found", base.OID, x)
+			return nil, fmt.Errorf("volume=%v has link to subvolume=%v, but that subvolume was not found", base.OID, ltok.Target)
 		}
 
 		// create a handle first to prevent expiration
 		rights = rights & mask
-		localOID := x
+		localOID := ltok.Target
 		createdAt := time.Now()
 		expiresAt := createdAt.Add(DefaultVolumeTTL)
 		h := s.handles.Create(localOID, rights, createdAt, expiresAt)
-		if err := s.mountVolume(ctx, x); err != nil {
+		if err := s.mountVolume(ctx, ltok.Target); err != nil {
 			return nil, err
 		}
 		return &h, nil
@@ -877,22 +877,23 @@ func (s *Service[LK, LV]) IsVisited(ctx context.Context, txh blobcache.Handle, c
 	return setErrTxOID(txn.backend.IsVisited(ctx, cids, dst), txh.OID)
 }
 
-func (s *Service[LK, LV]) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) error {
+func (s *Service[LK, LV]) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_LINK_FROM)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	volTo, rights, err := s.resolveVol(ctx, target)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := txn.backend.Link(ctx, target.OID, mask&rights, volTo.backend); err != nil {
-		return setErrTxOID(err, txh.OID)
+	ltok, err := txn.backend.Link(ctx, volTo.info.ID, rights&mask, volTo.backend)
+	if err != nil {
+		return nil, setErrTxOID(err, txh.OID)
 	}
-	return nil
+	return ltok, nil
 }
 
-func (s *Service[LK, LV]) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service[LK, LV]) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkToken) error {
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_UNLINK_FROM)
 	if err != nil {
 		return err
@@ -900,7 +901,7 @@ func (s *Service[LK, LV]) Unlink(ctx context.Context, txh blobcache.Handle, targ
 	return setErrTxOID(txn.backend.Unlink(ctx, targets), txh.OID)
 }
 
-func (s *Service[LK, LV]) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service[LK, LV]) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkToken) error {
 	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then VisitLinks is allowed.
 	if err != nil {
 		return err

@@ -20,12 +20,14 @@ type Entry struct {
 	Target blobcache.OID `json:"target"`
 	// Rights is the set of rights for the entry.
 	Rights blobcache.ActionSet `json:"rights"`
+	Secret blobcache.LTSecret  `json:"secret"`
 }
 
-func (ent *Entry) Link() schema.Link {
-	return schema.Link{
+func (ent *Entry) LinkToken() blobcache.LinkToken {
+	return blobcache.LinkToken{
 		Target: ent.Target,
 		Rights: ent.Rights,
+		Secret: ent.Secret,
 	}
 }
 
@@ -88,13 +90,15 @@ func (nsc *Client) Put(ctx context.Context, nsh blobcache.Handle, name string, v
 		return err
 	}
 	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
-		if err := tx.Link(ctx, volh, mask); err != nil {
+		lt, err := tx.Link(ctx, volh, mask)
+		if err != nil {
 			return nil, err
 		}
 		ent := Entry{
 			Name:   name,
-			Target: volh.OID,
-			Rights: mask,
+			Target: lt.Target,
+			Rights: lt.Rights,
+			Secret: lt.Secret,
 		}
 		return nsc.Schema.NSPut(ctx, tx, root, ent)
 	})
@@ -127,7 +131,7 @@ func (nsc *Client) Delete(ctx context.Context, nsh blobcache.Handle, name string
 			return x.Target == ent.Target
 		}) {
 			// if the target is not referenced by any other entry, unlink it
-			if err := tx.Unlink(ctx, []blobcache.OID{ent.Target}); err != nil {
+			if err := tx.Unlink(ctx, []blobcache.LinkToken{ent.LinkToken()}); err != nil {
 				return nil, err
 			}
 		}
@@ -176,7 +180,7 @@ func (nsc *Client) OpenAt(ctx context.Context, nsh blobcache.Handle, name string
 	if !found {
 		return nil, fmt.Errorf("ns: no entry found at %s", name)
 	}
-	subvolh, err := nsc.Service.OpenFrom(ctx, nsh, ent.Target, blobcache.Action_ALL)
+	subvolh, err := nsc.Service.OpenFrom(ctx, nsh, ent.LinkToken(), blobcache.Action_ALL)
 	if err != nil {
 		return nil, err
 	}
@@ -200,13 +204,15 @@ func (nsc *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name stri
 		if found {
 			return nil, fmt.Errorf("ns: entry already exists at %s", name)
 		}
-		if err := tx.Link(ctx, *volh, blobcache.Action_ALL); err != nil {
+		lt, err := tx.Link(ctx, *volh, blobcache.Action_ALL)
+		if err != nil {
 			return nil, err
 		}
 		return nsc.Schema.NSPut(ctx, tx, root, Entry{
 			Name:   name,
-			Target: volh.OID,
-			Rights: blobcache.Action_ALL,
+			Target: lt.Target,
+			Rights: lt.Rights,
+			Secret: lt.Secret,
 		})
 	}); err != nil {
 		return nil, err
@@ -220,19 +226,19 @@ func (nsc *Client) GC(ctx context.Context, volh blobcache.Handle) error {
 	if !ok {
 		return fmt.Errorf("cannot GC, schema does not support visit all")
 	}
-	tx, err := bcsdk.BeginTx(ctx, nsc.Service, volh, blobcache.TxParams{Modify: true, GC: true})
+	tx, err := bcsdk.BeginTx(ctx, nsc.Service, volh, blobcache.TxParams{Modify: true, GCBlobs: true})
 	if err != nil {
 		return err
 	}
 	defer tx.Abort(ctx)
-	visit := func(cids []blobcache.CID, oids []blobcache.OID) error {
+	visit := func(cids []blobcache.CID, ltoks []blobcache.LinkToken) error {
 		if len(cids) > 0 {
 			if err := tx.Visit(ctx, cids); err != nil {
 				return err
 			}
 		}
-		if len(oids) > 0 {
-			if err := tx.VisitLinks(ctx, oids); err != nil {
+		if len(ltoks) > 0 {
+			if err := tx.VisitLinks(ctx, ltoks); err != nil {
 				return err
 			}
 		}

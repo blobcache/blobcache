@@ -24,7 +24,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/OpenFrom":
 		handleRequest(w, r, func(ctx context.Context, req OpenFromReq) (*OpenFromResp, error) {
-			handle, err := s.Service.OpenFrom(ctx, req.Base, req.Target, req.Mask)
+			handle, err := s.Service.OpenFrom(ctx, req.Base, req.Token, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -262,10 +262,11 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		})
 	case "Link":
 		handleRequest(w, r, func(ctx context.Context, req LinkReq) (*LinkResp, error) {
-			if err := s.Service.Link(ctx, h, req.Target, req.Mask); err != nil {
+			ltok, err := s.Service.Link(ctx, h, req.Target, req.Mask)
+			if err != nil {
 				return nil, err
 			}
-			return &LinkResp{}, nil
+			return &LinkResp{Token: *ltok}, nil
 		})
 	case "Unlink":
 		handleRequest(w, r, func(ctx context.Context, req UnlinkReq) (*UnlinkResp, error) {

@@ -15,7 +15,7 @@ type System[Params any, V Volume] interface {
 	Drop(ctx context.Context, vol V) error
 }
 
-type LinkSet = map[blobcache.OID]blobcache.ActionSet
+type LinkSet = map[[32]byte]blobcache.OID
 
 type Volume interface {
 	// GetParams returns the effective parameters of the volume.
@@ -27,7 +27,7 @@ type Volume interface {
 
 	// AccessSubVolume returns the rights granted to access a subvolume.
 	// Returns 0 if there is no link to the target.
-	AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error)
+	AccessSubVolume(ctx context.Context, target blobcache.LinkToken) (blobcache.ActionSet, error)
 }
 
 // Tx is a consistent view of a volume, during a transaction.
@@ -50,12 +50,12 @@ type Tx interface {
 	Hash(salt *blobcache.CID, data []byte) blobcache.CID
 
 	// Link creates adds a handle to prove access to a volume.
-	Link(ctx context.Context, target blobcache.OID, rights blobcache.ActionSet, targetVol Volume) error
+	Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol Volume) (*blobcache.LinkToken, error)
 	// Unlink removes a link from the volume.
-	Unlink(ctx context.Context, targets []blobcache.OID) error
+	Unlink(ctx context.Context, targets []blobcache.LinkToken) error
 	// VisitLinks visits a link to another volume.
 	// This is only usable in a GC transaction.
-	VisitLinks(ctx context.Context, targets []blobcache.OID) error
+	VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error
 }
 
 func ViewUnsalted(ctx context.Context, tx Tx) (*UnsaltedStore, []byte, error) {

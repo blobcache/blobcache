@@ -84,8 +84,8 @@ func (c *Client) OpenFiat(ctx context.Context, target blobcache.OID, mask blobca
 	return &resp.Handle, nil
 }
 
-func (c *Client) OpenFrom(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	req := OpenFromReq{Base: base, Target: target, Mask: mask}
+func (c *Client) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	req := OpenFromReq{Base: base, Token: ltok, Mask: mask}
 	var resp OpenFromResp
 	if err := c.doJSON(ctx, "POST", "/OpenFrom", nil, req, &resp); err != nil {
 		return nil, err
@@ -269,19 +269,22 @@ func (c *Client) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blob
 	return nil
 }
 
-func (c *Client) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
+func (c *Client) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
 	req := LinkReq{Target: subvol, Mask: mask}
 	var resp LinkResp
-	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Link", tx.OID.String()), &tx.Secret, req, &resp)
+	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Link", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Token, nil
 }
 
-func (c *Client) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
+func (c *Client) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkToken) error {
 	req := UnlinkReq{Targets: targets}
 	var resp UnlinkResp
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Unlink", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
-func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
+func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkToken) error {
 	req := VisitLinksReq{Targets: targets}
 	var resp VisitLinksResp
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.VisitLinks", tx.OID.String()), &tx.Secret, req, &resp)

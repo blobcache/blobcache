@@ -224,7 +224,7 @@ func (ns *Tx) VisitAll(ctx context.Context) error {
 		return err
 	}
 	for _, ent := range ents {
-		if err := ns.Tx.VisitLinks(ctx, []blobcache.OID{ent.Target}); err != nil {
+		if err := ns.Tx.VisitLinks(ctx, []blobcache.LinkToken{ent.LinkToken()}); err != nil {
 			return err
 		}
 	}
@@ -233,7 +233,7 @@ func (ns *Tx) VisitAll(ctx context.Context) error {
 
 // GC performs garbage collection on the namespace.
 func GC(ctx context.Context, svc blobcache.Service, volh blobcache.Handle) error {
-	tx, err := bcsdk.BeginTx(ctx, svc, volh, blobcache.TxParams{GC: true, Modify: true})
+	tx, err := bcsdk.BeginTx(ctx, svc, volh, blobcache.TxParams{GCBlobs: true, Modify: true})
 	if err != nil {
 		return err
 	}

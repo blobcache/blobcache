@@ -159,7 +159,7 @@ func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.
 	return &h, nil
 }
 
-func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
 	args := []string{"open-from", base.String(), x.String()}
 	if mask != blobcache.Action_ALL {
@@ -181,7 +181,7 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobca
 	if txp.Modify {
 		args = append(args, "--modify")
 	}
-	if txp.GC {
+	if txp.GCBlobs {
 		args = append(args, "--gc")
 	}
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
@@ -343,15 +343,18 @@ func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blob
 	return nil
 }
 
-func (s *Service) Link(ctx context.Context, h blobcache.Handle, subvol blobcache.Handle, rights blobcache.ActionSet) error {
-	return s.run([]string{"tx", "link", h.String(), subvol.String()}, nil, nil)
+func (s *Service) Link(ctx context.Context, h blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
+	if err := s.run([]string{"tx", "link", h.String(), subvol.String()}, nil, nil); err != nil {
+		return nil, err
+	}
+	panic("link not implemented")
 }
 
-func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkToken) error {
 	return s.run([]string{"tx", "unlink", h.String()}, nil, nil)
 }
 
-func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkToken) error {
 	return s.run([]string{"tx", "visit-links", h.String()}, nil, nil)
 }
 

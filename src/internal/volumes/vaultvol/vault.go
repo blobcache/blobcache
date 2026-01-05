@@ -62,8 +62,8 @@ func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	// TODO: aead seal/open the next
 }
 
-func (v *Vault) AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
-	return v.inner.AccessSubVolume(ctx, target)
+func (v *Vault) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) (blobcache.ActionSet, error) {
+	return v.inner.AccessSubVolume(ctx, ltok)
 }
 
 func (v *Vault) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
@@ -203,7 +203,7 @@ func (v *Tx) Commit(ctx context.Context) error {
 	}
 
 	var root *tries.Root
-	if v.txp.GC {
+	if v.txp.GCBlobs {
 		cellRef, err := saveCell(ctx, v.newTx, v.vol.cmach, s, nextCell)
 		if err != nil {
 			return err
@@ -350,7 +350,7 @@ func (v *Tx) Visit(ctx context.Context, ptcids []blobcache.CID) error {
 	}
 	defer release()
 
-	if !v.txp.GC {
+	if !v.txp.GCBlobs {
 		return fmt.Errorf("Visit not allowed on non-GC transactions")
 	}
 	v.trieMu.Lock()
@@ -381,16 +381,16 @@ func (v *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return v.inner.Hash(salt, data)
 }
 
-func (v *Tx) Link(ctx context.Context, subvol blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) error {
+func (v *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol volumes.Volume) (*blobcache.LinkToken, error) {
 	release, err := v.beginOp(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer release()
-	return v.inner.Link(ctx, subvol, rights, targetVol)
+	return v.inner.Link(ctx, svoid, rights, subvol)
 }
 
-func (v *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {
+func (v *Tx) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return err
@@ -399,7 +399,7 @@ func (v *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {
 	return v.inner.Unlink(ctx, targets)
 }
 
-func (v *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+func (v *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return err
@@ -470,7 +470,7 @@ func (vtx *Tx) init(ctx context.Context) error {
 		ttx = vtx.vol.tmach.NewTx(s, *troot)
 	}
 
-	if vtx.txp.GC {
+	if vtx.txp.GCBlobs {
 		newTx := vtx.vol.tmach.NewTxOnEmpty(s)
 		vtx.newTx = newTx
 	}

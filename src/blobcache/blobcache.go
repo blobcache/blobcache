@@ -115,15 +115,19 @@ const PeerIDSize = inet256.AddrSize
 type TxParams struct {
 	// Modify is true if the transaction will change the Volume's state.
 	Modify bool
-	// GC causes the transaction to remove all blobs that have not been
-	// observed in the transaction.
+	// GCBlobs causes the transaction to remove all blobs that have not been
+	// visited in the transaction.
 	// This happens at the end of the transaction.
-	// Mutate must be true if GC is set, or BeginTx will return an error.
-	GC bool
+	// Modify must be true if GCBlobs is set, or BeginTx will return an error.
+	GCBlobs bool
+	// GCLinks causes the transaction to remove, on commit, all links that have not been
+	// Visited in the transaction
+	// Modify must be true if GCLinks is set, or BeginTx will return an error
+	GCLinks bool
 }
 
 func (tp TxParams) Validate() error {
-	if tp.GC && !tp.Modify {
+	if tp.GCBlobs && !tp.Modify {
 		return fmt.Errorf("mutate must be true if GC is set")
 	}
 	return nil
@@ -176,6 +180,57 @@ type GetOpts struct {
 	SkipVerify bool
 }
 
+// LinkTokenSize is the size of a LinkToken in bytes
+const LinkTokenSize = 16 + 8 + 24
+
+// LTSecret is a LinkToken secret
+type LTSecret [24]byte
+
+func (lt LTSecret) MarshalText() ([]byte, error) {
+	return hex.AppendEncode(nil, lt[:]), nil
+}
+
+func (lt *LTSecret) UnmarshalText(data []byte) error {
+	n, err := hex.Decode(lt[:], data)
+	if err != nil {
+		return err
+	}
+	if n != len(lt) {
+		return fmt.Errorf("wrong size for LinkToken secret")
+	}
+	return nil
+}
+
+// LinkToken provides proof of Access to another Volume.
+type LinkToken struct {
+	Target OID       `json:"target"`
+	Rights ActionSet `json:"rights"`
+	Secret LTSecret  `json:"secret"`
+}
+
+func (lt LinkToken) Marshal(out []byte) []byte {
+	out = append(out, lt.Target[:]...)
+	out = lt.Rights.Marshal(out)
+	out = append(out, lt.Secret[:]...)
+	return out
+}
+
+func (lt *LinkToken) Unmarshal(data []byte) error {
+	if len(data) != LinkTokenSize {
+		return fmt.Errorf("wrong size for link token. HAVE: %d", len(data))
+	}
+	copy(lt.Target[:], data[:OIDSize])
+	if err := lt.Rights.Unmarshal(data[OIDSize : OIDSize+8]); err != nil {
+		return err
+	}
+	copy(lt.Secret[:], data[OIDSize+8:])
+	return nil
+}
+
+func (lt LinkToken) String() string {
+	return hex.EncodeToString(lt.Marshal(nil))
+}
+
 type VolumeAPI interface {
 	// CreateVolume creates a new volume.
 	// CreateVolume always creates a Volume on the local Node.
@@ -196,7 +251,7 @@ type VolumeAPI interface {
 	// OpenFrom returns a handle to an object by it's ID.
 	// base is the handle of a Volume, which links to the object.
 	// the base Volume's schema must be a Container.
-	OpenFrom(ctx context.Context, base Handle, x OID, mask ActionSet) (*Handle, error)
+	OpenFrom(ctx context.Context, base Handle, ltok LinkToken, mask ActionSet) (*Handle, error)
 
 	// BeginTx begins a new transaction, on a Volume.
 	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
@@ -241,14 +296,14 @@ type TxAPI interface {
 
 	// Link adds a link to another volume.
 	// All Link operations take effect atomically on Commit
-	Link(ctx context.Context, tx Handle, target Handle, mask ActionSet) error
+	Link(ctx context.Context, tx Handle, target Handle, mask ActionSet) (*LinkToken, error)
 	// Unlink removes a link from the transaction's volume to any and all of the OIDs
 	// All Unlink operations take effect atomically on Commit.
-	Unlink(ctx context.Context, tx Handle, targets []OID) error
+	Unlink(ctx context.Context, tx Handle, ltoks []LinkToken) error
 	// VisitLink visits a link to another volume.
 	// This is only usable in a GC transaction.
 	// Any unvisited links will be deleted at the end of a GC transaction.
-	VisitLinks(ctx context.Context, tx Handle, targets []OID) error
+	VisitLinks(ctx context.Context, tx Handle, targets []LinkToken) error
 }
 
 type Service interface {

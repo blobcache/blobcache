@@ -121,8 +121,8 @@ func (s *Service) OpenFiat(ctx context.Context, target blobcache.OID, mask blobc
 	return h, nil
 }
 
-func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	h, _, err := bcp.OpenFrom(ctx, s.node, s.ep, base, target, mask)
+func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, token blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	h, _, err := bcp.OpenFrom(ctx, s.node, s.ep, base, token, mask)
 	return h, err
 }
 
@@ -220,15 +220,15 @@ func (s *Service) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blo
 }
 
 // Link allows the Volume to reference another volume.
-func (s *Service) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) error {
+func (s *Service) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
 	return bcp.Link(ctx, s.node, s.ep, tx, subvol, mask)
 }
 
-func (s *Service) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkToken) error {
 	return bcp.Unlink(ctx, s.node, s.ep, tx, targets)
 }
 
-func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkToken) error {
 	return bcp.VisitLinks(ctx, s.node, s.ep, tx, targets)
 }
 

@@ -64,8 +64,8 @@ func (sys *System) Drop(ctx context.Context, vol *Volume) error {
 	return nil
 }
 
-func (sys *System) OpenFrom(ctx context.Context, base *Volume, target blobcache.OID, mask blobcache.ActionSet) (blobcache.ActionSet, *Volume, error) {
-	h, info, err := bcp.OpenFrom(ctx, base.n, base.ep, base.h, target, mask)
+func (sys *System) OpenFrom(ctx context.Context, base *Volume, token blobcache.LinkToken, mask blobcache.ActionSet) (blobcache.ActionSet, *Volume, error) {
+	h, info, err := bcp.OpenFrom(ctx, base.n, base.ep, base.h, token, mask)
 	if err != nil {
 		return 0, nil, err
 	}
