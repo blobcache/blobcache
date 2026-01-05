@@ -127,7 +127,7 @@ type TxParams struct {
 }
 
 func (tp TxParams) Validate() error {
-	if tp.GCBlobs && !tp.Modify {
+	if (tp.GCBlobs || tp.GCLinks) && !tp.Modify {
 		return fmt.Errorf("mutate must be true if GC is set")
 	}
 	return nil
