@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,18 +44,25 @@ type LVParams[K any] struct {
 	Params blobcache.VolumeConfig
 }
 
+// PeerLocator finds the address of peers
+type PeerLocator interface {
+	WhereIs(blobcache.PeerID) []netip.AddrPort
+}
+
 type Env[LK any, LV LocalVolume[LK]] struct {
 	Background context.Context
 	PrivateKey ed25519.PrivateKey
 	// Root is the root volume.
 	// It will have the all-zero OID.
-	Root   volumes.Volume
-	MDS    MetadataStore
-	Policy Policy
-	// Local is the local volume system.
-	Local    volumes.System[LVParams[LK], LV]
-	MkSchema schema.Factory
+	Root volumes.Volume
+	// MDS is where Volume metadata is stored.
+	MDS         MetadataStore
+	Policy      Policy
+	PeerLocator PeerLocator
+	MkSchema    schema.Factory
 
+	// Local is the local volume system.
+	Local      volumes.System[LVParams[LK], LV]
 	GenerateLK func() (LK, error)
 	LKToOID    func(LK) blobcache.OID
 	OIDToLK    func(blobcache.OID) (LK, error)
