@@ -3,6 +3,7 @@ package blobcached
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -17,7 +18,6 @@ import (
 	"blobcache.io/blobcache/src/internal/groupfile"
 	"go.brendoncarroll.net/exp/slices2"
 	"go.inet256.org/inet256/src/inet256"
-	"golang.org/x/exp/constraints"
 )
 
 const (
@@ -404,7 +404,7 @@ func (p *Policy) CanCreate(peer blobcache.PeerID) bool {
 }
 
 // findCommon finds the common elements of two sorted slices.
-func findCommon[T constraints.Ordered](a, b []T) iter.Seq[T] {
+func findCommon[T cmp.Ordered](a, b []T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for ai, bi := 0, 0; ai < len(a) && bi < len(b); {
 			switch {
