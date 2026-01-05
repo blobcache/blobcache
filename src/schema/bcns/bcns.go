@@ -226,7 +226,7 @@ func (nsc *Client) GC(ctx context.Context, volh blobcache.Handle) error {
 	if !ok {
 		return fmt.Errorf("cannot GC, schema does not support visit all")
 	}
-	tx, err := bcsdk.BeginTx(ctx, nsc.Service, volh, blobcache.TxParams{Modify: true, GCBlobs: true})
+	tx, err := bcsdk.BeginTx(ctx, nsc.Service, volh, blobcache.TxParams{Modify: true, GCBlobs: true, GCLinks: true})
 	if err != nil {
 		return err
 	}

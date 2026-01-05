@@ -210,15 +210,11 @@ func (ls *System) beginTx(ctx context.Context, vol *Volume, params blobcache.TxP
 		return nil, err
 	}
 
-	txParams := blobcache.TxParams{
-		Modify:  params.Modify,
-		GCBlobs: params.GCBlobs,
-	}
 	sch, err := ls.getSchema(vol.params.Schema)
 	if err != nil {
 		return nil, err
 	}
-	return newLocalTxn(ls, vol, txid, txParams, sch)
+	return newLocalTxn(ls, vol, txid, params, sch)
 }
 
 // abortMut aborts a mutating transaction.
