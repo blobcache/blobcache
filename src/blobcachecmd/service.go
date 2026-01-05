@@ -3,6 +3,7 @@ package blobcachecmd
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -58,11 +59,11 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 
 func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	str, err := s.runParse([]string{"share", h.String(), to.String(), fmt.Sprint(uint64(mask))}, re)
+	ms, err := s.runParse([]string{"share", h.String(), to.String(), fmt.Sprint(uint64(mask))}, re)
 	if err != nil {
 		return nil, err
 	}
-	nh, err := blobcache.ParseHandle(str)
+	nh, err := blobcache.ParseHandle(ms[0])
 	if err != nil {
 		return nil, err
 	}
@@ -118,11 +119,11 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 
 	// Parse the handle from the CLI output
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	str, err := s.runParse(args, re)
+	ms, err := s.runParse(args, re)
 	if err != nil {
 		return nil, err
 	}
-	h, err := blobcache.ParseHandle(str)
+	h, err := blobcache.ParseHandle(ms[0])
 	if err != nil {
 		return nil, err
 	}
@@ -148,28 +149,28 @@ func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.
 	if mask != blobcache.Action_ALL {
 		args = append(args, fmt.Sprintf("%x", uint64(mask)))
 	}
-	str, err := s.runParse(args, re)
+	ms, err := s.runParse(args, re)
 	if err != nil {
 		return nil, err
 	}
-	h, err := blobcache.ParseHandle(str)
+	h, err := blobcache.ParseHandle(ms[0])
 	if err != nil {
 		return nil, err
 	}
 	return &h, nil
 }
 
-func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
 	args := []string{"open-from", base.String(), x.String()}
 	if mask != blobcache.Action_ALL {
 		args = append(args, fmt.Sprintf("%x", uint64(mask)))
 	}
-	str, err := s.runParse(args, re)
+	ms, err := s.runParse(args, re)
 	if err != nil {
 		return nil, err
 	}
-	h, err := blobcache.ParseHandle(str)
+	h, err := blobcache.ParseHandle(ms[0])
 	if err != nil {
 		return nil, err
 	}
@@ -181,15 +182,15 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobca
 	if txp.Modify {
 		args = append(args, "--modify")
 	}
-	if txp.GC {
+	if txp.GCBlobs {
 		args = append(args, "--gc")
 	}
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	str, err := s.runParse(args, re)
+	ms, err := s.runParse(args, re)
 	if err != nil {
 		return nil, err
 	}
-	h, err := blobcache.ParseHandle(str)
+	h, err := blobcache.ParseHandle(ms[0])
 	if err != nil {
 		return nil, err
 	}
@@ -198,11 +199,11 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobca
 
 func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	str, err := s.runParse([]string{"volume", "clone", volh.String()}, re)
+	ms, err := s.runParse([]string{"volume", "clone", volh.String()}, re)
 	if err != nil {
 		return nil, err
 	}
-	h, err := blobcache.ParseHandle(str)
+	h, err := blobcache.ParseHandle(ms[0])
 	if err != nil {
 		return nil, err
 	}
@@ -343,15 +344,28 @@ func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blob
 	return nil
 }
 
-func (s *Service) Link(ctx context.Context, h blobcache.Handle, subvol blobcache.Handle, rights blobcache.ActionSet) error {
-	return s.run([]string{"tx", "link", h.String(), subvol.String()}, nil, nil)
+func (s *Service) Link(ctx context.Context, h blobcache.Handle, subvol blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
+	re := regexp.MustCompile(`TOKEN: (\w+)`)
+	ms, err := s.runParse([]string{"tx", "link", h.String(), subvol.String()}, re)
+	if err != nil {
+		return nil, err
+	}
+	data, err := hex.DecodeString(ms[1])
+	if err != nil {
+		return nil, err
+	}
+	var ltok blobcache.LinkToken
+	if err := ltok.Unmarshal(data); err != nil {
+		return nil, err
+	}
+	return &ltok, nil
 }
 
-func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkToken) error {
 	return s.run([]string{"tx", "unlink", h.String()}, nil, nil)
 }
 
-func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkToken) error {
 	return s.run([]string{"tx", "visit-links", h.String()}, nil, nil)
 }
 
@@ -371,15 +385,15 @@ func (s *Service) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobc
 	return fmt.Errorf("SubToVolume not implemented")
 }
 
-func (s *Service) runParse(args []string, re *regexp.Regexp) (string, error) {
+func (s *Service) runParse(args []string, re *regexp.Regexp) ([]string, error) {
 	var out bytes.Buffer
 	if err := s.run(args, nil, &out); err != nil {
-		return "", err
+		return nil, err
 	}
 	if !re.Match(out.Bytes()) {
-		return "", fmt.Errorf("output did not match regex: %s", re.String())
+		return nil, fmt.Errorf("output did not match. out=%q regex=%s", out.Bytes(), re.String())
 	}
-	return re.FindString(out.String()), nil
+	return re.FindStringSubmatch(out.String()), nil
 }
 
 // run runs a command and returns the output.

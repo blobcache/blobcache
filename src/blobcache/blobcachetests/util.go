@@ -89,14 +89,16 @@ func Delete(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcac
 	require.NoError(t, s.Delete(ctx, txh, []blobcache.CID{cid}))
 }
 
-func Link(t testing.TB, s blobcache.Service, txh blobcache.Handle, volh blobcache.Handle, mask blobcache.ActionSet) {
+func Link(t testing.TB, s blobcache.Service, txh blobcache.Handle, volh blobcache.Handle, mask blobcache.ActionSet) blobcache.LinkToken {
 	ctx := testutil.Context(t)
-	require.NoError(t, s.Link(ctx, txh, volh, mask))
+	lt, err := s.Link(ctx, txh, volh, mask)
+	require.NoError(t, err)
+	return *lt
 }
 
-func Unlink(t testing.TB, s blobcache.Service, txh blobcache.Handle, volh blobcache.Handle, mask blobcache.ActionSet) {
+func Unlink(t testing.TB, s blobcache.Service, txh blobcache.Handle, ltok blobcache.LinkToken) {
 	ctx := testutil.Context(t)
-	require.NoError(t, s.Unlink(ctx, txh, []blobcache.OID{volh.OID}))
+	require.NoError(t, s.Unlink(ctx, txh, []blobcache.LinkToken{ltok}))
 }
 
 func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx *bcsdk.Tx) ([]byte, error)) {

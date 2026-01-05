@@ -210,15 +210,11 @@ func (ls *System) beginTx(ctx context.Context, vol *Volume, params blobcache.TxP
 		return nil, err
 	}
 
-	txParams := blobcache.TxParams{
-		Modify: params.Modify,
-		GC:     params.GC,
-	}
 	sch, err := ls.getSchema(vol.params.Schema)
 	if err != nil {
 		return nil, err
 	}
-	return newLocalTxn(ls, vol, txid, txParams, sch)
+	return newLocalTxn(ls, vol, txid, params, sch)
 }
 
 // abortMut aborts a mutating transaction.
@@ -264,7 +260,7 @@ func (s *System) abortMut(volID ID, mvid pdb.MVTag) error {
 // commit commits a local volume.
 // links should be the actual links returned by the schema
 // newlyAllowed should be the allowed links that were added to the volume during the transaction
-func (s *System) commit(volID ID, mvid pdb.MVTag, links LinkSet) error {
+func (s *System) commit(volID ID, mvid pdb.MVTag, links volumes.LinkSet) error {
 	ba := s.db.NewIndexedBatch()
 	defer ba.Close()
 
@@ -571,7 +567,7 @@ func (s *System) readBlobData(k blobcache.CID, buf []byte) (int, error) {
 	return n, nil
 }
 
-func (s *System) readLinksFrom(mvid pdb.MVTag, fromVol ID, dst LinkSet) error {
+func (s *System) readLinksFrom(mvid pdb.MVTag, fromVol ID, dst volumes.LinkSet) error {
 	clear(dst)
 	snp := s.db.NewSnapshot()
 	defer snp.Close()

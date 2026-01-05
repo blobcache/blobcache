@@ -63,8 +63,8 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 	}, nil
 }
 
-func (v *Volume) AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
-	h, _, err := bcp.OpenFrom(ctx, v.n, v.ep, v.h, target, blobcache.Action_ALL)
+func (v *Volume) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) (blobcache.ActionSet, error) {
+	h, _, err := bcp.OpenFrom(ctx, v.n, v.ep, v.h, ltok, blobcache.Action_ALL)
 	if err != nil {
 		return 0, err
 	}
@@ -170,32 +170,32 @@ func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
 	return bcp.Visit(ctx, tx.vol.n, tx.vol.ep, tx.h, cids)
 }
 
-func (tx *Tx) Link(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet, targetVol volumes.Volume) error {
+func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) (*blobcache.LinkToken, error) {
 	if !tx.params.Modify {
-		return blobcache.ErrTxReadOnly{}
+		return nil, blobcache.ErrTxReadOnly{}
 	}
 	rvol, ok := targetVol.(*Volume)
 	if !ok {
-		return fmt.Errorf("remotevol: can only link to remote volumes")
+		return nil, fmt.Errorf("remotevol: can only link to remote volumes")
 	}
 	if rvol.ep.Peer != tx.vol.ep.Peer {
-		return fmt.Errorf("remotevol: can only link to volumes on the same peer")
+		return nil, fmt.Errorf("remotevol: can only link to volumes on the same peer")
 	}
-	return bcp.Link(ctx, tx.vol.n, tx.vol.ep, tx.h, rvol.h, mask)
+	return bcp.Link(ctx, tx.vol.n, tx.vol.ep, tx.h, rvol.h, rights)
 }
 
-func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.OID) error {
+func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
 	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
 	return bcp.Unlink(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
 }
 
-func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
 	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
-	if !tx.params.GC {
+	if !tx.params.GCBlobs {
 		return blobcache.ErrTxNotGC{Op: "VisitLinks"}
 	}
 	return bcp.VisitLinks(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)

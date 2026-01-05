@@ -142,7 +142,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	t.Run("Visited", func(t *testing.T) {
 		// check to see if IsVisited and Visit work.
 		s, volh := mk(t)
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GC: true})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GCBlobs: true})
 		defer Abort(t, s, txh)
 
 		hf := defaultLocalSpec().Local.HashAlgo.HashFunc()
@@ -173,7 +173,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		}
 		Commit(t, s, txh)
 		// 2.
-		txh = BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GC: true})
+		txh = BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GCBlobs: true})
 		defer s.Abort(ctx, txh)
 		for i, cid := range cids {
 			if i%2 > 0 {
@@ -216,7 +216,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		for i := 0; i < 3; i++ {
 			// Open a GC transaction, for each blob, check that it is unvisited, then mark it visited.
 			// This transaction should be a no-op.
-			txh = BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GC: true})
+			txh = BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GCBlobs: true})
 			defer s.Abort(ctx, txh)
 			for _, cid := range cids {
 				vis := IsVisited(t, s, txh, []blobcache.CID{cid})
@@ -232,7 +232,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		// This test checks that blobs posted, but not visited, are still removed by GC.
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
-		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GC: true})
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GCBlobs: true})
 		defer s.Abort(ctx, txh)
 		var cids []blobcache.CID
 		for i := 0; i < 20; i++ {
@@ -269,14 +269,13 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 			txh := BeginTx(t, s, vol1h, blobcache.TxParams{Modify: true})
 
 			// Create a new child volume.
-			vol2h, fqoid := CreateOnSameHost(t, s, vol1h, noneSpec)
+			vol2h, _ := CreateOnSameHost(t, s, vol1h, noneSpec)
 
 			// Link the child volume to grant access from the parent.
-			Link(t, s, txh, vol2h, blobcache.Action_ALL)
+			ltok := Link(t, s, txh, vol2h, blobcache.Action_ALL)
 
 			// Store the child volume's OID in the parent's cell.
-			childOID := fqoid.OID.Marshal(nil)
-			Save(t, s, txh, childOID)
+			Save(t, s, txh, ltok.Marshal(nil))
 			Commit(t, s, txh)
 
 			vol1h = vol2h
@@ -290,16 +289,15 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 			defer Abort(t, s, txh)
 
 			// Load the child OID from the parent's cell.
-			childOIDBytes := Load(t, s, txh)
-			require.NotEmpty(t, childOIDBytes, "child OID should not be empty at level %d", i)
+			rootData := Load(t, s, txh)
+			require.NotEmpty(t, rootData, "root should not be empty at level %d", i)
 
 			// Parse the OID.
-			var childOID blobcache.OID
-			err := childOID.Unmarshal(childOIDBytes)
-			require.NoError(t, err)
+			var ltok blobcache.LinkToken
+			require.NoError(t, ltok.Unmarshal(rootData))
 
 			// Open the child volume from the parent.
-			vol2h, err := s.OpenFrom(ctx, vol1h, childOID, blobcache.Action_ALL)
+			vol2h, err := s.OpenFrom(ctx, vol1h, ltok, blobcache.Action_ALL)
 			require.NoError(t, err)
 			require.NotNil(t, vol2h)
 

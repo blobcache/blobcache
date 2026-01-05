@@ -37,9 +37,9 @@ type ShareResp struct {
 }
 
 type OpenFromReq struct {
-	Base   blobcache.Handle    `json:"base"`
-	Target blobcache.OID       `json:"target"`
-	Mask   blobcache.ActionSet `json:"mask"`
+	Base  blobcache.Handle    `json:"base"`
+	Token blobcache.LinkToken `json:"token"`
+	Mask  blobcache.ActionSet `json:"mask"`
 }
 
 type OpenFromResp struct {
@@ -174,16 +174,18 @@ type LinkReq struct {
 	Mask   blobcache.ActionSet `json:"mask"`
 }
 
-type LinkResp struct{}
+type LinkResp struct {
+	Token blobcache.LinkToken `json:"token"`
+}
 
 type UnlinkReq struct {
-	Targets []blobcache.OID `json:"targets"`
+	Targets []blobcache.LinkToken `json:"targets"`
 }
 
 type UnlinkResp struct{}
 
 type VisitLinksReq struct {
-	Targets []blobcache.OID `json:"targets"`
+	Targets []blobcache.LinkToken `json:"targets"`
 }
 
 type VisitLinksResp struct{}

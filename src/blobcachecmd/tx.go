@@ -26,7 +26,7 @@ var beginTxCmd = star.Command{
 			case "--modify":
 				txp.Modify = true
 			case "--gc":
-				txp.GC = true
+				txp.GCBlobs = true
 			default:
 				return fmt.Errorf("unknown argument: %s", arg)
 			}
@@ -322,11 +322,12 @@ var txLinkCmd = star.Command{
 			mask = blobcache.Action_ALL
 		}
 		subvolh := subvolHParam.Load(c)
-		if err := svc.Link(c.Context, txh, subvolh, mask); err != nil {
+		ltok, err := svc.Link(c.Context, txh, subvolh, mask)
+		if err != nil {
 			return err
 		}
 		printOK(c, "LINK")
-		c.Printf("linked -> %s\n", subvolh.OID.String())
+		c.Printf("TOKEN: %s\n", ltok.String())
 		return nil
 	},
 }
@@ -335,13 +336,14 @@ var txUnlinkCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "removes a link from the transaction",
 	},
-	Pos: []star.Positional{txHParam, oidsParam},
+	Pos: []star.Positional{txHParam, linkTokenParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		if err := svc.Unlink(c.Context, txHParam.Load(c), oidsParam.Load(c)); err != nil {
+		ltoks := []blobcache.LinkToken{linkTokenParam.Load(c)}
+		if err := svc.Unlink(c.Context, txHParam.Load(c), ltoks); err != nil {
 			return err
 		}
 		printOK(c, "UNLINK")
@@ -353,13 +355,14 @@ var txVisitLinksCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "visits links in the transaction",
 	},
-	Pos: []star.Positional{txHParam, oidsParam},
+	Pos: []star.Positional{txHParam, linkTokenParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		if err := svc.VisitLinks(c.Context, txHParam.Load(c), oidsParam.Load(c)); err != nil {
+		ltoks := []blobcache.LinkToken{linkTokenParam.Load(c)}
+		if err := svc.VisitLinks(c.Context, txHParam.Load(c), ltoks); err != nil {
 			return err
 		}
 		printOK(c, "VISIT-LINKS")

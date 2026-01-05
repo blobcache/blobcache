@@ -80,7 +80,7 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		})
 	case bcp.MT_OPEN_FROM:
 		handleAsk(req, resp, &bcp.OpenFromReq{}, func(req *bcp.OpenFromReq) (*bcp.OpenFromResp, error) {
-			h, err := svc.OpenFrom(ctx, req.Base, req.Target, req.Mask)
+			h, err := svc.OpenFrom(ctx, req.Base, req.Token, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -258,10 +258,11 @@ func (s *Server) serve(ctx context.Context, ep blobcache.Endpoint, req *Message,
 		resp.SetBody(buf[:n])
 	case bcp.MT_TX_LINK:
 		handleAsk(req, resp, &bcp.LinkReq{}, func(req *bcp.LinkReq) (*bcp.LinkResp, error) {
-			if err := svc.Link(ctx, req.Tx, req.Subvol, req.Mask); err != nil {
+			ltok, err := svc.Link(ctx, req.Tx, req.Subvol, req.Mask)
+			if err != nil {
 				return nil, err
 			}
-			return &bcp.LinkResp{}, nil
+			return &bcp.LinkResp{Token: *ltok}, nil
 		})
 	case bcp.MT_TX_UNLINK:
 		handleAsk(req, resp, &bcp.UnlinkReq{}, func(req *bcp.UnlinkReq) (*bcp.UnlinkResp, error) {

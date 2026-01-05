@@ -13,7 +13,7 @@ type Initializer interface {
 }
 
 type VisitAll interface {
-	VisitAll(ctx context.Context, s bcsdk.RO, root []byte, visit func(cids []blobcache.CID, links []blobcache.OID) error) error
+	VisitAll(ctx context.Context, s bcsdk.RO, root []byte, visit func(cids []blobcache.CID, links []blobcache.LinkToken) error) error
 }
 
 type Syncer interface {

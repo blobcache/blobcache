@@ -11,12 +11,13 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/volumes"
 )
 
 type VolumeLink struct {
-	From   ID
-	To     blobcache.OID
-	Rights blobcache.ActionSet
+	From ID
+	To   blobcache.OID
+	Hash [32]byte
 }
 
 // ParseVolumeLink parses an entry from the LOCAL_VOLUME_LINKS table.
@@ -29,29 +30,31 @@ func ParseVolumeLink(k, v []byte) (VolumeLink, error) {
 		return VolumeLink{}, fmt.Errorf("volume link key too short: %d", len(k))
 	}
 	fromID := binary.BigEndian.Uint64(k[:8])
-	toID := blobcache.OID(k[8:])
+	toID := blobcache.OID(k[8 : 8+blobcache.OIDSize])
+	var h [32]byte
+	copy(h[:], k[8+blobcache.OIDSize:])
 	return VolumeLink{
-		From:   ID(fromID),
-		To:     toID,
-		Rights: blobcache.ActionSet(binary.LittleEndian.Uint64(v)),
+		From: ID(fromID),
+		To:   toID,
+		Hash: h,
 	}, nil
 }
 
-func (ls *System) putVolumeLink(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID, toID blobcache.OID, rights blobcache.ActionSet) error {
+func (ls *System) putVolumeLink(ba *pebble.Batch, mvid pdb.MVTag, vl VolumeLink) error {
 	// forwards
 	k := pdb.MVKey{
 		TableID: dbtab.TID_LOCAL_VOLUME_LINKS,
-		Key:     slices.Concat(fromVolID.Marshal(nil), toID[:]),
+		Key:     slices.Concat(vl.From.Marshal(nil), vl.To[:], vl.Hash[:]),
 		Version: mvid,
 	}
-	v := binary.LittleEndian.AppendUint64(nil, uint64(rights))
+	v := vl.Hash[:]
 	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
 		return err
 	}
 	// inverse
 	k = pdb.MVKey{
 		TableID: dbtab.TID_LOCAL_VOLUME_LINKS_INV,
-		Key:     slices.Concat(toID[:], fromVolID.Marshal(nil)),
+		Key:     slices.Concat(vl.To[:], vl.From.Marshal(nil)),
 	}
 	v = []byte{}
 	if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
@@ -60,10 +63,8 @@ func (ls *System) putVolumeLink(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID, 
 	return nil
 }
 
-type LinkSet = map[blobcache.OID]blobcache.ActionSet
-
 // ReadVolumeLinks reads the volume links from volID into dst.
-func (ls *System) readVolumeLinks(sp pdb.RO, mvid pdb.MVTag, fromVolID ID, dst LinkSet) error {
+func (ls *System) readVolumeLinks(sp pdb.RO, mvid pdb.MVTag, fromVolID ID, dst volumes.LinkSet) error {
 	exclude := func(x pdb.MVTag) bool {
 		if x == mvid {
 			return false
@@ -104,7 +105,7 @@ func (ls *System) readVolumeLinks(sp pdb.RO, mvid pdb.MVTag, fromVolID ID, dst L
 		if err != nil {
 			return err
 		}
-		dst[volLink.To] = volLink.Rights
+		dst[volLink.Hash] = volLink.To
 	}
 	return nil
 }
@@ -143,8 +144,8 @@ func (ls *System) readVolumeLinksTo(sp pdb.RO, toVolID blobcache.OID, dst map[bl
 // putVolumeLinks puts the volume links from fromVolID into links into the database.
 // It overwrites the previous links for the volume.
 // putVolumeLinks requires that the batch is indexed.
-func (sys *System) putVolumeLinks(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID, links LinkSet) error {
-	oldLinks := make(map[blobcache.OID]blobcache.ActionSet)
+func (sys *System) putVolumeLinks(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID, links volumes.LinkSet) error {
+	oldLinks := make(volumes.LinkSet)
 	if err := sys.readVolumeLinks(ba, mvid, fromVolID, oldLinks); err != nil {
 		return err
 	}
@@ -163,10 +164,10 @@ func (sys *System) putVolumeLinks(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID
 		return err
 	}
 	// delete inverse
-	for toID := range oldLinks {
+	for h, toID := range oldLinks {
 		invKey := pdb.MVKey{
 			TableID: dbtab.TID_LOCAL_VOLUME_LINKS_INV,
-			Key:     slices.Concat(toID[:], fromVolID.Marshal(nil)),
+			Key:     slices.Concat(toID[:], fromVolID.Marshal(nil), h[:]),
 		}
 		if err := ba.Delete(invKey.Marshal(nil), nil); err != nil {
 			return err
@@ -174,8 +175,9 @@ func (sys *System) putVolumeLinks(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID
 	}
 
 	// add the new links
-	for toID, rights := range links {
-		if err := sys.putVolumeLink(ba, mvid, fromVolID, toID, rights); err != nil {
+	for h, toID := range links {
+		vl := VolumeLink{From: fromVolID, To: toID, Hash: h}
+		if err := sys.putVolumeLink(ba, mvid, vl); err != nil {
 			return err
 		}
 	}

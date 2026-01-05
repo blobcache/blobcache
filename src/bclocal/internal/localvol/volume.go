@@ -2,6 +2,8 @@ package localvol
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha3"
 	"fmt"
 	"sync"
 
@@ -43,12 +45,16 @@ func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (volumes.Tx
 	return v.sys.beginTx(ctx, v, tp)
 }
 
-func (v *Volume) AccessSubVolume(ctx context.Context, target blobcache.OID) (blobcache.ActionSet, error) {
+func (v *Volume) AccessSubVolume(ctx context.Context, lt blobcache.LinkToken) (blobcache.ActionSet, error) {
 	links := volumes.LinkSet{}
 	if err := v.sys.readLinksFrom(0, v.lvid, links); err != nil {
 		return 0, err
 	}
-	return links[target], nil
+	h := hashLinkToken(lt)
+	if _, exists := links[h]; exists {
+		return lt.Rights, nil
+	}
+	return 0, nil
 }
 
 func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
@@ -84,15 +90,15 @@ type localTxnMut struct {
 	mu sync.RWMutex
 	// finished is set to true when the transaction is finished.
 	finished     bool
-	links        map[blobcache.OID]blobcache.ActionSet
-	visitedLinks map[blobcache.OID]struct{}
+	links        volumes.LinkSet
+	visitedLinks map[[32]byte]struct{}
 }
 
 // newLocalTxn creates a localTxn.
 // It does not change the database state.
 // the caller should have already created the transaction at txid, and volInfo.
 func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcache.TxParams, schema schema.Schema) (*localTxnMut, error) {
-	links := make(map[blobcache.OID]blobcache.ActionSet)
+	links := make(volumes.LinkSet)
 	if err := localSys.readVolumeLinks(localSys.db, mvid, vol.lvid, links); err != nil {
 		return nil, err
 	}
@@ -139,15 +145,15 @@ func (ltx *localTxnMut) Commit(ctx context.Context) error {
 		return blobcache.ErrTxDone{}
 	}
 
-	if ltx.txParams.GC {
+	if ltx.txParams.GCBlobs {
 		if err := ltx.localSys.gc(ctx, ltx.vol.lvid, ltx.mvid); err != nil {
 			return err
 		}
+	}
+	if ltx.txParams.GCLinks {
 		// filter out the links that are not visited
-		for oid := range ltx.links {
-			if _, ok := ltx.visitedLinks[oid]; !ok {
-				delete(ltx.links, oid)
-			}
+		for h := range ltx.links {
+			delete(ltx.links, h)
 		}
 	}
 	if err := ltx.localSys.commit(ltx.vol.lvid, ltx.mvid, ltx.links); err != nil {
@@ -244,7 +250,7 @@ func (v *localTxnMut) Visit(ctx context.Context, cids []blobcache.CID) error {
 		return err
 	}
 	defer unlock()
-	if !v.txParams.GC {
+	if !v.txParams.GCBlobs {
 		return blobcache.ErrTxNotGC{Op: "Visit"}
 	}
 	return v.localSys.visit(v.vol.lvid, v.mvid, cids)
@@ -256,49 +262,58 @@ func (v *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst [
 		return err
 	}
 	defer unlock()
-	if !v.txParams.GC {
+	if !v.txParams.GCBlobs {
 		return blobcache.ErrTxNotGC{Op: "IsVisited"}
 	}
 	return v.localSys.isVisited(v.vol.lvid, v.mvid, cids, dst)
 }
 
-func (v *localTxnMut) Link(ctx context.Context, subvol blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) error {
+func (v *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) (*blobcache.LinkToken, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.finished {
+		return nil, blobcache.ErrTxDone{}
+	}
+	ltok := blobcache.LinkToken{
+		Target: svoid,
+		Rights: rights,
+	}
+	if _, err := rand.Read(ltok.Secret[:]); err != nil {
+		return nil, err
+	}
+	h := hashLinkToken(ltok)
+	v.links[h] = ltok.Target
+	return &ltok, nil
+}
+
+func (v *localTxnMut) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.finished {
 		return blobcache.ErrTxDone{}
 	}
-	// Link merges rights.  The original handle passed to the Service will have been resolved and had the rights applied.
-	v.links[subvol] |= rights
-	return nil
-}
-
-func (v *localTxnMut) Unlink(ctx context.Context, targets []blobcache.OID) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.finished {
-		return blobcache.ErrTxDone{}
-	}
-	for _, oid := range targets {
-		delete(v.links, oid)
+	for _, lt := range targets {
+		h := hashLinkToken(lt)
+		delete(v.links, h)
 	}
 	return nil
 }
 
-func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	if txn.finished {
 		return blobcache.ErrTxDone{}
 	}
-	if !txn.txParams.GC {
+	if !txn.txParams.GCBlobs {
 		return blobcache.ErrTxNotGC{Op: "VisitLinks"}
 	}
 	if txn.visitedLinks == nil {
-		txn.visitedLinks = make(map[blobcache.OID]struct{})
+		txn.visitedLinks = make(map[[32]byte]struct{})
 	}
-	for _, oid := range targets {
-		txn.visitedLinks[oid] = struct{}{}
+	for _, lt := range targets {
+		h := hashLinkToken(lt)
+		txn.visitedLinks[h] = struct{}{}
 	}
 	return nil
 }
@@ -419,15 +434,15 @@ func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []boo
 	return nil
 }
 
-func (v *localTxnRO) Link(ctx context.Context, subvol blobcache.OID, mask blobcache.ActionSet, targetVol volumes.Volume) error {
-	return blobcache.ErrTxReadOnly{Op: "AllowLink"}
+func (v *localTxnRO) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) (*blobcache.LinkToken, error) {
+	return nil, blobcache.ErrTxReadOnly{Op: "AllowLink"}
 }
 
-func (v *localTxnRO) Unlink(ctx context.Context, targets []blobcache.OID) error {
+func (v *localTxnRO) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
 	return blobcache.ErrTxReadOnly{Op: "Unlink"}
 }
 
-func (v *localTxnRO) VisitLinks(ctx context.Context, targets []blobcache.OID) error {
+func (v *localTxnRO) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
 	return blobcache.ErrTxReadOnly{Op: "VisitLinks"}
 }
 
@@ -469,4 +484,8 @@ func (v *localTxnRO) getExcluded() (func(pdb.MVTag) bool, error) {
 func (v *localTxnRO) isExcluded(mvid pdb.MVTag) bool {
 	_, ok := v.activeTxns[mvid]
 	return ok
+}
+
+func hashLinkToken(lt blobcache.LinkToken) [32]byte {
+	return sha3.Sum256(lt.Marshal(nil))
 }

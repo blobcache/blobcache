@@ -1,6 +1,7 @@
 package blobcachecmd
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -195,7 +196,7 @@ var openFromCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "opens a handle to an object from a base volume",
 	},
-	Pos: []star.Positional{volHParam, oidParam, maskParam},
+	Pos: []star.Positional{volHParam, linkTokenParam, maskParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
@@ -205,7 +206,7 @@ var openFromCmd = star.Command{
 		if !maskOK {
 			mask = blobcache.Action_ALL
 		}
-		h, err := svc.OpenFrom(c.Context, volHParam.Load(c), oidParam.Load(c), mask)
+		h, err := svc.OpenFrom(c.Context, volHParam.Load(c), linkTokenParam.Load(c), mask)
 		if err != nil {
 			return err
 		}
@@ -288,5 +289,21 @@ var secretParam = star.Optional[blobcache.Secret]{
 		var secret blobcache.Secret
 		err := secret.UnmarshalText([]byte(s))
 		return secret, err
+	},
+}
+
+var linkTokenParam = star.Required[blobcache.LinkToken]{
+	ID:       "link-token",
+	ShortDoc: "a token that proves access from one volume to another",
+	Parse: func(s string) (blobcache.LinkToken, error) {
+		data, err := hex.DecodeString(s)
+		if err != nil {
+			return blobcache.LinkToken{}, err
+		}
+		var ltok blobcache.LinkToken
+		if err := ltok.Unmarshal(data); err != nil {
+			return blobcache.LinkToken{}, err
+		}
+		return ltok, nil
 	},
 }

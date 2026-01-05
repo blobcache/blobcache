@@ -261,8 +261,8 @@ func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.
 	return s.sys.OpenFiat(ctx, x, mask)
 }
 
-func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return s.sys.OpenFrom(ctx, base, x, mask)
+func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, lt blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	return s.sys.OpenFrom(ctx, base, lt, mask)
 }
 
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
@@ -329,16 +329,16 @@ func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []bl
 	return s.sys.IsVisited(ctx, txh, cids, dst)
 }
 
-func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) error {
+func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
 	return s.sys.Link(ctx, txh, target, mask)
 }
 
-func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
+func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkToken) error {
 	return s.sys.Unlink(ctx, txh, targets)
 }
 
-func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.OID) error {
-	return s.sys.VisitLinks(ctx, txh, targets)
+func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, ltoks []blobcache.LinkToken) error {
+	return s.sys.VisitLinks(ctx, txh, ltoks)
 }
 
 func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
