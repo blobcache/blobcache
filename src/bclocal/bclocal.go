@@ -31,7 +31,8 @@ const (
 )
 
 type (
-	Policy = bcsys.Policy
+	Policy      = bcsys.Policy
+	PeerLocator = bcsys.PeerLocator
 )
 
 var _ blobcache.Service = &Service{}
@@ -48,7 +49,8 @@ type Env struct {
 	// Root is the spec to use for the root volume.
 	Root blobcache.VolumeSpec
 	// Policy control network access to the service.
-	Policy Policy
+	Policy      Policy
+	PeerLocator PeerLocator
 }
 
 // Config contains configuration for the service.
@@ -138,12 +140,13 @@ func New(env Env, cfg Config) (*Service, error) {
 	}
 
 	s.sys = bcsys.New(bcsys.Env[localvol.ID, *localvol.Volume]{
-		Background: env.Background,
-		PrivateKey: env.PrivateKey,
-		Root:       rootVol,
-		MDS:        &mdStore{db: db},
-		Policy:     env.Policy,
-		MkSchema:   env.MkSchema,
+		Background:  env.Background,
+		PrivateKey:  env.PrivateKey,
+		Root:        rootVol,
+		MDS:         &mdStore{db: db},
+		Policy:      env.Policy,
+		PeerLocator: env.PeerLocator,
+		MkSchema:    env.MkSchema,
 
 		Local:      &s.lvs,
 		GenerateLK: s.lvs.GenerateLocalID,

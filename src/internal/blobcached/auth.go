@@ -3,6 +3,7 @@ package blobcached
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -14,9 +15,9 @@ import (
 
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/groupfile"
 	"go.brendoncarroll.net/exp/slices2"
 	"go.inet256.org/inet256/src/inet256"
-	"golang.org/x/exp/constraints"
 )
 
 const (
@@ -39,15 +40,15 @@ func ParseIdentity(x []byte) (Identity, error) {
 }
 
 // ParseIdentitiesFiles parses a Group file into a list of identity group memberships.
-func ParseIdentitiesFile(r io.Reader) (ret []Membership[Identity], _ error) {
-	return ParseGroupsFile(r, ParseIdentity)
+func ParseIdentitiesFile(data []byte) (ret []groupfile.Entry[GroupName, Identity], _ error) {
+	return groupfile.Parse(data, ParseGroupName, ParseIdentity)
 }
 
 // WriteIdentitiesFile writes the memberships to the writer, such that they can be parsed by ParseIdentitiesFile.
 // It inserts an extra newline every time the group changes from the previous membership.
-func WriteIdentitiesFile(w io.Writer, membership []Membership[Identity]) error {
+func WriteIdentitiesFile(w io.Writer, ents []groupfile.Entry[GroupName, Identity]) error {
 	fmtIden := func(i Identity) string { return i.String() }
-	return WriteGroupsFile(w, membership, fmtIden)
+	return groupfile.Write(w, ents, fmtIden)
 }
 
 func DefaultIdentitiesFile() (ret string) {
@@ -174,12 +175,12 @@ func DefaultActionsFile() (ret string) {
 	return ret
 }
 
-func ParseActionsFile(r io.Reader) (ret []Membership[Action], _ error) {
-	return ParseGroupsFile(r, ParseAction)
+func ParseActionsFile(data []byte) (ret []groupfile.Entry[GroupName, Action], _ error) {
+	return groupfile.Parse(data, ParseGroupName, ParseAction)
 }
 
-func WriteActionsFile(w io.Writer, actions []Membership[Action]) error {
-	return WriteGroupsFile(w, actions, func(a Action) string { return string(a) })
+func WriteActionsFile(w io.Writer, actions []groupfile.Entry[GroupName, Action]) error {
+	return groupfile.Write(w, actions, func(a Action) string { return string(a) })
 }
 
 // ObjectSet is something that Actions are performed on.
@@ -222,12 +223,12 @@ func ParseObject(x []byte) (ObjectSet, error) {
 	return ObjectSet{}, fmt.Errorf("could not parse object set: %s", x)
 }
 
-func ParseObjectsFile(r io.Reader) (ret []Membership[ObjectSet], _ error) {
-	return ParseGroupsFile(r, ParseObject)
+func ParseObjectsFile(data []byte) (ret []groupfile.Entry[GroupName, ObjectSet], _ error) {
+	return groupfile.Parse(data, ParseGroupName, ParseObject)
 }
 
-func WriteObjectsFile(w io.Writer, objects []Membership[ObjectSet]) error {
-	return WriteGroupsFile(w, objects, func(o ObjectSet) string { return o.String() })
+func WriteObjectsFile(w io.Writer, ents []groupfile.Entry[GroupName, ObjectSet]) error {
+	return groupfile.Write(w, ents, func(o ObjectSet) string { return o.String() })
 }
 
 func DefaultObjectsFile() (ret string) {
@@ -236,9 +237,9 @@ func DefaultObjectsFile() (ret string) {
 }
 
 type Grant struct {
-	Subject Member[Identity]
-	Action  Member[Action]
-	Object  Member[ObjectSet]
+	Subject groupfile.Member[GroupName, Identity]
+	Action  groupfile.Member[GroupName, Action]
+	Object  groupfile.Member[GroupName, ObjectSet]
 }
 
 func (g *Grant) Equals(other Grant) bool {
@@ -403,7 +404,7 @@ func (p *Policy) CanCreate(peer blobcache.PeerID) bool {
 }
 
 // findCommon finds the common elements of two sorted slices.
-func findCommon[T constraints.Ordered](a, b []T) iter.Seq[T] {
+func findCommon[T cmp.Ordered](a, b []T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for ai, bi := 0, 0; ai < len(a) && bi < len(b); {
 			switch {
@@ -673,44 +674,41 @@ func (p *Policy) IdentityMembersOf(group string) iter.Seq[Identity] {
 
 // LoadIdentitiesFile loads the identities file from the filesystem.
 // p should be the path to the identities file.
-func LoadIdentitiesFile(p string) ([]Membership[Identity], error) {
-	f, err := os.Open(p)
+func LoadIdentitiesFile(p string) ([]Entry[Identity], error) {
+	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	defer f.Close()
-	return ParseIdentitiesFile(f)
+	return ParseIdentitiesFile(data)
 }
 
 // LoadActionsFile loads the actions file from the filesystem.
 // p should be the path to the actions file.
-func LoadActionsFile(p string) ([]Membership[Action], error) {
-	f, err := os.Open(p)
+func LoadActionsFile(p string) ([]Entry[Action], error) {
+	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	defer f.Close()
-	return ParseActionsFile(f)
+	return ParseActionsFile(data)
 }
 
 // LoadObjectsFile loads the objects file from the filesystem.
 // p should be the path to the objects file.
-func LoadObjectsFile(p string) ([]Membership[ObjectSet], error) {
-	f, err := os.Open(p)
+func LoadObjectsFile(p string) ([]Entry[ObjectSet], error) {
+	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	defer f.Close()
-	return ParseObjectsFile(f)
+	return ParseObjectsFile(data)
 }
 
 // LoadGrantsFile loads the grants file from the filesystem.
@@ -750,9 +748,18 @@ func LoadPolicy(stateDir string) (*Policy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading GRANTS file: %w", err)
 	}
-	return NewPolicy(idens, acts, objs, grants)
+	return NewPolicy(mFromE(idens), mFromE(acts), mFromE(objs), grants)
 }
 
 func ptr[T any](x T) *T {
 	return &x
+}
+
+func mFromE[T any](ents []Entry[T]) (ret []Membership[T]) {
+	for _, ent := range ents {
+		for _, m := range ent.Memberships() {
+			ret = append(ret, m)
+		}
+	}
+	return ret
 }

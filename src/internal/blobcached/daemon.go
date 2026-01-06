@@ -51,13 +51,18 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 		}
 		privateKey = privKey.(ed25519.PrivateKey)
 	}
+	loc, err := d.EnsureLocator()
+	if err != nil {
+		return err
+	}
 	svc, err := bclocal.New(bclocal.Env{
-		Background: ctx,
-		StateDir:   d.StateDir,
-		PrivateKey: privateKey,
-		Policy:     pol,
-		MkSchema:   schemareg.Factory,
-		Root:       schemareg.DefaultRoot(),
+		Background:  ctx,
+		StateDir:    d.StateDir,
+		PrivateKey:  privateKey,
+		Policy:      pol,
+		MkSchema:    schemareg.Factory,
+		Root:        schemareg.DefaultRoot(),
+		PeerLocator: loc,
 	}, bclocal.Config{})
 	if err != nil {
 		return err
@@ -139,7 +144,7 @@ func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
 	p := filepath.Join(d.StateDir, "private_key.inet256")
 	privKey, err := LoadPrivateKey(p)
 	if !os.IsNotExist(err) {
-		return privKey, nil
+		return privKey, err
 	}
 	_, privKey, err = pki.GenerateKey()
 	if err != nil {
@@ -161,6 +166,22 @@ func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {
 		return blobcache.PeerID{}, err
 	}
 	return inet256.NewID(privKey.Public().(ed25519.PublicKey)), nil
+}
+
+func (d *Daemon) EnsureLocator() (*Locator, error) {
+	p := filepath.Join(d.StateDir, peerLocPath)
+	loc, err := LoadLocator(p)
+	if !os.IsNotExist(err) {
+		return loc, err
+	}
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+	return LoadLocator(p)
 }
 
 func LoadPrivateKey(p string) (inet256.PrivateKey, error) {
