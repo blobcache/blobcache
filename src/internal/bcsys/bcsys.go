@@ -2,6 +2,7 @@ package bcsys
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net"
@@ -74,11 +75,16 @@ type Config struct {
 }
 
 func New[LK any, LV LocalVolume[LK]](env Env[LK, LV], cfg Config) *Service[LK, LV] {
+	var tmpSecret [32]byte
+	if _, err := rand.Read(tmpSecret[:]); err != nil {
+		panic(err)
+	}
 	s := &Service[LK, LV]{
 		env: env,
 		cfg: cfg,
 
-		node: atomic.Pointer[bcnet.Node]{},
+		node:      atomic.Pointer[bcnet.Node]{},
+		tmpSecret: &tmpSecret,
 	}
 	s.volSys.local = env.Local
 	s.volSys.remote = remotevol.New(&s.node)
@@ -106,7 +112,8 @@ type Service[LK any, LV LocalVolume[LK]] struct {
 		remote remotevol.System
 		global consensusvol.System
 	}
-	hub pubsub.Hub
+	hub       pubsub.Hub
+	tmpSecret *[32]byte
 
 	handles handleSystem
 	// mu guards the volumes and txns.
@@ -128,7 +135,8 @@ func (s *Service[LK, LV]) Serve(ctx context.Context, pc net.PacketConn) error {
 	err := node.Serve(ctx, bcnet.Server{
 		Access: func(peer blobcache.PeerID) blobcache.Service {
 			if s.env.Policy.CanConnect(peer) {
-				return &peerView[LK, LV]{Service: s, Caller: peer}
+				peerSecret := derivePeerSecret(s.tmpSecret, peer)
+				return &peerView[LK, LV]{svc: s, peer: peer, secret: &peerSecret}
 			} else {
 				return nil
 			}
