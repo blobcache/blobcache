@@ -25,7 +25,6 @@ require (
 	go.inet256.org/inet256 v0.0.8
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.46.1-0.20251210140736-7dacc380ba00
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/sync v0.19.0
 	lukechampine.com/blake3 v1.2.1
 	modernc.org/sqlite v1.38.0
@@ -77,6 +76,7 @@ require (
 	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
+	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
