@@ -7,6 +7,7 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bccrypto"
+	"go.brendoncarroll.net/exp/slices2"
 )
 
 type peerView[LK any, LV LocalVolume[LK]] struct {
@@ -25,11 +26,7 @@ func (pv *peerView[LK, LV]) Drop(ctx context.Context, h blobcache.Handle) error 
 }
 
 func (pv *peerView[LK, LV]) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
-	dec := make([]blobcache.Handle, len(hs))
-	for i := range hs {
-		dec[i] = pv.incoming(hs[i])
-	}
-	return pv.svc.KeepAlive(ctx, dec)
+	return pv.svc.KeepAlive(ctx, slices2.Map(hs, pv.incoming))
 }
 
 func (pv *peerView[LK, LV]) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
@@ -52,6 +49,11 @@ func (pv *peerView[LK, LV]) CreateVolume(ctx context.Context, host *blobcache.En
 	}
 	if host != nil {
 		return nil, fmt.Errorf("peers cannot ask us to create volumes on remote nodes")
+	}
+	switch {
+	case vspec.Local != nil:
+	default:
+		return nil, fmt.Errorf("volume %v cannot be created remotely", vspec)
 	}
 	h, err := pv.svc.CreateVolume(ctx, nil, vspec)
 	if err != nil {
@@ -148,10 +150,7 @@ func (pv *peerView[LK, LV]) Delete(ctx context.Context, tx blobcache.Handle, cid
 }
 
 func (pv *peerView[LK, LV]) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success []bool) error {
-	decSrc := make([]blobcache.Handle, len(srcTxns))
-	for i := range srcTxns {
-		decSrc[i] = pv.incoming(srcTxns[i])
-	}
+	decSrc := slices2.Map(srcTxns, pv.incoming)
 	return pv.svc.Copy(ctx, pv.incoming(tx), decSrc, cids, success)
 }
 
@@ -216,17 +215,6 @@ func (pv *peerView[LK, LV]) incoming(x blobcache.Handle) blobcache.Handle {
 		panic(err)
 	}
 	ciph.Decrypt(x.Secret[:], x.Secret[:])
-	return x
-}
-
-// outgoingForPeer encrypts a handle for a specific peer (used for Share).
-func (pv *peerView[LK, LV]) outgoingForPeer(peer blobcache.PeerID, x blobcache.Handle) blobcache.Handle {
-	peerSecret := derivePeerSecret(pv.svc.tmpSecret, peer)
-	ciph, err := aes.NewCipher(peerSecret[:])
-	if err != nil {
-		panic(err)
-	}
-	ciph.Encrypt(x.Secret[:], x.Secret[:])
 	return x
 }
 
