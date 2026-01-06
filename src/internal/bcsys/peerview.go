@@ -11,10 +11,9 @@ import (
 )
 
 type peerView[LK any, LV LocalVolume[LK]] struct {
-	svc  *Service[LK, LV]
-	peer blobcache.PeerID
-	// secret is a memory-only secret, derived for this peer.
-	secret *[32]byte
+	svc       *Service[LK, LV]
+	peer      blobcache.PeerID
+	tmpSecret *[32]byte
 }
 
 func (pv *peerView[LK, LV]) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
@@ -200,7 +199,8 @@ func (pv *peerView[LK, LV]) SubToVolume(ctx context.Context, q blobcache.Handle,
 
 // outgoing should be called on all outgoing handles intended for pv.peer.
 func (pv *peerView[LK, LV]) outgoing(x blobcache.Handle) blobcache.Handle {
-	ciph, err := aes.NewCipher(pv.secret[:])
+	key := derivePeerSecret(pv.tmpSecret, pv.peer)
+	ciph, err := aes.NewCipher(key[:])
 	if err != nil {
 		panic(err)
 	}
@@ -210,7 +210,8 @@ func (pv *peerView[LK, LV]) outgoing(x blobcache.Handle) blobcache.Handle {
 
 // incoming should be called on all incoming handles received from pv.peer.
 func (pv *peerView[LK, LV]) incoming(x blobcache.Handle) blobcache.Handle {
-	ciph, err := aes.NewCipher(pv.secret[:])
+	key := derivePeerSecret(pv.tmpSecret, pv.peer)
+	ciph, err := aes.NewCipher(key[:])
 	if err != nil {
 		panic(err)
 	}
@@ -219,5 +220,9 @@ func (pv *peerView[LK, LV]) incoming(x blobcache.Handle) blobcache.Handle {
 }
 
 func derivePeerSecret(secret *[32]byte, peer blobcache.PeerID) [32]byte {
-	return bccrypto.DeriveKey(blobcache.HashAlgo_CSHAKE256.HashFunc(), secret, peer[:])
+	return deriveKey(secret, peer[:])
+}
+
+func deriveKey(entropy *[32]byte, additional []byte) [32]byte {
+	return bccrypto.DeriveKey(blobcache.HashAlgo_CSHAKE256.HashFunc(), entropy, additional)
 }

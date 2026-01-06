@@ -135,8 +135,11 @@ func (s *Service[LK, LV]) Serve(ctx context.Context, pc net.PacketConn) error {
 	err := node.Serve(ctx, bcnet.Server{
 		Access: func(peer blobcache.PeerID) blobcache.Service {
 			if s.env.Policy.CanConnect(peer) {
-				peerSecret := derivePeerSecret(s.tmpSecret, peer)
-				return &peerView[LK, LV]{svc: s, peer: peer, secret: &peerSecret}
+				return &peerView[LK, LV]{
+					svc:       s,
+					peer:      peer,
+					tmpSecret: s.tmpSecret,
+				}
 			} else {
 				return nil
 			}
