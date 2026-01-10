@@ -126,7 +126,7 @@ var txCommitCmd = star.Command{
 
 var txLoadCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "loads the transaction",
+		Short: "loads data from the Volume cell",
 	},
 	Pos: []star.Positional{txHParam},
 	F: func(c star.Context) error {
@@ -145,7 +145,7 @@ var txLoadCmd = star.Command{
 
 var txSaveCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "saves the transaction",
+		Short: "saves data to the Volume cell",
 	},
 	Pos: []star.Positional{txHParam},
 	F: func(c star.Context) error {
@@ -167,7 +167,7 @@ var txSaveCmd = star.Command{
 
 var txPostCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "posts data to the transaction",
+		Short: "posts a blob to the Volume's store",
 	},
 	Pos: []star.Positional{txHParam},
 	F: func(c star.Context) error {
@@ -191,7 +191,7 @@ var txPostCmd = star.Command{
 
 var txGetCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "gets data from the transaction",
+		Short: "gets data from the Volume store",
 	},
 	Pos: []star.Positional{txHParam, cidParam},
 	F: func(c star.Context) error {
@@ -215,7 +215,7 @@ var txGetCmd = star.Command{
 
 var txExistsCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "checks if data exists in the transaction",
+		Short: "checks if a blob exists in the Volume's store",
 	},
 	Pos: []star.Positional{txHParam, cidsParam},
 	F: func(c star.Context) error {
@@ -242,7 +242,7 @@ var txExistsCmd = star.Command{
 
 var txDeleteCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "deletes data from the transaction",
+		Short: "deletes a blob from the Volume",
 	},
 	Pos: []star.Positional{txHParam, cidsParam},
 	F: func(c star.Context) error {
@@ -260,7 +260,7 @@ var txDeleteCmd = star.Command{
 
 var txVisitCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "visits data in the transaction",
+		Short: "mark a blob as visited in a GC transaction",
 	},
 	Pos: []star.Positional{txHParam, cidsParam},
 	F: func(c star.Context) error {
@@ -278,7 +278,7 @@ var txVisitCmd = star.Command{
 
 var txIsVisitedCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "checks if data is visited in the transaction",
+		Short: "checks if a blob has been visited in the transaction",
 	},
 	Pos: []star.Positional{txHParam, cidsParam},
 	F: func(c star.Context) error {
@@ -305,7 +305,7 @@ var txIsVisitedCmd = star.Command{
 
 var txLinkCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "allows the transaction to link to another transaction",
+		Short: "create a link to another Volume",
 	},
 	Pos: []star.Positional{txHParam, subvolHParam},
 	Flags: map[string]star.Flag{
@@ -334,7 +334,7 @@ var txLinkCmd = star.Command{
 
 var txUnlinkCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "removes a link from the transaction",
+		Short: "removes a link from the Volume",
 	},
 	Pos: []star.Positional{txHParam, linkTokenParam},
 	F: func(c star.Context) error {
@@ -353,7 +353,7 @@ var txUnlinkCmd = star.Command{
 
 var txVisitLinksCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "visits links in the transaction",
+		Short: "mark a link as visited in a GC transaction",
 	},
 	Pos: []star.Positional{txHParam, linkTokenParam},
 	F: func(c star.Context) error {

@@ -39,7 +39,7 @@ var nsInitCmd = star.Command{
 
 var nsListCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "List blobs in the namespace",
+		Short: "List entries in the namespace",
 	},
 	Flags: map[string]star.Flag{
 		"nsr": nsRoot,
@@ -63,7 +63,7 @@ var nsListCmd = star.Command{
 
 var nsGetCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "Get a blob from the namespace",
+		Short: "Get an entry from the namespace",
 	},
 	Pos: []star.Positional{volNameParam},
 	Flags: map[string]star.Flag{
@@ -90,7 +90,7 @@ var nsGetCmd = star.Command{
 
 var nsDeleteCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "Delete a blob from the namespace",
+		Short: "Delete an entry from the namespace",
 	},
 	Pos: []star.Positional{volNameParam},
 	Flags: map[string]star.Flag{
@@ -108,7 +108,7 @@ var nsDeleteCmd = star.Command{
 
 var nsPutCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "Put a blob into the namespace",
+		Short: "Put an entry into the namespace",
 	},
 	Pos: []star.Positional{volNameParam, volHParam},
 	Flags: map[string]star.Flag{
@@ -132,7 +132,7 @@ var nsPutCmd = star.Command{
 
 var nsCreateCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "Create a blob at a specific location in the namespace",
+		Short: "Create a volume and insert it at a specific name in the namespace",
 	},
 	Pos: []star.Positional{volNameParam},
 	Flags: map[string]star.Flag{
@@ -151,7 +151,7 @@ var nsCreateCmd = star.Command{
 
 var nsOpenCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "Open a blob at a specific location in the namespace",
+		Short: "Open a Volume at a specific location in the namespace",
 	},
 	Flags: map[string]star.Flag{
 		"nsr": nsRoot,
