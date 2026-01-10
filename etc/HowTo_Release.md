@@ -14,8 +14,9 @@ If there isn't one, do that first, then come back here.
 # 3. Publish Artifacts
 
 1. Make sure you are logged in to the container registry
-`podman login`
-- User is your GitHub user name
-- Password is your GitHub personal access token.
+
+```shell
+$ echo $GITHUB_TOKEN  | podman login ghrc.io -u $GITHUB_USER --password-stdin
+```
 
 2. `just release-publish`
