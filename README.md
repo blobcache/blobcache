@@ -54,10 +54,10 @@ Right now it only builds for `linux-amd64`.
 
 After that you can test run with
 ```shell
-docker run -it --rm ghcr.io/blobcache/blobcache:v0.0.1
+docker run -it --rm ghcr.io/blobcache/blobcache:latest
 ```
 
-Images are tagged with the git hash e.g. `git-a0b1c3d` and the version e.g. `v0.0.1`
+Images are tagged with the git hash e.g. `git-a0b1c3d` and the version e.g. `v1.2.3`
 
 The `/state` directory is where blobcache stores all of its state.
 This is where you should mount a volume to persist data on the host.
@@ -67,7 +67,7 @@ You should also expose the peer port, so other instances can connect.
 docker run \
     -v /host/path/to/state:/state \
     -p 6025:6025/udp \
-    ghcr.io/blobcache/blobcache:v0.0.1
+    ghcr.io/blobcache/blobcache:latest
 ```
 
 ### Running a Node in Memory

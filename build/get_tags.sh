@@ -18,3 +18,5 @@ git_tag_at_head=$(git tag --points-at HEAD)
 if [ -n "$git_tag_at_head" ]; then
   echo "$git_tag_at_head"
 fi
+
+echo "latest"

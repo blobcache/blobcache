@@ -3,7 +3,7 @@
 This assumes there is already a tagged commit for the release.
 If there isn't one, do that first, then come back here.
 
-# 1. Create the Release on Git_Hub
+# 1. Create the Release on GitHub
 
 # 2. Build Artifacts
 
