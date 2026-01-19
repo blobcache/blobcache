@@ -112,7 +112,7 @@ func (tx *Tx) Get(ctx context.Context, cid CID, buf []byte) (int, error) {
 }
 
 func (tx *Tx) GetBytes(ctx context.Context, cid CID, hardMax int) ([]byte, error) {
-	return GetBytes(ctx, tx.s, tx.h, cid, hardMax)
+	return GetBytes(ctx, tx, cid, hardMax)
 }
 
 func (tx *Tx) Hash(data []byte) CID {

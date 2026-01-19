@@ -5,20 +5,20 @@ import (
 	"encoding/binary"
 
 	"github.com/pkg/errors"
-	"go.brendoncarroll.net/state/cadata"
 	"lukechampine.com/blake3"
 
+	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bccrypto"
 	"blobcache.io/blobcache/src/schema"
 )
 
 type Ref struct {
-	CID    cadata.ID    `json:"cid"`
-	DEK    bccrypto.DEK `json:"dek"`
-	Length uint32       `json:"len"`
+	CID    blobcache.CID `json:"cid"`
+	DEK    bccrypto.DEK  `json:"dek"`
+	Length uint32        `json:"len"`
 }
 
-const refSize = cadata.IDSize + bccrypto.DEKSize + 4
+const refSize = blobcache.CIDSize + bccrypto.DEKSize + 4
 
 func marshalRef(x Ref) []byte {
 	buf := [refSize]byte{}

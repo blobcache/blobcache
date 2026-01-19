@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"blobcache.io/blobcache/src/blobcache"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -38,7 +39,7 @@ type Volume struct {
 	// The existence of an entry in the map indicates that the blob state in the remote may be stale.
 	// If the hash is plumbing.ZeroHash, then the blob is queued for deletion.
 	// If it is non-zero, then the blob is queued for addition.
-	blobOps map[cadata.ID]plumbing.Hash
+	blobOps map[blobcache.CID]plumbing.Hash
 
 	cells.BytesCellBase
 }
@@ -53,7 +54,7 @@ func New(storer storage.Storer, remoteURL string, branch string) *Volume {
 		remote: remote,
 		branch: branch,
 
-		blobOps: make(map[cadata.ID]plumbing.Hash),
+		blobOps: make(map[blobcache.CID]plumbing.Hash),
 	}
 }
 
@@ -207,9 +208,9 @@ func (v *Volume) load(ctx context.Context, dst *[]byte) error {
 	return loadRoot(tree, dst)
 }
 
-func (v *Volume) Post(ctx context.Context, data []byte) (cadata.ID, error) {
+func (v *Volume) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
 	if len(data) > v.MaxSize() {
-		return cadata.ID{}, cadata.ErrTooLarge
+		return blobcache.CID{}, blobcache.ErrTooLarge{BlobSize: len(data), MaxSize: v.MaxSize()}
 	}
 	id := v.Hash(data)
 	if exists, err := v.Exists(ctx, id); err != nil {
@@ -219,7 +220,7 @@ func (v *Volume) Post(ctx context.Context, data []byte) (cadata.ID, error) {
 	}
 	h, err := createGitBlob(v.storer, data)
 	if err != nil {
-		return cadata.ID{}, err
+		return blobcache.CID{}, err
 	}
 	v.blobOps[id] = h
 	return id, nil
@@ -242,12 +243,12 @@ func (v *Volume) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error)
 			return 0, err
 		}
 		if tree == nil {
-			return 0, cadata.ErrNotFound{Key: id}
+			return 0, blobcache.ErrNotFound{Key: id}
 		}
 		f, err := tree.File(blobPath(id))
 		if err != nil {
 			if errors.Is(err, object.ErrFileNotFound) {
-				return 0, cadata.ErrNotFound{Key: id}
+				return 0, blobcache.ErrNotFound{Key: id}
 			}
 			return 0, err
 		}
@@ -261,7 +262,7 @@ func (v *Volume) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error)
 	return readInto(rc, buf)
 }
 
-func (v *Volume) Exists(ctx context.Context, id cadata.ID) (bool, error) {
+func (v *Volume) Exists(ctx context.Context, id blobcache.CID) (bool, error) {
 	if h, ok := v.blobOps[id]; ok {
 		return h != plumbing.ZeroHash, nil
 	}
@@ -283,7 +284,7 @@ func (v *Volume) Exists(ctx context.Context, id cadata.ID) (bool, error) {
 	return true, nil
 }
 
-func (v *Volume) List(ctx context.Context, span cadata.Span, buf []cadata.ID) (int, error) {
+func (v *Volume) List(ctx context.Context, span cadata.Span, buf []blobcache.CID) (int, error) {
 	tree, err := v.loadTree(ctx)
 	if err != nil {
 		return 0, err
@@ -308,7 +309,7 @@ func (v *Volume) List(ctx context.Context, span cadata.Span, buf []cadata.ID) (i
 		if n >= len(buf) {
 			break
 		}
-		var id cadata.ID
+		var id blobcache.CID
 		if err := id.UnmarshalBase64([]byte(ent.Name)); err != nil {
 			return 0, err
 		}
@@ -320,12 +321,12 @@ func (v *Volume) List(ctx context.Context, span cadata.Span, buf []cadata.ID) (i
 	return n, nil
 }
 
-func (v *Volume) Delete(ctx context.Context, id cadata.ID) error {
-	v.blobOps[id] = plumbing.ZeroHash
+func (v *Volume) Delete(ctx context.Context, cid blobcache.CID) error {
+	v.blobOps[cid] = plumbing.ZeroHash
 	return nil
 }
 
-func (v *Volume) Hash(data []byte) cadata.ID {
+func (v *Volume) Hash(data []byte) blobcache.CID {
 	return blake3.Sum256(data)
 }
 
@@ -412,7 +413,7 @@ func loadRoot(tree *object.Tree, dst *[]byte) error {
 	return nil
 }
 
-func blobPath(id cadata.ID) string {
+func blobPath(id blobcache.CID) string {
 	return path.Join(BlobPrefix, id.String())
 }
 

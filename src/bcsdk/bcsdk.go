@@ -109,9 +109,9 @@ func URLFor(ctx context.Context, bc blobcache.Service, volh blobcache.Handle) (*
 }
 
 // GetBytes gets a blob, but gracefully handles ErrTooSmall by resizing the buffer and retrying.
-func GetBytes(ctx context.Context, bc blobcache.Service, txh blobcache.Handle, cid blobcache.CID, hardMax int) ([]byte, error) {
+func GetBytes(ctx context.Context, src RO, cid blobcache.CID, hardMax int) ([]byte, error) {
 	buf := make([]byte, hardMax/2)
-	n, err := bc.Get(ctx, txh, cid, buf, blobcache.GetOpts{})
+	n, err := src.Get(ctx, cid, buf)
 	if err != nil {
 		var tse blobcache.ErrTooSmall
 		if errors.As(err, &tse) {
@@ -119,7 +119,7 @@ func GetBytes(ctx context.Context, bc blobcache.Service, txh blobcache.Handle, c
 				return nil, fmt.Errorf("blob size %d exceeds hard max %d", tse.BlobSize, hardMax)
 			}
 			buf = append(buf, make([]byte, 100)...)
-			if n, err = bc.Get(ctx, txh, cid, buf, blobcache.GetOpts{}); err != nil {
+			if n, err = src.Get(ctx, cid, buf); err != nil {
 				return nil, err
 			}
 		} else {
@@ -127,4 +127,9 @@ func GetBytes(ctx context.Context, bc blobcache.Service, txh blobcache.Handle, c
 		}
 	}
 	return buf[:n], nil
+}
+
+func CIDFromBytes(data []byte) (ret blobcache.CID) {
+	copy(ret[:], data)
+	return ret
 }

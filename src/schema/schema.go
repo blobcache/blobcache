@@ -58,6 +58,20 @@ func ExistsUnit(ctx context.Context, s Exists, cid blobcache.CID) (bool, error) 
 	return dst[0], nil
 }
 
+// CopyBlob copies a blob from src to dst.
+// TODO: check if src and dst are bcsdk.Tx and do an optimized copy.
+func CopyBlob(ctx context.Context, src RO, dst WO, cid bcsdk.CID) error {
+	data, err := bcsdk.GetBytes(ctx, src, cid, dst.MaxSize())
+	if err != nil {
+		return err
+	}
+	_, err = dst.Post(ctx, data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 type (
 	RO = bcsdk.RO
 	RW = bcsdk.RW

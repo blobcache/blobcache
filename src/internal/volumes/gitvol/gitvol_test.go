@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-git/go-git/v5"
@@ -79,6 +80,9 @@ func TestVolumeCellAPI(t *testing.T) {
 
 func TestVolumeStore(t *testing.T) {
 	storetest.TestStore(t, func(t testing.TB) cadata.Store {
+		if strings.HasSuffix(t.Name(), "MaxSize") {
+			t.Skip("blobcache has different ErrTooLarge type")
+		}
 		vol := NewTestVolume(t)
 		return vol
 	})

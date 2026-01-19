@@ -9,7 +9,6 @@ import (
 	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/glfs"
-	"go.brendoncarroll.net/state/cadata"
 )
 
 const SchemaName blobcache.SchemaName = "glfs"
@@ -81,7 +80,7 @@ func jsonMarshal(x any) []byte {
 
 // DiffRefs calls fn for ecah ref that is only in the left filsystem or only in the right filesystem.
 // Each call to fn, will only set one of left or right to non-nil.
-func DiffRefs(ctx context.Context, src cadata.Getter, left, right glfs.Ref, fn func(left, right *glfs.Ref) error) error {
+func DiffRefs(ctx context.Context, src schema.RO, left, right glfs.Ref, fn func(left, right *glfs.Ref) error) error {
 	// TODO: implement this.
 	return nil
 }

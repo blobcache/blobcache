@@ -78,7 +78,7 @@ func (o *Machine) Sync(ctx context.Context, dst schema.WO, src schema.RO, root R
 		},
 		EntryFn: fn,
 		NodeFn: func(root Root) error {
-			return cadata.Copy(ctx, dst, src, root.Ref.CID)
+			return schema.CopyBlob(ctx, src, dst, root.Ref.CID)
 		},
 	})
 }

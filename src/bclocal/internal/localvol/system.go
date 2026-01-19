@@ -17,7 +17,6 @@ import (
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cockroachdb/pebble"
-	"go.brendoncarroll.net/state/cadata"
 )
 
 type Config struct {
@@ -404,7 +403,7 @@ func (s *System) getBlob(volID ID, mvid pdb.MVTag, cid blobcache.CID, buf []byte
 		defer closer.Close()
 		if mvr == nil {
 			// blob is not in the volume, return not found
-			return cadata.ErrNotFound{Key: cid}
+			return blobcache.ErrNotFound{Key: cid}
 		}
 		// read into buffer
 		n, err = s.readBlobData(cid, buf)

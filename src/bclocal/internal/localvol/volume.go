@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble"
-	"go.brendoncarroll.net/state/cadata"
 
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
@@ -213,7 +212,7 @@ func (v *localTxnMut) Post(ctx context.Context, data []byte, opts blobcache.Post
 	}
 	defer unlock()
 	if len(data) > int(v.vol.params.MaxSize) {
-		return blobcache.CID{}, cadata.ErrTooLarge
+		return blobcache.CID{}, blobcache.ErrTooLarge{BlobSize: len(data), MaxSize: int(v.vol.params.MaxSize)}
 	}
 	salt := opts.Salt
 	if salt != nil && !v.vol.params.Salted {
@@ -409,7 +408,7 @@ func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, buf []byte, opt
 	if err := v.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
 		return 0, err
 	} else if !exists[0] {
-		return 0, cadata.ErrNotFound{Key: cid}
+		return 0, blobcache.ErrNotFound{Key: cid}
 	}
 	unlock, err := v.checkClosed()
 	if err != nil {

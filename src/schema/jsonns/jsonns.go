@@ -17,7 +17,6 @@ import (
 	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/bcns"
 	"go.brendoncarroll.net/exp/slices2"
-	"go.brendoncarroll.net/state/cadata"
 )
 
 const SchemaName blobcache.SchemaName = "blobcache/jsonns"
@@ -54,7 +53,7 @@ func (sch Schema) NSList(ctx context.Context, s schema.RO, root []byte) ([]Entry
 	if len(root) != blobcache.CIDSize {
 		return nil, fmt.Errorf("root must be %d bytes. HAVE: %d", blobcache.CIDSize, len(root))
 	}
-	cid := cadata.IDFromBytes(root)
+	cid := bcsdk.CIDFromBytes(root)
 	buf := make([]byte, s.MaxSize())
 	n, err := s.Get(ctx, cid, buf)
 	if err != nil {
@@ -219,7 +218,7 @@ func (ns *Tx) VisitAll(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	cid := cadata.IDFromBytes(ns.Root)
+	cid := bcsdk.CIDFromBytes(ns.Root)
 	if err := ns.Tx.Visit(ctx, []blobcache.CID{cid}); err != nil {
 		return err
 	}
