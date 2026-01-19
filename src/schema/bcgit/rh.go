@@ -40,7 +40,7 @@ func NewRemoteHelper(rem *Remote) gitrh.Server {
 				defer it.Close()
 				var gr GitRef
 				for {
-					if err := it.Next(ctx, &gr); err != nil {
+					if err := streams.NextUnit(ctx, it, &gr); err != nil {
 						if !streams.IsEOS(err) {
 							yield(GitRef{}, err)
 						}

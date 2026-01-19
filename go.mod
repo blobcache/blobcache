@@ -3,7 +3,7 @@ module blobcache.io/blobcache
 go 1.24.0
 
 require (
-	blobcache.io/glfs v0.0.0-20251015013643-959eae5a0508
+	blobcache.io/glfs v0.0.0-20260119180351-4a7f3a2103a2
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.2
 	github.com/cloudflare/circl v1.6.1
 	github.com/cockroachdb/pebble v1.1.5
@@ -16,7 +16,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.57.1
 	github.com/stretchr/testify v1.11.1
-	go.brendoncarroll.net/exp v0.0.0-20250112210235-9d4b62bdbd02
+	go.brendoncarroll.net/exp v0.0.0-20260104195250-3ba4c15c0c7a
 	go.brendoncarroll.net/p2p v0.0.0-20241118201502-2abd1a6f58e7
 	go.brendoncarroll.net/star v0.0.0-20251101181839-d7285e010b23
 	go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901

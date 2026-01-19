@@ -209,18 +209,18 @@ type RefIterator struct {
 	it *tries.Iterator
 }
 
-func (ri *RefIterator) Next(ctx context.Context, dst *GitRef) error {
+func (ri *RefIterator) Next(ctx context.Context, dst []GitRef) (int, error) {
 	if ri.it == nil {
-		return streams.EOS()
+		return 0, streams.EOS()
 	}
 	var ent tries.Entry
-	if err := ri.it.Next(ctx, &ent); err != nil {
-		return err
+	if err := streams.NextUnit(ctx, ri.it, &ent); err != nil {
+		return 0, err
 	}
-	dst.Name = string(ent.Key)
-	dst.Target = [32]byte{}
-	copy(dst.Target[:], ent.Value)
-	return nil
+	dst[0].Name = string(ent.Key)
+	dst[0].Target = [32]byte{}
+	copy(dst[0].Target[:], ent.Value)
+	return 1, nil
 }
 
 func (ri *RefIterator) Close() error {

@@ -159,7 +159,7 @@ func (m *Machine[State]) Validate(ctx context.Context, s schema.RO, prev, next R
 	it := m.NewIterator(s, prev, next)
 	for {
 		var root Root[State]
-		if err := it.Next(ctx, &root); err != nil {
+		if err := streams.NextUnit(ctx, it, &root); err != nil {
 			if streams.IsEOS(err) {
 				break
 			}
@@ -216,23 +216,23 @@ type Iterator[State Marshaler] struct {
 	buf []byte
 }
 
-func (it *Iterator[State]) Next(ctx context.Context, dst *Root[State]) error {
+func (it *Iterator[State]) Next(ctx context.Context, dst []Root[State]) (int, error) {
 	var cid merklelog.CID
-	if err := it.it.Next(ctx, &cid); err != nil {
-		return err
+	if err := streams.NextUnit(ctx, it.it, &cid); err != nil {
+		return 0, err
 	}
 	if it.buf == nil {
 		it.buf = make([]byte, it.s.MaxSize())
 	}
 	n, err := it.s.Get(ctx, cid, it.buf)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	data := it.buf[:n]
 	root, err := Parse(data, it.m.ParseState)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	*dst = root
-	return nil
+	dst[0] = root
+	return 1, nil
 }

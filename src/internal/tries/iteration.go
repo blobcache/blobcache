@@ -23,7 +23,7 @@ func (mach *Machine) NewIterator(s schema.RO, root Root, span Span) *Iterator {
 	return &Iterator{m: mach, s: s, root: root, span: span}
 }
 
-func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
+func (it *Iterator) Next(ctx context.Context, dst []Entry) (int, error) {
 	var gteq []byte
 	if it.lastKey != nil {
 		gteq = append(it.lastKey, 0x00)
@@ -32,15 +32,15 @@ func (it *Iterator) Next(ctx context.Context, dst *Entry) error {
 	}
 	ent, err := it.m.MinEntry(ctx, it.s, it.root, gteq)
 	if err != nil {
-		return err
+		return 0, err
 	} else if ent == nil {
-		return streams.EOS()
+		return 0, streams.EOS()
 	}
 
 	it.lastKey = append(it.lastKey[:0], ent.Key...)
-	dst.Key = append(dst.Key[:0], ent.Key...)
-	dst.Value = append(dst.Value[:0], ent.Value...)
-	return nil
+	dst[0].Key = append(dst[0].Key[:0], ent.Key...)
+	dst[0].Value = append(dst[0].Value[:0], ent.Value...)
+	return 1, nil
 }
 
 // MinEntry returns the first entry >= gteq
