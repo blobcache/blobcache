@@ -1,226 +1,265 @@
 :root {
-  color-scheme: dark;
-  --bg: #060a13;
-  --card: #0f1624;
-  --accent: #4169e1; /* royal blue */
-  --accent-strong: #223e5c; /* dark pastel blue */
-  --text: #f0f4ff;
-  --muted: #a7b4d6;
-  --border: #1c2537;
-  --shadow: 0 20px 45px rgba(4, 9, 20, 0.55);
+    color-scheme: dark;
+    --bg: #060a13;
+    --card: #0f1624;
+    --accent: #4169e1; /* royal blue */
+    --accent-strong: #223e5c; /* dark pastel blue */
+    --text: #f0f4ff;
+    --muted: #a7b4d6;
+    --border: #1c2537;
+    --shadow: 0 20px 45px rgba(4, 9, 20, 0.55);
 }
 
 * {
-  box-sizing: border-box;
+    box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  font-family: 'Fira Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: radial-gradient(circle at top, rgba(65, 105, 225, 0.18), rgba(0, 3, 8, 0)) no-repeat var(--bg);
-  color: var(--text);
-  line-height: 1.6;
+    margin: 0;
+    font-family:
+        "Fira Sans",
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    background: radial-gradient(
+            circle at top,
+            rgba(65, 105, 225, 0.18),
+            rgba(0, 3, 8, 0)
+        )
+        no-repeat var(--bg);
+    color: var(--text);
+    line-height: 1.6;
 }
 
 .corner-icons {
-  position: fixed;
-  top: 1.5rem;
-  right: 1.5rem;
-  display: flex;
-  gap: 0.75rem;
-  z-index: 1000;
+    position: fixed;
+    top: 1.5rem;
+    right: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    z-index: 1000;
 }
 
 .corner-icon {
-  width: 2.6rem;
-  height: 2.6rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(15, 22, 36, 0.75);
-  border: 1px solid rgba(65, 105, 225, 0.35);
-  color: var(--text);
-  text-decoration: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-  box-shadow: 0 10px 25px rgba(6, 10, 19, 0.4);
+    width: 2.6rem;
+    height: 2.6rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(15, 22, 36, 0.75);
+    border: 1px solid rgba(65, 105, 225, 0.35);
+    color: var(--text);
+    text-decoration: none;
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease,
+        border-color 0.2s ease;
+    box-shadow: 0 10px 25px rgba(6, 10, 19, 0.4);
 }
 
 .corner-icon svg {
-  width: 1.2rem;
-  height: 1.2rem;
+    width: 1.2rem;
+    height: 1.2rem;
 }
 
 .corner-icon:hover {
-  transform: translateY(-2px);
-  border-color: var(--accent);
-  box-shadow: 0 15px 30px rgba(6, 10, 19, 0.55);
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 15px 30px rgba(6, 10, 19, 0.55);
 }
 
 .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
 }
 
 .hero {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 7rem 2rem 4rem;
-  text-align: center;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 7rem 2rem 4rem;
+    text-align: center;
+}
+
+.hero-diagram {
+    margin: 2.5rem auto 2rem;
+    max-width: 900px;
+}
+
+.hero-diagram img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    background: rgba(15, 22, 36, 0.65);
+    padding: 1rem;
 }
 
 .eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 0.85rem;
-  color: var(--accent);
-  margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 0.85rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
 }
 
 .hero h1 {
-  font-size: clamp(2.4rem, 5vw, 3.8rem);
-  margin: 0 0 1rem;
+    font-size: clamp(2.4rem, 5vw, 3.8rem);
+    margin: 0 0 1rem;
 }
 
 .lead {
-  font-size: 1.1rem;
-  color: var(--muted);
-  margin-bottom: 2rem;
+    font-size: 1.1rem;
+    color: var(--muted);
+    margin-bottom: 2rem;
 }
 
 .cta-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
-  flex-wrap: wrap;
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.85rem 1.6rem;
-  border-radius: 999px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.85rem 1.6rem;
+    border-radius: 999px;
+    font-weight: 600;
+    text-decoration: none;
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
 }
 
 .btn.primary {
-  background: linear-gradient(135deg, var(--accent), #274bdb);
-  color: #f7f9ff;
-  box-shadow: var(--shadow);
+    background: linear-gradient(135deg, var(--accent), #274bdb);
+    color: #f7f9ff;
+    box-shadow: var(--shadow);
 }
 
-
 .btn.secondary {
-  border: 1px solid rgba(65, 105, 225, 0.45);
-  color: var(--accent);
-  background: transparent;
+    border: 1px solid rgba(65, 105, 225, 0.45);
+    color: var(--accent);
+    background: transparent;
 }
 
 .btn:hover {
-  transform: translateY(-2px);
+    transform: translateY(-2px);
 }
 
 main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 2rem 5rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 2rem 5rem;
 }
 
 .section {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 2.5rem;
-  margin-bottom: 2rem;
-  box-shadow: var(--shadow);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 2.5rem;
+    margin-bottom: 2rem;
+    box-shadow: var(--shadow);
 }
 
 .section h2 {
-  margin-top: 0;
-  font-size: 1.8rem;
+    margin-top: 0;
+    font-size: 1.8rem;
 }
 
 .built-on h2 {
-  text-align: center;
+    text-align: center;
 }
 
 .project-list {
-  list-style: disc;
-  max-width: 720px;
-  margin: 1.5rem auto 0;
-  padding-left: 1.5rem;
+    list-style: disc;
+    max-width: 720px;
+    margin: 1.5rem auto 0;
+    padding-left: 1.5rem;
 }
 
 .project-list li {
-  margin-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
 .project-list p {
-  margin: 0.15rem 0 0;
-  color: var(--muted);
-  font-size: 0.95rem;
+    margin: 0.15rem 0 0;
+    color: var(--muted);
+    font-size: 0.95rem;
 }
 
 .section ul {
-  padding-left: 1.2rem;
+    padding-left: 1.2rem;
 }
 
 .section li {
-  margin-bottom: 0.8rem;
+    margin-bottom: 0.8rem;
 }
 
 .grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
-  background: transparent;
-  padding: 0;
-  border: none;
-  box-shadow: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+    background: transparent;
+    padding: 0;
+    border: none;
+    box-shadow: none;
 }
 
 .card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 1.8rem;
-  box-shadow: var(--shadow);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.8rem;
+    box-shadow: var(--shadow);
 }
 
 .get-started ol {
-  padding-left: 1.2rem;
+    padding-left: 1.2rem;
 }
 
-
 .note {
-  margin-top: 1.5rem;
-  font-size: 0.95rem;
-  color: var(--muted);
+    margin-top: 1.5rem;
+    font-size: 0.95rem;
+    color: var(--muted);
 }
 
 footer {
-  text-align: center;
-  padding: 2rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  color: var(--muted);
-  font-size: 0.9rem;
+    text-align: center;
+    padding: 2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--muted);
+    font-size: 0.9rem;
 }
 
 @media (max-width: 640px) {
-  .hero {
-    padding-top: 4rem;
-  }
+    .hero {
+        padding-top: 4rem;
+    }
 
-  .section {
-    padding: 2rem 1.5rem;
-  }
+    .hero-diagram {
+        margin: 2rem auto 1.5rem;
+    }
+
+    .hero-diagram img {
+        padding: 0.75rem;
+        border-radius: 14px;
+    }
+
+    .section {
+        padding: 2rem 1.5rem;
+    }
 }
