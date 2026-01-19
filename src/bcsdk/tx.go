@@ -3,6 +3,7 @@ package bcsdk
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"go.brendoncarroll.net/exp/slices2"
@@ -32,26 +33,36 @@ func BeginTx(ctx context.Context, s blobcache.Service, volH blobcache.Handle, tx
 	if params.MaxSize <= 0 {
 		return nil, fmt.Errorf("max size must be positive")
 	}
-	return NewTx(s, *txh, params.HashAlgo.HashFunc(), int(params.MaxSize)), nil
+	return NewTx(s, *txh, params.HashAlgo, int(params.MaxSize)), nil
 }
 
 // Tx is a convenience type for managing a transaction within a Service.
 type Tx struct {
 	s       blobcache.Service
 	h       blobcache.Handle
-	hash    blobcache.HashFunc
+	hash    blobcache.HashAlgo
+	hf      blobcache.HashFunc
 	maxSize int
 
-	done bool
+	done atomic.Bool
 }
 
-func NewTx(s blobcache.Service, h blobcache.Handle, hash blobcache.HashFunc, maxSize int) *Tx {
+func NewTx(s blobcache.Service, h blobcache.Handle, hash blobcache.HashAlgo, maxSize int) *Tx {
 	return &Tx{
 		s:       s,
 		h:       h,
 		hash:    hash,
+		hf:      hash.HashFunc(),
 		maxSize: maxSize,
 	}
+}
+
+func (tx *Tx) Inspect(ctx context.Context) (*blobcache.TxInfo, error) {
+	return tx.s.InspectTx(ctx, tx.h)
+}
+
+func (tx *Tx) HashAlgo() blobcache.HashAlgo {
+	return tx.hash
 }
 
 func (tx *Tx) Save(ctx context.Context, src []byte) error {
@@ -63,20 +74,20 @@ func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
 }
 
 func (tx *Tx) Commit(ctx context.Context) error {
-	if tx.done {
-		return blobcache.ErrTxDone{ID: tx.h.OID}
+	if err := tx.checkDone(); err != nil {
+		return err
 	}
 	err := tx.s.Commit(ctx, tx.h)
-	tx.done = true
+	tx.done.Store(true)
 	return err
 }
 
 func (tx *Tx) Abort(ctx context.Context) error {
-	if tx.done {
-		return blobcache.ErrTxDone{ID: tx.h.OID}
+	if err := tx.checkDone(); err != nil {
+		return err
 	}
 	err := tx.s.Abort(ctx, tx.h)
-	tx.done = true
+	tx.done.Store(true)
 	return err
 }
 
@@ -100,10 +111,15 @@ func (tx *Tx) Get(ctx context.Context, cid CID, buf []byte) (int, error) {
 	return tx.s.Get(ctx, tx.h, cid, buf, blobcache.GetOpts{})
 }
 
-func (tx *Tx) Hash(data []byte) CID {
-	return tx.hash(nil, data)
+func (tx *Tx) GetBytes(ctx context.Context, cid CID, hardMax int) ([]byte, error) {
+	return GetBytes(ctx, tx.s, tx.h, cid, hardMax)
 }
 
+func (tx *Tx) Hash(data []byte) CID {
+	return tx.hf(nil, data)
+}
+
+// MaxSize is the largest Blob that could be accepted or returned.
 func (tx *Tx) MaxSize() int {
 	return tx.maxSize
 }
@@ -133,6 +149,13 @@ func (tx *Tx) Copy(ctx context.Context, srcs []*Tx, cids []CID, success []bool) 
 	return tx.s.Copy(ctx, tx.h, hs, cids, success)
 }
 
+func (tx *Tx) checkDone() error {
+	if tx.done.Load() {
+		return blobcache.ErrTxDone{ID: tx.h.OID}
+	}
+	return nil
+}
+
 // BeginTxSalt is the salted variant of BeginTx.
 func BeginTxSalt(ctx context.Context, s blobcache.Service, volH Handle, txp blobcache.TxParams) (*TxSalt, error) {
 	txh, err := s.BeginTx(ctx, volH, txp)
@@ -147,26 +170,36 @@ func BeginTxSalt(ctx context.Context, s blobcache.Service, volH Handle, txp blob
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}
-	return NewTxSalt(s, *txh, params.HashAlgo.HashFunc(), int(params.MaxSize)), nil
+	return NewTxSalt(s, *txh, params.HashAlgo, int(params.MaxSize)), nil
 }
 
 // TxSalt is a convenience type for managing a salted transaction within a Service.
 type TxSalt struct {
 	s       blobcache.Service
 	h       Handle
-	hash    blobcache.HashFunc
+	hash    blobcache.HashAlgo
+	hf      blobcache.HashFunc
 	maxSize int
 
 	done bool
 }
 
-func NewTxSalt(s blobcache.Service, h Handle, hash blobcache.HashFunc, maxSize int) *TxSalt {
+func NewTxSalt(s blobcache.Service, h Handle, hash blobcache.HashAlgo, maxSize int) *TxSalt {
 	return &TxSalt{
 		s:       s,
 		h:       h,
 		hash:    hash,
+		hf:      hash.HashFunc(),
 		maxSize: maxSize,
 	}
+}
+
+func (tx *TxSalt) Inspect(ctx context.Context) (*blobcache.TxInfo, error) {
+	return tx.s.InspectTx(ctx, tx.h)
+}
+
+func (tx *TxSalt) HashAlgo() blobcache.HashAlgo {
+	return tx.hash
 }
 
 func (tx *TxSalt) Load(ctx context.Context, dst *[]byte) error {
@@ -216,7 +249,7 @@ func (tx *TxSalt) Get(ctx context.Context, cid CID, buf []byte, opts blobcache.G
 }
 
 func (tx *TxSalt) Hash(salt *CID, data []byte) CID {
-	return tx.hash(salt, data)
+	return tx.hf(salt, data)
 }
 
 func (tx *TxSalt) MaxSize() int {

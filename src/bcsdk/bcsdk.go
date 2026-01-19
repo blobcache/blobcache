@@ -2,6 +2,8 @@ package bcsdk
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
 )
@@ -104,4 +106,25 @@ func URLFor(ctx context.Context, bc blobcache.Service, volh blobcache.Handle) (*
 		Node: host.Peer,
 		Base: voloid,
 	}, nil
+}
+
+// GetBytes gets a blob, but gracefully handles ErrTooSmall by resizing the buffer and retrying.
+func GetBytes(ctx context.Context, bc blobcache.Service, txh blobcache.Handle, cid blobcache.CID, hardMax int) ([]byte, error) {
+	buf := make([]byte, hardMax/2)
+	n, err := bc.Get(ctx, txh, cid, buf, blobcache.GetOpts{})
+	if err != nil {
+		var tse blobcache.ErrTooSmall
+		if errors.As(err, &tse) {
+			if tse.BlobSize > int32(hardMax) {
+				return nil, fmt.Errorf("blob size %d exceeds hard max %d", tse.BlobSize, hardMax)
+			}
+			buf = append(buf, make([]byte, 100)...)
+			if n, err = bc.Get(ctx, txh, cid, buf, blobcache.GetOpts{}); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+	return buf[:n], nil
 }

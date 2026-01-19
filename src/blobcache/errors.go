@@ -43,6 +43,20 @@ func IsErrTooLarge(err error) bool {
 	return errors.As(err, &ErrTooLarge{})
 }
 
+// ErrTooSmall is returned when a buffer is too small to fully read a blob.
+type ErrTooSmall struct {
+	BlobSize   int32
+	BufferSize int32
+}
+
+func (e ErrTooSmall) Error() string {
+	return fmt.Sprintf("the buffer (len=%d) was too small for the blob (len=%d). ", e.BufferSize, e.BlobSize)
+}
+
+func IsErrTooSmall(err error) bool {
+	return errors.As(err, &ErrTooSmall{})
+}
+
 // ErrInvalidHandle is returned when a handle is invalid.
 type ErrInvalidHandle struct {
 	Handle Handle
