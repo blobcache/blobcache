@@ -1,3 +1,8 @@
+// This is a program which will connect to a Blobcache
+// according to BLOBCACHE_API.
+// It creates an ephemeral Volume, and then uses the radixkv schema to
+// insert 10 key-value pairs.
+// It then gets all those pairs by key and prints the retrieved values.
 package main
 
 import (
