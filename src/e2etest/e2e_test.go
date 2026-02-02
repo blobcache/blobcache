@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,19 +33,19 @@ import (
 func TestDaemonAuth(t *testing.T) {
 	ctx := testutil.Context(t)
 	ctx, cf := context.WithCancel(ctx)
-	stateDir := t.TempDir()
+	stateDir, err := os.OpenRoot(t.TempDir())
 	d := blobcached.Daemon{StateDir: stateDir}
 	clientPub, clientPriv, err := inet256.GenerateKey()
 	require.NoError(t, err)
 	id := inet256.NewID(clientPub)
 
-	identitiesPath := filepath.Join(stateDir, blobcached.IdentitiesFilename)
+	identitiesPath := blobcached.IdentitiesFilename
 	// add the client's ID to the identities file as an admin
-	appendToFile(t, identitiesPath,
+	appendToFile(t, stateDir, identitiesPath,
 		[]byte("admin "+id.String()+"\n"),
 	)
 	t.Logf("identities file: %s", identitiesPath)
-	printFile(t, identitiesPath)
+	printFile(t, stateDir, identitiesPath)
 
 	// run the daemon
 	pc := testutil.PacketConn(t)
@@ -73,8 +72,8 @@ func TestDaemonAuth(t *testing.T) {
 	eg.Wait()
 }
 
-func appendToFile(t *testing.T, p string, data []byte) {
-	f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func appendToFile(t *testing.T, dir *os.Root, p string, data []byte) {
+	f, err := dir.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		t.Fatalf("failed to open file %s: %v", p, err)
 	}
@@ -84,8 +83,8 @@ func appendToFile(t *testing.T, p string, data []byte) {
 	}
 }
 
-func printFile(t testing.TB, p string) {
-	data, err := os.ReadFile(p)
+func printFile(t testing.TB, dir *os.Root, p string) {
+	data, err := dir.ReadFile(p)
 	if err != nil {
 		require.NoError(t, err)
 	}

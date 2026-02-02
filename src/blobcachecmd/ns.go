@@ -201,20 +201,20 @@ var volNameParam = star.Required[string]{
 }
 
 func getNS(c star.Context) (*bcns.Client, *blobcache.Handle, error) {
-	rooth := getNSRoot(c)
+	rootExpr := getNSRoot(c)
 	bc, err := openService(c)
 	if err != nil {
 		return nil, nil, err
 	}
-	nsvolh, err := rooth.Open(c, bc)
+	rooth, err := rootExpr.Open(c, bc)
 	if err != nil {
 		return nil, nil, err
 	}
-	nsc, err := bcns.ClientForVolume(c, bc, rooth)
+	nsc, err := bcns.ClientForVolume(c, bc, *rooth)
 	if err != nil {
 		return nil, nil, err
 	}
-	return nsc, nsvolh, nil
+	return nsc, rooth, nil
 }
 
 // getNSRoot returns a handle to the volume containing the root namespace

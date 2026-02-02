@@ -2,6 +2,7 @@ package blobcached
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -14,7 +15,8 @@ import (
 func TestRun(t *testing.T) {
 	ctx := testutil.Context(t)
 	ctx, cf := context.WithTimeout(ctx, 5*time.Second)
-	dir := t.TempDir()
+	dir, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
 
 	done := make(chan struct{})
 	lis := testutil.Listen(t)

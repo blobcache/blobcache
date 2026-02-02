@@ -50,8 +50,8 @@ func parseAddrPort(x []byte) (netip.AddrPort, error) {
 }
 
 // LoadLocator creates a new locator using the PEER_LOC file at p
-func LoadLocator(p string) (*Locator, error) {
-	data, err := os.ReadFile(p)
+func LoadLocator(dir *os.Root, p string) (*Locator, error) {
+	data, err := dir.ReadFile(p)
 	if err != nil {
 		return nil, err
 	}

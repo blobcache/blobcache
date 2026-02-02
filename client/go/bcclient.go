@@ -59,3 +59,22 @@ func EnvNSRoot() (bcns.ObjectExpr, error) {
 	}
 	return bcns.ParseObjectish(val)
 }
+
+// OpenNSRoot calls EnvNSRoot to get the NS Root from the environment
+// Then it uses the Service to find and open the root namespace volume, and
+// setup a namespace Client to view and modify the namespace.
+func OpenNSRoot(ctx context.Context, bc blobcache.Service) (rootVol *blobcache.Handle, ncs *bcns.Client, _ error) {
+	expr, err := EnvNSRoot()
+	if err != nil {
+		return nil, nil, err
+	}
+	rootVol, err = expr.Open(ctx, bc)
+	if err != nil {
+		return nil, nil, err
+	}
+	bnsc, err := bcns.ClientForVolume(ctx, bc, *rootVol)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rootVol, bnsc, nil
+}

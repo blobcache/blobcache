@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -57,7 +56,7 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 	}
 	svc, err := bclocal.New(bclocal.Env{
 		Background:  ctx,
-		StateDir:    d.StateDir,
+		StateDir:    d.StateDir.Name(),
 		PrivateKey:  privateKey,
 		Policy:      pol,
 		MkSchema:    schemareg.Factory,
@@ -103,24 +102,24 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 
 // Daemon manages the state and configuration for running a Blobache node.
 type Daemon struct {
-	StateDir string
+	StateDir *os.Root
 }
 
 // EnsurePolicyFiles ensures that the policy files exist.
 // Creating default files if they don't exist.
 func (d *Daemon) EnsurePolicyFiles() error {
-	if d.StateDir == "" {
+	if d.StateDir == nil {
 		return fmt.Errorf("StateDir is required")
 	}
 	files := map[string]string{
-		filepath.Join(d.StateDir, IdentitiesFilename): DefaultIdentitiesFile(),
-		filepath.Join(d.StateDir, ActionsFilename):    DefaultActionsFile(),
-		filepath.Join(d.StateDir, ObjectsFilename):    DefaultObjectsFile(),
-		filepath.Join(d.StateDir, GrantsFilename):     DefaultGrantsFile(),
+		IdentitiesFilename: DefaultIdentitiesFile(),
+		ActionsFilename:    DefaultActionsFile(),
+		ObjectsFilename:    DefaultObjectsFile(),
+		GrantsFilename:     DefaultGrantsFile(),
 	}
 	for p, content := range files {
 		if err := func() error {
-			f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+			f, err := d.StateDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 			if err != nil {
 				if os.IsExist(err) {
 					return nil
@@ -141,8 +140,8 @@ func (d *Daemon) EnsurePolicyFiles() error {
 
 // EnsurePrivateKey generates a private key if it doesn't exist, and returns it.
 func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
-	p := filepath.Join(d.StateDir, "private_key.inet256")
-	privKey, err := LoadPrivateKey(p)
+	p := "private_key.inet256"
+	privKey, err := LoadPrivateKey(d.StateDir, p)
 	if !os.IsNotExist(err) {
 		return privKey, err
 	}
@@ -150,7 +149,7 @@ func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := SavePrivateKey(p, privKey); err != nil {
+	if err := SavePrivateKey(d.StateDir, p, privKey); err != nil {
 		return nil, err
 	}
 	return privKey, nil
@@ -169,35 +168,35 @@ func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {
 }
 
 func (d *Daemon) EnsureLocator() (*Locator, error) {
-	p := filepath.Join(d.StateDir, peerLocPath)
-	loc, err := LoadLocator(p)
+	p := peerLocPath
+	loc, err := LoadLocator(d.StateDir, p)
 	if !os.IsNotExist(err) {
 		return loc, err
 	}
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+	f, err := d.StateDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 	if err != nil {
 		return nil, err
 	}
 	if err := f.Close(); err != nil {
 		return nil, err
 	}
-	return LoadLocator(p)
+	return LoadLocator(d.StateDir, p)
 }
 
-func LoadPrivateKey(p string) (inet256.PrivateKey, error) {
-	buf, err := os.ReadFile(p)
+func LoadPrivateKey(dir *os.Root, p string) (inet256.PrivateKey, error) {
+	buf, err := dir.ReadFile(p)
 	if err != nil {
 		return nil, err
 	}
 	return pki.ParsePrivateKey(buf)
 }
 
-func SavePrivateKey(p string, privKey inet256.PrivateKey) error {
+func SavePrivateKey(dir *os.Root, p string, privKey inet256.PrivateKey) error {
 	buf, err := pki.MarshalPrivateKey(nil, privKey)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, buf, 0600)
+	return dir.WriteFile(p, buf, 0600)
 }
 
 func AwaitHealthy(ctx context.Context, svc blobcache.Service) error {
@@ -240,7 +239,8 @@ func BGTestDaemon(t testing.TB) (*Daemon, string) {
 		}
 	})
 	t.Cleanup(cf)
-	dir := t.TempDir()
+	dir, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
 	d := Daemon{StateDir: dir}
 	pc := testutil.PacketConn(t)
 	lis := testutil.Listen(t)

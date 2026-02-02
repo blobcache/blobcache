@@ -9,7 +9,6 @@ import (
 	"io"
 	"iter"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -674,8 +673,8 @@ func (p *Policy) IdentityMembersOf(group string) iter.Seq[Identity] {
 
 // LoadIdentitiesFile loads the identities file from the filesystem.
 // p should be the path to the identities file.
-func LoadIdentitiesFile(p string) ([]Entry[Identity], error) {
-	data, err := os.ReadFile(p)
+func LoadIdentitiesFile(dir *os.Root, p string) ([]Entry[Identity], error) {
+	data, err := dir.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -687,8 +686,8 @@ func LoadIdentitiesFile(p string) ([]Entry[Identity], error) {
 
 // LoadActionsFile loads the actions file from the filesystem.
 // p should be the path to the actions file.
-func LoadActionsFile(p string) ([]Entry[Action], error) {
-	data, err := os.ReadFile(p)
+func LoadActionsFile(dir *os.Root, p string) ([]Entry[Action], error) {
+	data, err := dir.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -700,8 +699,8 @@ func LoadActionsFile(p string) ([]Entry[Action], error) {
 
 // LoadObjectsFile loads the objects file from the filesystem.
 // p should be the path to the objects file.
-func LoadObjectsFile(p string) ([]Entry[ObjectSet], error) {
-	data, err := os.ReadFile(p)
+func LoadObjectsFile(dir *os.Root, p string) ([]Entry[ObjectSet], error) {
+	data, err := dir.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -713,8 +712,8 @@ func LoadObjectsFile(p string) ([]Entry[ObjectSet], error) {
 
 // LoadGrantsFile loads the grants file from the filesystem.
 // p should be the path to the grants file.
-func LoadGrantsFile(p string) ([]Grant, error) {
-	f, err := os.Open(p)
+func LoadGrantsFile(dir *os.Root, p string) ([]Grant, error) {
+	f, err := dir.Open(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -727,24 +726,24 @@ func LoadGrantsFile(p string) ([]Grant, error) {
 
 // LoadPolicy loads the 4 policy files from the filesystem.
 // stateDir should be the path to the state directory.
-func LoadPolicy(stateDir string) (*Policy, error) {
-	idenPath := filepath.Join(stateDir, IdentitiesFilename)
-	actionPath := filepath.Join(stateDir, ActionsFilename)
-	objectPath := filepath.Join(stateDir, ObjectsFilename)
-	grantsPath := filepath.Join(stateDir, GrantsFilename)
-	idens, err := LoadIdentitiesFile(idenPath)
+func LoadPolicy(dir *os.Root) (*Policy, error) {
+	idenPath := IdentitiesFilename
+	actionPath := ActionsFilename
+	objectPath := ObjectsFilename
+	grantsPath := GrantsFilename
+	idens, err := LoadIdentitiesFile(dir, idenPath)
 	if err != nil {
 		return nil, fmt.Errorf("loading IDENTITIES file: %w", err)
 	}
-	acts, err := LoadActionsFile(actionPath)
+	acts, err := LoadActionsFile(dir, actionPath)
 	if err != nil {
 		return nil, fmt.Errorf("loading ACTIONS file: %w", err)
 	}
-	objs, err := LoadObjectsFile(objectPath)
+	objs, err := LoadObjectsFile(dir, objectPath)
 	if err != nil {
 		return nil, fmt.Errorf("loading OBJECTS file: %w", err)
 	}
-	grants, err := LoadGrantsFile(grantsPath)
+	grants, err := LoadGrantsFile(dir, grantsPath)
 	if err != nil {
 		return nil, fmt.Errorf("loading GRANTS file: %w", err)
 	}

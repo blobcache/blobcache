@@ -84,7 +84,7 @@ var daemonValidateCmd = star.Command{
 	},
 	F: func(c star.Context) error {
 		stateDir := stateDirParam.Load(c)
-		c.Printf("checking configuration in %s\n", stateDir)
+		c.Printf("checking configuration in %s\n", stateDir.Name())
 		d := blobcached.Daemon{
 			StateDir: stateDir,
 		}
@@ -126,9 +126,9 @@ var showAccessCmd = star.Command{
 	},
 }
 
-var stateDirParam = star.Required[string]{
+var stateDirParam = star.Required[*os.Root]{
 	ID:    "state",
-	Parse: star.ParseString,
+	Parse: os.OpenRoot,
 }
 
 var serveAPIParam = star.Optional[net.Listener]{
