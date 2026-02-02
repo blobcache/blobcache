@@ -9,16 +9,16 @@ import (
 	"blobcache.io/blobcache/src/internal/schemareg"
 )
 
-// Objectish is information capable of producing a Handle to an Object.
+// ObjectExpr is information capable of producing a Handle to an Object.
 // Base is used to establish a connection to the local node.
 // If the Secret is empty, then OpenFiat will be used to establish a connection
-// The zero value for Objectish refers to the root Volume.
-type Objectish struct {
+// The zero value for ObjectExpr refers to the root Volume.
+type ObjectExpr struct {
 	Base blobcache.Handle
 	Path []string
 }
 
-func ParseObjectish(x string) (Objectish, error) {
+func ParseObjectish(x string) (ObjectExpr, error) {
 	parts := strings.Split(x, ";")
 	var baseH blobcache.Handle
 	if parts[0] != "" {
@@ -26,20 +26,20 @@ func ParseObjectish(x string) (Objectish, error) {
 		if err != nil {
 			oid, err := blobcache.ParseOID(parts[0])
 			if err != nil {
-				return Objectish{}, err
+				return ObjectExpr{}, err
 			}
 			baseH = blobcache.Handle{OID: oid}
 		} else {
 			baseH = h
 		}
 	}
-	return Objectish{
+	return ObjectExpr{
 		Base: baseH,
 		Path: parts[1:],
 	}, nil
 }
 
-func (oish *Objectish) String() string {
+func (oish *ObjectExpr) String() string {
 	sb := strings.Builder{}
 	if oish.BaseIsHandle() {
 		fmt.Fprint(&sb, oish.Base)
@@ -54,22 +54,22 @@ func (oish *Objectish) String() string {
 }
 
 // BaseIsHandle returns true if Base is a handle instead of an OID
-func (oish *Objectish) BaseIsHandle() bool {
+func (oish *ObjectExpr) BaseIsHandle() bool {
 	return oish.Base.Secret != ([16]byte{})
 }
 
-func (oish *Objectish) BaseHandle() *blobcache.Handle {
+func (oish *ObjectExpr) BaseHandle() *blobcache.Handle {
 	if oish.BaseIsHandle() {
 		return &oish.Base
 	}
 	return nil
 }
 
-func (oish *Objectish) BaseOID() blobcache.OID {
+func (oish *ObjectExpr) BaseOID() blobcache.OID {
 	return oish.Base.OID
 }
 
-func (oish *Objectish) Open(ctx context.Context, bc blobcache.Service) (*blobcache.Handle, error) {
+func (oish *ObjectExpr) Open(ctx context.Context, bc blobcache.Service) (*blobcache.Handle, error) {
 	var nsh blobcache.Handle
 	if !oish.BaseIsHandle() {
 		h, err := bc.OpenFiat(ctx, oish.Base.OID, blobcache.Action_ALL)
@@ -97,7 +97,7 @@ func (oish *Objectish) Open(ctx context.Context, bc blobcache.Service) (*blobcac
 
 // ClientForVolume returns a Client configured to use the Namespace schema for the Volume
 // If the Volume does not have a known Schema or the Schema is not Namespace then an error is returned.
-func ClientForVolume(ctx context.Context, svc blobcache.Service, nsvol Objectish) (*Client, error) {
+func ClientForVolume(ctx context.Context, svc blobcache.Service, nsvol ObjectExpr) (*Client, error) {
 	nsvolh, err := nsvol.Open(ctx, svc)
 	if err != nil {
 		return nil, err

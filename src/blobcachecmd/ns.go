@@ -3,13 +3,14 @@ package blobcachecmd
 import (
 	"fmt"
 
+	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema/bcns"
 	"go.brendoncarroll.net/star"
 )
 
 // EnvVar_NSRoot is the key for the environment variable that holds the root namespace
-const EnvVar_NSRoot = "BLOBCACHE_NS_ROOT"
+const EnvVar_NSRoot = bcclient.EnvBlobcacheNSRoot
 
 var nsCmd = star.NewDir(star.Metadata{
 	Short: "perform common operations on namespace volumes",
@@ -178,7 +179,7 @@ var nsOpenCmd = star.Command{
 	},
 }
 
-var nsRoot = star.Optional[bcns.Objectish]{
+var nsRoot = star.Optional[bcns.ObjectExpr]{
 	ID:       "nsroot",
 	Parse:    bcns.ParseObjectish,
 	ShortDoc: "a handle or object id for the root",
@@ -217,7 +218,7 @@ func getNS(c star.Context) (*bcns.Client, *blobcache.Handle, error) {
 }
 
 // getNSRoot returns a handle to the volume containing the root namespace
-func getNSRoot(c star.Context) bcns.Objectish {
+func getNSRoot(c star.Context) bcns.ObjectExpr {
 	if objish, ok := nsRoot.LoadOpt(c); ok {
 		return objish
 	}
@@ -228,5 +229,5 @@ func getNSRoot(c star.Context) bcns.Objectish {
 		}
 	}
 	// Just return the root
-	return bcns.Objectish{}
+	return bcns.ObjectExpr{}
 }

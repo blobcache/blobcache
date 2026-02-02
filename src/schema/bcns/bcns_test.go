@@ -11,14 +11,14 @@ import (
 func TestParseObjectish(t *testing.T) {
 	type testCase struct {
 		I string
-		O Objectish
+		O ObjectExpr
 	}
 	h1 := blobcache.Handle{}
 	h1.Secret[0] = 'a'
 	tcs := []testCase{
 		{I: ""},
 		{I: blobcache.OID{}.String()},
-		{I: h1.String(), O: Objectish{Base: h1}},
+		{I: h1.String(), O: ObjectExpr{Base: h1}},
 	}
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d\n", i), func(t *testing.T) {

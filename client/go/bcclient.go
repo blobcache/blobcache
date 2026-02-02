@@ -10,12 +10,14 @@ import (
 
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema/bcns"
 )
 
 const (
 	// EnvBlobcacheAPI is the name of the environment variable used
 	// as the endpoint for the BLOBCACHE_API
-	EnvBlobcacheAPI = "BLOBCACHE_API"
+	EnvBlobcacheAPI    = "BLOBCACHE_API"
+	EnvBlobcacheNSRoot = "BLOBCACHE_NS_ROOT"
 )
 
 // NewClient creates a Client backed by the server at endpoint
@@ -44,4 +46,16 @@ func NewClientFromEnv() blobcache.Service {
 		value = DefaultEndpoint
 	}
 	return NewClient(value)
+}
+
+// GetNSRoot parses a handle or OID read from the BLOBCACHE_NS_ROOT
+// environment variable into a bcns.ObjectExpr
+// If the environment variable does not exist, then it returns the root OID
+// If the variable cannot be parsed into an ObjectExpr than an error is returned.
+func GetNSRoot() (bcns.ObjectExpr, error) {
+	val, ok := os.LookupEnv(EnvBlobcacheNSRoot)
+	if !ok {
+		return bcns.ObjectExpr{}, nil
+	}
+	return bcns.ParseObjectish(val)
 }
