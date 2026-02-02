@@ -48,11 +48,11 @@ func NewClientFromEnv() blobcache.Service {
 	return NewClient(value)
 }
 
-// GetNSRoot parses a handle or OID read from the BLOBCACHE_NS_ROOT
+// EnvNSRoot parses a handle or OID read from the BLOBCACHE_NS_ROOT
 // environment variable into a bcns.ObjectExpr
 // If the environment variable does not exist, then it returns the root OID
 // If the variable cannot be parsed into an ObjectExpr than an error is returned.
-func GetNSRoot() (bcns.ObjectExpr, error) {
+func EnvNSRoot() (bcns.ObjectExpr, error) {
 	val, ok := os.LookupEnv(EnvBlobcacheNSRoot)
 	if !ok {
 		return bcns.ObjectExpr{}, nil
