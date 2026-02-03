@@ -11,6 +11,28 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
+type EndpointReq struct{}
+
+func (req EndpointReq) Marshal(out []byte) []byte {
+	return out
+}
+
+func (req *EndpointReq) Unmarshal(out []byte) error {
+	return nil
+}
+
+type EndpointResp struct {
+	Endpoint blobcache.Endpoint
+}
+
+func (ep EndpointResp) Marshal(out []byte) []byte {
+	return ep.Endpoint.Marshal(out)
+}
+
+func (ep *EndpointResp) Unmarshal(out []byte) error {
+	return ep.Endpoint.Unmarshal(out)
+}
+
 type InspectHandleReq struct {
 	Handle blobcache.Handle
 }
