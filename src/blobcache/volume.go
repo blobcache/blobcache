@@ -40,9 +40,8 @@ func (e *Endpoint) Unmarshal(data []byte) error {
 		return fmt.Errorf("too small to be endpoint")
 	}
 	e.Peer, data = PeerID(data[:PeerIDSize]), data[PeerIDSize:]
-	ipaddrData := data[:16+2]
-	ipaddr, err := netip.ParseAddrPort(string(ipaddrData))
-	if err != nil {
+	var ipaddr netip.AddrPort
+	if err := ipaddr.UnmarshalBinary(data[:16+2]); err != nil {
 		return err
 	}
 	e.IPPort = ipaddr

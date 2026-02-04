@@ -24,10 +24,14 @@ func (ct *clientTransport) Ask(ctx context.Context, remEp blobcache.Endpoint, re
 	if err != nil {
 		return err
 	}
-	defer ct.pool.Take(ctx)
-	_, err = req.WriteTo(conn)
-	if err != nil {
+	defer func() {
+		_ = ct.pool.Give(ctx, conn)
+	}()
+	if _, err := req.WriteTo(conn); err != nil {
 		return err
 	}
-	return resp.ReadDatagramFrom(conn, MaxMessageLen)
+	if _, err := resp.ReadFrom(conn); err != nil {
+		return err
+	}
+	return nil
 }

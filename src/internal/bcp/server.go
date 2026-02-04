@@ -36,6 +36,14 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 	case MT_PING:
 		resp.SetCode(MT_OK)
 		resp.SetBody(nil)
+	case MT_ENDPOINT:
+		handleAsk(req, resp, &EndpointReq{}, func(req *EndpointReq) (*EndpointResp, error) {
+			ep, err := svc.Endpoint(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return &EndpointResp{Endpoint: ep}, nil
+		})
 
 	// BEGIN HANDLE
 	case MT_HANDLE_DROP:
