@@ -2,6 +2,7 @@ package bcp
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -16,6 +17,9 @@ func ServeStream(ctx context.Context, ep blobcache.Endpoint, conn io.ReadWriteCl
 	var req, resp Message
 	for {
 		if _, err := req.ReadFrom(conn); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
 		if srv.ServeBCP(ctx, ep, req, &resp) {
