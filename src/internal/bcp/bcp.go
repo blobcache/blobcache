@@ -26,6 +26,15 @@ func Ping(ctx context.Context, tp Asker, ep blobcache.Endpoint) error {
 	return nil
 }
 
+func Endpoint(ctx context.Context, tp Asker) (blobcache.Endpoint, error) {
+	var resp EndpointResp
+	ep := blobcache.Endpoint{}
+	if err := doAsk(ctx, tp, ep, MT_ENDPOINT, EndpointReq{}, &resp); err != nil {
+		return blobcache.Endpoint{}, err
+	}
+	return resp.Endpoint, nil
+}
+
 func Drop(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle) error {
 	var resp DropResp
 	if err := doAsk(ctx, tp, ep, MT_HANDLE_DROP, DropReq{Handle: h}, &resp); err != nil {

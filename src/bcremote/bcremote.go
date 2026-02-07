@@ -86,7 +86,7 @@ func (s *Service) AwaitReady(ctx context.Context) error {
 
 func (s *Service) start(bgCtx context.Context) {
 	s.eg.Go(func() error {
-		return s.node.Serve(bgCtx, bcnet.Server{
+		return s.node.Serve(bgCtx, &bcp.Server{
 			Access: func(peer blobcache.PeerID) blobcache.Service { return nil },
 		})
 	})

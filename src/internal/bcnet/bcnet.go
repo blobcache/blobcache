@@ -106,7 +106,7 @@ func (n *Node) Ask(ctx context.Context, remote blobcache.Endpoint, req Message, 
 }
 
 // Serve blocks handling all incoming connections, until ctx is cancelled.
-func (n *Node) Serve(ctx context.Context, srv Server) error {
+func (n *Node) Serve(ctx context.Context, srv bcp.Handler) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -129,7 +129,7 @@ func (n *Node) Serve(ctx context.Context, srv Server) error {
 					Peer:   n.LocalID(),
 					IPPort: ipPortFromConn(conn),
 				}
-				n.maybeSpawnHandler(ctx, ep, conn, srv.serve)
+				n.maybeSpawnHandler(ctx, ep, conn, srv)
 			}
 		}
 	}()
@@ -148,14 +148,14 @@ func (n *Node) Serve(ctx context.Context, srv Server) error {
 			Peer:   *peerID,
 			IPPort: ipPortFromConn(conn),
 		}
-		n.maybeSpawnHandler(ctx, ep, conn, srv.serve)
+		n.maybeSpawnHandler(ctx, ep, conn, srv)
 	}
 }
 
-func (n *Node) maybeSpawnHandler(ctx context.Context, ep blobcache.Endpoint, conn *quic.Conn, fn messageHandler) {
+func (n *Node) maybeSpawnHandler(ctx context.Context, ep blobcache.Endpoint, conn *quic.Conn, h bcp.Handler) {
 	if _, added := n.attemptAddConn(ep, conn); added {
 		go func() {
-			if err := n.handleConn(ctx, ep, conn, fn); err != nil {
+			if err := n.handleConn(ctx, ep, conn, h); err != nil {
 				logctx.Warn(ctx, "error handling connection", zap.Error(err))
 			}
 		}()
@@ -177,7 +177,7 @@ func (n *Node) attemptAddConn(ep blobcache.Endpoint, x *quic.Conn) (*quic.Conn, 
 	}
 }
 
-func (n *Node) handleConn(ctx context.Context, remote blobcache.Endpoint, conn *quic.Conn, fn messageHandler) error {
+func (n *Node) handleConn(ctx context.Context, remote blobcache.Endpoint, conn *quic.Conn, h bcp.Handler) error {
 	defer conn.CloseWithError(0, "")
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
@@ -187,7 +187,7 @@ func (n *Node) handleConn(ctx context.Context, remote blobcache.Endpoint, conn *
 				return err
 			}
 			go func() {
-				if err := n.handleStream(ctx, remote, s, fn); err != nil {
+				if err := n.handleStream(ctx, remote, s, h); err != nil {
 					logctx.Warn(ctx, "error handling stream", zap.Error(err))
 				}
 			}()
@@ -200,7 +200,7 @@ func (n *Node) handleConn(ctx context.Context, remote blobcache.Endpoint, conn *
 				return err
 			}
 			go func() {
-				if err := n.handleUniStream(ctx, remote, s, fn); err != nil {
+				if err := n.handleUniStream(ctx, remote, s, h); err != nil {
 					logctx.Warn(ctx, "error handling uni-stream", zap.Error(err))
 				}
 			}()
@@ -251,25 +251,26 @@ func (qt *Node) dialConn(ctx context.Context, ep blobcache.Endpoint) (*quic.Conn
 	return conn, nil
 }
 
-func (qt *Node) handleStream(ctx context.Context, ep blobcache.Endpoint, s *quic.Stream, fn messageHandler) error {
+func (qt *Node) handleStream(ctx context.Context, ep blobcache.Endpoint, s *quic.Stream, h bcp.Handler) error {
+	// TODO: replace this method with bcp.ServeStream
 	var req Message
 	if _, err := req.ReadFrom(s); err != nil {
 		return err
 	}
 	var resp Message
-	fn(ctx, ep, &req, &resp)
+	h.ServeBCP(ctx, ep, req, &resp)
 	if _, err := resp.WriteTo(s); err != nil {
 		return err
 	}
 	return s.Close()
 }
 
-func (qt *Node) handleUniStream(ctx context.Context, ep blobcache.Endpoint, s *quic.ReceiveStream, fn messageHandler) error {
+func (qt *Node) handleUniStream(ctx context.Context, ep blobcache.Endpoint, s *quic.ReceiveStream, h bcp.Handler) error {
 	var req Message
 	if _, err := req.ReadFrom(s); err != nil {
 		return err
 	}
-	fn(ctx, ep, &req, nil)
+	h.ServeBCP(ctx, ep, req, nil)
 	return nil
 }
 

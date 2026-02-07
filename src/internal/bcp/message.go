@@ -23,6 +23,8 @@ const (
 	MT_UNKNOWN MessageType = iota
 	// MT_PING is a request to ping the remote peer.
 	MT_PING
+	// MT_ENDPOINT is a request for the remote to respond with its Endpoint
+	MT_ENDPOINT
 )
 
 // Handle messages
@@ -121,6 +123,10 @@ type Message struct {
 	buf []byte
 }
 
+func NewMessage(x []byte) Message {
+	return Message{buf: x}
+}
+
 func (m *Message) Header() MessageHeader {
 	m.buf = extendToLen(m.buf, HeaderLen)
 	return MessageHeader(m.buf[:HeaderLen])
@@ -180,6 +186,18 @@ func (m *Message) ReadFrom(r io.Reader) (int64, error) {
 		return 0, err
 	}
 	return int64(len(m.buf)), nil
+}
+
+func (m *Message) ReadDatagramFrom(r io.Reader, alloc int) error {
+	if len(m.buf) < alloc {
+		m.buf = append(m.buf[:0], make([]byte, alloc)...)
+	}
+	n, err := r.Read(m.buf)
+	if err != nil {
+		return err
+	}
+	m.buf = m.buf[:n]
+	return nil
 }
 
 func (m *Message) SetError(err error) {
