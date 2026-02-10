@@ -12,6 +12,7 @@ import (
 
 	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/bchttp"
+	"blobcache.io/blobcache/src/bcipc"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/groupfile"
@@ -35,7 +36,7 @@ var pki = inet256.PKI{
 
 // Run runs the blobcache daemon, until the context is cancelled.
 // If the context is cancelled, Run returns nil.  Run returns an error if it returns for any other reason.
-func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listener) error {
+func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, httpOn []net.Listener, unixOn []*net.UnixListener) error {
 	if err := d.EnsurePolicyFiles(); err != nil {
 		return err
 	}
@@ -69,10 +70,9 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
-	// if we have been given a listener for the API, serve it
-	if serveAPI != nil {
+	for _, lis := range httpOn {
 		eg.Go(func() error {
-			err := http.Serve(serveAPI, &bchttp.Server{
+			err := http.Serve(lis, &bchttp.Server{
 				Service: svc,
 			})
 			if errors.Is(err, net.ErrClosed) {
@@ -82,7 +82,22 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, serveAPI net.Listen
 		})
 		eg.Go(func() error {
 			<-ctx.Done()
-			return serveAPI.Close()
+			return lis.Close()
+		})
+	}
+	for _, lis := range unixOn {
+		eg.Go(func() error {
+			srv := bcipc.NewServer(svc)
+			err := bcipc.Serve(ctx, lis, srv)
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			}
+			return err
+		})
+		eg.Go(func() error {
+			<-ctx.Done()
+			lis.Close()
+			return nil
 		})
 	}
 	if pc != nil {
@@ -263,7 +278,7 @@ func BGTestDaemon(t testing.TB) (*Daemon, string) {
 	pc := testutil.PacketConn(t)
 	lis := testutil.Listen(t)
 	eg.Go(func() error {
-		if err := d.Run(ctx, pc, lis); err != nil {
+		if err := d.Run(ctx, pc, []net.Listener{lis}, nil); err != nil {
 			t.Log(err)
 		}
 		return nil

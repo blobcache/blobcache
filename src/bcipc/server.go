@@ -11,9 +11,13 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func ListenAndServe(ctx context.Context, p string, srv bcp.Handler) error {
+func Listen(p string) (*net.UnixListener, error) {
 	laddr := net.UnixAddr{Name: p, Net: "unix"}
-	lis, err := net.ListenUnix("unix", &laddr)
+	return net.ListenUnix("unix", &laddr)
+}
+
+func ListenAndServe(ctx context.Context, p string, srv bcp.Handler) error {
+	lis, err := Listen(p)
 	if err != nil {
 		return err
 	}
@@ -23,9 +27,9 @@ func ListenAndServe(ctx context.Context, p string, srv bcp.Handler) error {
 
 func Serve(ctx context.Context, lis *net.UnixListener, srv bcp.Handler) error {
 	ctx, cf := context.WithCancel(ctx)
+	defer cf()
 	eg, ctx := errgroup.WithContext(ctx)
 	defer eg.Wait()
-	defer cf()
 
 	go func() {
 		<-ctx.Done()
@@ -35,7 +39,7 @@ func Serve(ctx context.Context, lis *net.UnixListener, srv bcp.Handler) error {
 	for {
 		uc, err := lis.AcceptUnix()
 		if err != nil {
-			if ctx.Err() != nil {
+			if ctx.Err() == err {
 				return nil
 			}
 			return err
@@ -47,5 +51,15 @@ func Serve(ctx context.Context, lis *net.UnixListener, srv bcp.Handler) error {
 			}
 			return nil
 		})
+	}
+}
+
+type Server = bcp.Server
+
+func NewServer(svc blobcache.Service) *Server {
+	return &bcp.Server{
+		Access: func(ep blobcache.PeerID) blobcache.Service {
+			return svc
+		},
 	}
 }

@@ -3,12 +3,12 @@ package bcclient
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 
 	"blobcache.io/blobcache/src/bchttp"
+	"blobcache.io/blobcache/src/bcipc"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema/bcns"
 )
@@ -22,21 +22,14 @@ const (
 
 // NewClient creates a Client backed by the server at endpoint
 func NewClient(endpoint string) blobcache.Service {
-	var hc *http.Client
-	unixAddr, ok := strings.CutPrefix(endpoint, "unix://")
-	if ok {
-		hc = &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return net.Dial("unix", unixAddr)
-				},
-			},
-		}
-		endpoint = "http://example.com"
-	} else {
-		hc = http.DefaultClient
+	switch {
+	case strings.HasPrefix(endpoint, "unix://"):
+		unixAddr, _ := strings.CutPrefix(endpoint, "unix://")
+		return bcipc.NewClient(unixAddr)
+	default:
+		hc := http.DefaultClient
+		return bchttp.NewClient(hc, endpoint)
 	}
-	return bchttp.NewClient(hc, endpoint)
 }
 
 // NewClientFromEnv creates a new client from environment variables
