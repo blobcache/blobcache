@@ -16,7 +16,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/glfsport"
 	"blobcache.io/blobcache/src/schema"
-	glfsschema "blobcache.io/blobcache/src/schema/glfs"
+	"blobcache.io/blobcache/src/schema/bcglfs"
 )
 
 var glfsCmd = star.NewDir(star.Metadata{
@@ -229,7 +229,7 @@ var glfsSyncCmd = star.Command{
 		if err != nil {
 			return fmt.Errorf("failed to open destination volume: %w", err)
 		}
-		return glfsschema.SyncVolume(ctx, svc, *srcVolh, *dstVolh)
+		return bcglfs.SyncVolume(ctx, svc, *srcVolh, *dstVolh)
 	},
 }
 
@@ -274,7 +274,7 @@ func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f
 	if err := tx.Load(ctx, &rootData); err != nil {
 		return err
 	}
-	root, err := glfsschema.ParseRef(rootData)
+	root, err := bcglfs.ParseRef(rootData)
 	if err != nil {
 		return err
 	}
@@ -295,7 +295,7 @@ func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle,
 	if err := tx.Load(ctx, &rootData); err != nil {
 		return err
 	}
-	root, err := glfsschema.ParseRef(rootData)
+	root, err := bcglfs.ParseRef(rootData)
 	if err != nil {
 		return err
 	}
@@ -305,7 +305,7 @@ func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle,
 		return err
 	}
 	// TODO: delete old refs
-	if err := tx.Save(ctx, glfsschema.MarshalRef(root2)); err != nil {
+	if err := tx.Save(ctx, bcglfs.MarshalRef(root2)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

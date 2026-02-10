@@ -1,4 +1,4 @@
-package glfs
+package bcglfs
 
 import (
 	"context"
