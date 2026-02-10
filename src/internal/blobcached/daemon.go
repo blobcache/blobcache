@@ -45,13 +45,11 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, httpOn []net.Listen
 		return err
 	}
 	var privateKey ed25519.PrivateKey
-	if pc != nil {
-		privKey, err := d.EnsurePrivateKey()
-		if err != nil {
-			return err
-		}
-		privateKey = privKey.(ed25519.PrivateKey)
+	privKey, err := d.EnsurePrivateKey()
+	if err != nil {
+		return err
 	}
+	privateKey = privKey.(ed25519.PrivateKey)
 	loc, err := d.EnsureLocator()
 	if err != nil {
 		return err
