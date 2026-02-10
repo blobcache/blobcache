@@ -84,7 +84,7 @@ The following command runs a daemon with state in the specified directory.
 ```shell
 $ blobcache daemon \
     --state $HOME/.local/blobcache \
-    --serve-api unix:///run/blobcache/blobcache.sock \
+    --serve-unix /run/blobcache/blobcache.sock \
     --net 0.0.0.0:6025
 ```
 
