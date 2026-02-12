@@ -7,7 +7,9 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/bcp/bcpcnp"
 	"blobcache.io/blobcache/src/internal/sbe"
+	"capnproto.org/go/capnp/v3"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -608,26 +610,43 @@ type GetReq struct {
 }
 
 func (gr GetReq) Marshal(out []byte) []byte {
-	out = gr.Tx.Marshal(out)
-	out = append(out, gr.CID[:]...)
-	if gr.Salt != nil {
-		out = append(out, gr.Salt[:]...)
+	_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	if err != nil {
+		panic(err)
 	}
-	return out
+	req, err := bcpcnp.NewRootGetReq(seg)
+	if err != nil {
+		panic(err)
+	}
+	req.SetTx(handleToCapnp(seg, gr.Tx))
+	req.SetCid(cidToCapnp(gr.CID))
+
+	data, err := req.Message().MarshalPacked()
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
 
 func (gr *GetReq) Unmarshal(data []byte) error {
-	if len(data) < blobcache.HandleSize+blobcache.CIDSize {
-		return fmt.Errorf("cannot unmarshal GetReq, too short: %d", len(data))
-	}
-	if err := gr.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+	msg, err := capnp.Unmarshal(data)
+	if err != nil {
 		return err
 	}
-	gr.CID = blobcache.CID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.CIDSize])
-	if len(data) > blobcache.HandleSize+blobcache.CIDSize+blobcache.CIDSize {
-		gr.Salt = new(blobcache.CID)
-		copy(gr.Salt[:], data[blobcache.HandleSize+blobcache.CIDSize:])
+	req, err := bcpcnp.ReadRootGetReq(msg)
+	if err != nil {
+		return err
 	}
+	cid, err := req.Cid()
+	if err != nil {
+		return err
+	}
+	txh, err := req.Tx()
+	if err != nil {
+		return err
+	}
+	gr.CID = cidFromCnp(cid)
+	gr.Tx = handleFromCnp(txh)
 	return nil
 }
 
@@ -636,11 +655,36 @@ type GetResp struct {
 }
 
 func (gr GetResp) Marshal(out []byte) []byte {
-	return append(out, gr.Data...)
+	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	if err != nil {
+		panic(err)
+	}
+	req, err := bcpcnp.NewRootGetResp(seg)
+	if err != nil {
+		panic(err)
+	}
+	req.SetData(gr.Data)
+	data, err := msg.MarshalPacked()
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
 }
 
 func (gr *GetResp) Unmarshal(data []byte) error {
-	gr.Data = append(gr.Data[:0], data...)
+	msg, err := capnp.UnmarshalPacked(data)
+	if err != nil {
+		return err
+	}
+	req, err := bcpcnp.ReadRootGetResp(msg)
+	if err != nil {
+		return err
+	}
+	data2, err := req.Data()
+	if err != nil {
+		return err
+	}
+	gr.Data = data2
 	return nil
 }
 
@@ -1250,4 +1294,68 @@ func unmarshalSections(data []byte, sections [][]byte) error {
 		data = data[len(sections[i]):]
 	}
 	return nil
+}
+
+func oidToCapnp(seg *capnp.Segment, handle blobcache.OID) bcpcnp.OID {
+	oid, err := bcpcnp.NewOID(seg)
+	if err != nil {
+		panic(err)
+	}
+	oid.SetW0(binary.LittleEndian.Uint64(handle[0:8]))
+	oid.SetW1(binary.LittleEndian.Uint64(handle[8:16]))
+	return oid
+}
+
+func oidFromCapnp(oid bcpcnp.OID) blobcache.OID {
+	var ret blobcache.OID
+	binary.LittleEndian.PutUint64(ret[0:8], oid.W0())
+	binary.LittleEndian.PutUint64(ret[8:16], oid.W1())
+	return ret
+}
+
+func handleToCapnp(seg *capnp.Segment, handle blobcache.Handle) bcpcnp.Handle {
+	h2, err := bcpcnp.NewHandle(seg)
+	if err != nil {
+		panic(err)
+	}
+	if err := h2.SetTarget(oidToCapnp(seg, handle.OID)); err != nil {
+		panic(err)
+	}
+	h2.SetSecret0(binary.LittleEndian.Uint64(handle.Secret[0:8]))
+	h2.SetSecret1(binary.LittleEndian.Uint64(handle.Secret[8:16]))
+	return h2
+}
+
+func handleFromCnp(h bcpcnp.Handle) blobcache.Handle {
+	var ret blobcache.Handle
+	oid, err := h.Target()
+	if err != nil {
+		panic(err)
+	}
+	ret.OID = oidFromCapnp(oid)
+	ret.Secret = [16]byte{}
+	binary.LittleEndian.PutUint64(ret.Secret[0:8], h.Secret0())
+	binary.LittleEndian.PutUint64(ret.Secret[8:16], h.Secret1())
+	return ret
+}
+
+func cidToCapnp(cid blobcache.CID) bcpcnp.CID {
+	cid2, err := bcpcnp.NewCID(nil)
+	if err != nil {
+		panic(err)
+	}
+	cid2.SetW0(binary.LittleEndian.Uint64(cid[0:8]))
+	cid2.SetW1(binary.LittleEndian.Uint64(cid[8:16]))
+	cid2.SetW2(binary.LittleEndian.Uint64(cid[16:24]))
+	cid2.SetW3(binary.LittleEndian.Uint64(cid[24:32]))
+	return cid2
+}
+
+func cidFromCnp(cid bcpcnp.CID) blobcache.CID {
+	var ret blobcache.CID
+	binary.LittleEndian.PutUint64(ret[0:8], cid.W0())
+	binary.LittleEndian.PutUint64(ret[8:16], cid.W1())
+	binary.LittleEndian.PutUint64(ret[16:24], cid.W2())
+	binary.LittleEndian.PutUint64(ret[24:32], cid.W3())
+	return ret
 }

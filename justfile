@@ -31,6 +31,7 @@ testv:
 
 capnp:
 	cd ./src/internal/tries/triescnp && ./build.sh
+	cd ./src/internal/bcp/bcpcnp && ./build.sh
 
 clean:
 	rm -f ./build/out/*
