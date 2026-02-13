@@ -19,7 +19,11 @@ type (
 	Tx = tries.Tx
 
 	// Root transitively contains all information representing a key-value store.
-	Root = tries.Root
+	Root     = tries.Root
+	Iterator = tries.Iterator
+	Entry    = tries.Entry
+	Span     = tries.Span
+	Op       = tries.Op
 )
 
 // New constructs a new Machine
