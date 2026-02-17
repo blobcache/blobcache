@@ -373,7 +373,7 @@ func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qsp
 	return nil, fmt.Errorf("CreateQueue not implemented")
 }
 
-func (s *Service) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func (s *Service) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	return 0, fmt.Errorf("Dequeue not implemented")
 }
 

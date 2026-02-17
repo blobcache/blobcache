@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -29,6 +30,11 @@ func (sys *System) CreateQueue(ctx context.Context, spec blobcache.QueueBackend_
 	}
 	q.cond = sync.NewCond(&q.mu)
 	return q, nil
+}
+
+func (sys *System) QueueDown(ctx context.Context, q backend.Queue) error {
+	// nothing to do, it's all in memory and will be GC'd
+	return nil
 }
 
 type Queue struct {
@@ -72,39 +78,102 @@ func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) error {
 	return nil
 }
 
-func (q *Queue) Dequeue(ctx context.Context, buf []blobcache.Message) (int, error) {
-	if len(buf) == 0 {
-		return 0, nil
+func (q *Queue) Dequeue(ctx context.Context, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if err := opts.Validate(); err != nil {
+		return 0, err
 	}
 
+	waitCtx := ctx
+	cancel := func() {}
+	if opts.Min > 0 && opts.MaxWait != nil {
+		waitCtx, cancel = context.WithTimeout(ctx, *opts.MaxWait)
+	}
+	defer cancel()
+
 	q.mu.Lock()
-	if len(q.msgs) == 0 {
-		if err := ctx.Err(); err != nil {
-			q.mu.Unlock()
-			return 0, err
+	defer q.mu.Unlock()
+
+	waitFor := func(min int) error {
+		if len(q.msgs) >= min {
+			return nil
+		}
+		if err := waitCtx.Err(); err != nil {
+			return err
 		}
 		done := make(chan struct{})
 		go func() {
 			select {
-			case <-ctx.Done():
+			case <-waitCtx.Done():
 				q.mu.Lock()
 				q.cond.Broadcast()
 				q.mu.Unlock()
 			case <-done:
 			}
 		}()
-		for len(q.msgs) == 0 {
-			if err := ctx.Err(); err != nil {
+		for len(q.msgs) < min {
+			if err := waitCtx.Err(); err != nil {
 				close(done)
-				q.mu.Unlock()
-				return 0, err
+				return err
 			}
 			q.cond.Wait()
 		}
 		close(done)
+		return nil
 	}
+
+	remainingSkip := int(opts.Skip)
+	for remainingSkip > 0 {
+		if len(q.msgs) == 0 {
+			if opts.Min == 0 {
+				return 0, nil
+			}
+			if err := waitFor(1); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					return 0, nil
+				}
+				if ctx.Err() != nil {
+					return 0, ctx.Err()
+				}
+				return 0, err
+			}
+		}
+		if len(q.msgs) == 0 {
+			return 0, nil
+		}
+		drop := remainingSkip
+		if drop > len(q.msgs) {
+			drop = len(q.msgs)
+		}
+		q.msgs = q.msgs[drop:]
+		remainingSkip -= drop
+	}
+
+	if len(buf) == 0 {
+		return 0, nil
+	}
+
+	minNeeded := 0
+	if opts.Min > 0 {
+		minNeeded = int(opts.Min)
+		if minNeeded > len(buf) {
+			minNeeded = len(buf)
+		}
+	}
+	if minNeeded > 0 {
+		if err := waitFor(minNeeded); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			if ctx.Err() != nil {
+				return 0, ctx.Err()
+			}
+			return 0, err
+		}
+	}
+
 	n := copy(buf, q.msgs)
-	q.msgs = q.msgs[n:]
-	q.mu.Unlock()
+	if !opts.LeaveIn {
+		q.msgs = q.msgs[n:]
+	}
 	return n, nil
 }

@@ -51,7 +51,7 @@ type QueueAPI interface {
 	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)
 	// Dequeue reads from the queue.
 	// It reads into buf until buf is full or another criteria is fulfilled.
-	Dequeue(ctx context.Context, q Handle, buf []Message, opts NextOpts) (int, error)
+	Dequeue(ctx context.Context, q Handle, buf []Message, opts DequeueOpts) (int, error)
 	// Insert adds the messages to the end of the queue.
 	Enqueue(ctx context.Context, from *Endpoint, q Handle, msgs []Message) (*InsertResp, error)
 
@@ -65,7 +65,7 @@ type InsertResp struct {
 	Success uint32
 }
 
-type NextOpts struct {
+type DequeueOpts struct {
 	// Min is the minimum number of messages to read before returning.
 	// set to 0 for non blocking.
 	// If there are messages available at the start of the call,
@@ -73,13 +73,14 @@ type NextOpts struct {
 	Min uint32 `json:"min"`
 	// LeaveIn will cause the emitted messages to stay in the queue.
 	LeaveIn bool `json:"leave_in"`
-	// Skip drops this many messages before emitting any
+	// Skip drops this many messages before emitting any.
 	Skip uint32 `json:"skip"`
 	// MaxWait is the maximum amount of time to wait.
+	// The call is guaranteed to return in this amount of time with something, or an error.
 	MaxWait *time.Duration `json:"max_wait"`
 }
 
-func (no NextOpts) Marshal(out []byte) []byte {
+func (no DequeueOpts) Marshal(out []byte) []byte {
 	data, err := json.Marshal(no)
 	if err != nil {
 		panic(err)
@@ -87,8 +88,12 @@ func (no NextOpts) Marshal(out []byte) []byte {
 	return append(out, data...)
 }
 
-func (no *NextOpts) Unmarshal(data []byte) error {
+func (no *DequeueOpts) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, no)
+}
+
+func (no DequeueOpts) Validate() error {
+	return nil
 }
 
 // QueueInfo is info about a queue.

@@ -348,7 +348,7 @@ func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qsp
 	return s.sys.CreateQueue(ctx, host, qspec)
 }
 
-func (s *Service) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func (s *Service) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	return s.sys.Dequeue(ctx, qh, buf, opts)
 }
 

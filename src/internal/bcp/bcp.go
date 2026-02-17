@@ -311,7 +311,7 @@ func CreateQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qspec blo
 	return &resp.Handle, nil
 }
 
-func Next(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func Next(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	var resp NextResp
 	if err := doAsk(ctx, tp, ep, MT_QUEUE_NEXT, NextReq{Opts: opts, Max: len(buf)}, &resp); err != nil {
 		return 0, err

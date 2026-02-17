@@ -185,7 +185,7 @@ func (pv *peerView[LK, LV]) CreateQueue(ctx context.Context, host *blobcache.End
 	return &h2, nil
 }
 
-func (pv *peerView[LK, LV]) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func (pv *peerView[LK, LV]) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	return pv.svc.Dequeue(ctx, pv.incoming(q), buf, opts)
 }
 

@@ -236,7 +236,7 @@ func (s *Service) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec 
 	return bcp.CreateQueue(ctx, s.node, s.ep, qspec)
 }
 
-func (s *Service) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func (s *Service) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	return bcp.Next(ctx, s.node, s.ep, qh, buf, opts)
 }
 

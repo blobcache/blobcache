@@ -299,7 +299,7 @@ func (c *Client) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspe
 	return &resp.Handle, nil
 }
 
-func (c *Client) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func (c *Client) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	req := NextReq{Opts: opts, Max: len(buf)}
 	var resp NextResp
 	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.Dequeue", q.OID.String()), &q.Secret, req, &resp); err != nil {

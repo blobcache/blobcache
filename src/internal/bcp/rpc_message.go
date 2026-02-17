@@ -1043,7 +1043,7 @@ func (cq *CreateQueueResp) Unmarshal(data []byte) error {
 }
 
 type NextReq struct {
-	Opts blobcache.NextOpts
+	Opts blobcache.DequeueOpts
 	Max  int
 }
 

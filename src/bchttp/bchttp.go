@@ -202,8 +202,8 @@ type CreateQueueResp struct {
 }
 
 type NextReq struct {
-	Opts blobcache.NextOpts `json:"opts"`
-	Max  int                `json:"max"`
+	Opts blobcache.DequeueOpts `json:"opts"`
+	Max  int                   `json:"max"`
 }
 
 type NextResp struct {
