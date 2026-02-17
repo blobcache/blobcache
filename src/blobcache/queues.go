@@ -137,7 +137,10 @@ type QueueBackend_Memory struct {
 	// EvictOldest will cause the oldest message in the queue to be evicted
 	// when the mailbox is full.
 	// The default value (false) causes new messages to be dropped when the queue is full.
-	EvictOldest bool
+	EvictOldest bool `json:"evict_oldest"`
+
+	MaxBytesPerMessage   uint32 `json:"max_bytes_per_message`
+	MaxHandlesPerMessage uint32 `json:"max_bytes_per_message"`
 }
 
 type QueueBackend_Remote struct {
