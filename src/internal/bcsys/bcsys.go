@@ -91,13 +91,6 @@ func New[LK any, LV LocalVolume[LK]](env Env[LK, LV], cfg Config) *Service[LK, L
 	s.volSys.global = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
 		Hub:        &s.hub,
-		Send: func(tm blobcache.Message) error {
-			node := s.node.Load()
-			if node == nil {
-				return fmt.Errorf("cannot send, no node")
-			}
-			return bcp.TopicSend(s.env.Background, node, tm)
-		},
 	})
 	return s
 }
@@ -932,12 +925,12 @@ func (s *Service[LK, LV]) CreateQueue(ctx context.Context, host *blobcache.Endpo
 	return nil, fmt.Errorf("CreateQueue not implemented")
 }
 
-func (s *Service[LK, LV]) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
-	return 0, fmt.Errorf("Next not implemented")
+func (s *Service[LK, LV]) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	panic("Dequeue not implemented")
 }
 
-func (s *Service[LK, LV]) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return nil, fmt.Errorf("Insert not implemented")
+func (s *Service[LK, LV]) Enqueue(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	panic("Enqueue not implemented")
 }
 
 func (s *Service[LK, LV]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {

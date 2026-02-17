@@ -236,11 +236,11 @@ func (s *Service) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec 
 	return bcp.CreateQueue(ctx, s.node, s.ep, qspec)
 }
 
-func (s *Service) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func (s *Service) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
 	return bcp.Next(ctx, s.node, s.ep, qh, buf, opts)
 }
 
-func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+func (s *Service) Enqueue(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
 	return bcp.Insert(ctx, s.node, s.ep, from, qh, msgs)
 }
 

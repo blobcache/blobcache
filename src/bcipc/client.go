@@ -196,11 +196,11 @@ func (c *Client) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec b
 	return bcp.CreateQueue(ctx, &c.tp, blobcache.Endpoint{}, qspec)
 }
 
-func (c *Client) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func (c *Client) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
 	return bcp.Next(ctx, &c.tp, blobcache.Endpoint{}, qh, buf, opts)
 }
 
-func (c *Client) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+func (c *Client) Enqueue(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
 	return bcp.Insert(ctx, &c.tp, blobcache.Endpoint{}, from, qh, msgs)
 }
 

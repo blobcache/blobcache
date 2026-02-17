@@ -335,13 +335,6 @@ func SubToVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobca
 	return nil
 }
 
-// TopicSend processes a single topic messge
-func TopicSend(ctx context.Context, tp Teller, tmsg blobcache.Message) error {
-	var ttm TopicTellMsg
-	ttm.Encrypt(tmsg.Topic, tmsg.Payload)
-	return doTell(ctx, tp, tmsg.Endpoint, MT_TOPIC_TELL, ttm)
-}
-
 func doAsk[Req Sendable, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Asker, remote blobcache.Endpoint, code MessageType, req Req, resp Resp) error {
 	reqData := req.Marshal(nil)
 	var reqMsg Message

@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/sbe"
+	"go.brendoncarroll.net/exp/sbe"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -1224,7 +1224,7 @@ func (ttm *TopicTellMsg) Decrypt(tid blobcache.TID, dst *blobcache.Message) erro
 	if err != nil {
 		panic(err)
 	}
-	dst.Payload, err = ciph.Open(dst.Payload[:0], nonce, ctext, nil)
+	dst.Bytes, err = ciph.Open(dst.Bytes[:0], nonce, ctext, nil)
 	if err != nil {
 		return err
 	}

@@ -316,21 +316,21 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch method {
-	case "Next":
+	case "Dequeue":
 		handleRequest(w, r, func(ctx context.Context, req NextReq) (*NextResp, error) {
 			if req.Max < 0 {
 				return nil, fmt.Errorf("max cannot be negative")
 			}
 			buf := make([]blobcache.Message, req.Max)
-			n, err := s.Service.Next(ctx, h, buf, req.Opts)
+			n, err := s.Service.Dequeue(ctx, h, buf, req.Opts)
 			if err != nil {
 				return nil, err
 			}
 			return &NextResp{Messages: buf[:n]}, nil
 		})
-	case "Insert":
+	case "Enqueue":
 		handleRequest(w, r, func(ctx context.Context, req InsertReq) (*blobcache.InsertResp, error) {
-			resp, err := s.Service.Insert(ctx, req.From, h, req.Messages)
+			resp, err := s.Service.Enqueue(ctx, req.From, h, req.Messages)
 			if err != nil {
 				return nil, err
 			}

@@ -7,41 +7,53 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"go.brendoncarroll.net/exp/sbe"
 )
 
 type Message struct {
-	// Endpoint is the endpoint where the message came from or is going.
-	Endpoint Endpoint `json:"endpoint"`
-	// Topic is the topic that the message is speaking on.
-	Topic TID `json:"topic"`
-	// Payload data to deliver.
-	Payload []byte `json:"payload"`
+	// Handles are handles associated with the message
+	Handles []Handle `json:"handles"`
+	// Bytes is arbitrary bytes delivered with the message.
+	Bytes []byte `json:"bytes"`
 }
 
 func (m Message) Marshal(out []byte) []byte {
-	out = m.Endpoint.Marshal(out)
-	out = append(out, m.Topic[:]...)
-	out = append(out, m.Payload...)
+	out = sbe.AppendUint32(out, uint32(len(m.Handles)))
+	out = append(out, m.Bytes...)
 	return out
 }
 
 func (m *Message) Unmarshal(data []byte) error {
-	if err := m.Endpoint.Unmarshal(data[:EndpointSize]); err != nil {
+	numHandles, data, err := sbe.ReadUint32(data)
+	if err != nil {
 		return err
 	}
-	m.Topic = TID(data[OIDSize : OIDSize+32])
-	m.Payload = data[OIDSize+32:]
+	m.Handles = m.Handles[:0]
+	for range numHandles {
+		hdata, rest, err := sbe.ReadN(data, HandleSize)
+		if err != nil {
+			return err
+		}
+		var h Handle
+		if err := h.Unmarshal(hdata); err != nil {
+			return err
+		}
+		m.Handles = append(m.Handles, h)
+		data = rest
+	}
+	m.Bytes = data
 	return nil
 }
 
 type QueueAPI interface {
 	// CreateQueue creates a new queue and returns a handle to it.
 	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)
-	// Next reads from the queue.
+	// Dequeue reads from the queue.
 	// It reads into buf until buf is full or another criteria is fulfilled.
-	Next(ctx context.Context, q Handle, buf []Message, opts NextOpts) (int, error)
+	Dequeue(ctx context.Context, q Handle, buf []Message, opts NextOpts) (int, error)
 	// Insert adds the messages to the end of the queue.
-	Insert(ctx context.Context, from *Endpoint, q Handle, msgs []Message) (*InsertResp, error)
+	Enqueue(ctx context.Context, from *Endpoint, q Handle, msgs []Message) (*InsertResp, error)
 
 	// SubToVolume causes all changes to a Volume's cell to be
 	// writen as message to the queue.
@@ -97,7 +109,7 @@ func (qi *QueueInfo) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, qi)
 }
 
-type QueueBackend[T handleOrOID] struct {
+type QueueBackend[T volSpecRef] struct {
 	Memory *QueueBackend_Memory `json:"memory,omitempty"`
 	Remote *QueueBackend_Remote `json:"remote,omitempty"`
 }

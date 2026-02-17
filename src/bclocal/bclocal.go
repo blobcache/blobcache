@@ -348,12 +348,12 @@ func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qsp
 	return s.sys.CreateQueue(ctx, host, qspec)
 }
 
-func (s *Service) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
-	return s.sys.Next(ctx, qh, buf, opts)
+func (s *Service) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+	return s.sys.Dequeue(ctx, qh, buf, opts)
 }
 
-func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return s.sys.Insert(ctx, from, qh, msgs)
+func (s *Service) Enqueue(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return s.sys.Enqueue(ctx, from, qh, msgs)
 }
 
 func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
