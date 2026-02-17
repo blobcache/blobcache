@@ -201,6 +201,14 @@ type CreateQueueResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
+type InspectQueueReq struct {
+	Queue blobcache.Handle `json:"queue"`
+}
+
+type InspectQueueResp struct {
+	Info blobcache.QueueInfo `json:"info"`
+}
+
 type NextReq struct {
 	Opts blobcache.DequeueOpts `json:"opts"`
 	Max  int                   `json:"max"`

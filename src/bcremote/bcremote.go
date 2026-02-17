@@ -236,12 +236,16 @@ func (s *Service) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec 
 	return bcp.CreateQueue(ctx, s.node, s.ep, qspec)
 }
 
+func (s *Service) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {
+	return bcp.InspectQueue(ctx, s.node, s.ep, qh)
+}
+
 func (s *Service) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
-	return bcp.Next(ctx, s.node, s.ep, qh, buf, opts)
+	return bcp.Dequeue(ctx, s.node, s.ep, qh, buf, opts)
 }
 
 func (s *Service) Enqueue(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return bcp.Insert(ctx, s.node, s.ep, from, qh, msgs)
+	return bcp.Enqueue(ctx, s.node, s.ep, from, qh, msgs)
 }
 
 func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {

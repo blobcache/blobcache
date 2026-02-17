@@ -299,6 +299,22 @@ func (c *Client) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspe
 	return &resp.Handle, nil
 }
 
+func (c *Client) InspectQueue(ctx context.Context, q blobcache.Handle) (blobcache.QueueInfo, error) {
+	p := fmt.Sprintf("/queue/%s.Inspect", q.OID.String())
+	headers := map[string]string{
+		"X-Secret": hex.EncodeToString(q.Secret[:]),
+	}
+	body, err := c.do(ctx, "GET", p, headers, nil)
+	if err != nil {
+		return blobcache.QueueInfo{}, err
+	}
+	var info blobcache.QueueInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return blobcache.QueueInfo{}, fmt.Errorf("unmarshaling response: %w", err)
+	}
+	return info, nil
+}
+
 func (c *Client) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	req := NextReq{Opts: opts, Max: len(buf)}
 	var resp NextResp

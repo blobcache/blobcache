@@ -134,12 +134,14 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		})
 	})
 	t.Run("Queue/Memory", func(t *testing.T) {
-		QueueAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
+		QueueAPI(t, func(t testing.TB) (blobcache.QueueAPI, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			svc := mk(t)
 			qh, err := svc.CreateQueue(ctx, nil, blobcache.QueueSpec{
 				Memory: &blobcache.QueueBackend_Memory{
-					MaxDepth: 16,
+					MaxDepth:             16,
+					MaxBytesPerMessage:   1024,
+					MaxHandlesPerMessage: 16,
 				},
 			})
 			require.NoError(t, err)

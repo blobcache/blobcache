@@ -49,6 +49,8 @@ func (m *Message) Unmarshal(data []byte) error {
 type QueueAPI interface {
 	// CreateQueue creates a new queue and returns a handle to it.
 	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)
+	// InspectQueue returns information about a queue.
+	InspectQueue(ctx context.Context, qh Handle) (QueueInfo, error)
 	// Dequeue reads from the queue.
 	// It reads into buf until buf is full or another criteria is fulfilled.
 	Dequeue(ctx context.Context, q Handle, buf []Message, opts DequeueOpts) (int, error)
@@ -98,8 +100,9 @@ func (no DequeueOpts) Validate() error {
 
 // QueueInfo is info about a queue.
 type QueueInfo struct {
-	ID   OID               `json:"id"`
-	Spec QueueBackend[OID] `json:"spec"`
+	ID      OID               `json:"id"`
+	Config  QueueConfig       `json:"config"`
+	Backend QueueBackend[OID] `json:"backend"`
 }
 
 func (qi QueueInfo) Marshal(out []byte) []byte {
@@ -112,6 +115,13 @@ func (qi QueueInfo) Marshal(out []byte) []byte {
 
 func (qi *QueueInfo) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, qi)
+}
+
+// QueueConfig contains parameters which all queues must have.
+type QueueConfig struct {
+	MaxDepth             uint32 `json:"max_depth"`
+	MaxBytesPerMessage   uint32 `json:"max_bytes_per_message"`
+	MaxHandlesPerMessage uint32 `json:"max_handles_per_message"`
 }
 
 type QueueBackend[T volSpecRef] struct {
@@ -140,7 +150,7 @@ type QueueBackend_Memory struct {
 	EvictOldest bool `json:"evict_oldest"`
 
 	MaxBytesPerMessage   uint32 `json:"max_bytes_per_message`
-	MaxHandlesPerMessage uint32 `json:"max_bytes_per_message"`
+	MaxHandlesPerMessage uint32 `json:"max_handles_per_message"`
 }
 
 type QueueBackend_Remote struct {

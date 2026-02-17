@@ -10,7 +10,11 @@ import (
 	"blobcache.io/blobcache/src/internal/backend"
 )
 
-const MaxMaxDepth = 16
+const (
+	MaxMaxDepth      = 16
+	MaxMaxHandlesPer = 16
+	MaxMaxBytesPer   = 1 << 20
+)
 
 var _ backend.System[blobcache.QueueBackend_Memory] = &System{}
 

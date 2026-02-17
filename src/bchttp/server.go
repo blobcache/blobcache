@@ -316,6 +316,17 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch method {
+	case "Inspect":
+		info, err := s.Service.InspectQueue(r.Context(), h)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(info); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		return
 	case "Dequeue":
 		handleRequest(w, r, func(ctx context.Context, req NextReq) (*NextResp, error) {
 			if req.Max < 0 {

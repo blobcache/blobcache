@@ -279,10 +279,17 @@ func (s *Service[LK, LV]) addQueue(oid blobcache.OID, q backend.Queue, spec blob
 	if s.queues == nil {
 		s.queues = make(map[blobcache.OID]queue)
 	}
+	cfg := blobcache.QueueConfig{}
+	if spec.Memory != nil {
+		cfg.MaxDepth = spec.Memory.MaxDepth
+		cfg.MaxBytesPerMessage = spec.Memory.MaxBytesPerMessage
+		cfg.MaxHandlesPerMessage = spec.Memory.MaxHandlesPerMessage
+	}
 	s.queues[oid] = queue{
 		info: blobcache.QueueInfo{
-			ID:   oid,
-			Spec: spec,
+			ID:      oid,
+			Config:  cfg,
+			Backend: spec,
 		},
 		backend: q,
 	}
@@ -998,6 +1005,14 @@ func (s *Service[LK, LV]) CreateQueue(ctx context.Context, host *blobcache.Endpo
 	}
 }
 
+func (s *Service[LK, LV]) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {
+	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSPECT)
+	if err != nil {
+		return blobcache.QueueInfo{}, err
+	}
+	return q.info, nil
+}
+
 func (s *Service[LK, LV]) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	if err := opts.Validate(); err != nil {
 		return 0, err
@@ -1016,6 +1031,16 @@ func (s *Service[LK, LV]) Enqueue(ctx context.Context, from *blobcache.Endpoint,
 	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSERT)
 	if err != nil {
 		return nil, err
+	}
+	maxBytes := q.info.Config.MaxBytesPerMessage
+	maxHandles := q.info.Config.MaxHandlesPerMessage
+	for i, msg := range msgs {
+		if uint32(len(msg.Bytes)) > maxBytes {
+			return nil, fmt.Errorf("message %d exceeds max bytes per message: %d", i, maxBytes)
+		}
+		if uint32(len(msg.Handles)) > maxHandles {
+			return nil, fmt.Errorf("message %d exceeds max handles per message: %d", i, maxHandles)
+		}
 	}
 	if err := q.backend.Enqueue(ctx, msgs); err != nil {
 		return nil, err
