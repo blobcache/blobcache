@@ -1073,13 +1073,6 @@ func (s *Service[LK, LV]) resolveQueue(ctx context.Context, qh blobcache.Handle,
 	return q, nil
 }
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // makeVolume constructs an in-memory volume object from a backend.
 // it does not create volumes in the database.
 func (s *Service[LK, LV]) makeVolume(ctx context.Context, oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume, error) {

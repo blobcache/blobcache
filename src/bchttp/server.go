@@ -317,16 +317,13 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	switch method {
 	case "Inspect":
-		info, err := s.Service.InspectQueue(r.Context(), h)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if err := json.NewEncoder(w).Encode(info); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		return
+		handleRequest(w, r, func(ctx context.Context, req InspectQueueReq) (*InspectQueueResp, error) {
+			info, err := s.Service.InspectQueue(ctx, h)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectQueueResp{Info: info}, nil
+		})
 	case "Dequeue":
 		handleRequest(w, r, func(ctx context.Context, req NextReq) (*NextResp, error) {
 			if req.Max < 0 {
@@ -361,9 +358,11 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 
 func handleRequest[Req, Resp any](w http.ResponseWriter, r *http.Request, fn func(context.Context, Req) (*Resp, error)) {
 	var req Req
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	if r.Method != "GET" {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	resp, err := fn(r.Context(), req)
 	if err != nil {

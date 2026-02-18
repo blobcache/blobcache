@@ -308,11 +308,11 @@ func (c *Client) InspectQueue(ctx context.Context, q blobcache.Handle) (blobcach
 	if err != nil {
 		return blobcache.QueueInfo{}, err
 	}
-	var info blobcache.QueueInfo
-	if err := json.Unmarshal(body, &info); err != nil {
+	var resp InspectQueueResp
+	if err := json.Unmarshal(body, &resp); err != nil {
 		return blobcache.QueueInfo{}, fmt.Errorf("unmarshaling response: %w", err)
 	}
-	return info, nil
+	return resp.Info, nil
 }
 
 func (c *Client) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
