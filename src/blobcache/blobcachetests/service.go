@@ -149,6 +149,25 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			return svc, *qh
 		})
 	})
+	t.Run("SubToVol/Local", func(t *testing.T) {
+		TestVolumeSubscribe(t, func(t testing.TB) (blobcache.Service, blobcache.Handle, blobcache.Handle) {
+			ctx := testutil.Context(t)
+			svc := mk(t)
+			// volumes
+			volh, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
+			require.NoError(t, err)
+			// queue
+			qh, err := svc.CreateQueue(ctx, nil, blobcache.QueueSpec{
+				Memory: &blobcache.QueueBackend_Memory{
+					MaxDepth:             1,
+					MaxBytesPerMessage:   1024,
+					MaxHandlesPerMessage: 16,
+				},
+			})
+			require.NoError(t, err)
+			return svc, *volh, *qh
+		})
+	})
 }
 
 func TestManyBlobs(t *testing.T, singleTx bool, mk func(t testing.TB) blobcache.Service) {
