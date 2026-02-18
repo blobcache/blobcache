@@ -316,21 +316,29 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch method {
-	case "Next":
+	case "Inspect":
+		handleRequest(w, r, func(ctx context.Context, req InspectQueueReq) (*InspectQueueResp, error) {
+			info, err := s.Service.InspectQueue(ctx, h)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectQueueResp{Info: info}, nil
+		})
+	case "Dequeue":
 		handleRequest(w, r, func(ctx context.Context, req NextReq) (*NextResp, error) {
 			if req.Max < 0 {
 				return nil, fmt.Errorf("max cannot be negative")
 			}
 			buf := make([]blobcache.Message, req.Max)
-			n, err := s.Service.Next(ctx, h, buf, req.Opts)
+			n, err := s.Service.Dequeue(ctx, h, buf, req.Opts)
 			if err != nil {
 				return nil, err
 			}
 			return &NextResp{Messages: buf[:n]}, nil
 		})
-	case "Insert":
+	case "Enqueue":
 		handleRequest(w, r, func(ctx context.Context, req InsertReq) (*blobcache.InsertResp, error) {
-			resp, err := s.Service.Insert(ctx, req.From, h, req.Messages)
+			resp, err := s.Service.Enqueue(ctx, h, req.Messages)
 			if err != nil {
 				return nil, err
 			}
@@ -350,9 +358,11 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 
 func handleRequest[Req, Resp any](w http.ResponseWriter, r *http.Request, fn func(context.Context, Req) (*Resp, error)) {
 	var req Req
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	if r.Method != "GET" {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	resp, err := fn(r.Context(), req)
 	if err != nil {

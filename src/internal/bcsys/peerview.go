@@ -185,12 +185,16 @@ func (pv *peerView[LK, LV]) CreateQueue(ctx context.Context, host *blobcache.End
 	return &h2, nil
 }
 
-func (pv *peerView[LK, LV]) Next(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
-	return pv.svc.Next(ctx, pv.incoming(q), buf, opts)
+func (pv *peerView[LK, LV]) InspectQueue(ctx context.Context, q blobcache.Handle) (blobcache.QueueInfo, error) {
+	return pv.svc.InspectQueue(ctx, pv.incoming(q))
 }
 
-func (pv *peerView[LK, LV]) Insert(ctx context.Context, from *blobcache.Endpoint, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return pv.svc.Insert(ctx, from, pv.incoming(q), msgs)
+func (pv *peerView[LK, LV]) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
+	return pv.svc.Dequeue(ctx, pv.incoming(q), buf, opts)
+}
+
+func (pv *peerView[LK, LV]) Enqueue(ctx context.Context, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return pv.svc.Enqueue(ctx, pv.incoming(q), msgs)
 }
 
 func (pv *peerView[LK, LV]) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {

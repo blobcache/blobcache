@@ -16,7 +16,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.57.1
 	github.com/stretchr/testify v1.11.1
-	go.brendoncarroll.net/exp v0.0.0-20260104195250-3ba4c15c0c7a
+	go.brendoncarroll.net/exp v0.0.0-20260214014235-1b1b9442d149
 	go.brendoncarroll.net/p2p v0.0.0-20241118201502-2abd1a6f58e7
 	go.brendoncarroll.net/star v0.0.0-20251101181839-d7285e010b23
 	go.brendoncarroll.net/state v0.0.0-20241118200920-627c9c196901

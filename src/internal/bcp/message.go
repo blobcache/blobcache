@@ -73,16 +73,11 @@ const (
 
 const (
 	MT_QUEUE_INSPECT MessageType = 80 + iota
-	MT_QUEUE_NEXT
-	MT_QUEUE_INSERT
+	MT_QUEUE_ENQUEUE
+	MT_QUEUE_DEQUEUE
 	MT_QUEUE_SUB_TO_VOLUME
 
 	MT_QUEUE_CREATE MessageType = 96
-)
-
-const (
-	// MT_TOPIC_TELL is used for volume implementations to communicate with other volumes.
-	MT_TOPIC_TELL MessageType = 127
 )
 
 // Response messages

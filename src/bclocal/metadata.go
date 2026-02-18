@@ -13,8 +13,8 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcsys"
-	"blobcache.io/blobcache/src/internal/sbe"
 	"github.com/cockroachdb/pebble"
+	"go.brendoncarroll.net/exp/sbe"
 )
 
 var _ bcsys.MetadataStore = (*mdStore)(nil)

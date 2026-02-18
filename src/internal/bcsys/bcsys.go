@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/backend"
+	"blobcache.io/blobcache/src/internal/backend/memory"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/internal/pubsub"
@@ -32,6 +34,8 @@ const (
 	DefaultVolumeTTL = 5 * time.Minute
 	// DefaultTxTTL is the default time to live for a transaction handle.
 	DefaultTxTTL = 1 * time.Minute
+	// DefaultQueueTTL is the default time to live for a queue handle.
+	DefaultQueueTTL = 2 * time.Minute
 )
 
 type LocalVolume[K any] interface {
@@ -91,14 +95,8 @@ func New[LK any, LV LocalVolume[LK]](env Env[LK, LV], cfg Config) *Service[LK, L
 	s.volSys.global = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
 		Hub:        &s.hub,
-		Send: func(tm blobcache.Message) error {
-			node := s.node.Load()
-			if node == nil {
-				return fmt.Errorf("cannot send, no node")
-			}
-			return bcp.TopicSend(s.env.Background, node, tm)
-		},
 	})
+	s.queueSys.memory = &memory.System{}
 	return s
 }
 
@@ -112,15 +110,19 @@ type Service[LK any, LV LocalVolume[LK]] struct {
 		remote remotevol.System
 		global consensusvol.System
 	}
+	queueSys struct {
+		memory *memory.System
+	}
 	hub       pubsub.Hub
 	tmpSecret *[32]byte
 
 	handles handleSystem
-	// mu guards the volumes and txns.
+	// mu guards the volumes, queues, and txns.
 	// pure handle operations like Drop, KeepAlive, Inspect, etc. do not require this lock.
 	// mu should always be taken for a superset of the time that the handle system's lock is taken.
 	mu      sync.RWMutex
 	volumes map[blobcache.OID]volume
+	queues  map[blobcache.OID]queue
 	txns    map[blobcache.OID]transaction
 }
 
@@ -226,6 +228,14 @@ func (s *Service[LK, LV]) Cleanup(ctx context.Context) ([]blobcache.OID, error) 
 			ret = append(ret, oid)
 		}
 	}
+
+	// 4. Release resources for queues which do not have a handle.
+	logctx.Info(ctx, "cleaning up queues")
+	for oid := range s.queues {
+		if !s.handles.isAlive(oid) {
+			delete(s.queues, oid)
+		}
+	}
 	s.mu.Unlock()
 	return ret, nil
 }
@@ -253,6 +263,44 @@ func (s *Service[LK, LV]) addVolume(oid blobcache.OID, vol volumes.Volume) bool 
 		backend: vol,
 	}
 	return true
+}
+
+// addQueue adds a queue to the queues map.
+// It acquires mu exclusively, and returns false if the queue already exists.
+func (s *Service[LK, LV]) addQueue(oid blobcache.OID, q backend.Queue, spec blobcache.QueueBackend[blobcache.OID]) bool {
+	if oid == (blobcache.OID{}) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.queues[oid]; exists {
+		return false
+	}
+	if s.queues == nil {
+		s.queues = make(map[blobcache.OID]queue)
+	}
+	cfg := blobcache.QueueConfig{}
+	if spec.Memory != nil {
+		cfg.MaxDepth = spec.Memory.MaxDepth
+		cfg.MaxBytesPerMessage = spec.Memory.MaxBytesPerMessage
+		cfg.MaxHandlesPerMessage = spec.Memory.MaxHandlesPerMessage
+	}
+	s.queues[oid] = queue{
+		info: blobcache.QueueInfo{
+			ID:      oid,
+			Config:  cfg,
+			Backend: spec,
+		},
+		backend: q,
+	}
+	return true
+}
+
+func (s *Service[LK, LV]) queueByOID(x blobcache.OID) (queue, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	q, exists := s.queues[x]
+	return q, exists
 }
 
 func (s *Service[LK, LV]) volByOID(x blobcache.OID) (volume, bool) {
@@ -315,6 +363,11 @@ func (s *Service[LK, LV]) inspectVolume(ctx context.Context, volID blobcache.OID
 type volume struct {
 	info    blobcache.VolumeInfo
 	backend volumes.Volume
+}
+
+type queue struct {
+	info    blobcache.QueueInfo
+	backend backend.Queue
 }
 
 type transaction struct {
@@ -929,19 +982,95 @@ func (s *Service[LK, LV]) VisitLinks(ctx context.Context, txh blobcache.Handle, 
 }
 
 func (s *Service[LK, LV]) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
-	return nil, fmt.Errorf("CreateQueue not implemented")
+	switch {
+	case host != nil && host.Peer != s.LocalID():
+		return nil, fmt.Errorf("remote queues not supported")
+	case qspec.Memory != nil && qspec.Remote == nil:
+		q, err := s.queueSys.memory.CreateQueue(ctx, *qspec.Memory)
+		if err != nil {
+			return nil, err
+		}
+		oid := blobcache.RandomOID()
+		if !s.addQueue(oid, q, blobcache.QueueBackend[blobcache.OID]{Memory: qspec.Memory}) {
+			return nil, fmt.Errorf("queue already exists")
+		}
+		createdAt := time.Now()
+		expiresAt := createdAt.Add(DefaultQueueTTL)
+		handle := s.handles.Create(oid, blobcache.Action_ALL, createdAt, expiresAt)
+		return &handle, nil
+	case qspec.Remote != nil:
+		return nil, fmt.Errorf("remote queue spec not supported")
+	default:
+		return nil, fmt.Errorf("memory queue spec required")
+	}
 }
 
-func (s *Service[LK, LV]) Next(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
-	return 0, fmt.Errorf("Next not implemented")
+func (s *Service[LK, LV]) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {
+	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSPECT)
+	if err != nil {
+		return blobcache.QueueInfo{}, err
+	}
+	return q.info, nil
 }
 
-func (s *Service[LK, LV]) Insert(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return nil, fmt.Errorf("Insert not implemented")
+func (s *Service[LK, LV]) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
+	if err := opts.Validate(); err != nil {
+		return 0, err
+	}
+	if len(buf) == 0 {
+		return 0, fmt.Errorf("dequeue buffer must be non-empty")
+	}
+	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_NEXT)
+	if err != nil {
+		return 0, err
+	}
+	return q.backend.Dequeue(ctx, buf, opts)
+}
+
+func (s *Service[LK, LV]) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSERT)
+	if err != nil {
+		return nil, err
+	}
+	maxBytes := q.info.Config.MaxBytesPerMessage
+	maxHandles := q.info.Config.MaxHandlesPerMessage
+	for i, msg := range msgs {
+		if uint32(len(msg.Bytes)) > maxBytes {
+			return nil, fmt.Errorf("message %d exceeds max bytes per message: %d", i, maxBytes)
+		}
+		if uint32(len(msg.Handles)) > maxHandles {
+			return nil, fmt.Errorf("message %d exceeds max handles per message: %d", i, maxHandles)
+		}
+	}
+	if err := q.backend.Enqueue(ctx, msgs); err != nil {
+		return nil, err
+	}
+	return &blobcache.InsertResp{Success: uint32(len(msgs))}, nil
 }
 
 func (s *Service[LK, LV]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
 	return fmt.Errorf("SubToVolume not implemented")
+}
+
+func (s *Service[LK, LV]) resolveQueue(ctx context.Context, qh blobcache.Handle, requires blobcache.ActionSet) (queue, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	oid, rights := s.handles.Resolve(qh)
+	if rights == 0 {
+		return queue{}, blobcache.ErrInvalidHandle{Handle: qh}
+	}
+	if rights&requires < requires {
+		return queue{}, blobcache.ErrPermission{
+			Handle:   qh,
+			Rights:   rights,
+			Requires: requires,
+		}
+	}
+	q, exists := s.queues[oid]
+	if !exists {
+		return queue{}, blobcache.ErrInvalidHandle{Handle: qh}
+	}
+	return q, nil
 }
 
 // makeVolume constructs an in-memory volume object from a backend.

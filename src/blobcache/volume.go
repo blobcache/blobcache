@@ -107,7 +107,7 @@ func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
 // VolumeBackend is a specification for a volume backend.
 // If it is going into the API, the it will be a VolumeBackend[Handle].
 // If it is coming out of the API, the it will be a VolumeBackend[OID].
-type VolumeBackend[T handleOrOID] struct {
+type VolumeBackend[T volSpecRef] struct {
 	Local     *VolumeBackend_Local     `json:"local,omitempty"`
 	Remote    *VolumeBackend_Remote    `json:"remote,omitempty"`
 	Peer      *VolumeBackend_Peer      `json:"peer,omitempty"`
@@ -309,7 +309,7 @@ type VolumeBackend_Git struct {
 	VolumeConfig
 }
 
-type VolumeBackend_Vault[T handleOrOID] struct {
+type VolumeBackend_Vault[T volSpecRef] struct {
 	X        T        `json:"x"`
 	Secret   Secret   `json:"secret"`
 	HashAlgo HashAlgo `json:"hash_algo"`
@@ -355,7 +355,7 @@ type VolumeBackend_Consensus struct {
 	MaxSize  int64      `json:"max_size"`
 }
 
-type handleOrOID interface {
+type volSpecRef interface {
 	Handle | OID
 }
 

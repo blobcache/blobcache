@@ -133,6 +133,22 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			return s, *volh
 		})
 	})
+	t.Run("Queue/Memory", func(t *testing.T) {
+		QueueAPI(t, func(t testing.TB) (blobcache.QueueAPI, blobcache.Handle) {
+			ctx := testutil.Context(t)
+			svc := mk(t)
+			qh, err := svc.CreateQueue(ctx, nil, blobcache.QueueSpec{
+				Memory: &blobcache.QueueBackend_Memory{
+					MaxDepth:             16,
+					MaxBytesPerMessage:   1024,
+					MaxHandlesPerMessage: 16,
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, qh)
+			return svc, *qh
+		})
+	})
 }
 
 func TestManyBlobs(t *testing.T, singleTx bool, mk func(t testing.TB) blobcache.Service) {

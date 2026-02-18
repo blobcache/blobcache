@@ -373,12 +373,16 @@ func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qsp
 	return nil, fmt.Errorf("CreateQueue not implemented")
 }
 
-func (s *Service) Next(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
-	return 0, fmt.Errorf("Next not implemented")
+func (s *Service) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {
+	return blobcache.QueueInfo{}, fmt.Errorf("InspectQueue not implemented")
 }
 
-func (s *Service) Insert(ctx context.Context, from *blobcache.Endpoint, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return nil, fmt.Errorf("Insert not implemented")
+func (s *Service) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
+	return 0, fmt.Errorf("Dequeue not implemented")
+}
+
+func (s *Service) Enqueue(ctx context.Context, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return nil, fmt.Errorf("Enqueue not implemented")
 }
 
 func (s *Service) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {

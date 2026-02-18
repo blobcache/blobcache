@@ -299,20 +299,36 @@ func (c *Client) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspe
 	return &resp.Handle, nil
 }
 
-func (c *Client) Next(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.NextOpts) (int, error) {
+func (c *Client) InspectQueue(ctx context.Context, q blobcache.Handle) (blobcache.QueueInfo, error) {
+	p := fmt.Sprintf("/queue/%s.Inspect", q.OID.String())
+	headers := map[string]string{
+		"X-Secret": hex.EncodeToString(q.Secret[:]),
+	}
+	body, err := c.do(ctx, "GET", p, headers, nil)
+	if err != nil {
+		return blobcache.QueueInfo{}, err
+	}
+	var resp InspectQueueResp
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return blobcache.QueueInfo{}, fmt.Errorf("unmarshaling response: %w", err)
+	}
+	return resp.Info, nil
+}
+
+func (c *Client) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
 	req := NextReq{Opts: opts, Max: len(buf)}
 	var resp NextResp
-	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.Next", q.OID.String()), &q.Secret, req, &resp); err != nil {
+	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.Dequeue", q.OID.String()), &q.Secret, req, &resp); err != nil {
 		return 0, err
 	}
 	n := copy(buf, resp.Messages)
 	return n, nil
 }
 
-func (c *Client) Insert(ctx context.Context, from *blobcache.Endpoint, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	req := InsertReq{From: from, Messages: msgs}
+func (c *Client) Enqueue(ctx context.Context, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	req := InsertReq{Messages: msgs}
 	var resp blobcache.InsertResp
-	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.Insert", q.OID.String()), &q.Secret, req, &resp); err != nil {
+	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.Enqueue", q.OID.String()), &q.Secret, req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

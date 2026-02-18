@@ -2,6 +2,7 @@ package blobcachecmd_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -21,6 +22,10 @@ func TestAPI(t *testing.T) {
 	t.Log("built blobcache command. written to ", execPath)
 
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
+		if strings.Contains(t.Name(), "Queue") {
+			// If we ever add `blobcache queue` to the API then we can start running these tests.
+			t.SkipNow()
+		}
 		_, apiAddr := blobcached.BGTestDaemon(t)
 		return &blobcachecmd.Service{
 			APIAddr:  apiAddr,
