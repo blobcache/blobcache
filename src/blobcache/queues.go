@@ -20,6 +20,9 @@ type Message struct {
 
 func (m Message) Marshal(out []byte) []byte {
 	out = sbe.AppendUint32(out, uint32(len(m.Handles)))
+	for _, h := range m.Handles {
+		out = h.Marshal(out)
+	}
 	out = append(out, m.Bytes...)
 	return out
 }
@@ -42,7 +45,7 @@ func (m *Message) Unmarshal(data []byte) error {
 		m.Handles = append(m.Handles, h)
 		data = rest
 	}
-	m.Bytes = data
+	m.Bytes = append(m.Bytes[:0], data...)
 	return nil
 }
 
@@ -55,7 +58,7 @@ type QueueAPI interface {
 	// It reads into buf until buf is full or another criteria is fulfilled.
 	Dequeue(ctx context.Context, q Handle, buf []Message, opts DequeueOpts) (int, error)
 	// Insert adds the messages to the end of the queue.
-	Enqueue(ctx context.Context, from *Endpoint, q Handle, msgs []Message) (*InsertResp, error)
+	Enqueue(ctx context.Context, q Handle, msgs []Message) (*InsertResp, error)
 
 	// SubToVolume causes all changes to a Volume's cell to be
 	// writen as message to the queue.

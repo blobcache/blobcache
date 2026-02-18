@@ -219,7 +219,6 @@ type NextResp struct {
 }
 
 type InsertReq struct {
-	From     *blobcache.Endpoint `json:"from,omitempty"`
 	Messages []blobcache.Message `json:"messages"`
 }
 

@@ -193,8 +193,8 @@ func (pv *peerView[LK, LV]) Dequeue(ctx context.Context, q blobcache.Handle, buf
 	return pv.svc.Dequeue(ctx, pv.incoming(q), buf, opts)
 }
 
-func (pv *peerView[LK, LV]) Enqueue(ctx context.Context, from *blobcache.Endpoint, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return pv.svc.Enqueue(ctx, from, pv.incoming(q), msgs)
+func (pv *peerView[LK, LV]) Enqueue(ctx context.Context, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return pv.svc.Enqueue(ctx, pv.incoming(q), msgs)
 }
 
 func (pv *peerView[LK, LV]) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {

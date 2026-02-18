@@ -28,7 +28,7 @@ func QueueAPI(t *testing.T, setup func(testing.TB) (blobcache.QueueAPI, blobcach
 		require.NoError(t, err)
 		max := info.Config.MaxBytesPerMessage
 
-		_, err = s.Enqueue(ctx, nil, qh, []blobcache.Message{
+		_, err = s.Enqueue(ctx, qh, []blobcache.Message{
 			{Bytes: make([]byte, int(max))},
 		})
 		require.NoError(t, err)
@@ -37,7 +37,7 @@ func QueueAPI(t *testing.T, setup func(testing.TB) (blobcache.QueueAPI, blobcach
 		require.NoError(t, err)
 		require.Equal(t, 1, n)
 
-		_, err = s.Enqueue(ctx, nil, qh, []blobcache.Message{
+		_, err = s.Enqueue(ctx, qh, []blobcache.Message{
 			{Bytes: make([]byte, int(max)+1)},
 		})
 		require.Error(t, err)
@@ -54,7 +54,7 @@ func QueueAPI(t *testing.T, setup func(testing.TB) (blobcache.QueueAPI, blobcach
 		for i := range handles {
 			handles[i] = blobcache.Handle{OID: blobcache.RandomOID()}
 		}
-		_, err = s.Enqueue(ctx, nil, qh, []blobcache.Message{
+		_, err = s.Enqueue(ctx, qh, []blobcache.Message{
 			{Handles: handles},
 		})
 		require.NoError(t, err)
@@ -67,7 +67,7 @@ func QueueAPI(t *testing.T, setup func(testing.TB) (blobcache.QueueAPI, blobcach
 		for i := range handlesOver {
 			handlesOver[i] = blobcache.Handle{OID: blobcache.RandomOID()}
 		}
-		_, err = s.Enqueue(ctx, nil, qh, []blobcache.Message{
+		_, err = s.Enqueue(ctx, qh, []blobcache.Message{
 			{Handles: handlesOver},
 		})
 		require.Error(t, err)
@@ -84,7 +84,7 @@ func QueueAPI(t *testing.T, setup func(testing.TB) (blobcache.QueueAPI, blobcach
 		ctx := testutil.Context(t)
 		s, qh := setup(t)
 		msg := blobcache.Message{Bytes: []byte("hello")}
-		resp, err := s.Enqueue(ctx, nil, qh, []blobcache.Message{msg})
+		resp, err := s.Enqueue(ctx, qh, []blobcache.Message{msg})
 		require.NoError(t, err)
 		require.Equal(t, uint32(1), resp.Success)
 
@@ -114,7 +114,7 @@ func QueueAPI(t *testing.T, setup func(testing.TB) (blobcache.QueueAPI, blobcach
 			defer cancel()
 			go func() {
 				time.Sleep(50 * time.Millisecond)
-				_, _ = s.Enqueue(ctx2, nil, qh, []blobcache.Message{{Bytes: []byte("a")}})
+				_, _ = s.Enqueue(ctx2, qh, []blobcache.Message{{Bytes: []byte("a")}})
 			}()
 			buf := make([]blobcache.Message, 1)
 			maxWait := 500 * time.Millisecond
@@ -126,7 +126,7 @@ func QueueAPI(t *testing.T, setup func(testing.TB) (blobcache.QueueAPI, blobcach
 			t.Parallel()
 			ctx := testutil.Context(t)
 			s, qh := setup(t)
-			_, err := s.Enqueue(ctx, nil, qh, []blobcache.Message{
+			_, err := s.Enqueue(ctx, qh, []blobcache.Message{
 				{Bytes: []byte("a")},
 				{Bytes: []byte("b")},
 			})
@@ -170,7 +170,7 @@ func QueueAPI(t *testing.T, setup func(testing.TB) (blobcache.QueueAPI, blobcach
 		}()
 
 		time.Sleep(1 * time.Second)
-		_, err := s.Enqueue(ctx2, nil, qh, []blobcache.Message{{Bytes: []byte("x")}})
+		_, err := s.Enqueue(ctx2, qh, []blobcache.Message{{Bytes: []byte("x")}})
 		require.NoError(t, err)
 
 		select {

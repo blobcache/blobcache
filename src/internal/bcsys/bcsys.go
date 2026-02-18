@@ -1027,7 +1027,7 @@ func (s *Service[LK, LV]) Dequeue(ctx context.Context, qh blobcache.Handle, buf 
 	return q.backend.Dequeue(ctx, buf, opts)
 }
 
-func (s *Service[LK, LV]) Enqueue(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+func (s *Service[LK, LV]) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
 	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSERT)
 	if err != nil {
 		return nil, err

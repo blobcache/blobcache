@@ -381,7 +381,7 @@ func (s *Service) Dequeue(ctx context.Context, q blobcache.Handle, buf []blobcac
 	return 0, fmt.Errorf("Dequeue not implemented")
 }
 
-func (s *Service) Enqueue(ctx context.Context, from *blobcache.Endpoint, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+func (s *Service) Enqueue(ctx context.Context, q blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
 	return nil, fmt.Errorf("Enqueue not implemented")
 }
 

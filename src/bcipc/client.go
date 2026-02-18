@@ -204,8 +204,8 @@ func (c *Client) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcac
 	return bcp.Dequeue(ctx, &c.tp, blobcache.Endpoint{}, qh, buf, opts)
 }
 
-func (c *Client) Enqueue(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return bcp.Enqueue(ctx, &c.tp, blobcache.Endpoint{}, from, qh, msgs)
+func (c *Client) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return bcp.Enqueue(ctx, &c.tp, blobcache.Endpoint{}, qh, msgs)
 }
 
 func (c *Client) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {

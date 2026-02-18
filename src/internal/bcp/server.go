@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"go.brendoncarroll.net/stdctx/logctx"
-	"go.uber.org/zap"
 )
 
 // AccessFunc is called to get a Service to access
@@ -308,19 +306,51 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		})
 	// END TX
 
-	// BEGIN TOPIC
-	case MT_TOPIC_TELL:
-		if err := func() error {
-			var ttm TopicTellMsg
-			if err := ttm.Unmarshal(req.Body()); err != nil {
-				return err
+	// BEGIN QUEUE
+	case MT_QUEUE_CREATE:
+		handleAsk(req, resp, &CreateQueueReq{}, func(req *CreateQueueReq) (*CreateQueueResp, error) {
+			h, err := svc.CreateQueue(ctx, nil, req.Spec)
+			if err != nil {
+				return nil, err
 			}
-			return s.Deliver(ctx, ep, ttm)
-		}(); err != nil {
-			logctx.Error(ctx, "handling topic tell", zap.Error(err))
-			return false
-		}
-	// END TOPIC
+			return &CreateQueueResp{Handle: *h}, nil
+		})
+	case MT_QUEUE_INSPECT:
+		handleAsk(req, resp, &InspectQueueReq{}, func(req *InspectQueueReq) (*InspectQueueResp, error) {
+			info, err := svc.InspectQueue(ctx, req.Queue)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectQueueResp{Info: info}, nil
+		})
+	case MT_QUEUE_DEQUEUE:
+		handleAsk(req, resp, &DequeueReq{}, func(req *DequeueReq) (*DequeueResp, error) {
+			if req.Max <= 0 {
+				return &DequeueResp{}, nil
+			}
+			buf := make([]blobcache.Message, req.Max)
+			n, err := svc.Dequeue(ctx, req.Queue, buf, req.Opts)
+			if err != nil {
+				return nil, err
+			}
+			return &DequeueResp{Messages: buf[:n]}, nil
+		})
+	case MT_QUEUE_ENQUEUE:
+		handleAsk(req, resp, &EnqueueReq{}, func(req *EnqueueReq) (*EnqueueResp, error) {
+			ins, err := svc.Enqueue(ctx, req.Queue, req.Messages)
+			if err != nil {
+				return nil, err
+			}
+			return &EnqueueResp{Success: ins.Success}, nil
+		})
+	case MT_QUEUE_SUB_TO_VOLUME:
+		handleAsk(req, resp, &SubToVolumeReq{}, func(req *SubToVolumeReq) (*SubToVolumeResp, error) {
+			if err := svc.SubToVolume(ctx, req.Queue, req.Volume); err != nil {
+				return nil, err
+			}
+			return &SubToVolumeResp{}, nil
+		})
+	// END QUEUE
 
 	default:
 		resp.SetError(fmt.Errorf("unknown message type: %v", req.Header().Code()))

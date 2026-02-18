@@ -356,8 +356,8 @@ func (s *Service) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobca
 	return s.sys.Dequeue(ctx, qh, buf, opts)
 }
 
-func (s *Service) Enqueue(ctx context.Context, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	return s.sys.Enqueue(ctx, from, qh, msgs)
+func (s *Service) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	return s.sys.Enqueue(ctx, qh, msgs)
 }
 
 func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {

@@ -322,16 +322,20 @@ func InspectQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobc
 }
 
 func Dequeue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
-	var resp NextResp
-	if err := doAsk(ctx, tp, ep, MT_QUEUE_NEXT, NextReq{Opts: opts, Max: len(buf)}, &resp); err != nil {
+	if len(buf) == 0 {
+		return 0, fmt.Errorf("dequeue buffer must be non-empty")
+	}
+	var resp DequeueResp
+	if err := doAsk(ctx, tp, ep, MT_QUEUE_DEQUEUE, DequeueReq{Queue: qh, Opts: opts, Max: len(buf)}, &resp); err != nil {
 		return 0, err
 	}
-	return len(resp.Messages), nil
+	n := copy(buf, resp.Messages)
+	return n, nil
 }
 
-func Enqueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, from *blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	var resp InsertResp
-	if err := doAsk(ctx, tp, ep, MT_QUEUE_INSERT, InsertReq{Messages: msgs}, &resp); err != nil {
+func Enqueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	var resp EnqueueResp
+	if err := doAsk(ctx, tp, ep, MT_QUEUE_ENQUEUE, EnqueueReq{Queue: qh, Messages: msgs}, &resp); err != nil {
 		return nil, err
 	}
 	return &blobcache.InsertResp{Success: resp.Success}, nil

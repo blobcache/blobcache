@@ -1042,38 +1042,61 @@ func (cq *CreateQueueResp) Unmarshal(data []byte) error {
 	return cq.Handle.Unmarshal(data)
 }
 
-type NextReq struct {
-	Opts blobcache.DequeueOpts
-	Max  int
+type DequeueReq struct {
+	Queue blobcache.Handle
+	Opts  blobcache.DequeueOpts
+	Max   int
 }
 
-func (nr NextReq) Marshal(out []byte) []byte {
-	return nr.Opts.Marshal(out)
+func (dr DequeueReq) Marshal(out []byte) []byte {
+	out = dr.Queue.Marshal(out)
+	out = sbe.AppendUint32(out, uint32(dr.Max))
+	return dr.Opts.Marshal(out)
 }
 
-func (nr *NextReq) Unmarshal(data []byte) error {
-	return nr.Opts.Unmarshal(data)
+func (dr *DequeueReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal DequeueReq, too short: %d", len(data))
+	}
+	if err := dr.Queue.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	data = data[blobcache.HandleSize:]
+	max, rest, err := sbe.ReadUint32(data)
+	if err != nil {
+		return err
+	}
+	dr.Max = int(max)
+	return dr.Opts.Unmarshal(rest)
 }
 
-type NextResp struct {
+type DequeueResp struct {
 	Messages []blobcache.Message
 }
 
-func (nr NextResp) Marshal(out []byte) []byte {
+func (nr DequeueResp) Marshal(out []byte) []byte {
+	out = sbe.AppendUint32(out, uint32(len(nr.Messages)))
 	for _, msg := range nr.Messages {
-		out = msg.Marshal(out)
+		out = sbe.AppendLP(out, msg.Marshal(nil))
 	}
 	return out
 }
 
-func (nr *NextResp) Unmarshal(data []byte) error {
-	nr.Messages = make([]blobcache.Message, len(data)/blobcache.EndpointSize)
+func (nr *DequeueResp) Unmarshal(data []byte) error {
+	numMessages, data, err := sbe.ReadUint32(data)
+	if err != nil {
+		return err
+	}
+	nr.Messages = make([]blobcache.Message, numMessages)
 	for i := range nr.Messages {
-		data := data[i*blobcache.EndpointSize : (i+1)*blobcache.EndpointSize]
-		if err := nr.Messages[i].Unmarshal(data); err != nil {
+		msgData, rest, err := sbe.ReadLP(data)
+		if err != nil {
 			return err
 		}
-		data = data[blobcache.EndpointSize:]
+		if err := nr.Messages[i].Unmarshal(msgData); err != nil {
+			return err
+		}
+		data = rest
 	}
 	return nil
 }
@@ -1102,30 +1125,40 @@ func (iq *InspectQueueResp) Unmarshal(data []byte) error {
 	return iq.Info.Unmarshal(data)
 }
 
-type InsertReq struct {
+type EnqueueReq struct {
+	Queue    blobcache.Handle
 	Messages []blobcache.Message
 }
 
-func (ir InsertReq) Marshal(out []byte) []byte {
-	out = binary.LittleEndian.AppendUint32(out, uint32(len(ir.Messages)))
-	for _, msg := range ir.Messages {
+func (er EnqueueReq) Marshal(out []byte) []byte {
+	out = er.Queue.Marshal(out)
+	out = sbe.AppendUint32(out, uint32(len(er.Messages)))
+	for _, msg := range er.Messages {
 		out = sbe.AppendLP(out, msg.Marshal(nil))
 	}
 	return out
 }
 
-func (ir *InsertReq) Unmarshal(data []byte) error {
+func (er *EnqueueReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize+4 {
+		return fmt.Errorf("cannot unmarshal EnqueueReq, too short: %d", len(data))
+	}
+	if err := er.Queue.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	data = data[blobcache.HandleSize:]
+
 	numMessages, data, err := sbe.ReadUint32(data)
 	if err != nil {
 		return err
 	}
-	ir.Messages = make([]blobcache.Message, numMessages)
-	for i := range ir.Messages {
+	er.Messages = make([]blobcache.Message, numMessages)
+	for i := range er.Messages {
 		msgData, rest, err := sbe.ReadLP(data)
 		if err != nil {
 			return err
 		}
-		if err := ir.Messages[i].Unmarshal(msgData); err != nil {
+		if err := er.Messages[i].Unmarshal(msgData); err != nil {
 			return err
 		}
 		data = rest
@@ -1133,15 +1166,15 @@ func (ir *InsertReq) Unmarshal(data []byte) error {
 	return nil
 }
 
-type InsertResp struct {
+type EnqueueResp struct {
 	Success uint32
 }
 
-func (ir InsertResp) Marshal(out []byte) []byte {
+func (ir EnqueueResp) Marshal(out []byte) []byte {
 	return sbe.AppendUint32(out, ir.Success)
 }
 
-func (ir *InsertResp) Unmarshal(data []byte) error {
+func (ir *EnqueueResp) Unmarshal(data []byte) error {
 	success, _, err := sbe.ReadUint32(data)
 	if err != nil {
 		return err
@@ -1156,11 +1189,19 @@ type SubToVolumeReq struct {
 }
 
 func (sr SubToVolumeReq) Marshal(out []byte) []byte {
-	return sr.Queue.Marshal(out)
+	out = sr.Queue.Marshal(out)
+	return sr.Volume.Marshal(out)
 }
 
 func (sr *SubToVolumeReq) Unmarshal(data []byte) error {
-	return sr.Queue.Unmarshal(data)
+	if len(data) < 2*blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal SubToVolumeReq, too short: %d", len(data))
+	}
+	if err := sr.Queue.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	data = data[blobcache.HandleSize:]
+	return sr.Volume.Unmarshal(data[:blobcache.HandleSize])
 }
 
 type SubToVolumeResp struct{}

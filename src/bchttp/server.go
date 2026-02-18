@@ -341,7 +341,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		})
 	case "Enqueue":
 		handleRequest(w, r, func(ctx context.Context, req InsertReq) (*blobcache.InsertResp, error) {
-			resp, err := s.Service.Enqueue(ctx, req.From, h, req.Messages)
+			resp, err := s.Service.Enqueue(ctx, h, req.Messages)
 			if err != nil {
 				return nil, err
 			}
