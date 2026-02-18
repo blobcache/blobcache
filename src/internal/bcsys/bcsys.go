@@ -16,7 +16,6 @@ import (
 	"blobcache.io/blobcache/src/internal/backend/memory"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/bcp"
-	"blobcache.io/blobcache/src/internal/pubsub"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/internal/volumes/consensusvol"
 	"blobcache.io/blobcache/src/internal/volumes/remotevol"
@@ -95,7 +94,6 @@ func New[LK any, LV LocalVolume[LK]](env Env[LK, LV], cfg Config) *Service[LK, L
 	s.volSys.remote = remotevol.New(&s.node)
 	s.volSys.global = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
-		Hub:        &s.hub,
 	})
 	s.queueSys.memory = &memory.System{}
 	return s
@@ -114,7 +112,6 @@ type Service[LK any, LV LocalVolume[LK]] struct {
 	queueSys struct {
 		memory *memory.System
 	}
-	hub       pubsub.Hub
 	tmpSecret *[32]byte
 
 	handles handleSystem
@@ -147,19 +144,6 @@ func (s *Service[LK, LV]) Serve(ctx context.Context, pc net.PacketConn) error {
 			} else {
 				return nil
 			}
-		},
-		Deliver: func(ctx context.Context, from blobcache.Endpoint, ttm bcp.TopicTellMsg) error {
-			topicID := s.hub.Lookup(ttm.TopicHash)
-			if topicID.IsZero() {
-				logctx.Warn(ctx, "dropping tell message", zap.Any("from", from), zap.Int("ctext_len", len(ttm.Ciphertext)))
-				return nil
-			}
-			tmsg := s.hub.Acquire()
-			if err := ttm.Decrypt(topicID, tmsg); err != nil {
-				s.hub.Release(tmsg)
-				return err
-			}
-			return nil
 		},
 	})
 	if errors.Is(err, net.ErrClosed) {

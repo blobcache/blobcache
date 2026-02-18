@@ -65,6 +65,18 @@ type VolSubSpec struct {
 	PremptBlobs bool
 }
 
+func (vs VolSubSpec) Marshal(out []byte) []byte {
+	data, err := json.Marshal(vs)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (vs *VolSubSpec) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, vs)
+}
+
 type QueueAPI interface {
 	// CreateQueue creates a new queue and returns a handle to it.
 	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)

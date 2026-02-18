@@ -385,7 +385,7 @@ func (s *Service) Enqueue(ctx context.Context, q blobcache.Handle, msgs []blobca
 	return nil, fmt.Errorf("Enqueue not implemented")
 }
 
-func (s *Service) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {
+func (s *Service) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle, spec blobcache.VolSubSpec) error {
 	return fmt.Errorf("SubToVolume not implemented")
 }
 

@@ -346,7 +346,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		})
 	case "SubToVolume":
 		handleRequest(w, r, func(ctx context.Context, req SubToVolumeReq) (*SubToVolumeResp, error) {
-			if err := s.Service.SubToVolume(ctx, h, req.Volume); err != nil {
+			if err := s.Service.SubToVolume(ctx, h, req.Volume, req.Spec); err != nil {
 				return nil, err
 			}
 			return &SubToVolumeResp{}, nil

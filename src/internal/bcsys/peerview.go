@@ -197,8 +197,8 @@ func (pv *peerView[LK, LV]) Enqueue(ctx context.Context, q blobcache.Handle, msg
 	return pv.svc.Enqueue(ctx, pv.incoming(q), msgs)
 }
 
-func (pv *peerView[LK, LV]) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {
-	return pv.svc.SubToVolume(ctx, pv.incoming(q), pv.incoming(vol))
+func (pv *peerView[LK, LV]) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle, spec blobcache.VolSubSpec) error {
+	return pv.svc.SubToVolume(ctx, pv.incoming(q), pv.incoming(vol), spec)
 }
 
 // outgoing should be called on all outgoing handles intended for pv.peer.

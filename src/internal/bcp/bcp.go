@@ -341,9 +341,9 @@ func Enqueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.
 	return &blobcache.InsertResp{Success: resp.Success}, nil
 }
 
-func SubToVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, volh blobcache.Handle) error {
+func SubToVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
 	var resp SubToVolumeResp
-	if err := doAsk(ctx, tp, ep, MT_QUEUE_SUB_TO_VOLUME, SubToVolumeReq{Queue: qh, Volume: volh}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_QUEUE_SUB_TO_VOLUME, SubToVolumeReq{Queue: qh, Volume: volh, Spec: spec}, &resp); err != nil {
 		return err
 	}
 	return nil

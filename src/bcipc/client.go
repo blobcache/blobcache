@@ -208,8 +208,8 @@ func (c *Client) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobca
 	return bcp.Enqueue(ctx, &c.tp, blobcache.Endpoint{}, qh, msgs)
 }
 
-func (c *Client) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
-	return bcp.SubToVolume(ctx, &c.tp, blobcache.Endpoint{}, qh, volh)
+func (c *Client) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
+	return bcp.SubToVolume(ctx, &c.tp, blobcache.Endpoint{}, qh, volh, spec)
 }
 
 // getHashFunc finds the hash function for a transaction.
