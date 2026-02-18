@@ -3,18 +3,13 @@ package blobcachecmd
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"net/netip"
 	"os"
 	"strings"
 
-	"blobcache.io/blobcache/src/bchttp"
-	"blobcache.io/blobcache/src/bclocal"
+	"blobcache.io/blobcache/src/bcipc"
 	"blobcache.io/blobcache/src/internal/blobcached"
-	"blobcache.io/blobcache/src/internal/schemareg"
 	"go.brendoncarroll.net/star"
-	"go.brendoncarroll.net/stdctx/logctx"
-	"go.uber.org/zap"
 )
 
 var daemonCmd = star.Command{
@@ -22,16 +17,24 @@ var daemonCmd = star.Command{
 		Short: "runs the blobcache daemon",
 	},
 	Flags: map[string]star.Flag{
-		"state":     stateDirParam,
-		"serve-api": serveAPIParam,
-		"net":       netParam,
+		"state":      stateDirParam,
+		"serve-http": serveHTTPParam,
+		"serve-unix": serveUnixParam,
+		"net":        netParam,
 	},
 	F: func(c star.Context) error {
 		stateDir := stateDirParam.Load(c)
-		serveAPI, _ := serveAPIParam.LoadOpt(c)
+		var lis []net.Listener
+		if serveHttp, ok := serveHTTPParam.LoadOpt(c); ok {
+			lis = append(lis, serveHttp)
+		}
+		var unixLis []*net.UnixListener
+		if serveUnix, ok := serveUnixParam.LoadOpt(c); ok {
+			unixLis = append(unixLis, serveUnix)
+		}
 		pc, _ := netParam.LoadOpt(c)
 		d := blobcached.Daemon{StateDir: stateDir}
-		return d.Run(c, pc, serveAPI)
+		return d.Run(c, pc, lis, unixLis)
 	},
 }
 
@@ -40,38 +43,33 @@ var daemonEphemeralCmd = star.Command{
 		Short: "runs the blobcache daemon without persistent state",
 	},
 	Flags: map[string]star.Flag{
-		"serve-api": serveAPIParam,
-		"net":       netParam,
+		"serve-http": serveHTTPParam,
+		"serve-unix": serveUnixParam,
+		"net":        netParam,
 	},
-	F: func(ctx star.Context) error {
-		stateDir, err := os.MkdirTemp("", "blobcache-ephemeral")
+	F: func(c star.Context) error {
+		stateDirp, err := os.MkdirTemp("", "blobcache-ephemeral")
 		if err != nil {
 			return err
 		}
-		defer os.RemoveAll(stateDir)
-		pc, _ := netParam.LoadOpt(ctx)
-		svc, err := bclocal.New(bclocal.Env{
-			Background: ctx,
-			StateDir:   stateDir,
-			MkSchema:   schemareg.Factory,
-			Root:       schemareg.DefaultRoot(),
-			Policy:     &bclocal.AllOrNothingPolicy{},
-		}, bclocal.Config{})
+		defer os.RemoveAll(stateDirp)
+		stateDir, err := os.OpenRoot(stateDirp)
 		if err != nil {
 			return err
 		}
-		go func() {
-			if err := svc.Serve(ctx, pc); err != nil {
-				logctx.Error(ctx, "from serve:", zap.Error(err))
-			}
-		}()
 
-		apiLis, _ := serveAPIParam.LoadOpt(ctx)
-		defer apiLis.Close()
-		logctx.Info(ctx, "serving API", zap.String("net", apiLis.Addr().Network()), zap.String("addr", apiLis.Addr().String()))
-		return http.Serve(apiLis, &bchttp.Server{
-			Service: svc,
-		})
+		var lis []net.Listener
+		if serveHttp, ok := serveHTTPParam.LoadOpt(c); ok {
+			lis = append(lis, serveHttp)
+		}
+		var unixLis []*net.UnixListener
+		if serveUnix, ok := serveUnixParam.LoadOpt(c); ok {
+			unixLis = append(unixLis, serveUnix)
+		}
+		pc, _ := netParam.LoadOpt(c)
+		d := blobcached.Daemon{StateDir: stateDir}
+
+		return d.Run(c, pc, lis, unixLis)
 	},
 }
 
@@ -131,8 +129,8 @@ var stateDirParam = star.Required[*os.Root]{
 	Parse: os.OpenRoot,
 }
 
-var serveAPIParam = star.Optional[net.Listener]{
-	ID: "serve-api",
+var serveHTTPParam = star.Optional[net.Listener]{
+	ID: "serve-http",
 	Parse: func(s string) (net.Listener, error) {
 		parts := strings.Split(s, "://")
 		if len(parts) != 2 {
@@ -140,6 +138,11 @@ var serveAPIParam = star.Optional[net.Listener]{
 		}
 		return net.Listen(parts[0], parts[1])
 	},
+}
+
+var serveUnixParam = star.Optional[*net.UnixListener]{
+	ID:    "serve-unix",
+	Parse: bcipc.Listen,
 }
 
 var netParam = star.Optional[net.PacketConn]{

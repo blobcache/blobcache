@@ -51,7 +51,7 @@ func TestDaemonAuth(t *testing.T) {
 	pc := testutil.PacketConn(t)
 	eg := errgroup.Group{}
 	eg.Go(func() error {
-		return d.Run(ctx, pc, nil)
+		return d.Run(ctx, pc, nil, nil)
 	})
 
 	// connect with the client
