@@ -9,6 +9,7 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"go.brendoncarroll.net/star"
+	"go.brendoncarroll.net/stdctx/logctx"
 )
 
 var mkVolCmd = star.Command{
@@ -24,6 +25,7 @@ var mkVolCmd = star.Command{
 			return err
 		}
 		host, _ := hostParam.LoadOpt(c)
+		logctx.Infof(c.Context, "reading VolumeSpec JSON from stdin")
 		data, err := io.ReadAll(c.StdIn)
 		if err != nil {
 			return err

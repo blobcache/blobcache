@@ -9,6 +9,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema/bcns"
 	"go.brendoncarroll.net/star"
+	"go.brendoncarroll.net/stdctx/logctx"
 )
 
 // EnvVar_NSRoot is the key for the environment variable that holds the root namespace
@@ -143,6 +144,7 @@ var nsCreateCmd = star.Command{
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
+		logctx.Infof(c.Context, "reading VolumeSpec JSON from stdin")
 		data, err := io.ReadAll(c.StdIn)
 		if err != nil {
 			return err
