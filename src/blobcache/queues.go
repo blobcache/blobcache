@@ -53,7 +53,7 @@ func (m *Message) Unmarshal(data []byte) error {
 type VolSubSpec struct {
 	// BeginTx, if not-nil, causes a transaction with the requested parameters to be opened
 	// every time the volume changes.
-	BeginTx *TxParams
+	BeginTx *TxParams `json:"begin_tx,omitempty"`
 	// PremptCell causes the current contents of the Volume's cell to be
 	// added to the Bytes portion of the message.  It will be length-prefixed with a 32bit integer.
 	// This is best-effort and no cell data will be included if it is too large.
