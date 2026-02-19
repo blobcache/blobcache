@@ -1,7 +1,9 @@
 package blobcachecmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 
 	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/blobcache"
@@ -133,7 +135,7 @@ var nsPutCmd = star.Command{
 
 var nsCreateCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "Create a volume and insert it at a specific name in the namespace",
+		Short: "Create a volume and insert it at a specific name in the namespace. Reads VolumeSpec JSON from stdin.",
 	},
 	Pos: []star.Positional{volNameParam},
 	Flags: map[string]star.Flag{
@@ -141,11 +143,19 @@ var nsCreateCmd = star.Command{
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
+		data, err := io.ReadAll(c.StdIn)
+		if err != nil {
+			return err
+		}
+		var spec blobcache.VolumeSpec
+		if err := json.Unmarshal(data, &spec); err != nil {
+			return fmt.Errorf("parsing VolumeSpec JSON from stdin: %w", err)
+		}
 		nsc, nsh, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		_, err = nsc.CreateAt(c, *nsh, name, blobcache.DefaultLocalSpec())
+		_, err = nsc.CreateAt(c, *nsh, name, spec)
 		return err
 	},
 }

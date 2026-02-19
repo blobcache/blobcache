@@ -41,6 +41,7 @@ var rootCmd = star.NewDir(
 		"show-access":      showAccessCmd,
 
 		// volumes
+		"mkvol":        mkVolCmd,
 		"mkvol.local":  mkVolLocalCmd,
 		"mkvol.remote": mkVolRemoteCmd,
 		"mkvol.vault":  mkVolVaultCmd,
