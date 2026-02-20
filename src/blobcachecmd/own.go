@@ -1,11 +1,11 @@
 package blobcachecmd
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
+	"net"
+	"net/netip"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/blobcached"
@@ -32,7 +32,7 @@ var ownCmd = star.Command{
 		}
 
 		// Add the peer to the "admin" identity group
-		if err := addPeerToAdmin(stateDir, peerID); err != nil {
+		if err := d.AddPeerToAdmin(peerID); err != nil {
 			return err
 		}
 
@@ -45,43 +45,56 @@ var ownCmd = star.Command{
 		rootOID := blobcache.OID{} // zero OID = root volume
 		abbrevNodeID := hex.EncodeToString(nodePeerID[:4])
 
-		// Build a VolumeSpec JSON for a remote volume pointing to this node's root.
-		// The ip_port must be filled in by the user.
-		spec := map[string]any{
-			"remote": map[string]any{
-				"endpoint": map[string]any{
-					"peer":    nodePeerID.String(),
-					"ip_port": "<IP:PORT>",
+		// Detect local IP address
+		localIP, err := detectLocalIP()
+		if err != nil {
+			return fmt.Errorf("detecting local IP: %w", err)
+		}
+		ipPort := netip.AddrPortFrom(localIP, 6025)
+
+		spec := blobcache.VolumeSpec{
+			Remote: &blobcache.VolumeBackend_Remote{
+				Endpoint: blobcache.Endpoint{
+					Peer:   nodePeerID,
+					IPPort: ipPort,
 				},
-				"volume": rootOID.String(),
+				Volume: rootOID,
 			},
 		}
-		var specBuf bytes.Buffer
-		enc := json.NewEncoder(&specBuf)
-		enc.SetEscapeHTML(false)
-		if err := enc.Encode(spec); err != nil {
-			return err
-		}
-		specJSON := bytes.TrimSpace(specBuf.Bytes())
 
 		c.Printf("%s OWN\n\n", checkmark)
 		c.Printf("Peer %s now has full access to this node.\n\n", peerID)
 		c.Printf("Run these commands on your local Blobcache Node:\n\n")
-		c.Printf("echo '%s' | blobcache ns create remote-%s-root\n\n", string(specJSON), abbrevNodeID)
-		c.Printf("NOTE: Update the ip_port in the JSON above with this node's public address (e.g. \"1.2.3.4:5678\").\n")
+		c.Printf("echo '%s' | blobcache ns create remote-%s-root\n", prettyJSON(spec), abbrevNodeID)
 		return nil
 	},
 }
 
-func addPeerToAdmin(stateDir *os.Root, peerID blobcache.PeerID) error {
-	// Append a line to the IDENTITIES file adding the peer to the "admin" group.
-	f, err := stateDir.OpenFile(blobcached.IdentitiesFilename, os.O_APPEND|os.O_WRONLY, 0644)
+// detectLocalIP returns the first non-loopback IPv4 address found on the host.
+func detectLocalIP() (netip.Addr, error) {
+	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		return fmt.Errorf("opening %s: %w", blobcached.IdentitiesFilename, err)
+		return netip.Addr{}, err
 	}
-	defer f.Close()
-	if _, err := fmt.Fprintf(f, "admin %s\n", peerID.String()); err != nil {
-		return fmt.Errorf("writing to %s: %w", blobcached.IdentitiesFilename, err)
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+			if ip4 := ipNet.IP.To4(); ip4 != nil {
+				addr, ok := netip.AddrFromSlice(ip4)
+				if ok {
+					return addr, nil
+				}
+			}
+		}
 	}
-	return nil
+	return netip.Addr{}, fmt.Errorf("no non-loopback address found")
+}
+
+// prettyJSON marshals v to a compact JSON string.
+// It panics if marshaling fails, so only call it on known types.
+func prettyJSON(v any) string {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
 }

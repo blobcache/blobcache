@@ -14,6 +14,7 @@ import (
 	"blobcache.io/blobcache/src/bchttp"
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/groupfile"
 	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/cloudflare/circl/sign"
@@ -165,6 +166,23 @@ func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {
 		return blobcache.PeerID{}, err
 	}
 	return inet256.NewID(privKey.Public().(ed25519.PublicKey)), nil
+}
+
+// AddPeerToAdmin adds a peer to the "admin" identity group in the IDENTITIES file.
+func (d *Daemon) AddPeerToAdmin(peerID blobcache.PeerID) error {
+	f, err := d.StateDir.OpenFile(IdentitiesFilename, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", IdentitiesFilename, err)
+	}
+	defer f.Close()
+	entry := Entry[Identity]{
+		MStmt: &groupfile.MStmt[GroupName, Identity]{
+			Group:   GroupName("admin"),
+			Members: []Member[Identity]{groupfile.Unit[GroupName, Identity](peerID)},
+		},
+	}
+	_, err = entry.WriteTo(f, func(id Identity) string { return id.String() })
+	return err
 }
 
 func (d *Daemon) EnsureLocator() (*Locator, error) {
