@@ -54,15 +54,15 @@ type VolSubSpec struct {
 	// BeginTx, if not-nil, causes a transaction with the requested parameters to be opened
 	// every time the volume changes.
 	BeginTx *TxParams `json:"begin_tx,omitempty"`
-	// PremptCell causes the current contents of the Volume's cell to be
+	// SendCell causes the current contents of the Volume's cell to be
 	// added to the Bytes portion of the message.  It will be length-prefixed with a 32bit integer.
 	// This is best-effort and no cell data will be included if it is too large.
-	PremptCell bool
-	// PremptBlobs causes blobs, which the implementation thinks will be relevant,
+	SendCell bool `json:"send_cell,omitempty"`
+	// SendBlobs causes blobs, which the implementation thinks will be relevant,
 	// to be appended, 32-bit-length-prefixed, to the Bytes portion of the message.
 	// They will be after the cell.
 	// If the cell is too large then no Blobs will be appended.
-	PremptBlobs bool
+	SendBlobs bool `json:"send_blobs,omitempty"`
 }
 
 func (vs VolSubSpec) Marshal(out []byte) []byte {
