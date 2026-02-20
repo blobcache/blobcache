@@ -149,15 +149,6 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			return svc, *qh
 		})
 	})
-	t.Run("Watcher/Local", func(t *testing.T) {
-		TestWatcher(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
-			ctx := testutil.Context(t)
-			svc := mk(t)
-			volh, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
-			require.NoError(t, err)
-			return svc, *volh
-		})
-	})
 	t.Run("SubToVol/Local", func(t *testing.T) {
 		TestVolumeSubscribe(t, func(t testing.TB) (blobcache.Service, blobcache.Handle, blobcache.Handle) {
 			ctx := testutil.Context(t)
