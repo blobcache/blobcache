@@ -16,7 +16,7 @@ const (
 	MaxMaxBytesPer   = 1 << 20
 )
 
-var _ backend.System[blobcache.QueueBackend_Memory] = &System{}
+var _ backend.QueueSystem[blobcache.QueueBackend_Memory] = &System{}
 
 type System struct {
 }

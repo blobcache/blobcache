@@ -13,13 +13,12 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
+	consensusvol "blobcache.io/blobcache/src/internal/backend/consensusbe"
 	"blobcache.io/blobcache/src/internal/backend/memory"
+	"blobcache.io/blobcache/src/internal/backend/remotebe"
+	"blobcache.io/blobcache/src/internal/backend/vaultvol"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/bcp"
-	"blobcache.io/blobcache/src/internal/volumes"
-	"blobcache.io/blobcache/src/internal/volumes/consensusvol"
-	"blobcache.io/blobcache/src/internal/volumes/remotevol"
-	"blobcache.io/blobcache/src/internal/volumes/vaultvol"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"go.brendoncarroll.net/stdctx/logctx"
@@ -38,7 +37,7 @@ const (
 )
 
 type LocalVolume[K any] interface {
-	volumes.Volume
+	backend.Volume
 	Key() K
 }
 
@@ -58,7 +57,7 @@ type Env[LK any, LV LocalVolume[LK]] struct {
 	PrivateKey ed25519.PrivateKey
 	// Root is the root volume.
 	// It will have the all-zero OID.
-	Root volumes.Volume
+	Root backend.Volume
 	// MDS is where Volume metadata is stored.
 	MDS         MetadataStore
 	Policy      Policy
@@ -66,7 +65,7 @@ type Env[LK any, LV LocalVolume[LK]] struct {
 	MkSchema    schema.Factory
 
 	// Local is the local volume system.
-	Local      volumes.System[LVParams[LK], LV]
+	Local      backend.VolumeSystem[LVParams[LK], LV]
 	GenerateLK func() (LK, error)
 	LKToOID    func(LK) blobcache.OID
 	OIDToLK    func(blobcache.OID) (LK, error)
@@ -91,7 +90,7 @@ func New[LK any, LV LocalVolume[LK]](env Env[LK, LV], cfg Config) *Service[LK, L
 		volumeSubs: make(map[blobcache.OID]map[blobcache.OID]blobcache.VolSubSpec),
 	}
 	s.volSys.local = env.Local
-	s.volSys.remote = remotevol.New(&s.node)
+	s.volSys.remote = remotebe.New(&s.node)
 	s.volSys.global = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
 	})
@@ -105,8 +104,8 @@ type Service[LK any, LV LocalVolume[LK]] struct {
 
 	node   atomic.Pointer[bcnet.Node]
 	volSys struct {
-		local  volumes.System[LVParams[LK], LV]
-		remote remotevol.System
+		local  backend.VolumeSystem[LVParams[LK], LV]
+		remote remotebe.System
 		global consensusvol.System
 	}
 	queueSys struct {
@@ -235,7 +234,7 @@ func (s *Service[LK, LV]) Cleanup(ctx context.Context) ([]blobcache.OID, error) 
 
 // addVolume adds a volume to the volumes map.
 // It acquires mu exclusively, and returns false if the volume already exists.
-func (s *Service[LK, LV]) addVolume(oid blobcache.OID, vol volumes.Volume) bool {
+func (s *Service[LK, LV]) addVolume(oid blobcache.OID, vol backend.Volume) bool {
 	if oid == (blobcache.OID{}) {
 		return false
 	}
@@ -355,7 +354,7 @@ func (s *Service[LK, LV]) inspectVolume(ctx context.Context, volID blobcache.OID
 
 type volume struct {
 	info    blobcache.VolumeInfo
-	backend volumes.Volume
+	backend backend.Volume
 }
 
 type queue struct {
@@ -364,7 +363,7 @@ type queue struct {
 }
 
 type transaction struct {
-	backend volumes.Tx
+	backend backend.Tx
 	volume  *volume
 }
 
@@ -505,7 +504,7 @@ func (s *Service[LK, LV]) OpenFrom(ctx context.Context, base blobcache.Handle, l
 	}
 
 	switch baseVol := baseVol.backend.(type) {
-	case *remotevol.Volume:
+	case *remotebe.Volume:
 		rights, subvol, err := s.volSys.remote.OpenFrom(ctx, baseVol, ltok, mask)
 		if err != nil {
 			return nil, err
@@ -662,7 +661,7 @@ func (s *Service[LK, LV]) createRemoteVolume(ctx context.Context, host blobcache
 			},
 		},
 	}
-	vol, err := s.volSys.remote.Up(ctx, remotevol.Params{
+	vol, err := s.volSys.remote.Up(ctx, remotebe.Params{
 		Endpoint: host,
 		Volume:   rvInfo.ID,
 		HashAlgo: vp.HashAlgo,
@@ -785,7 +784,7 @@ func (s *Service[LV, LK]) Save(ctx context.Context, txh blobcache.Handle, root [
 	if err := tx.backend.Load(ctx, &prevRoot); err != nil {
 		return err
 	}
-	src := volumes.NewUnsaltedStore(tx.backend)
+	src := backend.NewUnsaltedStore(tx.backend)
 	sch, err := s.env.MkSchema(tx.volume.info.Schema)
 	if err != nil {
 		return err
@@ -1126,32 +1125,32 @@ func (s *Service[LK, LV]) resolveQueue(ctx context.Context, qh blobcache.Handle,
 
 // makeVolume constructs an in-memory volume object from a backend.
 // it does not create volumes in the database.
-func (s *Service[LK, LV]) makeVolume(ctx context.Context, oid blobcache.OID, backend blobcache.VolumeBackend[blobcache.OID]) (volumes.Volume, error) {
-	if err := backend.Validate(); err != nil {
+func (s *Service[LK, LV]) makeVolume(ctx context.Context, oid blobcache.OID, volBackend blobcache.VolumeBackend[blobcache.OID]) (backend.Volume, error) {
+	if err := volBackend.Validate(); err != nil {
 		return nil, err
 	}
 	if oid == (blobcache.OID{}) {
 		return s.env.Root, nil
 	}
 	switch {
-	case backend.Local != nil:
+	case volBackend.Local != nil:
 		lvid, err := s.env.OIDToLK(oid)
 		if err != nil {
 			return nil, err
 		}
 		return s.makeLocal(ctx, oid, lvid)
-	case backend.Remote != nil:
-		return s.volSys.remote.Up(ctx, *backend.Remote)
-	case backend.Git != nil:
-		return s.makeGit(ctx, *backend.Git)
-	case backend.Vault != nil:
-		return s.makeVault(ctx, *backend.Vault)
+	case volBackend.Remote != nil:
+		return s.volSys.remote.Up(ctx, *volBackend.Remote)
+	case volBackend.Git != nil:
+		return s.makeGit(ctx, *volBackend.Git)
+	case volBackend.Vault != nil:
+		return s.makeVault(ctx, *volBackend.Vault)
 	default:
 		return nil, fmt.Errorf("empty backend")
 	}
 }
 
-func (s *Service[LK, LV]) makeLocal(ctx context.Context, oid blobcache.OID, lk LK) (volumes.Volume, error) {
+func (s *Service[LK, LV]) makeLocal(ctx context.Context, oid blobcache.OID, lk LK) (backend.Volume, error) {
 	var ve VolumeEntry
 	found, err := s.env.MDS.Get(ctx, oid, &ve)
 	if err != nil {
@@ -1166,7 +1165,7 @@ func (s *Service[LK, LV]) makeLocal(ctx context.Context, oid blobcache.OID, lk L
 	})
 }
 
-func (s *Service[LK, LV]) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (volumes.Volume, error) {
+func (s *Service[LK, LV]) makeGit(ctx context.Context, backend blobcache.VolumeBackend_Git) (backend.Volume, error) {
 	return nil, fmt.Errorf("git volumes are not yet supported")
 }
 

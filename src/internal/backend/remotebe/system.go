@@ -1,4 +1,4 @@
-package remotevol
+package remotebe
 
 import (
 	"context"
@@ -7,13 +7,13 @@ import (
 	"sync/atomic"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/backend"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/bcp"
-	"blobcache.io/blobcache/src/internal/volumes"
 	"go.brendoncarroll.net/exp/singleflight"
 )
 
-var _ volumes.System[Params, *Volume] = &System{}
+var _ backend.VolumeSystem[Params, *Volume] = &System{}
 
 type Params = blobcache.VolumeBackend_Remote
 

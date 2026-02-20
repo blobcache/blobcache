@@ -5,17 +5,17 @@ import (
 	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/internal/backend"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
 )
 
 type Params struct {
 	Schema blobcache.SchemaSpec
-	State  volumes.Volume
+	State  backend.Volume
 }
 
-var _ volumes.System[Params, *Volume] = &System{}
+var _ backend.VolumeSystem[Params, *Volume] = &System{}
 
 type System struct {
 	env Env

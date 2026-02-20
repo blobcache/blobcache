@@ -10,16 +10,16 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/backend"
 	"blobcache.io/blobcache/src/internal/bccrypto"
 	"blobcache.io/blobcache/src/internal/tries"
-	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 )
 
-var _ volumes.Volume = &Vault{}
+var _ backend.Volume = &Vault{}
 
 type Vault struct {
-	inner volumes.Volume
+	inner backend.Volume
 	hf    blobcache.HashFunc
 
 	aead  cipher.AEAD
@@ -27,7 +27,7 @@ type Vault struct {
 	cmach *bccrypto.Machine
 }
 
-func New(inner volumes.Volume, secret [32]byte, hf blobcache.HashFunc) *Vault {
+func New(inner backend.Volume, secret [32]byte, hf blobcache.HashFunc) *Vault {
 	dataSecret := bccrypto.DeriveKey(hf, &secret, []byte("blobcache/vault/data"))
 	trieSecret := bccrypto.DeriveKey(hf, &secret, []byte("blobcache/vault/trie"))
 	aeadSecret := bccrypto.DeriveKey(hf, &secret, []byte("blobcache/vault/cell"))
@@ -45,11 +45,11 @@ func New(inner volumes.Volume, secret [32]byte, hf blobcache.HashFunc) *Vault {
 	}
 }
 
-func (v *Vault) Inner() volumes.Volume {
+func (v *Vault) Inner() backend.Volume {
 	return v.inner
 }
 
-func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (volumes.Tx, error) {
+func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (backend.Tx, error) {
 	inner, err := v.inner.BeginTx(ctx, params)
 	if err != nil {
 		return nil, err
@@ -96,11 +96,11 @@ func (v *Vault) aeadOpen(out []byte, ctext []byte) ([]byte, error) {
 	return v.aead.Open(out, nonce[:], ctext, nil)
 }
 
-var _ volumes.Tx = &Tx{}
+var _ backend.Tx = &Tx{}
 
 type Tx struct {
 	vol   *Vault
-	inner volumes.Tx
+	inner backend.Tx
 	txp   blobcache.TxParams
 
 	mu     sync.RWMutex
@@ -120,7 +120,7 @@ type Tx struct {
 	newTx *tries.Tx
 }
 
-func newVaultTx(vol *Vault, inner volumes.Tx, txp blobcache.TxParams) *Tx {
+func newVaultTx(vol *Vault, inner backend.Tx, txp blobcache.TxParams) *Tx {
 	return &Tx{
 		vol:   vol,
 		inner: inner,
@@ -128,7 +128,7 @@ func newVaultTx(vol *Vault, inner volumes.Tx, txp blobcache.TxParams) *Tx {
 	}
 }
 
-func (tx *Tx) Volume() volumes.Volume {
+func (tx *Tx) Volume() backend.Volume {
 	return tx.vol
 }
 
@@ -147,7 +147,7 @@ func (v *Tx) Load(ctx context.Context, dst *[]byte) error {
 	defer v.cellMu.Unlock()
 	v.trieMu.RLock()
 	defer v.trieMu.RUnlock()
-	s := volumes.NewUnsaltedStore(v.inner)
+	s := backend.NewUnsaltedStore(v.inner)
 
 	if v.cell == nil {
 		// if the cell is not set, load it from the trie
@@ -190,7 +190,7 @@ func (v *Tx) Commit(ctx context.Context) error {
 	if v.ttx == nil {
 		return nil
 	}
-	s := volumes.NewUnsaltedStore(v.inner)
+	s := backend.NewUnsaltedStore(v.inner)
 
 	var nextCell []byte
 	if v.cell != nil {
@@ -262,7 +262,7 @@ func (v *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (bl
 	}
 	defer release()
 
-	s := volumes.NewUnsaltedStore(v.inner)
+	s := backend.NewUnsaltedStore(v.inner)
 	cid := v.inner.Hash(nil, data)
 	ref, err := v.vol.cmach.Post(ctx, s, data)
 	if err != nil {
@@ -287,7 +287,7 @@ func (v *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobca
 	} else if ref == nil {
 		return 0, blobcache.ErrNotFound{Key: cid}
 	}
-	s := volumes.NewUnsaltedStore(v.inner)
+	s := backend.NewUnsaltedStore(v.inner)
 	// get and decrypt the ciphertext blob
 	return v.vol.cmach.Get(ctx, s, *ref, buf)
 }
@@ -381,7 +381,7 @@ func (v *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return v.inner.Hash(salt, data)
 }
 
-func (v *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol volumes.Volume) (*blobcache.LinkToken, error) {
+func (v *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol backend.Volume) (*blobcache.LinkToken, error) {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return nil, err
@@ -455,7 +455,7 @@ func (vtx *Tx) init(ctx context.Context) error {
 		return err
 	}
 	var ttx *tries.Tx
-	s := volumes.NewUnsaltedStore(vtx.inner)
+	s := backend.NewUnsaltedStore(vtx.inner)
 	if len(rootCtext) == 0 {
 		ttx = vtx.vol.tmach.NewTxOnEmpty(s)
 	} else {

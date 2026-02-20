@@ -13,8 +13,8 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/backend"
 	"blobcache.io/blobcache/src/internal/bcsys"
-	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cockroachdb/pebble"
 )
@@ -25,7 +25,7 @@ type Config struct {
 
 type Params = bcsys.LVParams[ID]
 
-var _ volumes.System[Params, *Volume] = &System{}
+var _ backend.VolumeSystem[Params, *Volume] = &System{}
 
 // System manages the local volumes and transactions on those volumes.
 type System struct {
@@ -179,7 +179,7 @@ func (ls *System) doRW(fn func(ba *pebble.Batch, ignore func(pdb.MVTag) bool) er
 	return ba.Commit(nil)
 }
 
-func (ls *System) beginTx(ctx context.Context, vol *Volume, params blobcache.TxParams) (_ volumes.Tx, retErr error) {
+func (ls *System) beginTx(ctx context.Context, vol *Volume, params blobcache.TxParams) (_ backend.Tx, retErr error) {
 	if !params.Modify {
 		sp := ls.db.NewSnapshot()
 		return newLocalTxnRO(ls, vol, sp), nil
@@ -259,7 +259,7 @@ func (s *System) abortMut(volID ID, mvid pdb.MVTag) error {
 // commit commits a local volume.
 // links should be the actual links returned by the schema
 // newlyAllowed should be the allowed links that were added to the volume during the transaction
-func (s *System) commit(volID ID, mvid pdb.MVTag, links volumes.LinkSet) error {
+func (s *System) commit(volID ID, mvid pdb.MVTag, links backend.LinkSet) error {
 	ba := s.db.NewIndexedBatch()
 	defer ba.Close()
 
@@ -566,7 +566,7 @@ func (s *System) readBlobData(k blobcache.CID, buf []byte) (int, error) {
 	return n, nil
 }
 
-func (s *System) readLinksFrom(mvid pdb.MVTag, fromVol ID, dst volumes.LinkSet) error {
+func (s *System) readLinksFrom(mvid pdb.MVTag, fromVol ID, dst backend.LinkSet) error {
 	clear(dst)
 	snp := s.db.NewSnapshot()
 	defer snp.Close()
