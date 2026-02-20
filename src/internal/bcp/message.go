@@ -94,7 +94,7 @@ const (
 	MT_ERROR_UNKNOWN = 255
 )
 
-const HeaderLen = 1 + 4
+const HeaderLen = 8
 
 type MessageHeader [HeaderLen]byte
 
@@ -107,11 +107,11 @@ func (h MessageHeader) Code() MessageType {
 }
 
 func (h MessageHeader) BodyLen() int {
-	return int(binary.BigEndian.Uint32(h[1:]))
+	return int(binary.LittleEndian.Uint32(h[4:]))
 }
 
 func (h *MessageHeader) SetBodyLen(bodyLen int) {
-	binary.BigEndian.PutUint32(h[1:], uint32(bodyLen))
+	binary.LittleEndian.PutUint32(h[4:], uint32(bodyLen))
 }
 
 type Message struct {
