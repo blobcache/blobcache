@@ -1,42 +1,58 @@
 package bcsdk
 
 import (
-	"bytes"
 	"context"
 	"sync"
-	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
 )
 
-// Watcher watches a Volume for changes, polling every second.
+// Watcher watches a Volume for changes using a queue subscription.
 // Changes are delivered as read-only transactions on the Out channel.
 type Watcher struct {
 	svc  blobcache.Service
 	volh blobcache.Handle
+	qh   blobcache.Handle
 
 	out    chan *Tx
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-// NewWatcher creates a new Watcher that polls the volume for changes.
-// It spawns a goroutine that polls every second and sends a read-only Tx
-// on the Out channel whenever the volume's root changes.
-func NewWatcher(svc blobcache.Service, volh blobcache.Handle) *Watcher {
-	ctx, cancel := context.WithCancel(context.Background())
+// NewWatcher creates a new Watcher that subscribes to volume changes.
+// It creates a queue, subscribes it to the volume, and spawns a goroutine
+// that sends a read-only Tx on the Out channel whenever the volume changes.
+func NewWatcher(svc blobcache.Service, volh blobcache.Handle) (*Watcher, error) {
+	ctx := context.Background()
+	qh, err := svc.CreateQueue(ctx, nil, blobcache.QueueSpec{
+		Memory: &blobcache.QueueBackend_Memory{
+			MaxDepth:             1,
+			EvictOldest:          true,
+			MaxBytesPerMessage:   0,
+			MaxHandlesPerMessage: 0,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := svc.SubToVolume(ctx, *qh, volh, blobcache.VolSubSpec{}); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
 	w := &Watcher{
 		svc:    svc,
 		volh:   volh,
+		qh:     *qh,
 		out:    make(chan *Tx, 1),
 		cancel: cancel,
 	}
 	w.wg.Add(1)
-	go w.poll(ctx)
-	return w
+	go w.loop(ctx)
+	return w, nil
 }
 
-// Close stops the polling goroutine and closes the Out channel.
+// Close stops the goroutine and closes the Out channel.
 // It causes ForEach to return nil.
 func (w *Watcher) Close() error {
 	w.cancel()
@@ -73,41 +89,30 @@ func (w *Watcher) Out() <-chan *Tx {
 	return w.out
 }
 
-func (w *Watcher) poll(ctx context.Context) {
+func (w *Watcher) loop(ctx context.Context) {
 	defer w.wg.Done()
 	defer close(w.out)
 
-	var lastRoot []byte
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
+	buf := make([]blobcache.Message, 1)
 	for {
-		select {
-		case <-ctx.Done():
+		n, err := w.svc.Dequeue(ctx, w.qh, buf, blobcache.DequeueOpts{Min: 1})
+		if err != nil {
 			return
-		case <-ticker.C:
-			tx, err := BeginTx(ctx, w.svc, w.volh, blobcache.TxParams{
-				Modify: false,
-			})
-			if err != nil {
-				continue
-			}
-			var root []byte
-			if err := tx.Load(ctx, &root); err != nil {
-				tx.Abort(ctx)
-				continue
-			}
-			if bytes.Equal(root, lastRoot) {
-				tx.Abort(ctx)
-				continue
-			}
-			lastRoot = append(lastRoot[:0], root...)
-			select {
-			case w.out <- tx:
-			case <-ctx.Done():
-				tx.Abort(ctx)
-				return
-			}
+		}
+		if n == 0 {
+			continue
+		}
+		tx, err := BeginTx(ctx, w.svc, w.volh, blobcache.TxParams{
+			Modify: false,
+		})
+		if err != nil {
+			continue
+		}
+		select {
+		case w.out <- tx:
+		case <-ctx.Done():
+			tx.Abort(ctx)
+			return
 		}
 	}
 }

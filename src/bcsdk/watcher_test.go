@@ -32,21 +32,22 @@ func TestWatcher_ForEach(t *testing.T) {
 	ctx := testutil.Context(t)
 	s, volh := setup(t)
 
-	w := bcsdk.NewWatcher(s, volh)
+	w, err := bcsdk.NewWatcher(s, volh)
+	require.NoError(t, err)
 	defer w.Close()
 
-	// Modify the volume in the background, spacing out changes so the poller picks them up.
+	// Modify the volume in the background.
 	go func() {
 		for i := 0; i < 3; i++ {
 			modify(t, s, volh, []byte{byte(i)})
-			time.Sleep(1500 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 		}
 	}()
 
 	var received int
 	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	err := w.ForEach(ctx2, func(tx *bcsdk.Tx) error {
+	err = w.ForEach(ctx2, func(tx *bcsdk.Tx) error {
 		received++
 		if received >= 3 {
 			cancel()
@@ -61,7 +62,8 @@ func TestWatcher_ForEachClose(t *testing.T) {
 	s, volh := setup(t)
 	ctx := testutil.Context(t)
 
-	w := bcsdk.NewWatcher(s, volh)
+	w, err := bcsdk.NewWatcher(s, volh)
+	require.NoError(t, err)
 	done := make(chan error, 1)
 	go func() {
 		done <- w.ForEach(ctx, func(tx *bcsdk.Tx) error {
@@ -82,7 +84,8 @@ func TestWatcher_Out(t *testing.T) {
 	ctx := testutil.Context(t)
 	s, volh := setup(t)
 
-	w := bcsdk.NewWatcher(s, volh)
+	w, err := bcsdk.NewWatcher(s, volh)
+	require.NoError(t, err)
 	defer w.Close()
 
 	modify(t, s, volh, []byte{1, 2, 3})
@@ -99,18 +102,11 @@ func TestWatcher_Out(t *testing.T) {
 func TestWatcher_NoChangeNoEmit(t *testing.T) {
 	s, volh := setup(t)
 
-	w := bcsdk.NewWatcher(s, volh)
+	w, err := bcsdk.NewWatcher(s, volh)
+	require.NoError(t, err)
 	defer w.Close()
 
-	// Without any modifications, nothing should be emitted after the initial change.
-	// Wait a bit longer than the poll interval.
-	select {
-	case <-w.Out():
-		// The first emission is the initial state (nil -> empty root).
-		// After that, no more should come.
-	case <-time.After(3 * time.Second):
-	}
-
+	// Without any modifications, nothing should be emitted.
 	select {
 	case <-w.Out():
 		t.Fatal("watcher emitted a Tx without any volume change")
