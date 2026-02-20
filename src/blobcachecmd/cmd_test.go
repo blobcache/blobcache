@@ -3,11 +3,13 @@ package blobcachecmd
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	bcclient "blobcache.io/blobcache/client/go"
+	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/blobcached"
 	"github.com/stretchr/testify/require"
 
@@ -21,7 +23,9 @@ func TestGLFS(t *testing.T) {
 		bcclient.EnvBlobcacheAPI: apiUrl,
 	}
 
-	runCmd(t, env, []string{"--state", stateDir, "ns", "create", "vol1"})
+	specJSON, err := json.Marshal(blobcache.DefaultLocalSpec())
+	require.NoError(t, err)
+	runCmdWithStdin(t, env, []string{"--state", stateDir, "ns", "create", "vol1"}, specJSON)
 	runCmd(t, env, []string{"--state", stateDir, "ns", "ls"})
 
 	runCmd(t, env, []string{"glfs", "init", "vol1"})
@@ -41,6 +45,11 @@ func TestGLFS(t *testing.T) {
 
 func runCmd(t testing.TB, env map[string]string, args []string) {
 	RunTest(t, env, "blobcache", args, nil, nil, nil)
+}
+
+func runCmdWithStdin(t testing.TB, env map[string]string, args []string, stdinData []byte) {
+	stdin := bufio.NewReader(bytes.NewReader(stdinData))
+	RunTest(t, env, "blobcache", args, stdin, nil, nil)
 }
 
 func runCmdGetOut(t testing.TB, env map[string]string, args []string) []byte {

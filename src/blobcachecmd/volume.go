@@ -4,11 +4,45 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"go.brendoncarroll.net/star"
+	"go.brendoncarroll.net/stdctx/logctx"
 )
+
+var mkVolCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "create a new volume from a VolumeSpec JSON on stdin",
+	},
+	Flags: map[string]star.Flag{
+		"host": hostParam,
+	},
+	F: func(c star.Context) error {
+		s, err := openService(c)
+		if err != nil {
+			return err
+		}
+		host, _ := hostParam.LoadOpt(c)
+		logctx.Infof(c.Context, "reading VolumeSpec JSON from stdin")
+		data, err := io.ReadAll(c.StdIn)
+		if err != nil {
+			return err
+		}
+		var spec blobcache.VolumeSpec
+		if err := json.Unmarshal(data, &spec); err != nil {
+			return err
+		}
+		h, err := s.CreateVolume(c.Context, host, spec)
+		if err != nil {
+			return err
+		}
+		c.Printf("Volume successfully created.\n\n")
+		c.Printf("HANDLE: %v\n", *h)
+		return nil
+	},
+}
 
 var mkVolLocalCmd = star.Command{
 	Metadata: star.Metadata{
