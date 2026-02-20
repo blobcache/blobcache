@@ -22,7 +22,7 @@ func TestAPI(t *testing.T) {
 	t.Log("built blobcache command. written to ", execPath)
 
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
-		if strings.Contains(t.Name(), "Queue") {
+		if strings.Contains(t.Name(), "Queue") || strings.Contains(t.Name(), "SubToVol") {
 			// If we ever add `blobcache queue` to the API then we can start running these tests.
 			t.SkipNow()
 		}

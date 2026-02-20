@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/pubsub"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
@@ -27,9 +26,7 @@ type System struct {
 
 type Env struct {
 	Background context.Context
-	// Hub is used to subscribe to events
-	Hub  *pubsub.Hub
-	Send func(blobcache.Message) error
+	Send       func(blobcache.Message) error
 }
 
 func New(env Env) System {
@@ -75,9 +72,7 @@ func (sys *System) Drop(ctx context.Context, vol *Volume) error {
 	if !exists {
 		return nil
 	}
-	if sys.env.Hub.Unsubscribe(vol.id, vol.incoming) {
-		close(vol.incoming)
-	}
+	close(vol.incoming)
 	delete(sys.vols, vol.id)
 	return nil
 }

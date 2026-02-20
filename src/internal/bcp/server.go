@@ -20,8 +20,7 @@ type TopicMessage = blobcache.Message
 var _ Handler = &Server{}
 
 type Server struct {
-	Access  AccessFunc
-	Deliver func(ctx context.Context, from blobcache.Endpoint, ttm TopicTellMsg) error
+	Access AccessFunc
 }
 
 func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Message, resp *Message) bool {
@@ -345,7 +344,7 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		})
 	case MT_QUEUE_SUB_TO_VOLUME:
 		handleAsk(req, resp, &SubToVolumeReq{}, func(req *SubToVolumeReq) (*SubToVolumeResp, error) {
-			if err := svc.SubToVolume(ctx, req.Queue, req.Volume); err != nil {
+			if err := svc.SubToVolume(ctx, req.Queue, req.Volume, req.Spec); err != nil {
 				return nil, err
 			}
 			return &SubToVolumeResp{}, nil

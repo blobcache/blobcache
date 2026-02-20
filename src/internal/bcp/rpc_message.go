@@ -1186,11 +1186,13 @@ func (ir *EnqueueResp) Unmarshal(data []byte) error {
 type SubToVolumeReq struct {
 	Queue  blobcache.Handle
 	Volume blobcache.Handle
+	Spec   blobcache.VolSubSpec
 }
 
 func (sr SubToVolumeReq) Marshal(out []byte) []byte {
 	out = sr.Queue.Marshal(out)
-	return sr.Volume.Marshal(out)
+	out = sr.Volume.Marshal(out)
+	return sbe.AppendLP(out, sr.Spec.Marshal(nil))
 }
 
 func (sr *SubToVolumeReq) Unmarshal(data []byte) error {
@@ -1201,7 +1203,15 @@ func (sr *SubToVolumeReq) Unmarshal(data []byte) error {
 		return err
 	}
 	data = data[blobcache.HandleSize:]
-	return sr.Volume.Unmarshal(data[:blobcache.HandleSize])
+	if err := sr.Volume.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	data = data[blobcache.HandleSize:]
+	specData, _, err := sbe.ReadLP(data)
+	if err != nil {
+		return err
+	}
+	return sr.Spec.Unmarshal(specData)
 }
 
 type SubToVolumeResp struct{}

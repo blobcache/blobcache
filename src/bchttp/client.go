@@ -334,8 +334,8 @@ func (c *Client) Enqueue(ctx context.Context, q blobcache.Handle, msgs []blobcac
 	return &resp, nil
 }
 
-func (c *Client) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle) error {
-	req := SubToVolumeReq{Volume: vol}
+func (c *Client) SubToVolume(ctx context.Context, q blobcache.Handle, vol blobcache.Handle, spec blobcache.VolSubSpec) error {
+	req := SubToVolumeReq{Volume: vol, Spec: spec}
 	var resp SubToVolumeResp
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/queue/%s.SubToVolume", q.OID.String()), &q.Secret, req, &resp)
 }

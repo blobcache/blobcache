@@ -360,8 +360,8 @@ func (s *Service) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobc
 	return s.sys.Enqueue(ctx, qh, msgs)
 }
 
-func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
-	return s.sys.SubToVolume(ctx, qh, volh)
+func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
+	return s.sys.SubToVolume(ctx, qh, volh, spec)
 }
 
 func (s *Service) cleanupVolumes(ctx context.Context, db *pebble.DB, keep func(blobcache.OID) bool) error {

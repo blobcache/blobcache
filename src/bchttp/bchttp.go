@@ -223,7 +223,8 @@ type InsertReq struct {
 }
 
 type SubToVolumeReq struct {
-	Volume blobcache.Handle `json:"volume"`
+	Volume blobcache.Handle     `json:"volume"`
+	Spec   blobcache.VolSubSpec `json:"spec"`
 }
 
 type SubToVolumeResp struct{}

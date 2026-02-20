@@ -49,6 +49,34 @@ func (m *Message) Unmarshal(data []byte) error {
 	return nil
 }
 
+// VolSubSpec specifies a Volume Subscription
+type VolSubSpec struct {
+	// BeginTx, if not-nil, causes a transaction with the requested parameters to be opened
+	// every time the volume changes.
+	BeginTx *TxParams `json:"begin_tx,omitempty"`
+	// SendCell causes the current contents of the Volume's cell to be
+	// added to the Bytes portion of the message.  It will be length-prefixed with a 32bit integer.
+	// This is best-effort and no cell data will be included if it is too large.
+	SendCell bool `json:"send_cell,omitempty"`
+	// SendBlobs causes blobs, which the implementation thinks will be relevant,
+	// to be appended, 32-bit-length-prefixed, to the Bytes portion of the message.
+	// They will be after the cell.
+	// If the cell is too large then no Blobs will be appended.
+	SendBlobs bool `json:"send_blobs,omitempty"`
+}
+
+func (vs VolSubSpec) Marshal(out []byte) []byte {
+	data, err := json.Marshal(vs)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (vs *VolSubSpec) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, vs)
+}
+
 type QueueAPI interface {
 	// CreateQueue creates a new queue and returns a handle to it.
 	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)
@@ -62,7 +90,7 @@ type QueueAPI interface {
 
 	// SubToVolume causes all changes to a Volume's cell to be
 	// writen as message to the queue.
-	SubToVolume(ctx context.Context, q Handle, vol Handle) error
+	SubToVolume(ctx context.Context, q Handle, vol Handle, spec VolSubSpec) error
 }
 
 type InsertResp struct {
@@ -152,7 +180,7 @@ type QueueBackend_Memory struct {
 	// The default value (false) causes new messages to be dropped when the queue is full.
 	EvictOldest bool `json:"evict_oldest"`
 
-	MaxBytesPerMessage   uint32 `json:"max_bytes_per_message`
+	MaxBytesPerMessage   uint32 `json:"max_bytes_per_message"`
 	MaxHandlesPerMessage uint32 `json:"max_handles_per_message"`
 }
 

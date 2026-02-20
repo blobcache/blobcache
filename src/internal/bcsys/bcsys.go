@@ -16,7 +16,6 @@ import (
 	"blobcache.io/blobcache/src/internal/backend/memory"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/bcp"
-	"blobcache.io/blobcache/src/internal/pubsub"
 	"blobcache.io/blobcache/src/internal/volumes"
 	"blobcache.io/blobcache/src/internal/volumes/consensusvol"
 	"blobcache.io/blobcache/src/internal/volumes/remotevol"
@@ -87,14 +86,14 @@ func New[LK any, LV LocalVolume[LK]](env Env[LK, LV], cfg Config) *Service[LK, L
 		env: env,
 		cfg: cfg,
 
-		node:      atomic.Pointer[bcnet.Node]{},
-		tmpSecret: &tmpSecret,
+		node:       atomic.Pointer[bcnet.Node]{},
+		tmpSecret:  &tmpSecret,
+		volumeSubs: make(map[blobcache.OID]map[blobcache.OID]blobcache.VolSubSpec),
 	}
 	s.volSys.local = env.Local
 	s.volSys.remote = remotevol.New(&s.node)
 	s.volSys.global = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
-		Hub:        &s.hub,
 	})
 	s.queueSys.memory = &memory.System{}
 	return s
@@ -113,17 +112,17 @@ type Service[LK any, LV LocalVolume[LK]] struct {
 	queueSys struct {
 		memory *memory.System
 	}
-	hub       pubsub.Hub
 	tmpSecret *[32]byte
 
 	handles handleSystem
 	// mu guards the volumes, queues, and txns.
 	// pure handle operations like Drop, KeepAlive, Inspect, etc. do not require this lock.
 	// mu should always be taken for a superset of the time that the handle system's lock is taken.
-	mu      sync.RWMutex
-	volumes map[blobcache.OID]volume
-	queues  map[blobcache.OID]queue
-	txns    map[blobcache.OID]transaction
+	mu         sync.RWMutex
+	volumes    map[blobcache.OID]volume
+	queues     map[blobcache.OID]queue
+	volumeSubs map[blobcache.OID]map[blobcache.OID]blobcache.VolSubSpec
+	txns       map[blobcache.OID]transaction
 }
 
 // Serve handles requests from the network.
@@ -145,19 +144,6 @@ func (s *Service[LK, LV]) Serve(ctx context.Context, pc net.PacketConn) error {
 			} else {
 				return nil
 			}
-		},
-		Deliver: func(ctx context.Context, from blobcache.Endpoint, ttm bcp.TopicTellMsg) error {
-			topicID := s.hub.Lookup(ttm.TopicHash)
-			if topicID.IsZero() {
-				logctx.Warn(ctx, "dropping tell message", zap.Any("from", from), zap.Int("ctext_len", len(ttm.Ciphertext)))
-				return nil
-			}
-			tmsg := s.hub.Acquire()
-			if err := ttm.Decrypt(topicID, tmsg); err != nil {
-				s.hub.Release(tmsg)
-				return err
-			}
-			return nil
 		},
 	})
 	if errors.Is(err, net.ErrClosed) {
@@ -225,6 +211,7 @@ func (s *Service[LK, LV]) Cleanup(ctx context.Context) ([]blobcache.OID, error) 
 	for oid := range s.volumes {
 		if !s.handles.isAlive(oid) {
 			delete(s.volumes, oid)
+			delete(s.volumeSubs, oid)
 			ret = append(ret, oid)
 		}
 	}
@@ -234,6 +221,12 @@ func (s *Service[LK, LV]) Cleanup(ctx context.Context) ([]blobcache.OID, error) 
 	for oid := range s.queues {
 		if !s.handles.isAlive(oid) {
 			delete(s.queues, oid)
+			for volID, subs := range s.volumeSubs {
+				delete(subs, oid)
+				if len(subs) == 0 {
+					delete(s.volumeSubs, volID)
+				}
+			}
 		}
 	}
 	s.mu.Unlock()
@@ -827,6 +820,7 @@ func (s *Service[LV, LK]) Commit(ctx context.Context, txh blobcache.Handle) erro
 	s.mu.Lock()
 	s.handles.Drop(txh)
 	s.mu.Unlock()
+	s.notify(ctx, tx.volume.info.ID)
 	return nil
 }
 
@@ -1048,8 +1042,65 @@ func (s *Service[LK, LV]) Enqueue(ctx context.Context, qh blobcache.Handle, msgs
 	return &blobcache.InsertResp{Success: uint32(len(msgs))}, nil
 }
 
-func (s *Service[LK, LV]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
-	return fmt.Errorf("SubToVolume not implemented")
+func (s *Service[LK, LV]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
+	if _, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_SUB_VOLUME); err != nil {
+		return err
+	}
+	vol, rights, err := s.resolveVol(ctx, volh)
+	if err != nil {
+		return err
+	}
+	if rights&blobcache.Action_VOLUME_SUB_TO < blobcache.Action_VOLUME_SUB_TO {
+		return blobcache.ErrPermission{
+			Handle:   volh,
+			Rights:   rights,
+			Requires: blobcache.Action_VOLUME_SUB_TO,
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	subs := s.volumeSubs[vol.info.ID]
+	if subs == nil {
+		subs = make(map[blobcache.OID]blobcache.VolSubSpec)
+		s.volumeSubs[vol.info.ID] = subs
+	}
+	subs[qh.OID] = spec
+	return nil
+}
+
+func (s *Service[LK, LV]) notify(ctx context.Context, volID blobcache.OID) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	s.mu.RLock()
+	subs := s.volumeSubs[volID]
+	if len(subs) == 0 {
+		s.mu.RUnlock()
+		return
+	}
+	type sub struct {
+		q    queue
+		spec blobcache.VolSubSpec
+	}
+	items := make([]sub, 0, len(subs))
+	for qid, spec := range subs {
+		q, exists := s.queues[qid]
+		if !exists {
+			continue
+		}
+		items = append(items, sub{q: q, spec: spec})
+	}
+	s.mu.RUnlock()
+
+	for _, item := range items {
+		_ = item.spec
+		if err := item.q.backend.Enqueue(ctx, []blobcache.Message{{}}); err != nil {
+			logctx.Warn(ctx, "notify volume subscription failed", zap.Error(err), zap.String("volume", volID.String()), zap.String("queue", item.q.info.ID.String()))
+		}
+		if ctx.Err() != nil {
+			return
+		}
+	}
 }
 
 func (s *Service[LK, LV]) resolveQueue(ctx context.Context, qh blobcache.Handle, requires blobcache.ActionSet) (queue, error) {
