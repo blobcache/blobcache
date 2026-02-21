@@ -25,6 +25,14 @@ type Queue struct {
 	evictOldest bool
 }
 
+func (q *Queue) Config() blobcache.QueueConfig {
+	return blobcache.QueueConfig{
+		MaxDepth:             q.maxDepth,
+		MaxBytesPerMessage:   MaxMaxBytesPer,
+		MaxHandlesPerMessage: MaxMaxHandlesPer,
+	}
+}
+
 func (q *Queue) QueueDown(ctx context.Context) error {
 	return nil
 }

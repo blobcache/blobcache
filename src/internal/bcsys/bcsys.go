@@ -480,8 +480,10 @@ func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Han
 
 func (s *Service[LK, LV, LQ]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	if x != (blobcache.OID{}) {
-		if err := s.mountVolume(ctx, x); err != nil {
-			return nil, err
+		if _, isQueue := s.queueByOID(x); !isQueue {
+			if err := s.mountVolume(ctx, x); err != nil {
+				return nil, err
+			}
 		}
 	}
 	createdAt := time.Now()
@@ -966,9 +968,14 @@ func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.E
 			return nil, err
 		}
 	case qspec.Remote != nil:
-		queue, err = s.backends.remote.QueueUp(ctx, qspec.Remote)
-		if err != nil {
-			return nil, err
+		// If the OID refers to a queue we already have locally, reuse its backend.
+		if existing, ok := s.queueByOID(qspec.Remote.OID); ok {
+			queue = existing.backend
+		} else {
+			queue, err = s.backends.remote.QueueUp(ctx, qspec.Remote)
+			if err != nil {
+				return nil, err
+			}
 		}
 	default:
 		panic(qspec)

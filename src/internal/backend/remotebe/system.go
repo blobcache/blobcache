@@ -85,7 +85,24 @@ func (sys *System) CreateQueue(ctx context.Context, ep blobcache.Endpoint, qspec
 	if err != nil {
 		return nil, nil, err
 	}
-	return NewQueue(sys, node, ep, *qh), &info, nil
+	return NewQueue(sys, node, ep, *qh, info.Config), &info, nil
+}
+
+// QueueUp opens an existing remote queue and returns a local proxy.
+func (sys *System) QueueUp(ctx context.Context, p *blobcache.QueueBackend_Remote) (*Queue, error) {
+	node := sys.node.Load()
+	if node == nil {
+		return nil, fmt.Errorf("bcremote: cannot open remote queue, no node")
+	}
+	h, _, err := bcp.OpenFiat(ctx, node, p.Endpoint, p.OID, blobcache.Action_ALL)
+	if err != nil {
+		return nil, err
+	}
+	info, err := bcp.InspectQueue(ctx, node, p.Endpoint, *h)
+	if err != nil {
+		return nil, err
+	}
+	return NewQueue(sys, node, p.Endpoint, *h, info.Config), nil
 }
 
 func (sys *System) SubToVol(ctx context.Context, vol *Volume, q backend.Queue, spec blobcache.VolSubSpec) error {

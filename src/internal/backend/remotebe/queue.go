@@ -18,15 +18,21 @@ type Queue struct {
 	n   bcp.Asker
 	ep  blobcache.Endpoint
 	h   blobcache.Handle
+	cfg blobcache.QueueConfig
 }
 
-func NewQueue(sys *System, node bcp.Asker, ep blobcache.Endpoint, h blobcache.Handle) *Queue {
+func NewQueue(sys *System, node bcp.Asker, ep blobcache.Endpoint, h blobcache.Handle, cfg blobcache.QueueConfig) *Queue {
 	return &Queue{
 		sys: sys,
 		n:   node,
 		ep:  ep,
 		h:   h,
+		cfg: cfg,
 	}
+}
+
+func (q *Queue) Config() blobcache.QueueConfig {
+	return q.cfg
 }
 
 func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) (int, error) {
