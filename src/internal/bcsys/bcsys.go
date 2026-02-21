@@ -38,7 +38,6 @@ const (
 
 type LocalVolume[K any] interface {
 	backend.Volume
-	Key() K
 }
 
 // LVParams are the parameters for a local volume
@@ -64,8 +63,8 @@ type Env[LK any, LV LocalVolume[LK]] struct {
 	PeerLocator PeerLocator
 	MkSchema    schema.Factory
 
-	// Local is the local volume system.
-	Local      backend.VolumeSystem[LVParams[LK], LV]
+	// Local is the local backend system.
+	Local      backend.System[LVParams[LK], LV, blobcache.QueueBackend_Memory]
 	GenerateLK func() (LK, error)
 	LKToOID    func(LK) blobcache.OID
 	OIDToLK    func(blobcache.OID) (LK, error)
@@ -85,13 +84,12 @@ func New[LK any, LV LocalVolume[LK]](env Env[LK, LV], cfg Config) *Service[LK, L
 		env: env,
 		cfg: cfg,
 
-		node:       atomic.Pointer[bcnet.Node]{},
-		tmpSecret:  &tmpSecret,
-		volumeSubs: make(map[blobcache.OID]map[blobcache.OID]blobcache.VolSubSpec),
+		node:      atomic.Pointer[bcnet.Node]{},
+		tmpSecret: &tmpSecret,
 	}
-	s.volSys.local = env.Local
-	s.volSys.remote = remotebe.New(&s.node)
-	s.volSys.global = consensusvol.New(consensusvol.Env{
+	s.backends.local = env.Local
+	s.backends.remote = remotebe.New(&s.node)
+	s.backends.global = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
 	})
 	s.queueSys.memory = &memory.System{}
@@ -102,11 +100,12 @@ type Service[LK any, LV LocalVolume[LK]] struct {
 	env Env[LK, LV]
 	cfg Config
 
-	node   atomic.Pointer[bcnet.Node]
-	volSys struct {
+	node     atomic.Pointer[bcnet.Node]
+	backends struct {
 		local  backend.VolumeSystem[LVParams[LK], LV]
 		remote remotebe.System
 		global consensusvol.System
+		memory memory.System
 	}
 	queueSys struct {
 		memory *memory.System
@@ -117,11 +116,10 @@ type Service[LK any, LV LocalVolume[LK]] struct {
 	// mu guards the volumes, queues, and txns.
 	// pure handle operations like Drop, KeepAlive, Inspect, etc. do not require this lock.
 	// mu should always be taken for a superset of the time that the handle system's lock is taken.
-	mu         sync.RWMutex
-	volumes    map[blobcache.OID]volume
-	queues     map[blobcache.OID]queue
-	volumeSubs map[blobcache.OID]map[blobcache.OID]blobcache.VolSubSpec
-	txns       map[blobcache.OID]transaction
+	mu      sync.RWMutex
+	volumes map[blobcache.OID]volume
+	queues  map[blobcache.OID]queue
+	txns    map[blobcache.OID]transaction
 }
 
 // Serve handles requests from the network.
@@ -209,9 +207,14 @@ func (s *Service[LK, LV]) Cleanup(ctx context.Context) ([]blobcache.OID, error) 
 	var ret []blobcache.OID
 	for oid := range s.volumes {
 		if !s.handles.isAlive(oid) {
+			vol := s.volumes[oid]
 			delete(s.volumes, oid)
-			delete(s.volumeSubs, oid)
 			ret = append(ret, oid)
+			if vol.info.Backend.Local != nil {
+				if lv, ok := vol.backend.(LV); ok {
+					_ = s.env.Local.Drop(ctx, lv)
+				}
+			}
 		}
 	}
 
@@ -219,13 +222,9 @@ func (s *Service[LK, LV]) Cleanup(ctx context.Context) ([]blobcache.OID, error) 
 	logctx.Info(ctx, "cleaning up queues")
 	for oid := range s.queues {
 		if !s.handles.isAlive(oid) {
+			q := s.queues[oid]
 			delete(s.queues, oid)
-			for volID, subs := range s.volumeSubs {
-				delete(subs, oid)
-				if len(subs) == 0 {
-					delete(s.volumeSubs, volID)
-				}
-			}
+			_ = s.env.Local.QueueDown(ctx, q.backend)
 		}
 	}
 	s.mu.Unlock()
@@ -505,7 +504,7 @@ func (s *Service[LK, LV]) OpenFrom(ctx context.Context, base blobcache.Handle, l
 
 	switch baseVol := baseVol.backend.(type) {
 	case *remotebe.Volume:
-		rights, subvol, err := s.volSys.remote.OpenFrom(ctx, baseVol, ltok, mask)
+		rights, subvol, err := s.backends.remote.OpenFrom(ctx, baseVol, ltok, mask)
 		if err != nil {
 			return nil, err
 		}
@@ -661,7 +660,7 @@ func (s *Service[LK, LV]) createRemoteVolume(ctx context.Context, host blobcache
 			},
 		},
 	}
-	vol, err := s.volSys.remote.Up(ctx, remotebe.Params{
+	vol, err := s.backends.remote.Up(ctx, remotebe.Params{
 		Endpoint: host,
 		Volume:   rvInfo.ID,
 		HashAlgo: vp.HashAlgo,
@@ -740,35 +739,16 @@ func (s *Service[LK, LV]) InspectTx(ctx context.Context, txh blobcache.Handle) (
 	if err != nil {
 		return nil, err
 	}
-	vol := txn.volume.backend
-	switch vol := vol.(type) {
-	case LV:
-		lk := vol.Key()
-		vp := vol.GetParams()
-		return &blobcache.TxInfo{
-			ID:       txh.OID,
-			Volume:   s.env.LKToOID(lk),
-			MaxSize:  vp.MaxSize,
-			HashAlgo: vp.HashAlgo,
-		}, nil
-	case *vaultvol.Vault:
-		innerVol := vol.Inner()
-		switch inner := innerVol.(type) {
-		case LV:
-			vp := innerVol.GetParams()
-			lk := inner.Key()
-			return &blobcache.TxInfo{
-				ID:       txh.OID,
-				Volume:   s.env.LKToOID(lk),
-				MaxSize:  vp.MaxSize,
-				HashAlgo: vp.HashAlgo,
-			}, nil
-		default:
-			return nil, fmt.Errorf("InspectTx not implemented for inner volume type:%T", inner)
-		}
-	default:
-		return nil, fmt.Errorf("InspectTx not implemented for volume type:%T", vol)
-	}
+	vol := txn.volume
+	vp := vol.backend.GetParams()
+	return &blobcache.TxInfo{
+		ID:     txh.OID,
+		Volume: vol.info.ID,
+
+		MaxSize:  vp.MaxSize,
+		HashAlgo: vp.HashAlgo,
+		Params:   txn.backend.Params(),
+	}, nil
 }
 
 func (s *Service[LV, LK]) Save(ctx context.Context, txh blobcache.Handle, root []byte) error {
@@ -819,7 +799,7 @@ func (s *Service[LV, LK]) Commit(ctx context.Context, txh blobcache.Handle) erro
 	s.mu.Lock()
 	s.handles.Drop(txh)
 	s.mu.Unlock()
-	s.notify(ctx, tx.volume.info.ID)
+
 	return nil
 }
 
@@ -979,7 +959,7 @@ func (s *Service[LK, LV]) CreateQueue(ctx context.Context, host *blobcache.Endpo
 	case host != nil && host.Peer != s.LocalID():
 		return nil, fmt.Errorf("remote queues not supported")
 	case qspec.Memory != nil && qspec.Remote == nil:
-		q, err := s.queueSys.memory.CreateQueue(ctx, *qspec.Memory)
+		q, err := s.env.Local.CreateQueue(ctx, *qspec.Memory)
 		if err != nil {
 			return nil, err
 		}
@@ -1042,7 +1022,8 @@ func (s *Service[LK, LV]) Enqueue(ctx context.Context, qh blobcache.Handle, msgs
 }
 
 func (s *Service[LK, LV]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
-	if _, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_SUB_VOLUME); err != nil {
+	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_SUB_VOLUME)
+	if err != nil {
 		return err
 	}
 	vol, rights, err := s.resolveVol(ctx, volh)
@@ -1056,50 +1037,11 @@ func (s *Service[LK, LV]) SubToVolume(ctx context.Context, qh blobcache.Handle, 
 			Requires: blobcache.Action_VOLUME_SUB_TO,
 		}
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	subs := s.volumeSubs[vol.info.ID]
-	if subs == nil {
-		subs = make(map[blobcache.OID]blobcache.VolSubSpec)
-		s.volumeSubs[vol.info.ID] = subs
+	lv, ok := vol.backend.(LV)
+	if !ok {
+		return fmt.Errorf("SubToVolume not supported for volume type:%T", vol.backend)
 	}
-	subs[qh.OID] = spec
-	return nil
-}
-
-func (s *Service[LK, LV]) notify(ctx context.Context, volID blobcache.OID) {
-	ctx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-
-	s.mu.RLock()
-	subs := s.volumeSubs[volID]
-	if len(subs) == 0 {
-		s.mu.RUnlock()
-		return
-	}
-	type sub struct {
-		q    queue
-		spec blobcache.VolSubSpec
-	}
-	items := make([]sub, 0, len(subs))
-	for qid, spec := range subs {
-		q, exists := s.queues[qid]
-		if !exists {
-			continue
-		}
-		items = append(items, sub{q: q, spec: spec})
-	}
-	s.mu.RUnlock()
-
-	for _, item := range items {
-		_ = item.spec
-		if err := item.q.backend.Enqueue(ctx, []blobcache.Message{{}}); err != nil {
-			logctx.Warn(ctx, "notify volume subscription failed", zap.Error(err), zap.String("volume", volID.String()), zap.String("queue", item.q.info.ID.String()))
-		}
-		if ctx.Err() != nil {
-			return
-		}
-	}
+	return s.env.Local.SubToVol(ctx, lv, q.backend, spec)
 }
 
 func (s *Service[LK, LV]) resolveQueue(ctx context.Context, qh blobcache.Handle, requires blobcache.ActionSet) (queue, error) {
@@ -1140,7 +1082,7 @@ func (s *Service[LK, LV]) makeVolume(ctx context.Context, oid blobcache.OID, vol
 		}
 		return s.makeLocal(ctx, oid, lvid)
 	case volBackend.Remote != nil:
-		return s.volSys.remote.Up(ctx, *volBackend.Remote)
+		return s.backends.remote.Up(ctx, *volBackend.Remote)
 	case volBackend.Git != nil:
 		return s.makeGit(ctx, *volBackend.Git)
 	case volBackend.Vault != nil:
@@ -1159,7 +1101,7 @@ func (s *Service[LK, LV]) makeLocal(ctx context.Context, oid blobcache.OID, lk L
 	if !found {
 		return nil, fmt.Errorf("makeLocal: volume entry not found")
 	}
-	return s.volSys.local.Up(ctx, LVParams[LK]{
+	return s.backends.local.Up(ctx, LVParams[LK]{
 		Key:    lk,
 		Params: blobcache.VolumeConfig(*ve.Info().Backend.Local),
 	})
@@ -1188,7 +1130,7 @@ func (s *Service[LK, LV]) findVolumeParams(ctx context.Context, vspec blobcache.
 	case vspec.Git != nil:
 		return vspec.Config(), nil
 	case vspec.Remote != nil:
-		vol, err := s.volSys.remote.Up(ctx, *vspec.Remote)
+		vol, err := s.backends.remote.Up(ctx, *vspec.Remote)
 		if err != nil {
 			return blobcache.VolumeConfig{}, err
 		}

@@ -27,6 +27,15 @@ type VolumeSystem[Params any, V Volume] interface {
 	Drop(ctx context.Context, vol V) error
 }
 
+// System is a full backend System, supporting Volumes, Queues
+// and subscriptions on Volumes.
+type System[VP any, V Volume, QP any] interface {
+	VolumeSystem[VP, V]
+	QueueSystem[QP]
+
+	SubToVol(ctx context.Context, vol V, q Queue, spec blobcache.VolSubSpec) error
+}
+
 type LinkSet = map[[32]byte]blobcache.OID
 
 type Volume interface {

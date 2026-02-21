@@ -20,6 +20,8 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/localvol"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/backend"
+	"blobcache.io/blobcache/src/internal/backend/memory"
 	"blobcache.io/blobcache/src/internal/bcsys"
 	"blobcache.io/blobcache/src/internal/svcgroup"
 	"blobcache.io/blobcache/src/schema"
@@ -69,7 +71,7 @@ type Service struct {
 	db      *pebble.DB
 	blobDir *os.Root
 
-	sys   *bcsys.Service[localvol.ID, *localvol.Volume]
+	sys   *bcsys.Service[localvol.ID, backend.Volume]
 	svcs  svcgroup.Group
 	txSys pdb.TxSys
 	lvs   localvol.System
@@ -130,16 +132,20 @@ func New(env Env, cfg Config) (*Service, error) {
 		TxSys:    &s.txSys,
 		MkSchema: env.MkSchema,
 	})
-	rootVol := s.lvs.UpNoErr(localvol.Params{
+	localSys := newSystem(&s.lvs, &memory.System{})
+	rootVol, err := localSys.Up(env.Background, localvol.Params{
 		Key:    0,
 		Params: s.env.Root.Config(),
 	})
+	if err != nil {
+		return nil, err
+	}
 	loidSalt, err := ensureOIDSalt(db)
 	if err != nil {
 		panic(err)
 	}
 
-	s.sys = bcsys.New(bcsys.Env[localvol.ID, *localvol.Volume]{
+	s.sys = bcsys.New(bcsys.Env[localvol.ID, backend.Volume]{
 		Background:  env.Background,
 		PrivateKey:  env.PrivateKey,
 		Root:        rootVol,
@@ -148,7 +154,7 @@ func New(env Env, cfg Config) (*Service, error) {
 		PeerLocator: env.PeerLocator,
 		MkSchema:    env.MkSchema,
 
-		Local:      &s.lvs,
+		Local:      localSys,
 		GenerateLK: s.lvs.GenerateLocalID,
 		OIDToLK: func(x blobcache.OID) (localvol.ID, error) {
 			return localvol.LocalIDFromOID(loidSalt, x)
