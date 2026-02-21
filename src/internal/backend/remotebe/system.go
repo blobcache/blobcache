@@ -71,6 +71,51 @@ func (sys *System) VolumeDestroy(ctx context.Context, vol *Volume) error {
 	return nil
 }
 
+// CreateQueue creates a queue on the remote node and returns a local proxy.
+func (sys *System) CreateQueue(ctx context.Context, ep blobcache.Endpoint, qspec blobcache.QueueSpec) (*Queue, *blobcache.QueueInfo, error) {
+	node := sys.node.Load()
+	if node == nil {
+		return nil, nil, fmt.Errorf("bcremote: cannot create remote queue, no node")
+	}
+	qh, err := bcp.CreateQueue(ctx, node, ep, qspec)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := bcp.InspectQueue(ctx, node, ep, *qh)
+	if err != nil {
+		return nil, nil, err
+	}
+	return NewQueue(sys, node, ep, *qh, info.Config), &info, nil
+}
+
+// QueueUp opens an existing remote queue and returns a local proxy.
+func (sys *System) QueueUp(ctx context.Context, p *blobcache.QueueBackend_Remote) (*Queue, error) {
+	node := sys.node.Load()
+	if node == nil {
+		return nil, fmt.Errorf("bcremote: cannot open remote queue, no node")
+	}
+	h, _, err := bcp.OpenFiat(ctx, node, p.Endpoint, p.OID, blobcache.Action_ALL)
+	if err != nil {
+		return nil, err
+	}
+	info, err := bcp.InspectQueue(ctx, node, p.Endpoint, *h)
+	if err != nil {
+		return nil, err
+	}
+	return NewQueue(sys, node, p.Endpoint, *h, info.Config), nil
+}
+
+func (sys *System) SubToVol(ctx context.Context, vol *Volume, q backend.Queue, spec blobcache.VolSubSpec) error {
+	rq, ok := q.(*Queue)
+	if !ok {
+		return fmt.Errorf("bcremote: SubToVol requires a remote queue, got %T", q)
+	}
+	if rq.ep.Peer != vol.ep.Peer {
+		return fmt.Errorf("bcremote: SubToVol requires the queue and volume to be on the same peer")
+	}
+	return bcp.SubToVolume(ctx, vol.n, vol.ep, rq.h, vol.h, spec)
+}
+
 func (sys *System) OpenFrom(ctx context.Context, base *Volume, token blobcache.LinkToken, mask blobcache.ActionSet) (blobcache.ActionSet, *Volume, error) {
 	h, info, err := bcp.OpenFrom(ctx, base.n, base.ep, base.h, token, mask)
 	if err != nil {

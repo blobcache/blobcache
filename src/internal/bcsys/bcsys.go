@@ -258,7 +258,7 @@ func (s *Service[LK, LV, LQ]) addVolume(oid blobcache.OID, vol backend.Volume) b
 
 // addQueue adds a queue to the queues map.
 // It acquires mu exclusively, and returns false if the queue already exists.
-func (s *Service[LK, LV, LQ]) addQueue(oid blobcache.OID, q backend.Queue, spec blobcache.QueueBackend[blobcache.OID]) bool {
+func (s *Service[LK, LV, LQ]) addQueue(oid blobcache.OID, q backend.Queue, cfg blobcache.QueueConfig, spec blobcache.QueueBackend[blobcache.OID]) bool {
 	if oid == (blobcache.OID{}) {
 		return false
 	}
@@ -269,12 +269,6 @@ func (s *Service[LK, LV, LQ]) addQueue(oid blobcache.OID, q backend.Queue, spec 
 	}
 	if s.queues == nil {
 		s.queues = make(map[blobcache.OID]queue)
-	}
-	cfg := blobcache.QueueConfig{}
-	if spec.Memory != nil {
-		cfg.MaxDepth = spec.Memory.MaxDepth
-		cfg.MaxBytesPerMessage = spec.Memory.MaxBytesPerMessage
-		cfg.MaxHandlesPerMessage = spec.Memory.MaxHandlesPerMessage
 	}
 	s.queues[oid] = queue{
 		info: blobcache.QueueInfo{
@@ -486,8 +480,10 @@ func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Han
 
 func (s *Service[LK, LV, LQ]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	if x != (blobcache.OID{}) {
-		if err := s.mountVolume(ctx, x); err != nil {
-			return nil, err
+		if _, isQueue := s.queueByOID(x); !isQueue {
+			if err := s.mountVolume(ctx, x); err != nil {
+				return nil, err
+			}
 		}
 	}
 	createdAt := time.Now()
@@ -955,27 +951,67 @@ func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Hand
 }
 
 func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	if host != nil && host.Peer != s.LocalID() {
+		return s.createRemoteQueue(ctx, *host, qspec)
+	}
+	if err := qspec.Validate(); err != nil {
+		return nil, err
+	}
+
+	// create a new Queue on the local Node.
+	var queue backend.Queue
+	var err error
 	switch {
-	case host != nil && host.Peer != s.LocalID():
-		return nil, fmt.Errorf("remote queues not supported")
-	case qspec.Memory != nil && qspec.Remote == nil:
-		q, err := s.env.Local.CreateQueue(ctx, *qspec.Memory)
+	case qspec.Memory != nil:
+		queue, err = s.env.Local.CreateQueue(ctx, *qspec.Memory)
 		if err != nil {
 			return nil, err
 		}
-		oid := blobcache.RandomOID()
-		if !s.addQueue(oid, q, blobcache.QueueBackend[blobcache.OID]{Memory: qspec.Memory}) {
-			return nil, fmt.Errorf("queue already exists")
-		}
-		createdAt := time.Now()
-		expiresAt := createdAt.Add(DefaultQueueTTL)
-		handle := s.handles.Create(oid, blobcache.Action_ALL, createdAt, expiresAt)
-		return &handle, nil
 	case qspec.Remote != nil:
-		return nil, fmt.Errorf("remote queue spec not supported")
+		// If the OID refers to a queue we already have locally, reuse its backend.
+		if existing, ok := s.queueByOID(qspec.Remote.OID); ok {
+			queue = existing.backend
+		} else {
+			queue, err = s.backends.remote.QueueUp(ctx, qspec.Remote)
+			if err != nil {
+				return nil, err
+			}
+		}
 	default:
-		return nil, fmt.Errorf("memory queue spec required")
+		panic(qspec)
 	}
+	oid := blobcache.RandomOID()
+	qcfg := queue.Config()
+	qspec2 := blobcache.QueueBackendToOID(qspec)
+	if !s.addQueue(oid, queue, qcfg, qspec2) {
+		panic("random OID happened twice")
+	}
+	createdAt := time.Now()
+	expiresAt := createdAt.Add(DefaultQueueTTL)
+	handle := s.handles.Create(oid, blobcache.Action_ALL, createdAt, expiresAt)
+	return &handle, nil
+}
+
+// createRemoteQueue calls CreateQueue on a remote node
+// it then creates a local proxy queue with a new random OID
+func (s *Service[LK, LV, LQ]) createRemoteQueue(ctx context.Context, host blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	q, info, err := s.backends.remote.CreateQueue(ctx, host, qspec)
+	if err != nil {
+		return nil, err
+	}
+	oid := blobcache.RandomOID()
+	if !s.addQueue(oid, q, info.Config, blobcache.QueueBackend[blobcache.OID]{
+		Remote: &blobcache.QueueBackend_Remote{
+			Endpoint: host,
+			OID:      info.ID,
+		},
+	}) {
+		return nil, fmt.Errorf("queue already exists")
+	}
+	createdAt := time.Now()
+	expiresAt := createdAt.Add(DefaultQueueTTL)
+	handle := s.handles.Create(oid, blobcache.Action_ALL, createdAt, expiresAt)
+	return &handle, nil
 }
 
 func (s *Service[LK, LV, LQ]) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {
@@ -1015,10 +1051,11 @@ func (s *Service[LK, LV, LQ]) Enqueue(ctx context.Context, qh blobcache.Handle, 
 			return nil, fmt.Errorf("message %d exceeds max handles per message: %d", i, maxHandles)
 		}
 	}
-	if err := q.backend.Enqueue(ctx, msgs); err != nil {
+	n, err := q.backend.Enqueue(ctx, msgs)
+	if err != nil {
 		return nil, err
 	}
-	return &blobcache.InsertResp{Success: uint32(len(msgs))}, nil
+	return &blobcache.InsertResp{Success: uint32(n)}, nil
 }
 
 func (s *Service[LK, LV, LQ]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
@@ -1037,11 +1074,16 @@ func (s *Service[LK, LV, LQ]) SubToVolume(ctx context.Context, qh blobcache.Hand
 			Requires: blobcache.Action_VOLUME_SUB_TO,
 		}
 	}
-	lv, ok := vol.backend.(LV)
-	if !ok {
-		return fmt.Errorf("SubToVolume not supported for volume type:%T", vol.backend)
+	switch rv := vol.backend.(type) {
+	case *remotebe.Volume:
+		return s.backends.remote.SubToVol(ctx, rv, q.backend, spec)
+	default:
+		lv, ok := vol.backend.(LV)
+		if !ok {
+			return fmt.Errorf("SubToVolume not supported for volume type:%T", vol.backend)
+		}
+		return s.env.Local.SubToVol(ctx, lv, q.backend, spec)
 	}
-	return s.env.Local.SubToVol(ctx, lv, q.backend, spec)
 }
 
 func (s *Service[LK, LV, LQ]) resolveQueue(ctx context.Context, qh blobcache.Handle, requires blobcache.ActionSet) (queue, error) {

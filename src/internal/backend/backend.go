@@ -12,12 +12,15 @@ type QueueSystem[Spec any, Q Queue] interface {
 }
 
 type Queue interface {
-	// Enqueue adds messages to the Queue
-	Enqueue(ctx context.Context, msgs []blobcache.Message) error
+	// Enqueue adds messages to the Queue.
+	// It returns the number of messages accepted.
+	Enqueue(ctx context.Context, msgs []blobcache.Message) (int, error)
 	// Dequeue removes messages from the Queue.
 	Dequeue(ctx context.Context, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error)
 	// QueueDown is called when the queue has no remaining handles
 	QueueDown(ctx context.Context) error
+	// Config returns the QueueConfig for this queue.
+	Config() blobcache.QueueConfig
 }
 
 type VolumeSystem[Params any, V Volume] interface {
