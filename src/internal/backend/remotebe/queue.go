@@ -29,9 +29,12 @@ func NewQueue(sys *System, node bcp.Asker, ep blobcache.Endpoint, h blobcache.Ha
 	}
 }
 
-func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) error {
-	_, err := bcp.Enqueue(ctx, q.n, q.ep, q.h, msgs)
-	return err
+func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) (int, error) {
+	resp, err := bcp.Enqueue(ctx, q.n, q.ep, q.h, msgs)
+	if err != nil {
+		return 0, err
+	}
+	return int(resp.Success), nil
 }
 
 func (q *Queue) Dequeue(ctx context.Context, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {

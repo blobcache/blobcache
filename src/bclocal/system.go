@@ -85,7 +85,7 @@ func (s *system) notifyVol(ctx context.Context, vol backend.Volume) error {
 	var firstErr error
 	for _, it := range items {
 		_ = it.spec
-		if err := it.q.Enqueue(ctx, []blobcache.Message{{}}); err != nil && firstErr == nil {
+		if _, err := it.q.Enqueue(ctx, []blobcache.Message{{}}); err != nil && firstErr == nil {
 			firstErr = err
 		}
 		if ctx.Err() != nil {

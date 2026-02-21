@@ -1036,10 +1036,11 @@ func (s *Service[LK, LV, LQ]) Enqueue(ctx context.Context, qh blobcache.Handle, 
 			return nil, fmt.Errorf("message %d exceeds max handles per message: %d", i, maxHandles)
 		}
 	}
-	if err := q.backend.Enqueue(ctx, msgs); err != nil {
+	n, err := q.backend.Enqueue(ctx, msgs)
+	if err != nil {
 		return nil, err
 	}
-	return &blobcache.InsertResp{Success: uint32(len(msgs))}, nil
+	return &blobcache.InsertResp{Success: uint32(n)}, nil
 }
 
 func (s *Service[LK, LV, LQ]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {

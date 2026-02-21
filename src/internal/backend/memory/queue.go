@@ -29,12 +29,12 @@ func (q *Queue) QueueDown(ctx context.Context) error {
 	return nil
 }
 
-func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) error {
+func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) (int, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return 0, err
 	}
 	if len(msgs) == 0 {
-		return nil
+		return 0, nil
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -47,19 +47,19 @@ func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) error {
 			q.msgs = append(q.msgs, msg)
 		}
 		q.cond.Broadcast()
-		return nil
+		return len(msgs), nil
 	}
 
 	space := int(q.maxDepth) - len(q.msgs)
 	if space <= 0 {
-		return nil
+		return 0, nil
 	}
 	if space < len(msgs) {
 		msgs = msgs[:space]
 	}
 	q.msgs = append(q.msgs, msgs...)
 	q.cond.Broadcast()
-	return nil
+	return len(msgs), nil
 }
 
 func (q *Queue) Dequeue(ctx context.Context, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
