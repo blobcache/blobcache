@@ -41,7 +41,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 			return s2, vol2
 		})
 	})
-	t.Run("Queue/Remote", func(t *testing.T) {
+	t.Run("Remote/Queue", func(t *testing.T) {
 		QueueAPI(t, func(t testing.TB) (blobcache.QueueAPI, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			svcs := mk(t, 2)
@@ -59,6 +59,28 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 			qh, err = s2.CreateQueue(ctx, nil, remoteQueueSpec(s1ep, qh.OID))
 			require.NoError(t, err)
 			return s2, *qh
+		})
+	})
+	t.Run("Remote/SubToVol", func(t *testing.T) {
+		TestVolumeSubscribe(t, func(t testing.TB) (blobcache.Service, blobcache.Handle, blobcache.Handle) {
+			ctx := testutil.Context(t)
+			svcs := mk(t, 2)
+			s1, s2 := svcs[0], svcs[1]
+			s1ep := Endpoint(t, s1)
+
+			volh, err := s2.CreateVolume(ctx, &s1ep, blobcache.DefaultLocalSpec())
+			require.NoError(t, err)
+
+			qh, err := s2.CreateQueue(ctx, &s1ep, blobcache.QueueSpec{
+				Memory: &blobcache.QueueBackend_Memory{
+					MaxDepth:             1,
+					MaxBytesPerMessage:   1024,
+					MaxHandlesPerMessage: 16,
+				},
+			})
+			require.NoError(t, err)
+
+			return s2, *volh, *qh
 		})
 	})
 }
