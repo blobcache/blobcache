@@ -2,8 +2,11 @@ package bcipc
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net"
 
+	"blobcache.io/blobcache/src/bcipc/internal/streammux"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcp"
 	"go.brendoncarroll.net/stdctx/logctx"
@@ -41,11 +44,30 @@ func Serve(ctx context.Context, lis *net.UnixListener, srv bcp.Handler) error {
 			return err
 		}
 		eg.Go(func() error {
-			defer uc.Close()
-			if err := bcp.ServeStream(ctx, blobcache.Endpoint{}, uc, srv); err != nil {
+			if err := serveMux(ctx, uc, srv); err != nil {
 				logctx.Error(ctx, "while serving:", zap.Error(err))
 			}
 			return nil
 		})
+	}
+}
+
+func serveMux(ctx context.Context, conn io.ReadWriteCloser, srv bcp.Handler) error {
+	mux := streammux.New(conn)
+	defer mux.Close()
+	for {
+		req, rw, err := mux.Accept()
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil
+			}
+			return err
+		}
+		var resp bcp.Message
+		if srv.ServeBCP(ctx, blobcache.Endpoint{}, req, &resp) {
+			if err := rw.Send(resp, true); err != nil {
+				return err
+			}
+		}
 	}
 }

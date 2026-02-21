@@ -8,6 +8,7 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
+	"blobcache.io/blobcache/src/bcipc/internal/streammux"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/internal/pools"
@@ -18,7 +19,7 @@ var _ blobcache.Service = &Client{}
 type Client struct {
 	raddr net.UnixAddr
 
-	pool pools.OpenClose[*net.UnixConn]
+	pool pools.OpenClose[*streammux.Mux]
 	tp   clientTransport
 
 	cache *lru.Cache[blobcache.OID, *blobcache.TxInfo]
@@ -26,13 +27,17 @@ type Client struct {
 
 func NewClient(sockPath string) *Client {
 	raddr := net.UnixAddr{Name: sockPath, Net: "unix"}
-	open := func(ctx context.Context) (*net.UnixConn, error) {
-		return net.DialUnix("unix", nil, &raddr)
+	open := func(ctx context.Context) (*streammux.Mux, error) {
+		conn, err := net.DialUnix("unix", nil, &raddr)
+		if err != nil {
+			return nil, err
+		}
+		return streammux.New(conn), nil
 	}
-	closeConn := func(conn *net.UnixConn) error {
-		return conn.Close()
+	closeMux := func(mux *streammux.Mux) error {
+		return mux.Close()
 	}
-	pool := pools.NewOpenClose[*net.UnixConn](runtime.GOMAXPROCS(0), open, closeConn)
+	pool := pools.NewOpenClose[*streammux.Mux](runtime.GOMAXPROCS(0), open, closeMux)
 	cache, _ := lru.New[blobcache.OID, *blobcache.TxInfo](128)
 	return &Client{
 		raddr: raddr,
