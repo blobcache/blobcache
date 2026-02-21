@@ -258,7 +258,7 @@ func (s *Service[LK, LV, LQ]) addVolume(oid blobcache.OID, vol backend.Volume) b
 
 // addQueue adds a queue to the queues map.
 // It acquires mu exclusively, and returns false if the queue already exists.
-func (s *Service[LK, LV, LQ]) addQueue(oid blobcache.OID, q backend.Queue, spec blobcache.QueueBackend[blobcache.OID]) bool {
+func (s *Service[LK, LV, LQ]) addQueue(oid blobcache.OID, q backend.Queue, cfg blobcache.QueueConfig, spec blobcache.QueueBackend[blobcache.OID]) bool {
 	if oid == (blobcache.OID{}) {
 		return false
 	}
@@ -269,12 +269,6 @@ func (s *Service[LK, LV, LQ]) addQueue(oid blobcache.OID, q backend.Queue, spec 
 	}
 	if s.queues == nil {
 		s.queues = make(map[blobcache.OID]queue)
-	}
-	cfg := blobcache.QueueConfig{}
-	if spec.Memory != nil {
-		cfg.MaxDepth = spec.Memory.MaxDepth
-		cfg.MaxBytesPerMessage = spec.Memory.MaxBytesPerMessage
-		cfg.MaxHandlesPerMessage = spec.Memory.MaxHandlesPerMessage
 	}
 	s.queues[oid] = queue{
 		info: blobcache.QueueInfo{
@@ -964,7 +958,12 @@ func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.E
 			return nil, err
 		}
 		oid := blobcache.RandomOID()
-		if !s.addQueue(oid, q, blobcache.QueueBackend[blobcache.OID]{Memory: qspec.Memory}) {
+		cfg := blobcache.QueueConfig{
+			MaxDepth:             qspec.Memory.MaxDepth,
+			MaxBytesPerMessage:   qspec.Memory.MaxBytesPerMessage,
+			MaxHandlesPerMessage: qspec.Memory.MaxHandlesPerMessage,
+		}
+		if !s.addQueue(oid, q, cfg, blobcache.QueueBackend[blobcache.OID]{Memory: qspec.Memory}) {
 			return nil, fmt.Errorf("queue already exists")
 		}
 		createdAt := time.Now()
@@ -986,7 +985,7 @@ func (s *Service[LK, LV, LQ]) createRemoteQueue(ctx context.Context, host blobca
 		return nil, err
 	}
 	oid := blobcache.RandomOID()
-	if !s.addQueue(oid, q, blobcache.QueueBackend[blobcache.OID]{
+	if !s.addQueue(oid, q, info.Config, blobcache.QueueBackend[blobcache.OID]{
 		Remote: &blobcache.QueueBackend_Remote{
 			Endpoint: host,
 			OID:      info.ID,
