@@ -25,8 +25,8 @@ type VolumeSystem[Params any, V Volume] interface {
 	// This should be called to begin using the Volume.
 	VolumeUp(ctx context.Context, spec Params) (V, error)
 
-	// Drop should remove all state associated with the volume
-	VolumeDrop(ctx context.Context, vol V) error
+	// VolumeDestroy should remove all state associated with the volume
+	VolumeDestroy(ctx context.Context, vol V) error
 }
 
 // System is a full backend System, supporting Volumes, Queues

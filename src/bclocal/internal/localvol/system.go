@@ -86,7 +86,7 @@ func (ls *System) UpNoErr(params Params) *Volume {
 	return newLocalVolume(ls, params.Key, params.Params)
 }
 
-func (ls *System) VolumeDrop(ctx context.Context, vol *Volume) error {
+func (ls *System) VolumeDestroy(ctx context.Context, vol *Volume) error {
 	id := vol.lvid
 	if err := ls.mutVol.Lock(ctx, id); err != nil {
 		return err

@@ -66,8 +66,8 @@ func (sys *System) VolumeDown(ctx context.Context, vol *Volume) error {
 	return nil
 }
 
-func (sys *System) VolumeDrop(ctx context.Context, vol *Volume) error {
-	// no way for us to drop a remote volume
+func (sys *System) VolumeDestroy(ctx context.Context, vol *Volume) error {
+	// no way for us to destroy a remote volume
 	return nil
 }
 

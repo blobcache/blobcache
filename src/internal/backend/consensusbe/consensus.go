@@ -65,11 +65,7 @@ func (sys *System) VolumeUp(ctx context.Context, params Params) (*Volume, error)
 	return &Volume{}, nil
 }
 
-func (sys *System) VolumeDown(ctx context.Context, vol *Volume) error {
-	return nil
-}
-
-func (sys *System) VolumeDrop(ctx context.Context, vol *Volume) error {
+func (sys *System) VolumeDestroy(ctx context.Context, vol *Volume) error {
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
 	vol, exists := sys.vols[vol.id]

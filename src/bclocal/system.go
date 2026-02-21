@@ -57,8 +57,8 @@ func (s *system) SubToVol(ctx context.Context, vol backend.Volume, q backend.Que
 	return nil
 }
 
-func (s *system) VolumeDrop(ctx context.Context, vol backend.Volume) error {
-	return nil
+func (s *system) VolumeDestroy(ctx context.Context, vol backend.Volume) error {
+	return s.vols.VolumeDestroy(ctx, vol.(*localvol.Volume))
 }
 
 func (s *system) notifyVol(ctx context.Context, vol backend.Volume) error {
