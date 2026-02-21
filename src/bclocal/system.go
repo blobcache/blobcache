@@ -11,7 +11,7 @@ import (
 	"blobcache.io/blobcache/src/internal/backend/memory"
 )
 
-var _ backend.System[localvol.Params, backend.Volume, blobcache.QueueBackend_Memory] = &system{}
+var _ backend.System[localvol.Params, backend.Volume, blobcache.QueueBackend_Memory, *memory.Queue] = &system{}
 
 type system struct {
 	vols   *localvol.System
@@ -29,8 +29,8 @@ func newSystem(vols *localvol.System, queues *memory.System) *system {
 	}
 }
 
-func (s *system) Up(ctx context.Context, spec localvol.Params) (backend.Volume, error) {
-	vol, err := s.vols.Up(ctx, spec)
+func (s *system) VolumeUp(ctx context.Context, spec localvol.Params) (backend.Volume, error) {
+	vol, err := s.vols.VolumeUp(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
@@ -40,22 +40,8 @@ func (s *system) Up(ctx context.Context, spec localvol.Params) (backend.Volume, 
 	}, nil
 }
 
-func (s *system) Drop(ctx context.Context, vol backend.Volume) error {
-	s.removeVolume(vol)
-	inner, ok := unwrapLocalVolume(vol)
-	if !ok {
-		return nil
-	}
-	return s.vols.Drop(ctx, inner)
-}
-
-func (s *system) CreateQueue(ctx context.Context, spec blobcache.QueueBackend_Memory) (backend.Queue, error) {
+func (s *system) CreateQueue(ctx context.Context, spec blobcache.QueueBackend_Memory) (*memory.Queue, error) {
 	return s.queues.CreateQueue(ctx, spec)
-}
-
-func (s *system) QueueDown(ctx context.Context, q backend.Queue) error {
-	s.removeQueue(q)
-	return s.queues.QueueDown(ctx, q)
 }
 
 func (s *system) SubToVol(ctx context.Context, vol backend.Volume, q backend.Queue, spec blobcache.VolSubSpec) error {
@@ -68,6 +54,10 @@ func (s *system) SubToVol(ctx context.Context, vol backend.Volume, q backend.Que
 		s.subs[volKey] = subs
 	}
 	subs[q] = spec
+	return nil
+}
+
+func (s *system) VolumeDrop(ctx context.Context, vol backend.Volume) error {
 	return nil
 }
 
@@ -167,6 +157,10 @@ func (v *volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.
 
 func (v *volume) AccessSubVolume(ctx context.Context, target blobcache.LinkToken) (blobcache.ActionSet, error) {
 	return v.inner.AccessSubVolume(ctx, target)
+}
+
+func (v *volume) VolumeDown(ctx context.Context) error {
+	return v.inner.VolumeDown(ctx)
 }
 
 func (v *volume) Inner() *localvol.Volume {

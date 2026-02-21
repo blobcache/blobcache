@@ -57,6 +57,10 @@ func (v *Vault) BeginTx(ctx context.Context, params blobcache.TxParams) (backend
 	return newVaultTx(v, inner, params), nil
 }
 
+func (v *Vault) VolumeDown(ctx context.Context) error {
+	return v.inner.VolumeDown(ctx)
+}
+
 func (v *Vault) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return fmt.Errorf("Await not implemented")
 	// TODO: aead seal/open the next

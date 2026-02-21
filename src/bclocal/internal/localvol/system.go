@@ -75,7 +75,7 @@ func (ls *System) GenerateLocalID() (ID, error) {
 	return ID(n), nil
 }
 
-func (ls *System) Up(ctx context.Context, params Params) (*Volume, error) {
+func (ls *System) VolumeUp(ctx context.Context, params Params) (*Volume, error) {
 	return ls.UpNoErr(params), nil
 }
 
@@ -86,7 +86,7 @@ func (ls *System) UpNoErr(params Params) *Volume {
 	return newLocalVolume(ls, params.Key, params.Params)
 }
 
-func (ls *System) Drop(ctx context.Context, vol *Volume) error {
+func (ls *System) VolumeDrop(ctx context.Context, vol *Volume) error {
 	id := vol.lvid
 	if err := ls.mutVol.Lock(ctx, id); err != nil {
 		return err

@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -16,30 +15,7 @@ const (
 	MaxMaxBytesPer   = 1 << 20
 )
 
-var _ backend.QueueSystem[blobcache.QueueBackend_Memory] = &System{}
-
-type System struct {
-}
-
-func (sys *System) CreateQueue(ctx context.Context, spec blobcache.QueueBackend_Memory) (backend.Queue, error) {
-	if spec.MaxDepth == 0 {
-		return nil, fmt.Errorf("max depth must be positive")
-	}
-	if spec.MaxDepth > MaxMaxDepth {
-		return nil, fmt.Errorf("max depth exceeds limit: %d", MaxMaxDepth)
-	}
-	q := &Queue{
-		maxDepth:    spec.MaxDepth,
-		evictOldest: spec.EvictOldest,
-	}
-	q.cond = sync.NewCond(&q.mu)
-	return q, nil
-}
-
-func (sys *System) QueueDown(ctx context.Context, q backend.Queue) error {
-	// nothing to do, it's all in memory and will be GC'd
-	return nil
-}
+var _ backend.QueueSystem[blobcache.QueueBackend_Memory, *Queue] = &System{}
 
 type Queue struct {
 	mu          sync.Mutex
@@ -47,6 +23,10 @@ type Queue struct {
 	msgs        []blobcache.Message
 	maxDepth    uint32
 	evictOldest bool
+}
+
+func (q *Queue) QueueDown(ctx context.Context) error {
+	return nil
 }
 
 func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) error {

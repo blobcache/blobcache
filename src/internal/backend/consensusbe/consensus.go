@@ -35,7 +35,7 @@ func New(env Env) System {
 	}
 }
 
-func (sys *System) Up(ctx context.Context, params Params) (*Volume, error) {
+func (sys *System) VolumeUp(ctx context.Context, params Params) (*Volume, error) {
 	k := NewTID(params.Schema)
 	if sys.vols == nil {
 		sys.vols = make(map[blobcache.TID]*Volume)
@@ -65,7 +65,11 @@ func (sys *System) Up(ctx context.Context, params Params) (*Volume, error) {
 	return &Volume{}, nil
 }
 
-func (sys *System) Drop(ctx context.Context, vol *Volume) error {
+func (sys *System) VolumeDown(ctx context.Context, vol *Volume) error {
+	return nil
+}
+
+func (sys *System) VolumeDrop(ctx context.Context, vol *Volume) error {
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
 	vol, exists := sys.vols[vol.id]

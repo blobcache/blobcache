@@ -32,7 +32,7 @@ func New(node *atomic.Pointer[bcnet.Node]) System {
 	}
 }
 
-func (sys *System) Up(ctx context.Context, p Params) (*Volume, error) {
+func (sys *System) VolumeUp(ctx context.Context, p Params) (*Volume, error) {
 	node := sys.node.Load()
 	if node == nil {
 		return nil, fmt.Errorf("bcremote: cannot open remote volume, no node")
@@ -57,10 +57,17 @@ func (sys *System) Up(ctx context.Context, p Params) (*Volume, error) {
 	return vol, err
 }
 
-func (sys *System) Drop(ctx context.Context, vol *Volume) error {
+func (sys *System) VolumeDown(ctx context.Context, vol *Volume) error {
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
 	delete(sys.remote, *vol.GetBackend().Remote)
+	// zero the handle so it can't be used.
+	vol.h.Secret = [16]byte{}
+	return nil
+}
+
+func (sys *System) VolumeDrop(ctx context.Context, vol *Volume) error {
+	// no way for us to drop a remote volume
 	return nil
 }
 

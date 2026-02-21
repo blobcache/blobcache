@@ -6,32 +6,34 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
-type QueueSystem[QS any] interface {
+type QueueSystem[Spec any, Q Queue] interface {
 	// CreateQueue creates a new queue from the spec and returns it.
-	CreateQueue(ctx context.Context, spec QS) (Queue, error)
-	// QueueDown is called when the queue has no remaining handles
-	QueueDown(ctx context.Context, q Queue) error
+	CreateQueue(ctx context.Context, spec Spec) (Q, error)
 }
 
 type Queue interface {
+	// Enqueue adds messages to the Queue
 	Enqueue(ctx context.Context, msgs []blobcache.Message) error
+	// Dequeue removes messages from the Queue.
 	Dequeue(ctx context.Context, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error)
+	// QueueDown is called when the queue has no remaining handles
+	QueueDown(ctx context.Context) error
 }
 
 type VolumeSystem[Params any, V Volume] interface {
-	// Up loads volume state into memory.
+	// VolumeUp loads volume state into memory.
 	// This should be called to begin using the Volume.
-	Up(ctx context.Context, spec Params) (V, error)
+	VolumeUp(ctx context.Context, spec Params) (V, error)
 
 	// Drop should remove all state associated with the volume
-	Drop(ctx context.Context, vol V) error
+	VolumeDrop(ctx context.Context, vol V) error
 }
 
 // System is a full backend System, supporting Volumes, Queues
 // and subscriptions on Volumes.
-type System[VP any, V Volume, QP any] interface {
+type System[VP any, V Volume, QP any, Q Queue] interface {
 	VolumeSystem[VP, V]
-	QueueSystem[QP]
+	QueueSystem[QP, Q]
 
 	SubToVol(ctx context.Context, vol V, q Queue, spec blobcache.VolSubSpec) error
 }
@@ -45,6 +47,9 @@ type Volume interface {
 	GetBackend() blobcache.VolumeBackend[blobcache.OID]
 
 	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error)
+
+	// VolumeDown is called when the Volume has no remaining handles.
+	VolumeDown(ctx context.Context) error
 
 	// AccessSubVolume returns the rights granted to access a subvolume.
 	// Returns 0 if there is no link to the target.

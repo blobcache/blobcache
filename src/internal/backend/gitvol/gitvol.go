@@ -350,7 +350,7 @@ func (v *Volume) prepareBlobTree(ctx context.Context, prevBlobTree *object.Tree)
 	slices.SortStableFunc(entries, func(a, b object.TreeEntry) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	slices.CompactFunc(entries, func(a, b object.TreeEntry) bool {
+	entries = slices.CompactFunc(entries, func(a, b object.TreeEntry) bool {
 		return a.Name == b.Name
 	})
 	return createGitTree(v.storer, sliceIter(entries...))

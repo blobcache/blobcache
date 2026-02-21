@@ -71,7 +71,7 @@ type Service struct {
 	db      *pebble.DB
 	blobDir *os.Root
 
-	sys   *bcsys.Service[localvol.ID, backend.Volume]
+	sys   *bcsys.Service[localvol.ID, backend.Volume, *memory.Queue]
 	svcs  svcgroup.Group
 	txSys pdb.TxSys
 	lvs   localvol.System
@@ -133,7 +133,7 @@ func New(env Env, cfg Config) (*Service, error) {
 		MkSchema: env.MkSchema,
 	})
 	localSys := newSystem(&s.lvs, &memory.System{})
-	rootVol, err := localSys.Up(env.Background, localvol.Params{
+	rootVol, err := localSys.VolumeUp(env.Background, localvol.Params{
 		Key:    0,
 		Params: s.env.Root.Config(),
 	})
@@ -145,7 +145,7 @@ func New(env Env, cfg Config) (*Service, error) {
 		panic(err)
 	}
 
-	s.sys = bcsys.New(bcsys.Env[localvol.ID, backend.Volume]{
+	s.sys = bcsys.New(bcsys.Env[localvol.ID, backend.Volume, *memory.Queue]{
 		Background:  env.Background,
 		PrivateKey:  env.PrivateKey,
 		Root:        rootVol,

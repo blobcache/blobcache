@@ -44,6 +44,10 @@ func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (backend.Tx
 	return v.sys.beginTx(ctx, v, tp)
 }
 
+func (v *Volume) VolumeDown(ctx context.Context) error {
+	return nil
+}
+
 func (v *Volume) AccessSubVolume(ctx context.Context, lt blobcache.LinkToken) (blobcache.ActionSet, error) {
 	links := backend.LinkSet{}
 	if err := v.sys.readLinksFrom(0, v.lvid, links); err != nil {

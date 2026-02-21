@@ -63,6 +63,10 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.
 	}, nil
 }
 
+func (v *Volume) VolumeDown(ctx context.Context) error {
+	return v.sys.VolumeDown(ctx, v)
+}
+
 func (v *Volume) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) (blobcache.ActionSet, error) {
 	h, _, err := bcp.OpenFrom(ctx, v.n, v.ep, v.h, ltok, blobcache.Action_ALL)
 	if err != nil {
