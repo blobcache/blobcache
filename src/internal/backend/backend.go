@@ -19,6 +19,8 @@ type Queue interface {
 	Dequeue(ctx context.Context, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error)
 	// QueueDown is called when the queue has no remaining handles
 	QueueDown(ctx context.Context) error
+	// Config returns the QueueConfig for this queue.
+	Config() blobcache.QueueConfig
 }
 
 type VolumeSystem[Params any, V Volume] interface {

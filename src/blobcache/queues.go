@@ -155,9 +155,34 @@ type QueueConfig struct {
 	MaxHandlesPerMessage uint32 `json:"max_handles_per_message"`
 }
 
+func QueueBackendToOID(x QueueBackend[Handle]) QueueBackend[OID] {
+	var ret QueueBackend[OID]
+	if x.Memory != nil {
+		ret.Memory = x.Memory
+	}
+	if x.Remote != nil {
+		ret.Remote = x.Remote
+	}
+	return ret
+}
+
 type QueueBackend[T volSpecRef] struct {
 	Memory *QueueBackend_Memory `json:"memory,omitempty"`
 	Remote *QueueBackend_Remote `json:"remote,omitempty"`
+}
+
+func (qb QueueBackend[T]) Validate() error {
+	var count int
+	if qb.Memory != nil {
+		count++
+	}
+	if qb.Remote != nil {
+		count++
+	}
+	if count != 1 {
+		return fmt.Errorf("QueueBackend must have 1 variant %v", qb)
+	}
+	return nil
 }
 
 func (qb QueueBackend[T]) Marshal(out []byte) []byte {

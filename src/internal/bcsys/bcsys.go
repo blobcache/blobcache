@@ -949,32 +949,40 @@ func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Hand
 }
 
 func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
-	switch {
-	case host != nil && host.Peer != s.LocalID():
+	if host != nil && host.Peer != s.LocalID() {
 		return s.createRemoteQueue(ctx, *host, qspec)
-	case qspec.Memory != nil && qspec.Remote == nil:
-		q, err := s.env.Local.CreateQueue(ctx, *qspec.Memory)
+	}
+	if err := qspec.Validate(); err != nil {
+		return nil, err
+	}
+
+	// create a new Queue on the local Node.
+	var queue backend.Queue
+	var err error
+	switch {
+	case qspec.Memory != nil:
+		queue, err = s.env.Local.CreateQueue(ctx, *qspec.Memory)
 		if err != nil {
 			return nil, err
 		}
-		oid := blobcache.RandomOID()
-		cfg := blobcache.QueueConfig{
-			MaxDepth:             qspec.Memory.MaxDepth,
-			MaxBytesPerMessage:   qspec.Memory.MaxBytesPerMessage,
-			MaxHandlesPerMessage: qspec.Memory.MaxHandlesPerMessage,
-		}
-		if !s.addQueue(oid, q, cfg, blobcache.QueueBackend[blobcache.OID]{Memory: qspec.Memory}) {
-			return nil, fmt.Errorf("queue already exists")
-		}
-		createdAt := time.Now()
-		expiresAt := createdAt.Add(DefaultQueueTTL)
-		handle := s.handles.Create(oid, blobcache.Action_ALL, createdAt, expiresAt)
-		return &handle, nil
 	case qspec.Remote != nil:
-		return nil, fmt.Errorf("remote queue spec not supported")
+		queue, err = s.backends.remote.QueueUp(ctx, qspec.Remote)
+		if err != nil {
+			return nil, err
+		}
 	default:
-		return nil, fmt.Errorf("memory queue spec required")
+		panic(qspec)
 	}
+	oid := blobcache.RandomOID()
+	qcfg := queue.Config()
+	qspec2 := blobcache.QueueBackendToOID(qspec)
+	if !s.addQueue(oid, queue, qcfg, qspec2) {
+		panic("random OID happened twice")
+	}
+	createdAt := time.Now()
+	expiresAt := createdAt.Add(DefaultQueueTTL)
+	handle := s.handles.Create(oid, blobcache.Action_ALL, createdAt, expiresAt)
+	return &handle, nil
 }
 
 // createRemoteQueue calls CreateQueue on a remote node

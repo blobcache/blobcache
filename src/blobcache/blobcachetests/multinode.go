@@ -56,6 +56,8 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 			})
 			require.NoError(t, err)
 			require.NotNil(t, qh)
+			qh, err = s2.CreateQueue(ctx, nil, remoteQueueSpec(s1ep, qh.OID))
+			require.NoError(t, err)
 			return s2, *qh
 		})
 	})
@@ -66,6 +68,15 @@ func remoteVolumeSpec(ep blobcache.Endpoint, volid blobcache.OID) blobcache.Volu
 		Remote: &blobcache.VolumeBackend_Remote{
 			Endpoint: ep,
 			Volume:   volid,
+		},
+	}
+}
+
+func remoteQueueSpec(ep blobcache.Endpoint, volid blobcache.OID) blobcache.QueueSpec {
+	return blobcache.QueueSpec{
+		Remote: &blobcache.QueueBackend_Remote{
+			Endpoint: ep,
+			OID:      volid,
 		},
 	}
 }
