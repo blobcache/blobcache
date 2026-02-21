@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/internal/backend"
 )
 
-var _ volumes.Volume = &Volume{}
+var _ backend.Volume = &Volume{}
 
 // Volume manages state for a volume.
 type Volume struct {
@@ -26,14 +26,18 @@ func (v *Volume) Handle(out *[]blobcache.Message, msg blobcache.Message) error {
 	return nil
 }
 
-// Await implements volumes.Volume.
+// Await implements backend.Volume.
 func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	panic("unimplemented")
 }
 
-// BeginTx implements volumes.Volume.
-func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
+// BeginTx implements backend.Volume.
+func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.Tx, error) {
 	panic("unimplemented")
+}
+
+func (v *Volume) VolumeDown(ctx context.Context) error {
+	return nil
 }
 
 func (v *Volume) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) (blobcache.ActionSet, error) {

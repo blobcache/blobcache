@@ -11,7 +11,7 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/internal/backend"
 )
 
 type VolumeLink struct {
@@ -64,7 +64,7 @@ func (ls *System) putVolumeLink(ba *pebble.Batch, mvid pdb.MVTag, vl VolumeLink)
 }
 
 // ReadVolumeLinks reads the volume links from volID into dst.
-func (ls *System) readVolumeLinks(sp pdb.RO, mvid pdb.MVTag, fromVolID ID, dst volumes.LinkSet) error {
+func (ls *System) readVolumeLinks(sp pdb.RO, mvid pdb.MVTag, fromVolID ID, dst backend.LinkSet) error {
 	exclude := func(x pdb.MVTag) bool {
 		if x == mvid {
 			return false
@@ -144,8 +144,8 @@ func (ls *System) readVolumeLinksTo(sp pdb.RO, toVolID blobcache.OID, dst map[bl
 // putVolumeLinks puts the volume links from fromVolID into links into the database.
 // It overwrites the previous links for the volume.
 // putVolumeLinks requires that the batch is indexed.
-func (sys *System) putVolumeLinks(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID, links volumes.LinkSet) error {
-	oldLinks := make(volumes.LinkSet)
+func (sys *System) putVolumeLinks(ba *pebble.Batch, mvid pdb.MVTag, fromVolID ID, links backend.LinkSet) error {
+	oldLinks := make(backend.LinkSet)
 	if err := sys.readVolumeLinks(ba, mvid, fromVolID, oldLinks); err != nil {
 		return err
 	}

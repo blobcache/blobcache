@@ -12,11 +12,11 @@ import (
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/internal/backend"
 	"blobcache.io/blobcache/src/schema"
 )
 
-var _ volumes.Volume = &Volume{}
+var _ backend.Volume = &Volume{}
 
 type Volume struct {
 	sys    *System
@@ -40,12 +40,16 @@ func (v *Volume) Await(ctx context.Context, prev []byte, next *[]byte) error {
 	return fmt.Errorf("Await not implemented")
 }
 
-func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (volumes.Tx, error) {
+func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (backend.Tx, error) {
 	return v.sys.beginTx(ctx, v, tp)
 }
 
+func (v *Volume) VolumeDown(ctx context.Context) error {
+	return nil
+}
+
 func (v *Volume) AccessSubVolume(ctx context.Context, lt blobcache.LinkToken) (blobcache.ActionSet, error) {
-	links := volumes.LinkSet{}
+	links := backend.LinkSet{}
 	if err := v.sys.readLinksFrom(0, v.lvid, links); err != nil {
 		return 0, err
 	}
@@ -56,7 +60,7 @@ func (v *Volume) AccessSubVolume(ctx context.Context, lt blobcache.LinkToken) (b
 	return 0, nil
 }
 
-func (v *Volume) ReadLinks(ctx context.Context, dst volumes.LinkSet) error {
+func (v *Volume) ReadLinks(ctx context.Context, dst backend.LinkSet) error {
 	return v.sys.readLinksFrom(0, v.lvid, dst)
 }
 
@@ -70,7 +74,7 @@ func (v *Volume) GetParams() blobcache.VolumeConfig {
 	return v.params
 }
 
-var _ volumes.Tx = &localTxnMut{}
+var _ backend.Tx = &localTxnMut{}
 
 // localTxnMut is a mutating transaction on a local volume.
 type localTxnMut struct {
@@ -89,7 +93,7 @@ type localTxnMut struct {
 	mu sync.RWMutex
 	// finished is set to true when the transaction is finished.
 	finished     bool
-	links        volumes.LinkSet
+	links        backend.LinkSet
 	visitedLinks map[[32]byte]struct{}
 }
 
@@ -97,7 +101,7 @@ type localTxnMut struct {
 // It does not change the database state.
 // the caller should have already created the transaction at txid, and volInfo.
 func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcache.TxParams, schema schema.Schema) (*localTxnMut, error) {
-	links := make(volumes.LinkSet)
+	links := make(backend.LinkSet)
 	if err := localSys.readVolumeLinks(localSys.db, mvid, vol.lvid, links); err != nil {
 		return nil, err
 	}
@@ -113,7 +117,7 @@ func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcac
 	}, nil
 }
 
-func (v *localTxnMut) Volume() volumes.Volume {
+func (v *localTxnMut) Volume() backend.Volume {
 	return v.vol
 }
 
@@ -267,7 +271,7 @@ func (v *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst [
 	return v.localSys.isVisited(v.vol.lvid, v.mvid, cids, dst)
 }
 
-func (v *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) (*blobcache.LinkToken, error) {
+func (v *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.finished {
@@ -317,7 +321,7 @@ func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.Link
 	return nil
 }
 
-var _ volumes.Tx = &localTxnRO{}
+var _ backend.Tx = &localTxnRO{}
 
 // localTxnRO is a read-only transaction on a local volume.
 type localTxnRO struct {
@@ -433,7 +437,7 @@ func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []boo
 	return nil
 }
 
-func (v *localTxnRO) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) (*blobcache.LinkToken, error) {
+func (v *localTxnRO) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
 	return nil, blobcache.ErrTxReadOnly{Op: "AllowLink"}
 }
 
@@ -453,7 +457,7 @@ func (v *localTxnRO) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return v.vol.params.HashAlgo.HashFunc()(salt, data)
 }
 
-func (txn *localTxnRO) Volume() volumes.Volume {
+func (txn *localTxnRO) Volume() backend.Volume {
 	return txn.vol
 }
 

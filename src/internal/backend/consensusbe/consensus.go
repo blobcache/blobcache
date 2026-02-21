@@ -5,17 +5,17 @@ import (
 	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/volumes"
+	"blobcache.io/blobcache/src/internal/backend"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
 )
 
 type Params struct {
 	Schema blobcache.SchemaSpec
-	State  volumes.Volume
+	State  backend.Volume
 }
 
-var _ volumes.System[Params, *Volume] = &System{}
+var _ backend.VolumeSystem[Params, *Volume] = &System{}
 
 type System struct {
 	env Env
@@ -35,7 +35,7 @@ func New(env Env) System {
 	}
 }
 
-func (sys *System) Up(ctx context.Context, params Params) (*Volume, error) {
+func (sys *System) VolumeUp(ctx context.Context, params Params) (*Volume, error) {
 	k := NewTID(params.Schema)
 	if sys.vols == nil {
 		sys.vols = make(map[blobcache.TID]*Volume)
@@ -65,7 +65,7 @@ func (sys *System) Up(ctx context.Context, params Params) (*Volume, error) {
 	return &Volume{}, nil
 }
 
-func (sys *System) Drop(ctx context.Context, vol *Volume) error {
+func (sys *System) VolumeDestroy(ctx context.Context, vol *Volume) error {
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
 	vol, exists := sys.vols[vol.id]

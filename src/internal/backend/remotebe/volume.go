@@ -1,17 +1,17 @@
-package remotevol
+package remotebe
 
 import (
 	"context"
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/internal/backend"
 	"blobcache.io/blobcache/src/internal/bcp"
-	"blobcache.io/blobcache/src/internal/volumes"
 )
 
 var (
-	_ volumes.Volume = (*Volume)(nil)
-	_ volumes.Tx     = (*Tx)(nil)
+	_ backend.Volume = (*Volume)(nil)
+	_ backend.Tx     = (*Tx)(nil)
 )
 
 // Volume is a remote volume.
@@ -50,7 +50,7 @@ func (v *Volume) Handle() blobcache.Handle {
 	return v.h
 }
 
-func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.Tx, error) {
+func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.Tx, error) {
 	txh, info, err := bcp.BeginTx(ctx, v.n, v.ep, v.h, spec)
 	if err != nil {
 		return nil, err
@@ -61,6 +61,10 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (volumes.
 		h:      *txh,
 		info:   info,
 	}, nil
+}
+
+func (v *Volume) VolumeDown(ctx context.Context) error {
+	return v.sys.VolumeDown(ctx, v)
 }
 
 func (v *Volume) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) (blobcache.ActionSet, error) {
@@ -93,7 +97,7 @@ func (tx *Tx) Params() blobcache.TxParams {
 	return tx.params
 }
 
-func (tx *Tx) Volume() volumes.Volume {
+func (tx *Tx) Volume() backend.Volume {
 	return tx.vol
 }
 
@@ -170,16 +174,16 @@ func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
 	return bcp.Visit(ctx, tx.vol.n, tx.vol.ep, tx.h, cids)
 }
 
-func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol volumes.Volume) (*blobcache.LinkToken, error) {
+func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
 	if !tx.params.Modify {
 		return nil, blobcache.ErrTxReadOnly{}
 	}
 	rvol, ok := targetVol.(*Volume)
 	if !ok {
-		return nil, fmt.Errorf("remotevol: can only link to remote volumes")
+		return nil, fmt.Errorf("remotebe: can only link to remote volumes")
 	}
 	if rvol.ep.Peer != tx.vol.ep.Peer {
-		return nil, fmt.Errorf("remotevol: can only link to volumes on the same peer")
+		return nil, fmt.Errorf("remotebe: can only link to volumes on the same peer")
 	}
 	return bcp.Link(ctx, tx.vol.n, tx.vol.ep, tx.h, rvol.h, rights)
 }
