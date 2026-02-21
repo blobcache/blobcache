@@ -62,9 +62,6 @@ func (s *system) SubToVol(ctx context.Context, vol backend.Volume, q backend.Que
 	volKey := s.normalizeVolume(vol)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.subs == nil {
-		s.subs = make(map[backend.Volume]map[backend.Queue]blobcache.VolSubSpec)
-	}
 	subs := s.subs[volKey]
 	if subs == nil {
 		subs = make(map[backend.Queue]blobcache.VolSubSpec)
@@ -161,7 +158,7 @@ func (v *volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.
 	if err != nil {
 		return nil, err
 	}
-	return &transaction{
+	return &txWrap{
 		inner: tx,
 		sys:   v.sys,
 		vol:   v,
@@ -176,17 +173,17 @@ func (v *volume) Inner() *localvol.Volume {
 	return v.inner
 }
 
-type transaction struct {
+type txWrap struct {
 	inner backend.Tx
 	sys   *system
 	vol   *volume
 }
 
-func (t *transaction) Params() blobcache.TxParams {
+func (t *txWrap) Params() blobcache.TxParams {
 	return t.inner.Params()
 }
 
-func (t *transaction) Commit(ctx context.Context) error {
+func (t *txWrap) Commit(ctx context.Context) error {
 	if err := t.inner.Commit(ctx); err != nil {
 		return err
 	}
@@ -194,58 +191,58 @@ func (t *transaction) Commit(ctx context.Context) error {
 	return nil
 }
 
-func (t *transaction) Abort(ctx context.Context) error {
+func (t *txWrap) Abort(ctx context.Context) error {
 	return t.inner.Abort(ctx)
 }
 
-func (t *transaction) Save(ctx context.Context, src []byte) error {
+func (t *txWrap) Save(ctx context.Context, src []byte) error {
 	return t.inner.Save(ctx, src)
 }
 
-func (t *transaction) Load(ctx context.Context, dst *[]byte) error {
+func (t *txWrap) Load(ctx context.Context, dst *[]byte) error {
 	return t.inner.Load(ctx, dst)
 }
 
-func (t *transaction) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
+func (t *txWrap) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
 	return t.inner.Post(ctx, data, opts)
 }
 
-func (t *transaction) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
+func (t *txWrap) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	return t.inner.Get(ctx, cid, buf, opts)
 }
 
-func (t *transaction) Delete(ctx context.Context, cids []blobcache.CID) error {
+func (t *txWrap) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return t.inner.Delete(ctx, cids)
 }
 
-func (t *transaction) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (t *txWrap) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
 	return t.inner.Exists(ctx, cids, dst)
 }
 
-func (t *transaction) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (t *txWrap) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
 	return t.inner.IsVisited(ctx, cids, dst)
 }
 
-func (t *transaction) Visit(ctx context.Context, cids []blobcache.CID) error {
+func (t *txWrap) Visit(ctx context.Context, cids []blobcache.CID) error {
 	return t.inner.Visit(ctx, cids)
 }
 
-func (t *transaction) MaxSize() int {
+func (t *txWrap) MaxSize() int {
 	return t.inner.MaxSize()
 }
 
-func (t *transaction) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
+func (t *txWrap) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
 	return t.inner.Hash(salt, data)
 }
 
-func (t *transaction) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol backend.Volume) (*blobcache.LinkToken, error) {
+func (t *txWrap) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol backend.Volume) (*blobcache.LinkToken, error) {
 	return t.inner.Link(ctx, svoid, rights, subvol)
 }
 
-func (t *transaction) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
+func (t *txWrap) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
 	return t.inner.Unlink(ctx, targets)
 }
 
-func (t *transaction) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
+func (t *txWrap) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
 	return t.inner.VisitLinks(ctx, targets)
 }
