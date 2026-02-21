@@ -41,6 +41,24 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 			return s2, vol2
 		})
 	})
+	t.Run("Queue/Remote", func(t *testing.T) {
+		QueueAPI(t, func(t testing.TB) (blobcache.QueueAPI, blobcache.Handle) {
+			ctx := testutil.Context(t)
+			svcs := mk(t, 2)
+			s1, s2 := svcs[0], svcs[1]
+			s1ep := Endpoint(t, s1)
+			qh, err := s2.CreateQueue(ctx, &s1ep, blobcache.QueueSpec{
+				Memory: &blobcache.QueueBackend_Memory{
+					MaxDepth:             16,
+					MaxBytesPerMessage:   1024,
+					MaxHandlesPerMessage: 16,
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, qh)
+			return s2, *qh
+		})
+	})
 }
 
 func remoteVolumeSpec(ep blobcache.Endpoint, volid blobcache.OID) blobcache.VolumeSpec {
