@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"iter"
 	"net"
 	"sync"
 
@@ -12,7 +11,7 @@ import (
 )
 
 type Handler interface {
-	ServeBCP(ctx context.Context, from blobcache.Endpoint, req Message, resp *Message) iter.Seq[struct{}]
+	ServeBCP(ctx context.Context, from blobcache.Endpoint, req Message, resp *Message) bool
 }
 
 // ServeStream serves BCP over a bidi-stream
@@ -25,15 +24,11 @@ func ServeStream(ctx context.Context, ep blobcache.Endpoint, conn io.ReadWriteCl
 			}
 			return err
 		}
-
-		var n int
-		for range srv.ServeBCP(ctx, ep, req, &resp) {
+		if srv.ServeBCP(ctx, ep, req, &resp) {
 			if _, err := resp.WriteTo(conn); err != nil {
 				return err
 			}
-			n++
-		}
-		if n == 0 {
+		} else {
 			return conn.Close()
 		}
 	}
