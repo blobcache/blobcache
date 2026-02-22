@@ -19,7 +19,7 @@ var daemonCmd = star.Command{
 	Flags: map[string]star.Flag{
 		"state":      stateDirParam,
 		"serve-http": serveHTTPParam,
-		"serve-unix": serveUnixParam,
+		"serve-ipc":  serveIPCParam,
 		"net":        netParam,
 	},
 	F: func(c star.Context) error {
@@ -29,7 +29,7 @@ var daemonCmd = star.Command{
 			lis = append(lis, serveHttp)
 		}
 		var unixLis []*net.UnixListener
-		if serveUnix, ok := serveUnixParam.LoadOpt(c); ok {
+		if serveUnix, ok := serveIPCParam.LoadOpt(c); ok {
 			unixLis = append(unixLis, serveUnix)
 		}
 		pc, _ := netParam.LoadOpt(c)
@@ -44,7 +44,7 @@ var daemonEphemeralCmd = star.Command{
 	},
 	Flags: map[string]star.Flag{
 		"serve-http": serveHTTPParam,
-		"serve-unix": serveUnixParam,
+		"serve-ipc":  serveIPCParam,
 		"net":        netParam,
 	},
 	F: func(c star.Context) error {
@@ -63,7 +63,7 @@ var daemonEphemeralCmd = star.Command{
 			lis = append(lis, serveHttp)
 		}
 		var unixLis []*net.UnixListener
-		if serveUnix, ok := serveUnixParam.LoadOpt(c); ok {
+		if serveUnix, ok := serveIPCParam.LoadOpt(c); ok {
 			unixLis = append(unixLis, serveUnix)
 		}
 		pc, _ := netParam.LoadOpt(c)
@@ -140,8 +140,8 @@ var serveHTTPParam = star.Optional[net.Listener]{
 	},
 }
 
-var serveUnixParam = star.Optional[*net.UnixListener]{
-	ID:    "serve-unix",
+var serveIPCParam = star.Optional[*net.UnixListener]{
+	ID:    "serve-ipc",
 	Parse: bcipc.Listen,
 }
 
