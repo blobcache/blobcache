@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
+	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
 )
@@ -29,5 +31,28 @@ func ServeStream(ctx context.Context, ep blobcache.Endpoint, conn io.ReadWriteCl
 		} else {
 			return conn.Close()
 		}
+	}
+}
+
+func Serve(ctx context.Context, lis net.Listener, srv Handler) error {
+	ctx, cf := context.WithCancel(ctx)
+	defer cf()
+	wg := sync.WaitGroup{}
+	for {
+		conn, err := lis.Accept()
+		if err != nil {
+			cf()
+			wg.Wait()
+			return err
+		}
+		wg.Go(func() {
+			defer conn.Close()
+			defer cf()
+			ServeStream(ctx, blobcache.Endpoint{}, conn, srv)
+		})
+		wg.Go(func() {
+			<-ctx.Done()
+			conn.Close()
+		})
 	}
 }

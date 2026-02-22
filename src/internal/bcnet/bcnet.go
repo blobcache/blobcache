@@ -252,17 +252,8 @@ func (qt *Node) dialConn(ctx context.Context, ep blobcache.Endpoint) (*quic.Conn
 }
 
 func (qt *Node) handleStream(ctx context.Context, ep blobcache.Endpoint, s *quic.Stream, h bcp.Handler) error {
-	// TODO: replace this method with bcp.ServeStream
-	var req Message
-	if _, err := req.ReadFrom(s); err != nil {
-		return err
-	}
-	var resp Message
-	h.ServeBCP(ctx, ep, req, &resp)
-	if _, err := resp.WriteTo(s); err != nil {
-		return err
-	}
-	return s.Close()
+	defer s.Close()
+	return bcp.ServeStream(ctx, ep, s, h)
 }
 
 func (qt *Node) handleUniStream(ctx context.Context, ep blobcache.Endpoint, s *quic.ReceiveStream, h bcp.Handler) error {

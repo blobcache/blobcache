@@ -75,7 +75,7 @@ This is a good option if you just want to play around with the API, and don't wa
 
 ```shell
 $ blobcache daemon-ephemeral \
-    --serve-api unix://./blobcache.sock \
+    --serve-ipc ./blobcache.sock \
     --net 0.0.0.0:6025
 ```
 
@@ -84,7 +84,7 @@ The following command runs a daemon with state in the specified directory.
 ```shell
 $ blobcache daemon \
     --state $HOME/.local/blobcache \
-    --serve-api unix:///run/blobcache/blobcache.sock \
+    --serve-ipc /run/blobcache/blobcache.sock \
     --net 0.0.0.0:6025
 ```
 
