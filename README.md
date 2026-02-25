@@ -2,6 +2,7 @@
 
 [![GoDoc](https://godoc.org/blobcache.io/blobcache?status.svg)](http://godoc.org/blobcache.io/blobcache)
 [<img src="https://discord.com/assets/cb48d2a8d4991281d7a6a95d2f58195e.svg" width="80">](https://discord.gg/TWy6aVWJ7f)
+[![Matrix](https://img.shields.io/matrix/inet256:inet256.org?server_fqdn=matrix.inet256.org&label=Matrix%20Space&logo=matrix)](https://matrix.to/#/#inet256:inet256.org)
 
 Blobcache reimagines application state as Volumes holding hash-linked data structures.
 Volumes can be persisted locally, encrypted, and accessed over the network.
