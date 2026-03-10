@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.blobcache.blobcache</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/blobcache</string>
+        <string>daemon</string>
+        <string>--state</string>
+        <string>__HOME__/.local/share/blobcache</string>
+        <string>--serve-ipc</string>
+        <string>__TMPDIR__/blobcache.sock</string>
+        <string>--net</string>
+        <string>0.0.0.0:6025</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/blobcache.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/blobcache.log</string>
+</dict>
+</plist>
