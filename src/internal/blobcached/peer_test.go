@@ -1,8 +1,6 @@
 package blobcached
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -12,7 +10,6 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 )
 
 func TestPeerLocation(t *testing.T) {
@@ -55,40 +52,14 @@ func TestPeerLocation(t *testing.T) {
 		require.NoError(t, sites[i].daemon.AddPeerToAdmin(other.peerID))
 	}
 
-	// Start both daemons.
-	ctx2, cf := context.WithCancel(ctx)
-	var eg errgroup.Group
-	t.Cleanup(func() {
-		cf()
-		require.NoError(t, eg.Wait())
-	})
+	// start both daemons
 	for i := range sites {
-		n := &sites[i]
-		eg.Go(func() error {
-			err := n.daemon.Run(ctx2, n.pc, []net.Listener{n.lis}, nil)
-			if err != nil {
-				t.Log("daemon error:", err)
-			}
-			return nil
-		})
+		s := &sites[i]
+		bgTestDaemon(t, s.daemon, s.pc, []net.Listener{s.lis}, nil)
 	}
-	t.Cleanup(func() {
-		for _, n := range sites {
-			if err := n.pc.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-				t.Errorf("packet conn close: %v", err)
-			}
-			if err := n.lis.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-				t.Errorf("listener close: %v", err)
-			}
-		}
-	})
 
-	// Wait for both daemons to be healthy.
 	svc1 := bcclient.NewClient(sites[0].lis.Addr().Network() + "://" + sites[0].lis.Addr().String())
 	svc2 := bcclient.NewClient(sites[1].lis.Addr().Network() + "://" + sites[1].lis.Addr().String())
-	require.NoError(t, AwaitHealthy(ctx, svc1))
-	require.NoError(t, AwaitHealthy(ctx, svc2))
-	t.Log("both daemons healthy")
 
 	// Create a local volume on daemon 1.
 	volh, err := svc1.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())

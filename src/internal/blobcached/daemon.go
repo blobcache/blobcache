@@ -261,6 +261,30 @@ func AwaitHealthy(ctx context.Context, svc blobcache.Service) error {
 // The test will fail during cleanup if the daemon fails to stop, and
 // The test will not complete until the daemon is successfully torn down.
 func BGTestDaemon(t testing.TB) (*Daemon, string) {
+	stateDir, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, stateDir.Close())
+	})
+
+	pc := testutil.PacketConn(t)
+	lis := testutil.Listen(t)
+	t.Cleanup(func() {
+		if err := pc.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("packet conn close: %v", err)
+		}
+		if err := lis.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("listener close: %v", err)
+		}
+	})
+
+	d := &Daemon{StateDir: stateDir}
+	bgTestDaemon(t, d, pc, []net.Listener{lis}, nil)
+	apiURL := lis.Addr().Network() + "://" + lis.Addr().String()
+	return d, apiURL
+}
+
+func bgTestDaemon(t testing.TB, d *Daemon, pc net.PacketConn, httpOn []net.Listener, unixOn []*net.UnixListener) {
 	ctx := testutil.Context(t)
 	ctx, cf := context.WithCancel(ctx)
 	var eg errgroup.Group
@@ -270,29 +294,17 @@ func BGTestDaemon(t testing.TB) (*Daemon, string) {
 		}
 	})
 	t.Cleanup(cf)
-	dir, err := os.OpenRoot(t.TempDir())
-	require.NoError(t, err)
-	d := Daemon{StateDir: dir}
-	pc := testutil.PacketConn(t)
-	lis := testutil.Listen(t)
 	eg.Go(func() error {
-		if err := d.Run(ctx, pc, []net.Listener{lis}, nil); err != nil {
+		if err := d.Run(ctx, pc, httpOn, unixOn); err != nil {
 			t.Log(err)
 		}
 		return nil
 	})
-	apiURL := lis.Addr().Network() + "://" + lis.Addr().String()
-	t.Cleanup(func() {
-		if err := pc.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			t.Errorf("packet conn close: %v", err)
-		}
-		if err := lis.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			t.Errorf("listener close: %v", err)
-		}
-	})
-	svc := bcclient.NewClient(apiURL)
-	t.Log("awaiting healthy", apiURL)
-	require.NoError(t, AwaitHealthy(ctx, svc))
-	t.Log("service is up")
-	return &d, apiURL
+	for _, lis := range httpOn {
+		apiURL := lis.Addr().Network() + "://" + lis.Addr().String()
+		t.Log("awaiting healthy", apiURL)
+		svc := bcclient.NewClient(apiURL)
+		require.NoError(t, AwaitHealthy(ctx, svc))
+		t.Log("service is up")
+	}
 }
