@@ -23,9 +23,10 @@ For non-user machines (cloud, homelab) it is recommended to run the docker image
 For user machines, it is recommended to run blobcache as a systemd service when you log in.
 
 ### Installation
-There is an [install script](./etc/install-systemd.sh) for systemd based systems.
-You can run that with `just install-systemd`.
-
+There is an [install script](./www/install.sh) for systemd-based linux, and macOS.
+```
+curl blobcache.io/install.sh | sh
+```
 The install script does 2 things:
 - Installs the blobcache executable to `/usr/bin/blobcache`
 - Copies [blobcache.service](./etc/blobcache.service) into `$HOME/.config/systemd/user/`
@@ -50,7 +51,7 @@ JcJvfY9tFsfkHSwoMT8IEoSq1ZfxVYBAwpBRvJ0uUJA:[::]:6025
 ```
 
 ### Docker
-There is a docker image on the GitHub Container Registry, it can also be built with `just docker-build`.
+There is a docker image on the GitHub Container Registry, it can also be built with `just build-images`.
 Right now it only builds for `linux-amd64`.
 
 After that you can test run with
@@ -93,7 +94,10 @@ Once the daemon is running, you should be able to connect to it and start buildi
 
 ## License
 The Blobcache implementation is licensed under GPLv3.
-
 All of the clients are licensed under MPL 2.0
+As a genreal rule: everything north of the UNIX or HTTP API is MPL and everything south is GPL.
 
 What this means is: if you improve Blobcache you have to make the improvements available, but if you are just using a client you can do whatever you want with it.
+
+If you need additional clarity with regard to licensing, please reach out.
+We can add headers to the invidual files if necessary.
