@@ -420,6 +420,8 @@ func (s *Service[LK, LV, LQ]) resolveTx(txh blobcache.Handle, touch bool, requir
 // Endpoint blocks waiting for a node to be created (happens when Serve is running).
 // And then returns the Endpoint for that Node.
 func (s *Service[LK, LV, LQ]) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "Endpoint"))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Endpoint"))
 	ctx, cf := context.WithTimeout(ctx, time.Second)
 	defer cf()
 	var node *bcnet.Node
@@ -434,6 +436,8 @@ func (s *Service[LK, LV, LQ]) Endpoint(ctx context.Context) (blobcache.Endpoint,
 }
 
 func (s *Service[LK, LV, LQ]) Drop(ctx context.Context, h blobcache.Handle) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Drop"), zap.Stringer("oid", h.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Drop"), zap.Stringer("oid", h.OID))
 	s.mu.Lock()
 	s.handles.Drop(h)
 	s.mu.Unlock()
@@ -441,6 +445,8 @@ func (s *Service[LK, LV, LQ]) Drop(ctx context.Context, h blobcache.Handle) erro
 }
 
 func (s *Service[LK, LV, LQ]) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "KeepAlive"))
+	defer logctx.Debug(ctx, "done", zap.String("method", "KeepAlive"))
 	now := time.Now()
 	volExpire := now.Add(DefaultVolumeTTL)
 	txExpire := now.Add(DefaultTxTTL)
@@ -465,10 +471,14 @@ func (s *Service[LK, LV, LQ]) KeepAlive(ctx context.Context, hs []blobcache.Hand
 }
 
 func (s *Service[LK, LV, LQ]) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
 	return nil, fmt.Errorf("Share not implemented")
 }
 
 func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "InspectHandle"), zap.Stringer("oid", h.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "InspectHandle"), zap.Stringer("oid", h.OID))
 	hstate, exists := s.handles.Inspect(h)
 	if !exists {
 		return nil, blobcache.ErrInvalidHandle{Handle: h}
@@ -482,6 +492,8 @@ func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Han
 }
 
 func (s *Service[LK, LV, LQ]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	logctx.Info(ctx, "begin", zap.String("method", "OpenFiat"), zap.Stringer("oid", x))
+	defer logctx.Info(ctx, "done", zap.String("method", "OpenFiat"), zap.Stringer("oid", x))
 	if x != (blobcache.OID{}) {
 		if _, isQueue := s.queueByOID(x); !isQueue {
 			if err := s.mountVolume(ctx, x); err != nil {
@@ -496,6 +508,8 @@ func (s *Service[LK, LV, LQ]) OpenFiat(ctx context.Context, x blobcache.OID, mas
 }
 
 func (s *Service[LK, LV, LQ]) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	logctx.Info(ctx, "begin", zap.String("method", "OpenFrom"), zap.Stringer("oid", base.OID))
+	defer logctx.Info(ctx, "done", zap.String("method", "OpenFrom"), zap.Stringer("oid", base.OID))
 	baseVol, _, err := s.resolveVol(ctx, base)
 	if err != nil {
 		return nil, err
@@ -567,6 +581,8 @@ func (s *Service[LK, LV, LQ]) grabNode(ctx context.Context) (*bcnet.Node, error)
 }
 
 func (s *Service[LK, LV, LQ]) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	logctx.Info(ctx, "begin", zap.String("method", "CreateVolume"))
+	defer logctx.Info(ctx, "done", zap.String("method", "CreateVolume"))
 	if err := vspec.Validate(); err != nil {
 		return nil, err
 	}
@@ -674,6 +690,8 @@ func (s *Service[LK, LV, LQ]) createRemoteVolume(ctx context.Context, host blobc
 }
 
 func (s *Service[LK, LV, LQ]) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "CloneVolume"), zap.Stringer("oid", volh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "CloneVolume"), zap.Stringer("oid", volh.OID))
 	vol, _, err := s.resolveVol(ctx, volh)
 	if err != nil {
 		return nil, err
@@ -700,6 +718,8 @@ func (s *Service[LK, LV, LQ]) CloneVolume(ctx context.Context, caller *blobcache
 }
 
 func (s *Service[LK, LV, LQ]) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "InspectVolume"), zap.Stringer("oid", h.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "InspectVolume"), zap.Stringer("oid", h.OID))
 	vol, _, err := s.resolveVol(ctx, h)
 	if err != nil {
 		return nil, err
@@ -708,6 +728,8 @@ func (s *Service[LK, LV, LQ]) InspectVolume(ctx context.Context, h blobcache.Han
 }
 
 func (s *Service[LK, LV, LQ]) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
 	vol, _, err := s.resolveVol(ctx, volh)
 	if err != nil {
 		return nil, err
@@ -734,6 +756,8 @@ func (s *Service[LK, LV, LQ]) BeginTx(ctx context.Context, volh blobcache.Handle
 }
 
 func (s *Service[LK, LV, LQ]) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcache.TxInfo, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "InspectTx"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "InspectTx"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, false, blobcache.Action_TX_INSPECT)
 	if err != nil {
 		return nil, err
@@ -751,6 +775,8 @@ func (s *Service[LK, LV, LQ]) InspectTx(ctx context.Context, txh blobcache.Handl
 }
 
 func (s *Service[LK, LV, LQ]) Save(ctx context.Context, txh blobcache.Handle, root []byte) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Save"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Save"), zap.Stringer("oid", txh.OID))
 	tx, err := s.resolveTx(txh, true, blobcache.Action_TX_SAVE)
 	if err != nil {
 		return err
@@ -785,6 +811,8 @@ func (s *Service[LK, LV, LQ]) Save(ctx context.Context, txh blobcache.Handle, ro
 }
 
 func (s *Service[LK, LV, LQ]) Commit(ctx context.Context, txh blobcache.Handle) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Commit"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Commit"), zap.Stringer("oid", txh.OID))
 	tx, err := s.resolveTx(txh, true, 0) // anyone can commit the transaction if they opened it.
 	if err != nil {
 		return err
@@ -803,6 +831,8 @@ func (s *Service[LK, LV, LQ]) Commit(ctx context.Context, txh blobcache.Handle) 
 }
 
 func (s *Service[LK, LV, LQ]) Abort(ctx context.Context, txh blobcache.Handle) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Abort"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Abort"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, false, 0) // anyone can abort the transaction if they opened it.
 	if err != nil {
 		return err
@@ -817,6 +847,8 @@ func (s *Service[LK, LV, LQ]) Abort(ctx context.Context, txh blobcache.Handle) e
 }
 
 func (s *Service[LK, LV, LQ]) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Load"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Load"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_LOAD)
 	if err != nil {
 		return err
@@ -825,6 +857,8 @@ func (s *Service[LK, LV, LQ]) Load(ctx context.Context, txh blobcache.Handle, ds
 }
 
 func (s *Service[LK, LV, LQ]) Post(ctx context.Context, txh blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "Post"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Post"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_POST)
 	if err != nil {
 		return blobcache.CID{}, err
@@ -841,6 +875,8 @@ func (s *Service[LK, LV, LQ]) Post(ctx context.Context, txh blobcache.Handle, da
 }
 
 func (s *Service[LV, LK, LQ]) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Exists"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Exists"), zap.Stringer("oid", txh.OID))
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and dst must have the same length")
 	}
@@ -852,6 +888,8 @@ func (s *Service[LV, LK, LQ]) Exists(ctx context.Context, txh blobcache.Handle, 
 }
 
 func (s *Service[LV, LK, LQ]) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "Get"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Get"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_GET)
 	if err != nil {
 		return 0, err
@@ -875,6 +913,8 @@ func (s *Service[LV, LK, LQ]) Get(ctx context.Context, txh blobcache.Handle, cid
 }
 
 func (s *Service[LV, LK, LQ]) Delete(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Delete"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Delete"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_DELETE)
 	if err != nil {
 		return err
@@ -886,6 +926,8 @@ func (s *Service[LV, LK, LQ]) Delete(ctx context.Context, txh blobcache.Handle, 
 }
 
 func (s *Service[LK, LV, LQ]) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out []bool) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Copy"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Copy"), zap.Stringer("oid", txh.OID))
 	if len(cids) != len(out) {
 		return fmt.Errorf("cids and out must have the same length")
 	}
@@ -903,6 +945,8 @@ func (s *Service[LK, LV, LQ]) Copy(ctx context.Context, txh blobcache.Handle, sr
 }
 
 func (s *Service[LK, LV, LQ]) Visit(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Visit"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Visit"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then Visit it allowed.
 	if err != nil {
 		return err
@@ -911,6 +955,8 @@ func (s *Service[LK, LV, LQ]) Visit(ctx context.Context, txh blobcache.Handle, c
 }
 
 func (s *Service[LK, LV, LQ]) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "IsVisited"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "IsVisited"), zap.Stringer("oid", txh.OID))
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and out must have the same length")
 	}
@@ -922,6 +968,8 @@ func (s *Service[LK, LV, LQ]) IsVisited(ctx context.Context, txh blobcache.Handl
 }
 
 func (s *Service[LK, LV, LQ]) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "Link"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Link"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_LINK_FROM)
 	if err != nil {
 		return nil, err
@@ -938,6 +986,8 @@ func (s *Service[LK, LV, LQ]) Link(ctx context.Context, txh blobcache.Handle, ta
 }
 
 func (s *Service[LK, LV, LQ]) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkToken) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "Unlink"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Unlink"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_UNLINK_FROM)
 	if err != nil {
 		return err
@@ -946,6 +996,8 @@ func (s *Service[LK, LV, LQ]) Unlink(ctx context.Context, txh blobcache.Handle, 
 }
 
 func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkToken) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "VisitLinks"), zap.Stringer("oid", txh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "VisitLinks"), zap.Stringer("oid", txh.OID))
 	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then VisitLinks is allowed.
 	if err != nil {
 		return err
@@ -954,6 +1006,8 @@ func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Hand
 }
 
 func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	logctx.Info(ctx, "begin", zap.String("method", "CreateQueue"))
+	defer logctx.Info(ctx, "done", zap.String("method", "CreateQueue"))
 	if host != nil && host.Peer != s.LocalID() {
 		return s.createRemoteQueue(ctx, *host, qspec)
 	}
@@ -1018,6 +1072,8 @@ func (s *Service[LK, LV, LQ]) createRemoteQueue(ctx context.Context, host blobca
 }
 
 func (s *Service[LK, LV, LQ]) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "InspectQueue"), zap.Stringer("oid", qh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "InspectQueue"), zap.Stringer("oid", qh.OID))
 	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSPECT)
 	if err != nil {
 		return blobcache.QueueInfo{}, err
@@ -1026,6 +1082,8 @@ func (s *Service[LK, LV, LQ]) InspectQueue(ctx context.Context, qh blobcache.Han
 }
 
 func (s *Service[LK, LV, LQ]) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "Dequeue"), zap.Stringer("oid", qh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Dequeue"), zap.Stringer("oid", qh.OID))
 	if err := opts.Validate(); err != nil {
 		return 0, err
 	}
@@ -1040,6 +1098,8 @@ func (s *Service[LK, LV, LQ]) Dequeue(ctx context.Context, qh blobcache.Handle, 
 }
 
 func (s *Service[LK, LV, LQ]) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "Enqueue"), zap.Stringer("oid", qh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Enqueue"), zap.Stringer("oid", qh.OID))
 	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSERT)
 	if err != nil {
 		return nil, err
@@ -1062,6 +1122,8 @@ func (s *Service[LK, LV, LQ]) Enqueue(ctx context.Context, qh blobcache.Handle, 
 }
 
 func (s *Service[LK, LV, LQ]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
+	logctx.Debug(ctx, "begin", zap.String("method", "SubToVolume"), zap.Stringer("oid", qh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "SubToVolume"), zap.Stringer("oid", qh.OID))
 	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_SUB_VOLUME)
 	if err != nil {
 		return err
