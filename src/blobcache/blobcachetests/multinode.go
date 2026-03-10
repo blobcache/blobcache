@@ -83,6 +83,75 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 			return s2, *volh, *qh
 		})
 	})
+
+	t.Run("Peer/Tx", func(t *testing.T) {
+		t.Parallel()
+		ctx := testutil.Context(t)
+		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
+			svcs := mk(t, 2)
+			s1, s2 := svcs[0], svcs[1]
+			vol1 := CreateVolume(t, s1, nil, defaultLocalSpec())
+			ep, err := s1.Endpoint(ctx)
+			require.NoError(t, err)
+			t.Log("creating peer volume", ep.Peer, vol1.OID)
+			vol2 := CreateVolume(t, s2, nil, peerVolumeSpec(ep.Peer, vol1.OID))
+			t.Log("setup peer volume, handing over to TxAPI test")
+			return s2, vol2
+		})
+	})
+	t.Run("Peer/Queue", func(t *testing.T) {
+		t.Parallel()
+		QueueAPI(t, func(t testing.TB) (blobcache.QueueAPI, blobcache.Handle) {
+			ctx := testutil.Context(t)
+			svcs := mk(t, 2)
+			s1, s2 := svcs[0], svcs[1]
+			s1ep := Endpoint(t, s1)
+			qh, err := s2.CreateQueue(ctx, &s1ep, blobcache.QueueSpec{
+				Memory: &blobcache.QueueBackend_Memory{
+					MaxDepth:             16,
+					MaxBytesPerMessage:   1024,
+					MaxHandlesPerMessage: 16,
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, qh)
+			qh, err = s2.CreateQueue(ctx, nil, remoteQueueSpec(s1ep, qh.OID))
+			require.NoError(t, err)
+			return s2, *qh
+		})
+	})
+	t.Run("Peer/SubToVol", func(t *testing.T) {
+		t.Parallel()
+		TestVolumeSubscribe(t, func(t testing.TB) (blobcache.Service, blobcache.Handle, blobcache.Handle) {
+			ctx := testutil.Context(t)
+			svcs := mk(t, 2)
+			s1, s2 := svcs[0], svcs[1]
+			s1ep := Endpoint(t, s1)
+
+			volh, err := s2.CreateVolume(ctx, &s1ep, blobcache.DefaultLocalSpec())
+			require.NoError(t, err)
+
+			qh, err := s2.CreateQueue(ctx, &s1ep, blobcache.QueueSpec{
+				Memory: &blobcache.QueueBackend_Memory{
+					MaxDepth:             1,
+					MaxBytesPerMessage:   1024,
+					MaxHandlesPerMessage: 16,
+				},
+			})
+			require.NoError(t, err)
+
+			return s2, *volh, *qh
+		})
+	})
+}
+
+func peerVolumeSpec(peer blobcache.PeerID, volOID blobcache.OID) blobcache.VolumeSpec {
+	return blobcache.VolumeSpec{
+		Peer: &blobcache.VolumeBackend_Peer{
+			Peer:   peer,
+			Volume: volOID,
+		},
+	}
 }
 
 func remoteVolumeSpec(ep blobcache.Endpoint, volid blobcache.OID) blobcache.VolumeSpec {

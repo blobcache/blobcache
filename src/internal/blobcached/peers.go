@@ -1,29 +1,63 @@
 package blobcached
 
 import (
+	"context"
 	"fmt"
+	"iter"
+	"net"
 	"net/netip"
 	"os"
+	"strconv"
 
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/groupfile"
 )
 
-const peerLocPath = "PEER_LOC"
+const (
+	peerLocPath    = "PEER_LOC"
+	DefaultBCPPort = 6025
+)
 
-var _ bclocal.PeerLocator = &Locator{}
+var _ bclocal.PeerLocator = &PeerLocator{}
 
-type Locator struct {
-	locs map[blobcache.PeerID][]netip.AddrPort
+type hostPort struct {
+	// Host is either a domain name or an IP address as a string.
+	Host string
+	Port uint16
 }
 
-func (loc *Locator) WhereIs(peer blobcache.PeerID) []netip.AddrPort {
-	return loc.locs[peer]
+type PeerLocator struct {
+	locs map[blobcache.PeerID][]hostPort
 }
 
-func ParsePeerLocs(data []byte) ([]groupfile.Entry[blobcache.PeerID, netip.AddrPort], error) {
-	ents, err := groupfile.Parse(data, parsePeerID, parseAddrPort)
+func (loc *PeerLocator) WhereIs(ctx context.Context, peer blobcache.PeerID) iter.Seq[netip.AddrPort] {
+	return func(yield func(netip.AddrPort) bool) {
+		for _, hostport := range loc.locs[peer] {
+			var ap netip.AddrPort
+			if err := func() error {
+				ipAddr, err := net.ResolveIPAddr("ip", hostport.Host)
+				if err != nil {
+					return err
+				}
+				// TODO: avoid going to string and back
+				ap = netip.AddrPortFrom(netip.MustParseAddr(ipAddr.String()), hostport.Port)
+				return nil
+			}(); err != nil {
+				continue
+			}
+			if !yield(ap) {
+				return
+			}
+		}
+	}
+}
+
+// PeerEntry is an entry in the Peer locations file.
+type PeerEntry = groupfile.Entry[blobcache.PeerID, hostPort]
+
+func ParsePeerLocs(data []byte) ([]PeerEntry, error) {
+	ents, err := groupfile.Parse(data, parsePeerID, parseHostPort)
 	if err != nil {
 		return nil, err
 	}
@@ -45,12 +79,24 @@ func parsePeerID(x []byte) (blobcache.PeerID, error) {
 	return ret, err
 }
 
-func parseAddrPort(x []byte) (netip.AddrPort, error) {
-	return netip.ParseAddrPort(string(x))
+func parseHostPort(x []byte) (hostPort, error) {
+	host, portStr, err := net.SplitHostPort(string(x))
+	if err != nil {
+		return hostPort{}, err
+	}
+	var port uint16 = DefaultBCPPort
+	if portStr != "" {
+		portInt, err := strconv.ParseUint(portStr, 10, 16)
+		if err != nil {
+			return hostPort{}, err
+		}
+		port = uint16(portInt)
+	}
+	return hostPort{Host: host, Port: port}, nil
 }
 
 // LoadLocator creates a new locator using the PEER_LOC file at p
-func LoadLocator(dir *os.Root, p string) (*Locator, error) {
+func LoadLocator(dir *os.Root, p string) (*PeerLocator, error) {
 	data, err := dir.ReadFile(p)
 	if err != nil {
 		return nil, err
@@ -59,7 +105,7 @@ func LoadLocator(dir *os.Root, p string) (*Locator, error) {
 	if err != nil {
 		return nil, err
 	}
-	locs := make(map[blobcache.PeerID][]netip.AddrPort, len(ents))
+	locs := make(map[blobcache.PeerID][]hostPort, len(ents))
 	for _, ent := range ents {
 		if mstmt := ent.MStmt; mstmt != nil {
 			for _, m := range mstmt.Members {
@@ -69,5 +115,5 @@ func LoadLocator(dir *os.Root, p string) (*Locator, error) {
 			}
 		}
 	}
-	return &Locator{locs: locs}, nil
+	return &PeerLocator{locs: locs}, nil
 }
