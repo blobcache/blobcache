@@ -94,6 +94,7 @@ func New[LK any, LV LocalVolume[LK], LQ LocalQueue](env Env[LK, LV, LQ], cfg Con
 	}
 	s.backends.local = env.Local
 	s.backends.remote = remotebe.New(&s.node)
+	s.backends.peer = remotebe.NewPeerSystem(&s.backends.remote, env.PeerLocator)
 	s.backends.global = consensusvol.New(consensusvol.Env{
 		Background: s.env.Background,
 	})
@@ -109,6 +110,7 @@ type Service[LK any, LV LocalVolume[LK], LQ LocalQueue] struct {
 	backends struct {
 		local  backend.VolumeSystem[LVParams[LK], LV]
 		remote remotebe.System
+		peer   remotebe.PeerSystem
 		global consensusvol.System
 		memory memory.System
 	}
@@ -1126,6 +1128,8 @@ func (s *Service[LK, LV, LQ]) makeVolume(ctx context.Context, oid blobcache.OID,
 		return s.makeLocal(ctx, oid, lvid)
 	case volBackend.Remote != nil:
 		return s.backends.remote.VolumeUp(ctx, *volBackend.Remote)
+	case volBackend.Peer != nil:
+		return s.backends.peer.VolumeUp(ctx, *volBackend.Peer)
 	case volBackend.Git != nil:
 		return s.makeGit(ctx, *volBackend.Git)
 	case volBackend.Vault != nil:
@@ -1174,6 +1178,12 @@ func (s *Service[LK, LV, LQ]) findVolumeParams(ctx context.Context, vspec blobca
 		return vspec.Config(), nil
 	case vspec.Remote != nil:
 		vol, err := s.backends.remote.VolumeUp(ctx, *vspec.Remote)
+		if err != nil {
+			return blobcache.VolumeConfig{}, err
+		}
+		return vol.GetParams(), nil
+	case vspec.Peer != nil:
+		vol, err := s.backends.peer.VolumeUp(ctx, *vspec.Peer)
 		if err != nil {
 			return blobcache.VolumeConfig{}, err
 		}

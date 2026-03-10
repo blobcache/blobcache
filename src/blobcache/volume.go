@@ -189,6 +189,9 @@ func (v *VolumeBackend[T]) Validate() (err error) {
 	if v.Remote != nil {
 		count++
 	}
+	if v.Peer != nil {
+		count++
+	}
 	if v.Git != nil {
 		count++
 	}
@@ -215,6 +218,7 @@ func VolumeBackendToOID(x VolumeBackend[Handle]) (ret VolumeBackend[OID]) {
 	ret = VolumeBackend[OID]{
 		Local:  x.Local,
 		Remote: x.Remote,
+		Peer:   x.Peer,
 		Git:    x.Git,
 	}
 	if x.Vault != nil {
