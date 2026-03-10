@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"iter"
 	"net"
 	"net/netip"
 	"sync"
@@ -52,7 +53,7 @@ type LVParams[K any] struct {
 
 // PeerLocator finds the address of peers
 type PeerLocator interface {
-	WhereIs(blobcache.PeerID) []netip.AddrPort
+	WhereIs(ctx context.Context, peer blobcache.PeerID) iter.Seq[netip.AddrPort]
 }
 
 type Env[LK any, LV LocalVolume[LK], LQ LocalQueue] struct {

@@ -198,7 +198,7 @@ func (d *Daemon) AddPeerToAdmin(peerID blobcache.PeerID) error {
 	return err
 }
 
-func (d *Daemon) EnsureLocator() (*Locator, error) {
+func (d *Daemon) EnsureLocator() (*PeerLocator, error) {
 	p := peerLocPath
 	loc, err := LoadLocator(d.StateDir, p)
 	if !os.IsNotExist(err) {
