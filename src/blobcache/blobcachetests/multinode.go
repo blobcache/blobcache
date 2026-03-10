@@ -85,6 +85,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 	})
 
 	t.Run("Peer/Tx", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			svcs := mk(t, 2)
@@ -99,6 +100,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		})
 	})
 	t.Run("Peer/Queue", func(t *testing.T) {
+		t.Parallel()
 		QueueAPI(t, func(t testing.TB) (blobcache.QueueAPI, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			svcs := mk(t, 2)
@@ -119,6 +121,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		})
 	})
 	t.Run("Peer/SubToVol", func(t *testing.T) {
+		t.Parallel()
 		TestVolumeSubscribe(t, func(t testing.TB) (blobcache.Service, blobcache.Handle, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			svcs := mk(t, 2)

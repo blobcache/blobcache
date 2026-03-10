@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"net/netip"
+	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
@@ -35,16 +36,19 @@ func (ps *PeerSystem) VolumeUp(ctx context.Context, p PeerParams) (*Volume, erro
 	if ps.locator == nil {
 		return nil, fmt.Errorf("bcpeer: no PeerLocator configured")
 	}
+	const dialTimeout = 3 * time.Second
 	for addr := range ps.locator.WhereIs(ctx, p.Peer) {
 		ep := blobcache.Endpoint{
 			Peer:   p.Peer,
 			IPPort: addr,
 		}
-		vol, err := ps.inner.VolumeUp(ctx, Params{
+		dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+		vol, err := ps.inner.VolumeUp(dialCtx, Params{
 			Endpoint: ep,
 			Volume:   p.Volume,
 			HashAlgo: p.HashAlgo,
 		})
+		cancel()
 		if err == nil {
 			return vol, nil
 		}
