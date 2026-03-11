@@ -103,12 +103,12 @@ func (s *Server) handleVolume(w http.ResponseWriter, r *http.Request) {
 	}
 	var volIDStr string
 	var method string
-	if _, err := fmt.Sscanf(r.URL.Path, "/volume/%32s.%s", &volIDStr, &method); err != nil {
+	if _, err := fmt.Sscanf(r.URL.Path, "/volume/%34s.%s", &volIDStr, &method); err != nil {
 		http.Error(w, "could not parse path "+r.URL.Path, http.StatusBadRequest)
 		return
 	}
 	var h blobcache.Handle
-	if _, err := hex.Decode(h.OID[:], []byte(volIDStr)); err != nil {
+	if err := h.OID.UnmarshalText([]byte(volIDStr)); err != nil {
 		http.Error(w, "could not decode volume id", http.StatusBadRequest)
 		return
 	}
@@ -145,12 +145,12 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 	}
 	var txIDStr string
 	var method string
-	if _, err := fmt.Sscanf(r.URL.Path, "/tx/%32s.%s", &txIDStr, &method); err != nil {
+	if _, err := fmt.Sscanf(r.URL.Path, "/tx/%34s.%s", &txIDStr, &method); err != nil {
 		http.Error(w, "could not parse path "+r.URL.Path, http.StatusBadRequest)
 		return
 	}
 	var h blobcache.Handle
-	if _, err := hex.Decode(h.OID[:], []byte(txIDStr)); err != nil {
+	if err := h.OID.UnmarshalText([]byte(txIDStr)); err != nil {
 		http.Error(w, "could not decode tx id", http.StatusBadRequest)
 		return
 	}
@@ -301,12 +301,12 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	var queueIDStr string
 	var method string
-	if _, err := fmt.Sscanf(r.URL.Path, "/queue/%32s.%s", &queueIDStr, &method); err != nil {
+	if _, err := fmt.Sscanf(r.URL.Path, "/queue/%34s.%s", &queueIDStr, &method); err != nil {
 		http.Error(w, "could not parse path "+r.URL.Path, http.StatusBadRequest)
 		return
 	}
 	var h blobcache.Handle
-	if _, err := hex.Decode(h.OID[:], []byte(queueIDStr)); err != nil {
+	if err := h.OID.UnmarshalText([]byte(queueIDStr)); err != nil {
 		http.Error(w, "could not decode queue id", http.StatusBadRequest)
 		return
 	}
