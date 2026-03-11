@@ -221,6 +221,48 @@ func (nsc *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name stri
 	return volh, nil
 }
 
+// Move atomically renames an entry from oldName to newName within a namespace volume.
+// The link token is preserved as-is.
+func (nsc *Client) Move(ctx context.Context, nsh blobcache.Handle, oldName, newName string) error {
+	nsh, err := nsc.resolve(ctx, nsh)
+	if err != nil {
+		return err
+	}
+	if err := CheckName(oldName); err != nil {
+		return err
+	}
+	if err := CheckName(newName); err != nil {
+		return err
+	}
+	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
+		var ent Entry
+		found, err := nsc.Schema.NSGet(ctx, tx, root, oldName, &ent)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("ns: no entry found at %s", oldName)
+		}
+		existsAtNew, err := nsc.Schema.NSGet(ctx, tx, root, newName, new(Entry))
+		if err != nil {
+			return nil, err
+		}
+		if existsAtNew {
+			return nil, fmt.Errorf("ns: entry already exists at %s", newName)
+		}
+		ent.Name = newName
+		root, err = nsc.Schema.NSPut(ctx, tx, root, ent)
+		if err != nil {
+			return nil, err
+		}
+		root, err = nsc.Schema.NSDelete(ctx, tx, root, oldName)
+		if err != nil {
+			return nil, err
+		}
+		return root, nil
+	})
+}
+
 // GC garbage collects the volume
 func (nsc *Client) GC(ctx context.Context, volh blobcache.Handle) error {
 	gcsch, ok := nsc.Schema.(schema.VisitAll)

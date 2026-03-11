@@ -26,6 +26,7 @@ var nsCmd = star.NewDir(star.Metadata{
 	"create": nsCreateCmd,
 	"open":   nsOpenCmd,
 	"lookup": nsLookupCmd,
+	"mv":     nsMvCmd,
 })
 
 var nsInitCmd = star.Command{
@@ -211,6 +212,34 @@ var nsLookupCmd = star.Command{
 			return err
 		}
 		c.Printf("%v\n", *volh)
+		return nil
+	},
+}
+
+var newNameParam = star.Required[string]{
+	ID:    "new-name",
+	Parse: star.ParseString,
+}
+
+var nsMvCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "Rename an entry in the namespace",
+	},
+	Pos: []star.Positional{volNameParam, newNameParam},
+	Flags: map[string]star.Flag{
+		"nsr": nsRoot,
+	},
+	F: func(c star.Context) error {
+		oldName := volNameParam.Load(c)
+		newName := newNameParam.Load(c)
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
+		if err := nsc.Move(c, *nsh, oldName, newName); err != nil {
+			return err
+		}
+		c.Printf("✓ %s -> %s\n", oldName, newName)
 		return nil
 	},
 }
