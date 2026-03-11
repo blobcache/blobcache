@@ -15,7 +15,8 @@ import (
 func TestLookup(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh blobcache.Handle), mkClient func(svc blobcache.Service) *bcns.Client, schemaSpec blobcache.SchemaSpec) {
 	type TestCase struct {
 		// Each entry in Volumes is a Volume containing a namespace.
-		Volumes [][]bcns.Entry
+		// The map describes the names to be created and which volumes they should link to.
+		Volumes []map[string]int
 		// Ok are the strings which should be able to be successfully looked up, and what volume they belong to.
 		Ok map[string]int
 		// Fail are strings which should return some error when looked up.
@@ -24,57 +25,71 @@ func TestLookup(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh 
 	tcs := []TestCase{
 		// Single volume, exact match
 		{
-			Volumes: [][]bcns.Entry{
-				{
-					{Name: "a"},
-				},
+			Volumes: []map[string]int{
+				{"a": 1},
 			},
 			Ok:   map[string]int{"a": 0},
 			Fail: []string{"b"},
 		},
 		// Single volume, multiple entries
 		{
-			Volumes: [][]bcns.Entry{
-				{
-					{Name: "a"},
-					{Name: "b"},
-				},
+			Volumes: []map[string]int{
+				{"a": 1, "b": 2},
 			},
 			Ok:   map[string]int{"a": 0, "b": 0},
 			Fail: []string{"c"},
 		},
-		// Two volumes chained: vol0 has "a" -> vol1, vol1 has "b" (leaf)
+		// Two volumes chained: vol0 has "a" -> vol1, vol1 has "b" -> vol2
 		{
-			Volumes: [][]bcns.Entry{
-				{
-					{Name: "a"},
-				},
-				{
-					{Name: "b"},
-				},
+			Volumes: []map[string]int{
+				{"a": 1},
+				{"b": 2},
 			},
 			Ok:   map[string]int{"a": 0, "a/b": 1},
 			Fail: []string{"b", "a/c"},
 		},
 		// Three volumes chained
 		{
-			Volumes: [][]bcns.Entry{
-				{
-					{Name: "a"},
-				},
-				{
-					{Name: "b"},
-				},
-				{
-					{Name: "c"},
-				},
+			Volumes: []map[string]int{
+				{"a": 1},
+				{"b": 2},
+				{"c": 3},
 			},
 			Ok:   map[string]int{"a": 0, "a/b": 1, "a/b/c": 2},
 			Fail: []string{"b", "a/c", "a/b/d"},
 		},
+		// Entry with slash in name: vol0 has "a/b" -> vol1, vol1 has "c" -> vol2
+		{
+			Volumes: []map[string]int{
+				{"a/b": 1},
+				{"c": 2},
+			},
+			Ok:   map[string]int{"a/b": 0, "a/b/c": 1},
+			Fail: []string{"a", "c", "a/c"},
+		},
+		// Three volumes with slashes: vol0 has "a/b" -> vol1, vol1 has "c/d" -> vol2, vol2 has "e" -> vol3
+		{
+			Volumes: []map[string]int{
+				{"a/b": 1},
+				{"c/d": 2},
+				{"e": 3},
+			},
+			Ok:   map[string]int{"a/b": 0, "a/b/c/d": 1, "a/b/c/d/e": 2},
+			Fail: []string{"a", "c", "a/b/c", "a/b/c/d/f"},
+		},
+		// Mixed: vol0 has "a/b" -> vol1, vol1 has "c" -> vol2, vol2 has "d" -> vol3
+		{
+			Volumes: []map[string]int{
+				{"a/b": 1},
+				{"c": 2},
+				{"d": 3},
+			},
+			Ok:   map[string]int{"a/b": 0, "a/b/c": 1, "a/b/c/d": 2},
+			Fail: []string{"a", "c", "a/c"},
+		},
 		// Empty namespace
 		{
-			Volumes: [][]bcns.Entry{
+			Volumes: []map[string]int{
 				{},
 			},
 			Fail: []string{"a", "a/b"},
@@ -86,39 +101,36 @@ func TestLookup(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh 
 			svc, nsh := mk(t)
 			nsc := mkClient(svc)
 
-			// Build the chain of namespace volumes.
-			// Volume 0 is nsh from mk. Volumes 1..N are created as sub-namespaces
-			// linked from the first entry of the previous volume.
-			volHandles := make([]blobcache.Handle, len(tc.Volumes))
-			volHandles[0] = nsh
-
-			// Create chained namespace volumes (1..N) by linking first entry of vol[i-1] to vol[i].
-			for vi := 1; vi < len(tc.Volumes); vi++ {
-				subSpec := blobcache.DefaultLocalSpec()
-				subSpec.Local.Schema = schemaSpec
-				// The first entry of the previous volume points to this sub-namespace.
-				name := tc.Volumes[vi-1][0].Name
-				subH, err := nsc.CreateAt(ctx, volHandles[vi-1], name, subSpec)
-				require.NoError(t, err)
-				volHandles[vi] = *subH
+			// Determine how many volumes we need: the namespace volumes plus any
+			// additional target volumes referenced by map values.
+			maxVol := len(tc.Volumes) - 1
+			for _, m := range tc.Volumes {
+				for _, target := range m {
+					if target > maxVol {
+						maxVol = target
+					}
+				}
 			}
 
-			// Populate leaf entries (entries that don't chain to the next volume).
-			for vi, entries := range tc.Volumes {
-				start := 0
-				if vi < len(tc.Volumes)-1 {
-					// First entry already points to the next namespace volume.
-					start = 1
-				}
-				for _, ent := range entries[start:] {
-					targetH := blobcachetests.CreateVolume(t, svc, nil, blobcache.DefaultLocalSpec())
-					err := nsc.Put(ctx, volHandles[vi], ent.Name, targetH, blobcache.Action_ALL)
+			// Create all volumes upfront. Volume 0 is nsh from mk.
+			volumes := make([]blobcache.Handle, maxVol+1)
+			volumes[0] = nsh
+			for vi := 1; vi <= maxVol; vi++ {
+				spec := blobcache.DefaultLocalSpec()
+				spec.Local.Schema = schemaSpec
+				volumes[vi] = blobcachetests.CreateVolume(t, svc, nil, spec)
+			}
+
+			// Populate entries: for each namespace volume, create links from name -> target volume.
+			for vi, m := range tc.Volumes {
+				for name, target := range m {
+					err := nsc.Put(ctx, volumes[vi], name, volumes[target], blobcache.Action_ALL)
 					require.NoError(t, err)
 				}
 			}
 
 			// Test Ok cases.
-			root := volHandles[0]
+			root := volumes[0]
 			for name := range tc.Ok {
 				volh, err := bcns.Lookup(ctx, nsc, root, name)
 				require.NoError(t, err, "expected lookup of %q to succeed", name)
