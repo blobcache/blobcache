@@ -23,7 +23,7 @@ func TestAPI(t *testing.T) {
 
 	blobcachetests.ServiceAPI(t, func(t testing.TB) blobcache.Service {
 		if strings.Contains(t.Name(), "Queue") || strings.Contains(t.Name(), "SubToVol") {
-			// If we ever add `blobcache queue` to the API then we can start running these tests.
+			// If we ever add `blobcache queue` to the CLI then we can start running these tests.
 			t.SkipNow()
 		}
 		_, apiAddr := blobcached.BGTestDaemon(t)

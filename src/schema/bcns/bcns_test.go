@@ -8,6 +8,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestValidName(t *testing.T) {
+	type testCase struct {
+		Name  string
+		Valid bool
+	}
+	tcs := []testCase{
+		// valid
+		{Name: "a", Valid: true},
+		{Name: "ab", Valid: true},
+		{Name: "hello", Valid: true},
+		{Name: "a-b", Valid: true},
+		{Name: "a_b", Valid: true},
+		{Name: "a/b", Valid: true},
+		{Name: "a/b/c", Valid: true},
+		{Name: "abc/def/ghi", Valid: true},
+		{Name: "a1b", Valid: true},
+		{Name: "a1-2b", Valid: true},
+		{Name: "a/b-c/d", Valid: true},
+
+		// invalid: empty
+		{Name: "", Valid: false},
+		// invalid: starts with non-letter
+		{Name: "1abc", Valid: false},
+		{Name: "-abc", Valid: false},
+		{Name: "/abc", Valid: false},
+		{Name: "_abc", Valid: false},
+		// invalid: ends with non-alphanumeric
+		{Name: "abc1", Valid: true},
+		{Name: "abc-", Valid: false},
+		{Name: "abc/", Valid: false},
+		{Name: "abc_", Valid: false},
+		// invalid: disallowed characters
+		{Name: "a.b", Valid: false},
+		{Name: "a b", Valid: false},
+		{Name: "a@b", Valid: false},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.Name, func(t *testing.T) {
+			require.Equal(t, tc.Valid, IsValidName(tc.Name))
+		})
+	}
+}
+
 func TestParseObjectish(t *testing.T) {
 	type testCase struct {
 		I string
