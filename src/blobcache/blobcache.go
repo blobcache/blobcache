@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"go.brendoncarroll.net/state/cadata"
 	"go.inet256.org/inet256/src/inet256"
@@ -38,15 +37,41 @@ const OIDSize = 16
 // OID is an object identifier.
 type OID [OIDSize]byte
 
+type OIDPath = []OID
+
+func RandomOID() (ret OID) {
+	rand.Read(ret[:])
+	return ret
+}
+
+func ParseOID(s string) (OID, error) {
+	var ret OID
+	err := ret.UnmarshalText([]byte(s))
+	return ret, err
+}
+
+func (o OID) String() string {
+	data, _ := o.MarshalText()
+	return string(data)
+}
+
 func (o OID) Compare(other OID) int {
 	return bytes.Compare(o[:], other[:])
 }
 
 func (o OID) MarshalText() ([]byte, error) {
-	return bytes.ToUpper(hex.AppendEncode(nil, o[:])), nil
+	return bytes.Join([][]byte{
+		bytes.ToUpper(hex.AppendEncode(nil, o[:4])),
+		bytes.ToUpper(hex.AppendEncode(nil, o[4:12])),
+		bytes.ToUpper(hex.AppendEncode(nil, o[12:16])),
+	}, []byte{'_'}), nil
 }
 
 func (o *OID) UnmarshalText(data []byte) error {
+	data = bytes.ReplaceAll(data, []byte("_"), nil)
+	if len(data) != hex.EncodedLen(len(o)) {
+		return fmt.Errorf("invalid OID: %q", data)
+	}
 	_, err := hex.Decode(o[:], data)
 	return err
 }
@@ -61,26 +86,6 @@ func (o *OID) Unmarshal(data []byte) error {
 	}
 	copy(o[:], data)
 	return nil
-}
-
-type OIDPath = []OID
-
-func RandomOID() (ret OID) {
-	rand.Read(ret[:])
-	return ret
-}
-
-func ParseOID(s string) (OID, error) {
-	var ret OID
-	if len(s) != hex.EncodedLen(len(ret)) {
-		return OID{}, fmt.Errorf("invalid OID: %s", s)
-	}
-	hex.Decode(ret[:], []byte(s))
-	return ret, nil
-}
-
-func (o OID) String() string {
-	return strings.ToUpper(hex.EncodeToString(o[:]))
 }
 
 // Value implements the driver.Valuer interface.

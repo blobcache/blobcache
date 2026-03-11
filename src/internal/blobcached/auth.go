@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"cmp"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"iter"
@@ -212,14 +211,11 @@ func ParseObject(x []byte) (ObjectSet, error) {
 	if string(x) == "ALL" {
 		return ObjectSet{All: &struct{}{}}, nil
 	}
-	if len(x) == hex.EncodedLen(len(blobcache.OID{})) {
-		oid, err := blobcache.ParseOID(string(x))
-		if err != nil {
-			return ObjectSet{}, fmt.Errorf("invalid object: %s", x)
-		}
+	oid, err := blobcache.ParseOID(string(x))
+	if err == nil {
 		return ObjectSet{ByOID: &oid}, nil
 	}
-	return ObjectSet{}, fmt.Errorf("could not parse object set: %s", x)
+	return ObjectSet{}, fmt.Errorf("could not parse object set: %s %w", x, err)
 }
 
 func ParseObjectsFile(data []byte) (ret []groupfile.Entry[GroupName, ObjectSet], _ error) {

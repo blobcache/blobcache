@@ -2,7 +2,6 @@ package blobcache
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -173,9 +172,6 @@ func readOIDPath(x []byte) (ret OIDPath, rest []byte, err error) {
 	parts := bytes.Split(x, []byte(";"))
 	var success int
 	for i := range parts {
-		if len(parts[i]) != hex.EncodedLen(OIDSize) {
-			break
-		}
 		oid, err := ParseOID(string(parts[i]))
 		if err != nil {
 			break

@@ -17,6 +17,11 @@ import (
 
 const envBlobcacheAPI = "BLOBCACHE_API"
 
+var (
+	oidRegexp    = regexp.MustCompile(`[A-F0-9_]+`)
+	handleRegexp = regexp.MustCompile(oidRegexp.String() + `.[0-9a-f]+`)
+)
+
 var _ blobcache.Service = &Service{}
 
 type Service struct {
@@ -58,7 +63,7 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 }
 
 func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
+	re := handleRegexp
 	ms, err := s.runParse([]string{"share", h.String(), to.String(), fmt.Sprint(uint64(mask))}, re)
 	if err != nil {
 		return nil, err
@@ -118,8 +123,7 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 	}
 
 	// Parse the handle from the CLI output
-	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	ms, err := s.runParse(args, re)
+	ms, err := s.runParse(args, handleRegexp)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +148,7 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 
 // Backward-compat shim to satisfy any stale interface checks
 func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
+	re := handleRegexp
 	args := []string{"open-fiat", x.String()}
 	if mask != blobcache.Action_ALL {
 		args = append(args, fmt.Sprintf("%x", uint64(mask)))
@@ -161,7 +165,7 @@ func (s *Service) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.
 }
 
 func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, x blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
+	re := handleRegexp
 	args := []string{"open-from", base.String(), x.String()}
 	if mask != blobcache.Action_ALL {
 		args = append(args, fmt.Sprintf("%x", uint64(mask)))
@@ -185,8 +189,7 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobca
 	if txp.GCBlobs {
 		args = append(args, "--gc")
 	}
-	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
-	ms, err := s.runParse(args, re)
+	ms, err := s.runParse(args, handleRegexp)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +201,7 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobca
 }
 
 func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	re := regexp.MustCompile(`[A-F0-9]+\.[0-9a-f]+`)
+	re := handleRegexp
 	ms, err := s.runParse([]string{"volume", "clone", volh.String()}, re)
 	if err != nil {
 		return nil, err
