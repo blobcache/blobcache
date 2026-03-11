@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
@@ -31,7 +32,7 @@ func (ent *Entry) LinkToken() blobcache.LinkToken {
 	}
 }
 
-var nameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var nameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9/_-]*[a-zA-Z0-9]$|^[a-zA-Z]$`)
 
 func IsValidName(name string) bool {
 	return nameRe.MatchString(name)
@@ -263,4 +264,57 @@ func (nsc Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache
 		volh = *volh2
 	}
 	return volh, nil
+}
+
+// Lookup looks up prefixes of the path (ending in /) in volh, starting
+// with the whole string, and getting shorter.
+func (nsc Client) Lookup(ctx context.Context, volh blobcache.Handle, p string) (ent Entry, rem string, _ error) {
+	volh, err := nsc.resolve(ctx, volh)
+	if err != nil {
+		return Entry{}, "", err
+	}
+	p = strings.Trim(p, "/")
+	name := p
+	for {
+		found, err := nsc.Get(ctx, volh, name, &ent)
+		if err != nil {
+			return Entry{}, "", err
+		}
+		if found {
+			rem = strings.TrimPrefix(p, name)
+			rem = strings.Trim(rem, "/")
+			return ent, rem, nil
+		}
+		idx := strings.LastIndex(name, "/")
+		if idx < 0 {
+			return Entry{}, "", fmt.Errorf("lookup: no entry found for any prefix of %q", p)
+		}
+		name = strings.Trim(name[:idx], "/")
+		if name == "" {
+			return Entry{}, "", fmt.Errorf("lookup: no entry found for any prefix of %q", p)
+		}
+	}
+}
+
+// Lookup performs the mult-volume lookup, creating clients as required.
+func Lookup(ctx context.Context, nsc *Client, nsvol blobcache.Handle, p string) (Entry, error) {
+	for {
+		ent, rem, err := nsc.Lookup(ctx, nsvol, p)
+		if err != nil {
+			return Entry{}, fmt.Errorf("lookup failed: vol=%v name=%s err=%w", nsvol, p, err)
+		}
+		if rem == "" {
+			return ent, nil
+		}
+		nsvol2, err := nsc.Service.OpenFrom(ctx, nsvol, ent.LinkToken(), blobcache.Action_ALL)
+		if err != nil {
+			return Entry{}, err
+		}
+		nsc, err = ClientForVolume(ctx, nsc.Service, *nsvol2)
+		if err != nil {
+			return Entry{}, err
+		}
+		nsvol = *nsvol2
+		p = rem
+	}
 }
