@@ -25,6 +25,7 @@ var nsCmd = star.NewDir(star.Metadata{
 	"put":    nsPutCmd,
 	"create": nsCreateCmd,
 	"open":   nsOpenCmd,
+	"lookup": nsLookupCmd,
 })
 
 var nsInitCmd = star.Command{
@@ -187,6 +188,29 @@ var nsOpenCmd = star.Command{
 		c.Printf("Volume successfully created.\n\n")
 		c.Printf("HANDLE: %v\n", *volh)
 		c.Printf("NAME: %v\n", name)
+		return nil
+	},
+}
+
+var nsLookupCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "Lookup a name across namespace volumes and return the volume handle",
+	},
+	Pos: []star.Positional{volNameParam},
+	Flags: map[string]star.Flag{
+		"nsr": nsRoot,
+	},
+	F: func(c star.Context) error {
+		name := volNameParam.Load(c)
+		nsc, nsh, err := getNS(c)
+		if err != nil {
+			return err
+		}
+		volh, err := bcns.Lookup(c, nsc, *nsh, name)
+		if err != nil {
+			return err
+		}
+		c.Printf("%v\n", *volh)
 		return nil
 	},
 }

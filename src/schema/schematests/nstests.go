@@ -120,9 +120,9 @@ func TestLookup(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh 
 			// Test Ok cases.
 			root := volHandles[0]
 			for name := range tc.Ok {
-				ent, err := bcns.Lookup(ctx, nsc, root, name)
+				volh, err := bcns.Lookup(ctx, nsc, root, name)
 				require.NoError(t, err, "expected lookup of %q to succeed", name)
-				require.NotZero(t, ent.Target, "expected non-zero target for %q", name)
+				require.NotNil(t, volh, "expected non-nil handle for %q", name)
 			}
 
 			// Test Fail cases.

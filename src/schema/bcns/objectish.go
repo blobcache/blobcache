@@ -86,11 +86,11 @@ func (oish *ObjectExpr) Open(ctx context.Context, bc blobcache.Service) (*blobca
 		if err != nil {
 			return nil, fmt.Errorf("getting NSClient for %v: %w", nsh.OID, err)
 		}
-		subvolh, err := nsc.OpenAt(ctx, nsh, name, blobcache.Action_ALL)
+		volh, err := Lookup(ctx, nsc, nsh, name)
 		if err != nil {
 			return nil, err
 		}
-		nsh = *subvolh
+		nsh = *volh
 	}
 	return &nsh, nil
 }

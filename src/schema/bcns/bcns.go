@@ -296,25 +296,26 @@ func (nsc Client) Lookup(ctx context.Context, volh blobcache.Handle, p string) (
 	}
 }
 
-// Lookup performs the mult-volume lookup, creating clients as required.
-func Lookup(ctx context.Context, nsc *Client, nsvol blobcache.Handle, p string) (Entry, error) {
+// Lookup performs the multi-volume lookup, creating clients as required.
+// It returns a Handle to the volume that the final entry points to.
+func Lookup(ctx context.Context, nsc *Client, nsvol blobcache.Handle, p string) (*blobcache.Handle, error) {
 	for {
 		ent, rem, err := nsc.Lookup(ctx, nsvol, p)
 		if err != nil {
-			return Entry{}, fmt.Errorf("lookup failed: vol=%v name=%s err=%w", nsvol, p, err)
+			return nil, fmt.Errorf("lookup failed: vol=%v name=%s err=%w", nsvol, p, err)
+		}
+		volh, err := nsc.Service.OpenFrom(ctx, nsvol, ent.LinkToken(), blobcache.Action_ALL)
+		if err != nil {
+			return nil, err
 		}
 		if rem == "" {
-			return ent, nil
+			return volh, nil
 		}
-		nsvol2, err := nsc.Service.OpenFrom(ctx, nsvol, ent.LinkToken(), blobcache.Action_ALL)
+		nsc, err = ClientForVolume(ctx, nsc.Service, *volh)
 		if err != nil {
-			return Entry{}, err
+			return nil, err
 		}
-		nsc, err = ClientForVolume(ctx, nsc.Service, *nsvol2)
-		if err != nil {
-			return Entry{}, err
-		}
-		nsvol = *nsvol2
+		nsvol = *volh
 		p = rem
 	}
 }
