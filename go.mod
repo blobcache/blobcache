@@ -1,6 +1,6 @@
 module blobcache.io/blobcache
 
-go 1.25.0
+go 1.26.0
 
 require (
 	blobcache.io/glfs v0.0.0-20260313021227-407298e99fa7

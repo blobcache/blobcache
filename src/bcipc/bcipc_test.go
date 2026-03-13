@@ -3,7 +3,6 @@ package bcipc
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -48,8 +47,14 @@ func TestService(t *testing.T) {
 		ctx := testutil.Context(t)
 		ctx, cancel := context.WithCancel(ctx)
 
-		dir := t.TempDir()
-		sockPath := filepath.Join(dir, "bcipc-test.sock")
+		// Use a short path for the socket to avoid exceeding the
+		// 104-byte sun_path limit on macOS.
+		sockFile, err := os.CreateTemp("", "bcipc-test-*.sock")
+		require.NoError(t, err)
+		sockPath := sockFile.Name()
+		sockFile.Close()
+		os.Remove(sockPath)
+		t.Cleanup(func() { os.Remove(sockPath) })
 		svc := bclocal.NewTestService(t)
 
 		var eg errgroup.Group
