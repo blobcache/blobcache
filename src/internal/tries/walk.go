@@ -3,8 +3,6 @@ package tries
 import (
 	"context"
 
-	"go.brendoncarroll.net/state/cadata"
-
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	"blobcache.io/blobcache/src/schema"
@@ -83,7 +81,7 @@ func (o *Machine) Sync(ctx context.Context, dst schema.WO, src schema.RO, root R
 	})
 }
 
-func (o *Machine) Populate(ctx context.Context, s schema.RO, root Root, set cadata.Set, fn func(Entry) error) error {
+func (o *Machine) Populate(ctx context.Context, s schema.RO, root Root, set CIDSet, fn func(Entry) error) error {
 	return o.Walk(ctx, s, root, Walker{
 		ShouldWalk: func(root Root) bool {
 			exists, err := set.Exists(ctx, root.Ref.CID)
@@ -97,4 +95,9 @@ func (o *Machine) Populate(ctx context.Context, s schema.RO, root Root, set cada
 			return set.Add(ctx, root.Ref.CID)
 		},
 	})
+}
+
+type CIDSet interface {
+	Add(ctx context.Context, cid blobcache.CID) error
+	Exists(ctx context.Context, cid blobcache.CID) (bool, error)
 }

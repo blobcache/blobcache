@@ -289,7 +289,7 @@ func (v *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobca
 	if err != nil {
 		return 0, err
 	} else if ref == nil {
-		return 0, blobcache.ErrNotFound{Key: cid}
+		return 0, blobcache.ErrNotFound{CID: cid}
 	}
 	s := backend.NewUnsaltedStore(v.inner)
 	// get and decrypt the ciphertext blob
@@ -367,7 +367,7 @@ func (v *Tx) Visit(ctx context.Context, ptcids []blobcache.CID) error {
 			return err
 		}
 		if ref == nil {
-			return blobcache.ErrNotFound{Key: ptcid}
+			return blobcache.ErrNotFound{CID: ptcid}
 		}
 		if err := putRef(ctx, v.newTx, ptcid, *ref); err != nil {
 			return err

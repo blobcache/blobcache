@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/go-git/go-git/v5"
@@ -12,8 +11,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/stretchr/testify/require"
-	"go.brendoncarroll.net/state/cadata"
-	"go.brendoncarroll.net/state/cadata/storetest"
 	"go.brendoncarroll.net/state/cells"
 	"go.brendoncarroll.net/state/cells/celltest"
 )
@@ -73,16 +70,6 @@ func TestVolumeLoad(t *testing.T) {
 
 func TestVolumeCellAPI(t *testing.T) {
 	celltest.TestBytesCell(t, func(t testing.TB) cells.BytesCell {
-		vol := NewTestVolume(t)
-		return vol
-	})
-}
-
-func TestVolumeStore(t *testing.T) {
-	storetest.TestStore(t, func(t testing.TB) cadata.Store {
-		if strings.HasSuffix(t.Name(), "MaxSize") {
-			t.Skip("blobcache has different ErrTooLarge type")
-		}
 		vol := NewTestVolume(t)
 		return vol
 	})
