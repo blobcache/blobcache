@@ -17,11 +17,18 @@ var _ driver.Value = CID{}
 // CIDs can be used as salts.
 // CIDs are cannonically printed in an order-preserving base64 encoding, which distinguishes
 // them from OIDs which are printed as hex.
-//type CID [CIDSize]byte
+type CID [CIDSize]byte
 
-// CIDSize is the number of bytes in a CID.
-const CIDSize = 32
+const (
+	// CIDSize is the number of bytes in a CID.
+	CIDSize = 32
 
+	// Base64Alphabet is used when encoding CIDs as base64 strings.
+	// It is a URL and filepath safe encoding, which maintains ordering.
+	Base64Alphabet = "-0123456789" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "_" + "abcdefghijklmnopqrstuvwxyz"
+)
+
+// ParseCID parses a base64 formatted string into a CID.
 func ParseCID(s string) (CID, error) {
 	var ret CID
 	if err := ret.UnmarshalBase64([]byte(s)); err != nil {
@@ -29,16 +36,6 @@ func ParseCID(s string) (CID, error) {
 	}
 	return ret, nil
 }
-
-const (
-	IDSize = 32
-	// Base64Alphabet is used when encoding CIDs as base64 strings.
-	// It is a URL and filepath safe encoding, which maintains ordering.
-	Base64Alphabet = "-0123456789" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "_" + "abcdefghijklmnopqrstuvwxyz"
-)
-
-// CID identifies a particular piece of data
-type CID [IDSize]byte
 
 var enc = base64.NewEncoding(Base64Alphabet).WithPadding(base64.NoPadding)
 
@@ -59,7 +56,7 @@ func (id *CID) UnmarshalBase64(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if n != IDSize {
+	if n != CIDSize {
 		return errors.New("base64 string is too short")
 	}
 	return nil
@@ -95,7 +92,7 @@ func (id *CID) Scan(x interface{}) error {
 	switch x := x.(type) {
 	case []byte:
 		if len(x) != 32 {
-			return fmt.Errorf("wrong length for blobcache.CID HAVE: %d WANT: %d", len(x), IDSize)
+			return fmt.Errorf("wrong length for blobcache.CID HAVE: %d WANT: %d", len(x), CIDSize)
 		}
 		copy(id[:], x)
 		return nil
