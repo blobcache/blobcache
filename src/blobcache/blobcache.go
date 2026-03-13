@@ -9,27 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"go.brendoncarroll.net/state/cadata"
 	"go.inet256.org/inet256/src/inet256"
 )
-
-// CID is a content identifier.
-// It is produced by hashing data.
-// CIDs can be used as salts.
-// CIDs are cannonically printed in an order-preserving base64 encoding, which distinguishes
-// them from OIDs which are printed as hex.
-type CID = cadata.ID
-
-// CIDSize is the number of bytes in a CID.
-const CIDSize = cadata.IDSize
-
-func ParseCID(s string) (CID, error) {
-	var ret CID
-	if err := ret.UnmarshalBase64([]byte(s)); err != nil {
-		return CID{}, err
-	}
-	return ret, nil
-}
 
 // OIDSize is the number of bytes in an OID.
 const OIDSize = 16
