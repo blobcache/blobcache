@@ -101,8 +101,11 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, httpOn []net.Listen
 	if pc != nil {
 		// if a PacketConn is provided, then run the Serve loop.
 		eg.Go(func() error {
+			logctx.Info(ctx, "serving BCP on", zap.Stringer("addr", pc.LocalAddr()))
 			return svc.Serve(ctx, pc)
 		})
+	} else {
+		logctx.Warn(ctx, "no address provided for BCP, remote and peer Volumes will not work.")
 	}
 
 	if err := eg.Wait(); !errors.Is(err, context.Canceled) {

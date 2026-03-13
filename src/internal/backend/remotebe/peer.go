@@ -9,6 +9,8 @@ import (
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
+	"go.brendoncarroll.net/stdctx/logctx"
+	"go.uber.org/zap"
 )
 
 var _ backend.VolumeSystem[PeerParams, *Volume] = &PeerSystem{}
@@ -42,15 +44,19 @@ func (ps *PeerSystem) VolumeUp(ctx context.Context, p PeerParams) (*Volume, erro
 			Peer:   p.Peer,
 			IPPort: addr,
 		}
-		dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+		dialCtx, cf := context.WithTimeout(ctx, dialTimeout)
+		defer cf()
 		vol, err := ps.inner.VolumeUp(dialCtx, Params{
 			Endpoint: ep,
 			Volume:   p.Volume,
 			HashAlgo: p.HashAlgo,
 		})
-		cancel()
+		cf()
 		if err == nil {
+			logctx.Info(ctx, "found peer", zap.Stringer("peer", p.Peer))
 			return vol, nil
+		} else {
+			logctx.Warn(ctx, "error looking for peer", zap.Stringer("peer", p.Peer), zap.Error(err))
 		}
 	}
 	return nil, fmt.Errorf("bcpeer: could not reach peer %s", p.Peer)
