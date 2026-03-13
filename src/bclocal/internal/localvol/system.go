@@ -403,7 +403,7 @@ func (s *System) getBlob(volID ID, mvid pdb.MVTag, cid blobcache.CID, buf []byte
 		defer closer.Close()
 		if mvr == nil {
 			// blob is not in the volume, return not found
-			return blobcache.ErrNotFound{Key: cid}
+			return blobcache.ErrNotFound{CID: cid}
 		}
 		// read into buffer
 		n, err = s.readBlobData(cid, buf)

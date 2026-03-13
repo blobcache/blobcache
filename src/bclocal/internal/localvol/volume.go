@@ -412,7 +412,7 @@ func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, buf []byte, opt
 	if err := v.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
 		return 0, err
 	} else if !exists[0] {
-		return 0, blobcache.ErrNotFound{Key: cid}
+		return 0, blobcache.ErrNotFound{CID: cid}
 	}
 	unlock, err := v.checkClosed()
 	if err != nil {

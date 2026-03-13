@@ -18,8 +18,8 @@ import (
 )
 
 // Scheme handles filesystem operations on blobcache volumes.
-// All reading methods follow the pattern: func(ctx context.Context, src cadata.Getter, root []byte, ...) (..., error)
-// All writing methods follow the pattern: func(ctx context.Context, dst cadata.PostExister, src cadata.Getter, root []byte, ...) (..., []byte, error)
+// All reading methods follow the pattern: func(ctx context.Context, src schema.RO, root []byte, ...) (..., error)
+// All writing methods follow the pattern: func(ctx context.Context, dst schema.WO, src schema.RO, root []byte, ...) (..., []byte, error)
 type Scheme[K comparable] interface {
 	// FlushExtents writes all the extents to the volume.
 	FlushExtents(ctx context.Context, dst schema.WO, src schema.RO, root []byte, extents []Extent[K]) ([]byte, error)

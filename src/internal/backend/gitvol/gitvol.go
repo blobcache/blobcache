@@ -20,7 +20,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/storage"
-	"go.brendoncarroll.net/state/cadata"
 	"go.brendoncarroll.net/state/cells"
 	"lukechampine.com/blake3"
 )
@@ -226,7 +225,7 @@ func (v *Volume) Post(ctx context.Context, data []byte) (blobcache.CID, error) {
 	return id, nil
 }
 
-func (v *Volume) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error) {
+func (v *Volume) Get(ctx context.Context, id blobcache.CID, buf []byte) (int, error) {
 	var blob *object.Blob
 	if h, ok := v.blobOps[id]; ok {
 		eo, err := v.storer.EncodedObject(plumbing.BlobObject, h)
@@ -243,12 +242,12 @@ func (v *Volume) Get(ctx context.Context, id cadata.ID, buf []byte) (int, error)
 			return 0, err
 		}
 		if tree == nil {
-			return 0, blobcache.ErrNotFound{Key: id}
+			return 0, blobcache.ErrNotFound{CID: id}
 		}
 		f, err := tree.File(blobPath(id))
 		if err != nil {
 			if errors.Is(err, object.ErrFileNotFound) {
-				return 0, blobcache.ErrNotFound{Key: id}
+				return 0, blobcache.ErrNotFound{CID: id}
 			}
 			return 0, err
 		}
@@ -282,43 +281,6 @@ func (v *Volume) Exists(ctx context.Context, id blobcache.CID) (bool, error) {
 	}
 	v.blobOps[id] = file.Hash
 	return true, nil
-}
-
-func (v *Volume) List(ctx context.Context, span cadata.Span, buf []blobcache.CID) (int, error) {
-	tree, err := v.loadTree(ctx)
-	if err != nil {
-		return 0, err
-	}
-	var blobTree *object.Tree
-	if tree != nil {
-		blobTree, err = tree.Tree(BlobPrefix)
-		if err != nil && !errors.Is(err, object.ErrDirectoryNotFound) {
-			return 0, err
-		}
-	}
-	treeHash, err := v.prepareBlobTree(ctx, blobTree)
-	if err != nil {
-		return 0, err
-	}
-	blobTree, err = object.GetTree(v.storer, treeHash)
-	if err != nil {
-		return 0, err
-	}
-	var n int
-	for _, ent := range blobTree.Entries {
-		if n >= len(buf) {
-			break
-		}
-		var id blobcache.CID
-		if err := id.UnmarshalBase64([]byte(ent.Name)); err != nil {
-			return 0, err
-		}
-		if span.Contains(id, cadata.ID.Compare) {
-			buf[n] = id
-			n++
-		}
-	}
-	return n, nil
 }
 
 func (v *Volume) Delete(ctx context.Context, cid blobcache.CID) error {

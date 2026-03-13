@@ -50,7 +50,7 @@ func (ms *MemStore) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int
 	defer ms.mu.RUnlock()
 	data, exists := ms.blobs[cid]
 	if !exists {
-		return 0, blobcache.ErrNotFound{Key: cid}
+		return 0, blobcache.ErrNotFound{CID: cid}
 	}
 	return copy(buf, data), nil
 }
