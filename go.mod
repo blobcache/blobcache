@@ -3,7 +3,7 @@ module blobcache.io/blobcache
 go 1.25.0
 
 require (
-	blobcache.io/glfs v0.0.0-20260119180351-4a7f3a2103a2
+	blobcache.io/glfs v0.0.0-20260313021227-407298e99fa7
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.2
 	github.com/cloudflare/circl v1.6.1
 	github.com/cockroachdb/pebble v1.1.5
@@ -53,7 +53,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect

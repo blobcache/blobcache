@@ -17,7 +17,8 @@ func (e ErrTxDone) Error() string {
 }
 
 func IsErrTxDone(err error) bool {
-	return errors.As(err, &ErrTxDone{})
+	_, ok := errors.AsType[ErrTxDone](err)
+	return ok
 }
 
 // ErrNotFound is returned when a blob is not found.
@@ -30,7 +31,8 @@ func (e ErrNotFound) Error() string {
 }
 
 func IsErrNotFound(err error) bool {
-	return errors.As(err, &ErrNotFound{})
+	_, ok := errors.AsType[ErrNotFound](err)
+	return ok
 }
 
 // ErrTooLarge is returned when a blob is exceeds the maximum size of the Volume.
@@ -44,7 +46,8 @@ func (e ErrTooLarge) Error() string {
 }
 
 func IsErrTooLarge(err error) bool {
-	return errors.As(err, &ErrTooLarge{})
+	_, ok := errors.AsType[ErrNotFound](err)
+	return ok
 }
 
 // ErrTooSmall is returned when a buffer is too small to fully read a blob.
@@ -58,7 +61,8 @@ func (e ErrTooSmall) Error() string {
 }
 
 func IsErrTooSmall(err error) bool {
-	return errors.As(err, &ErrTooSmall{})
+	_, ok := errors.AsType[ErrTooSmall](err)
+	return ok
 }
 
 // ErrInvalidHandle is returned when a handle is invalid.
@@ -71,7 +75,8 @@ func (e ErrInvalidHandle) Error() string {
 }
 
 func IsErrInvalidHandle(err error) bool {
-	return errors.As(err, &ErrInvalidHandle{})
+	_, ok := errors.AsType[ErrInvalidHandle](err)
+	return ok
 }
 
 // ErrCannotSalt is returned when a salt is provided to a volume that does not support salts.
