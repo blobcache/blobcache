@@ -11,6 +11,8 @@ import (
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/bcp"
 	"go.brendoncarroll.net/exp/singleflight"
+	"go.brendoncarroll.net/stdctx/logctx"
+	"go.uber.org/zap"
 )
 
 var _ backend.VolumeSystem[Params, *Volume] = &System{}
@@ -44,10 +46,12 @@ func (sys *System) VolumeUp(ctx context.Context, p Params) (*Volume, error) {
 		if exists {
 			return vol, nil
 		}
+		logctx.Info(ctx, "opening remote volume...", zap.Stringer("ip_port", p.Endpoint.IPPort))
 		volh, info, err := bcp.OpenFiat(ctx, node, p.Endpoint, p.Volume, blobcache.Action_ALL)
 		if err != nil {
 			return nil, err
 		}
+		logctx.Info(ctx, "successfully opened remote volume", zap.Stringer("endpoint", p.Endpoint), zap.Stringer("volume", p.Volume))
 		vol = NewVolume(sys, node, p.Endpoint, *volh, info)
 		sys.mu.Lock()
 		sys.remote[p] = vol

@@ -203,10 +203,15 @@ func (node *Node) getOutboundConn(ctx context.Context, ep blobcache.Endpoint) (*
 // dialConn dials a new *quic.Conn and returns it.
 // It does not modify peers or take any locks.
 func (qt *Node) dialConn(ctx context.Context, ep blobcache.Endpoint) (*quic.Conn, error) {
-	conn, err := qt.tp.Dial(ctx, net.UDPAddrFromAddrPort(ep.IPPort), qt.makeDialTlsConfig(ep.Peer), qt.makeQuicConfig())
+	raddr := net.UDPAddrFromAddrPort(ep.IPPort)
+	laddr := qt.tp.Conn.LocalAddr()
+	logctx.Info(ctx, "dialing", zap.Stringer("laddr", laddr), zap.Stringer("raddr", raddr))
+	conn, err := qt.tp.Dial(ctx, raddr, qt.makeDialTlsConfig(ep.Peer), qt.makeQuicConfig())
 	if err != nil {
+		logctx.Error(ctx, "dial failed", zap.Error(err), zap.Stringer("raddr", raddr))
 		return nil, err
 	}
+	logctx.Info(ctx, "dial succeeded", zap.Stringer("raddr", raddr))
 	return conn, nil
 }
 
@@ -298,6 +303,9 @@ func (qt *Node) makeQuicConfig() *quic.Config {
 		MaxIncomingStreams:    1 << 16,
 		MaxIncomingUniStreams: 1 << 16,
 
+		// This is required to work over wireguard on macOS
+		// https://github.com/tailscale/tailscale/issues/2633
+		// TODO: move to the x/net/quic implementation.
 		InitialPacketSize: 1200,
 	}
 }
