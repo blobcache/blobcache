@@ -1,15 +1,11 @@
 package blobcachecmd
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/netip"
 	"os"
-	"runtime"
 	"strings"
-	"syscall"
 
 	"blobcache.io/blobcache/src/bcipc"
 	"blobcache.io/blobcache/src/internal/blobcached"
@@ -157,19 +153,6 @@ var netParam = star.Optional[net.PacketConn]{
 			return nil, err
 		}
 		udpAddr := net.UDPAddrFromAddrPort(ap)
-		if runtime.GOOS == "darwin" {
-			log.Println("darwin detected, adding silly SO_REUSE options")
-			lc := net.ListenConfig{
-				Control: func(network, address string, c syscall.RawConn) error {
-					return c.Control(func(fd uintptr) {
-						syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-						syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
-					})
-				},
-			}
-			ctx := context.TODO()
-			return lc.ListenPacket(ctx, "udp4", udpAddr.String())
-		}
 		conn, err := net.ListenUDP("udp4", udpAddr)
 		if err != nil {
 			return nil, err
