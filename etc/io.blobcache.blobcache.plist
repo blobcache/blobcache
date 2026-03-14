@@ -9,7 +9,7 @@
     <array>
         <string>/bin/sh</string>
         <string>-c</string>
-        <string>/bin/rm -f __TMPDIR__/blobcache.sock; exec /usr/local/bin/blobcache daemon --state __HOME__/.local/share/blobcache --serve-ipc __TMPDIR__/blobcache.sock --net 0.0.0.0:6025</string>
+        <string>/bin/rm -f __TMPDIR__/blobcache.sock; exec /usr/local/bin/blobcache daemon --config __HOME__/.config/blobcache --state __HOME__/.local/share/blobcache --serve-ipc __TMPDIR__/blobcache.sock --net 0.0.0.0:6025</string>
     </array>
 
     <key>RunAtLoad</key>

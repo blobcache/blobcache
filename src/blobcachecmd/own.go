@@ -24,7 +24,7 @@ var ownCmd = star.Command{
 		stateDir := stateDirParam.Load(c)
 		peerID := peerParam.Load(c)
 
-		d := blobcached.Daemon{StateDir: stateDir}
+		d := blobcached.Daemon{StateDir: stateDir, ConfigDir: stateDir}
 
 		// Ensure policy files exist with defaults
 		if err := d.EnsurePolicyFiles(); err != nil {

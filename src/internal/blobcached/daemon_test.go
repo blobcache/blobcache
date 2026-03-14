@@ -25,7 +25,7 @@ func TestRun(t *testing.T) {
 	sockPath := filepath.Join(dir.Name(), "test.sock")
 	lis, err := bcipc.Listen(sockPath)
 	require.NoError(t, err)
-	d := Daemon{StateDir: dir}
+	d := Daemon{StateDir: dir, ConfigDir: dir}
 	require.NoError(t, d.EnsurePolicyFiles())
 	go func() {
 		err := d.Run(ctx, testutil.PacketConn(t), nil, []*net.UnixListener{lis})
