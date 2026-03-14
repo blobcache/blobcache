@@ -144,7 +144,7 @@ func (n *Node) addConn(bgCtx context.Context, ep blobcache.Endpoint, x *quic.Con
 	defer n.mu.Unlock()
 	if h == nil {
 		if prevConn := n.outbound[ep]; prevConn != nil {
-			n.inbound[ep] = x
+			n.outbound[ep] = x
 			prevConn.CloseWithError(0, "outbound connection replaced")
 		}
 	} else {
