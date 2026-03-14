@@ -7,14 +7,9 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/blobcache</string>
-        <string>daemon</string>
-        <string>--state</string>
-        <string>__HOME__/.local/share/blobcache</string>
-        <string>--serve-ipc</string>
-        <string>__TMPDIR__/blobcache.sock</string>
-        <string>--net</string>
-        <string>0.0.0.0:6025</string>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>/bin/rm -f __TMPDIR__/blobcache.sock; exec /usr/local/bin/blobcache daemon --state __HOME__/.local/share/blobcache --serve-ipc __TMPDIR__/blobcache.sock --net 0.0.0.0:6025</string>
     </array>
 
     <key>RunAtLoad</key>
