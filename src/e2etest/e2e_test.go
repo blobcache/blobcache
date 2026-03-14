@@ -34,7 +34,7 @@ func TestDaemonAuth(t *testing.T) {
 	ctx := testutil.Context(t)
 	ctx, cf := context.WithCancel(ctx)
 	stateDir, err := os.OpenRoot(t.TempDir())
-	d := blobcached.Daemon{StateDir: stateDir}
+	d := blobcached.Daemon{StateDir: stateDir, ConfigDir: stateDir}
 	clientPub, clientPriv, err := inet256.GenerateKey()
 	require.NoError(t, err)
 	id := inet256.NewID(clientPub)

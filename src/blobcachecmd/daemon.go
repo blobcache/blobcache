@@ -17,13 +17,19 @@ var daemonCmd = star.Command{
 		Short: "runs the blobcache daemon",
 	},
 	Flags: map[string]star.Flag{
-		"state":      stateDirParam,
+		"state":  stateDirParam,
+		"config": configDirParam,
+
 		"serve-http": serveHTTPParam,
 		"serve-ipc":  serveIPCParam,
 		"net":        netParam,
 	},
 	F: func(c star.Context) error {
 		stateDir := stateDirParam.Load(c)
+		configDir, ok := configDirParam.LoadOpt(c)
+		if !ok {
+			configDir = stateDir
+		}
 		var lis []net.Listener
 		if serveHttp, ok := serveHTTPParam.LoadOpt(c); ok {
 			lis = append(lis, serveHttp)
@@ -33,7 +39,7 @@ var daemonCmd = star.Command{
 			unixLis = append(unixLis, serveUnix)
 		}
 		pc, _ := netParam.LoadOpt(c)
-		d := blobcached.Daemon{StateDir: stateDir}
+		d := blobcached.Daemon{StateDir: stateDir, ConfigDir: configDir}
 		return d.Run(c, pc, lis, unixLis)
 	},
 }
@@ -67,7 +73,7 @@ var daemonEphemeralCmd = star.Command{
 			unixLis = append(unixLis, serveUnix)
 		}
 		pc, _ := netParam.LoadOpt(c)
-		d := blobcached.Daemon{StateDir: stateDir}
+		d := blobcached.Daemon{StateDir: stateDir, ConfigDir: stateDir}
 
 		return d.Run(c, pc, lis, unixLis)
 	},
@@ -84,7 +90,8 @@ var daemonValidateCmd = star.Command{
 		stateDir := stateDirParam.Load(c)
 		c.Printf("checking configuration in %s\n", stateDir.Name())
 		d := blobcached.Daemon{
-			StateDir: stateDir,
+			StateDir:  stateDir,
+			ConfigDir: stateDir,
 		}
 		if _, err := d.GetPolicy(); err != nil {
 			return err
@@ -110,7 +117,8 @@ var showAccessCmd = star.Command{
 		peerID := peerParam.Load(c)
 		target := oidParam.Load(c)
 		d := blobcached.Daemon{
-			StateDir: stateDir,
+			StateDir:  stateDir,
+			ConfigDir: stateDir,
 		}
 		pol, err := d.GetPolicy()
 		if err != nil {
@@ -125,8 +133,15 @@ var showAccessCmd = star.Command{
 }
 
 var stateDirParam = star.Required[*os.Root]{
-	ID:    "state",
-	Parse: os.OpenRoot,
+	ID:       "state",
+	Parse:    os.OpenRoot,
+	ShortDoc: "the directory to used to store node data",
+}
+
+var configDirParam = star.Optional[*os.Root]{
+	ID:       "config",
+	Parse:    os.OpenRoot,
+	ShortDoc: "the directory to store config file in, defaults to the state dir",
 }
 
 var serveHTTPParam = star.Optional[net.Listener]{

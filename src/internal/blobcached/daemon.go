@@ -118,8 +118,11 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, httpOn []net.Listen
 }
 
 // Daemon manages the state and configuration for running a Blobache node.
+// StateDir and ConfigDir are allowed to be the same directory.
+// Both must be set.
 type Daemon struct {
-	StateDir *os.Root
+	StateDir  *os.Root
+	ConfigDir *os.Root
 }
 
 // EnsurePolicyFiles ensures that the policy files exist.
@@ -136,7 +139,7 @@ func (d *Daemon) EnsurePolicyFiles() error {
 	}
 	for p, content := range files {
 		if err := func() error {
-			f, err := d.StateDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+			f, err := d.ConfigDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 			if err != nil {
 				if os.IsExist(err) {
 					return nil
@@ -158,7 +161,7 @@ func (d *Daemon) EnsurePolicyFiles() error {
 // EnsurePrivateKey generates a private key if it doesn't exist, and returns it.
 func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
 	p := "private_key.inet256"
-	privKey, err := LoadPrivateKey(d.StateDir, p)
+	privKey, err := LoadPrivateKey(d.ConfigDir, p)
 	if !os.IsNotExist(err) {
 		return privKey, err
 	}
@@ -166,14 +169,14 @@ func (d *Daemon) EnsurePrivateKey() (inet256.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := SavePrivateKey(d.StateDir, p, privKey); err != nil {
+	if err := SavePrivateKey(d.ConfigDir, p, privKey); err != nil {
 		return nil, err
 	}
 	return privKey, nil
 }
 
 func (d *Daemon) GetPolicy() (*Policy, error) {
-	return LoadPolicy(d.StateDir)
+	return LoadPolicy(d.ConfigDir)
 }
 
 func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {
@@ -186,7 +189,7 @@ func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {
 
 // AddPeerToAdmin adds a peer to the "admin" identity group in the IDENTITIES file.
 func (d *Daemon) AddPeerToAdmin(peerID blobcache.PeerID) error {
-	f, err := d.StateDir.OpenFile(IdentitiesFilename, os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := d.ConfigDir.OpenFile(IdentitiesFilename, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", IdentitiesFilename, err)
 	}
@@ -203,18 +206,18 @@ func (d *Daemon) AddPeerToAdmin(peerID blobcache.PeerID) error {
 
 func (d *Daemon) EnsureLocator() (*PeerLocator, error) {
 	p := peerLocPath
-	loc, err := LoadLocator(d.StateDir, p)
+	loc, err := LoadLocator(d.ConfigDir, p)
 	if !os.IsNotExist(err) {
 		return loc, err
 	}
-	f, err := d.StateDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+	f, err := d.ConfigDir.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 	if err != nil {
 		return nil, err
 	}
 	if err := f.Close(); err != nil {
 		return nil, err
 	}
-	return LoadLocator(d.StateDir, p)
+	return LoadLocator(d.ConfigDir, p)
 }
 
 func LoadPrivateKey(dir *os.Root, p string) (inet256.PrivateKey, error) {
@@ -281,7 +284,7 @@ func BGTestDaemon(t testing.TB) (*Daemon, string) {
 		}
 	})
 
-	d := &Daemon{StateDir: stateDir}
+	d := &Daemon{StateDir: stateDir, ConfigDir: stateDir}
 	bgTestDaemon(t, d, pc, []net.Listener{lis}, nil)
 	apiURL := lis.Addr().Network() + "://" + lis.Addr().String()
 	return d, apiURL

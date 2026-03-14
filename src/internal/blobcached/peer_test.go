@@ -27,7 +27,7 @@ func TestPeerLocation(t *testing.T) {
 	for i := range sites {
 		dir, err := os.OpenRoot(t.TempDir())
 		require.NoError(t, err)
-		d := &Daemon{StateDir: dir}
+		d := &Daemon{StateDir: dir, ConfigDir: dir}
 		require.NoError(t, d.EnsurePolicyFiles())
 		peerID, err := d.GetPeerID()
 		require.NoError(t, err)
