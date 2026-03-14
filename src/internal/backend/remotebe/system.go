@@ -51,6 +51,7 @@ func (sys *System) VolumeUp(ctx context.Context, p Params) (*Volume, error) {
 		if err != nil {
 			return nil, err
 		}
+		logctx.Info(ctx, "successfully opened remote volume", zap.Stringer("endpoint", p.Endpoint), zap.Stringer("volume", p.Volume))
 		vol = NewVolume(sys, node, p.Endpoint, *volh, info)
 		sys.mu.Lock()
 		sys.remote[p] = vol
