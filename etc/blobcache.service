@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 ExecStartPre=-/bin/rm -f %t/blobcache.sock
 ExecStartPre=/bin/mkdir -p %h/.local/share/blobcache
+ExecStartPre=/bin/mkdir -p %h/.config/blobcache
 ExecStart=/usr/bin/blobcache daemon --config %h/.config/blobcache --state %h/.local/share/blobcache --serve-ipc %t/blobcache.sock --net 0.0.0.0:6025
 ExecStopPost=-/bin/rm -f %t/blobcache.sock
 Restart=on-failure
