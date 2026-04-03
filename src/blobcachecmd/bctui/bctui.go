@@ -249,7 +249,6 @@ func (m *Model) dispatchAction(action Action) {
 		return
 	}
 	active.DoAction(m.actionCtx(), action)
-	m.refreshPreview(context.Background())
 }
 
 func (m *Model) enterSelection() {
@@ -463,8 +462,29 @@ func (m *Model) actionCtx() ActionCtx {
 		ClipboardWrite: m.writeClipboard,
 		ClipboardRead:  func() string { return "" },
 		GoTo:           m.goToLink,
+		SetPreview:     m.setPreviewLink,
 		Exit:           m.exitSelection,
 	}
+}
+
+func (m *Model) setPreviewLink(lt blobcache.LinkToken) {
+	focus := m.focusPane()
+	if focus == nil {
+		m.setPreviewPane(m.newMessagePane("(no preview)"))
+		return
+	}
+	if lt == (blobcache.LinkToken{}) {
+		m.setPreviewPane(m.newMessagePane("(no preview)"))
+		return
+	}
+	ctx := context.Background()
+	h, err := m.svc.OpenFrom(ctx, focus.handle, lt, blobcache.Action_ALL)
+	if err != nil {
+		m.setPreviewPane(m.newMessagePane("preview error", err.Error()))
+		m.reportError(err)
+		return
+	}
+	m.setPreviewPane(m.loadPane(ctx, *h, "preview error"))
 }
 
 func (m *Model) goToLink(name string, lt blobcache.LinkToken) {
@@ -485,7 +505,6 @@ func (m *Model) handleShortcut(key string) bool {
 			continue
 		}
 		active.DoAction(m.actionCtx(), binding.Action)
-		m.refreshPreview(context.Background())
 		return true
 	}
 	return false

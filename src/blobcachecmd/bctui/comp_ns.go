@@ -65,10 +65,12 @@ func (c *NSComp) DoAction(actx ActionCtx, action Action) {
 	switch action {
 	case a_Up:
 		c.moveCursor(-1)
+		c.setPreview(actx)
 	case a_Left:
 		actx.Exit()
 	case a_Down:
 		c.moveCursor(1)
+		c.setPreview(actx)
 	case a_Right:
 		ent, ok := c.selectedEntry()
 		if !ok {
@@ -89,6 +91,7 @@ func (c *NSComp) DoAction(actx ActionCtx, action Action) {
 		c.inSearch = true
 		c.filter = ""
 		c.rebuildFilter()
+		c.setPreview(actx)
 		if actx.SetMode != nil {
 			actx.SetMode(mode_INSERT)
 		}
@@ -96,6 +99,7 @@ func (c *NSComp) DoAction(actx ActionCtx, action Action) {
 		c.inSearch = false
 		c.filter = ""
 		c.rebuildFilter()
+		c.setPreview(actx)
 	}
 }
 
@@ -118,6 +122,15 @@ func (c *NSComp) InsertKey(msg tea.KeyPressMsg) {
 			c.rebuildFilter()
 		}
 	}
+}
+
+func (c *NSComp) setPreview(actx ActionCtx) {
+	ent, ok := c.selectedEntry()
+	if !ok {
+		actx.SetPreview(blobcache.LinkToken{})
+		return
+	}
+	actx.SetPreview(ent.LinkToken())
 }
 
 func (c *NSComp) SetState(ctx context.Context, tx *bcsdk.Tx) error {
@@ -151,7 +164,7 @@ func (c *NSComp) moveCursor(delta int) {
 	}
 }
 
-func (c *NSComp) openSelected(ctx context.Context) (string, blobcache.Handle, bool, error) {
+func (c *NSComp) OpenSelected(ctx context.Context) (string, blobcache.Handle, bool, error) {
 	ent, ok := c.selectedEntry()
 	if !ok {
 		return "", blobcache.Handle{}, false, nil

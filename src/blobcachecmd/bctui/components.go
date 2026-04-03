@@ -59,7 +59,7 @@ type Binding struct {
 }
 
 type ActionCtx struct {
-	// Invariant: GoTo and Exit are always non-nil.
+	// Invariant: GoTo, SetPreview, and Exit are always non-nil.
 	// Mode is the current mode that the UI is in.
 	Mode mode
 	// SetMode can be used to change the UI mode.
@@ -73,6 +73,8 @@ type ActionCtx struct {
 
 	// GoTo navigates to another Volume linked from the current one.
 	GoTo func(name string, lt blobcache.LinkToken)
+	// SetPreview sets the preview target for the focused component.
+	SetPreview func(blobcache.LinkToken)
 	// Exit tells the UI to close this component.
 	Exit func()
 }
