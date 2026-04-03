@@ -9,7 +9,6 @@ import (
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/schema/bcns"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -48,7 +47,10 @@ type Model struct {
 	// mode is the UI mode
 	mode mode
 
-	parentPane, focusPane, previewPane *pane
+	// chain holds the chain of volumes from the initial fiat access, all the
+	// way to whatever is being previewed.
+	// Invariant: len(chain) >= 2, where chain[len-2] is focus and chain[len-1] is preview.
+	chain []*volume
 
 	statusLine string
 	errorText  string
@@ -128,8 +130,8 @@ func (m *Model) View() tea.View {
 	}
 
 	topText := ""
-	if m.focusPane != nil {
-		topText = m.focusPane.fqoid.String()
+	if focus := m.focusPane(); focus != nil {
+		topText = focus.fqoid.String()
 	}
 	top := m.styles.topBar.Width(width).Render(centerText(topText, width-2))
 
@@ -141,52 +143,34 @@ func (m *Model) View() tea.View {
 	if m.mode == mode_ERROR && m.errorText != "" {
 		body = m.renderErrorModal(width, bodyHeight)
 	} else {
-		type displayPane struct {
-			p       *pane
-			focused bool
-		}
-		panes := make([]displayPane, 0, 3)
-		if m.parentPane != nil {
-			panes = append(panes, displayPane{p: m.parentPane})
-		}
-		if m.focusPane != nil {
-			panes = append(panes, displayPane{p: m.focusPane, focused: true})
-		}
-		if m.previewPane != nil {
-			panes = append(panes, displayPane{p: m.previewPane})
+		visible := m.visiblePanes()
+		sepWidth := len(visible) - 1
+		contentWidth := width - sepWidth
+		if contentWidth < len(visible) {
+			contentWidth = len(visible)
 		}
 
-		if len(panes) == 0 {
-			body = m.newMessagePane("(no panes)").View(m.styles, width, bodyHeight, false)
+		colWidths := make([]int, len(visible))
+		if len(visible) == 3 {
+			colWidths[0] = contentWidth / 4
+			colWidths[1] = contentWidth / 2
+			colWidths[2] = contentWidth - colWidths[0] - colWidths[1]
 		} else {
-			sepWidth := len(panes) - 1
-			contentWidth := width - sepWidth
-			if contentWidth < len(panes) {
-				contentWidth = len(panes)
-			}
-
-			colWidths := make([]int, len(panes))
-			if len(panes) == 3 {
-				colWidths[0] = contentWidth / 4
-				colWidths[1] = contentWidth / 2
-				colWidths[2] = contentWidth - colWidths[0] - colWidths[1]
-			} else {
-				base := contentWidth / len(panes)
-				extra := contentWidth % len(panes)
-				for i := range panes {
-					colWidths[i] = base
-					if i < extra {
-						colWidths[i]++
-					}
+			base := contentWidth / len(visible)
+			extra := contentWidth % len(visible)
+			for i := range visible {
+				colWidths[i] = base
+				if i < extra {
+					colWidths[i]++
 				}
 			}
-
-			paneBlocks := make([]string, len(panes))
-			for i := range panes {
-				paneBlocks[i] = panes[i].p.View(m.styles, colWidths[i], bodyHeight, panes[i].focused)
-			}
-			body = lipgloss.JoinHorizontal(lipgloss.Top, paneBlocks...)
 		}
+
+		paneBlocks := make([]string, len(visible))
+		for i := range visible {
+			paneBlocks[i] = visible[i].View(m.styles, colWidths[i], bodyHeight, i == len(visible)-2)
+		}
+		body = lipgloss.JoinHorizontal(lipgloss.Top, paneBlocks...)
 	}
 
 	status := m.statusLine
@@ -290,8 +274,9 @@ func (m *Model) enterSelection() {
 		m.statusLine = "selection cannot be opened"
 		return
 	}
-	if next == (blobcache.Handle{}) && name != "" && m.focusPane != nil {
-		next, err = openNamespaceEntryByName(context.Background(), m.svc, m.focusPane.handle, name)
+	focus := m.focusPane()
+	if next == (blobcache.Handle{}) && name != "" && focus != nil {
+		next, err = openNamespaceEntryByName(context.Background(), m.svc, focus.handle, name)
 		if err != nil {
 			m.reportError(err)
 			return
@@ -319,35 +304,50 @@ func (m *Model) refreshAll(ctx context.Context) error {
 		return err
 	}
 	m.root = root
-	m.parentPane = nil
-	m.focusPane = m.loadPane(ctx, root, "failed to load root")
-
-	if len(m.pathStack) > 0 {
-		current, parent, depth, err := m.resolveCurrent(ctx, root)
-		if err != nil {
-			m.reportError(err)
+	handles := []blobcache.Handle{root}
+	current := root
+	depth := 0
+	for i, name := range m.pathStack {
+		next, e := openNamespaceEntryByName(ctx, m.svc, current, name)
+		if e != nil {
+			m.reportError(e)
+			depth = i
+			break
 		}
-		if depth < len(m.pathStack) {
-			m.pathStack = append([]string(nil), m.pathStack[:depth]...)
-		}
-
-		if len(m.pathStack) > 0 {
-			m.parentPane = m.loadPane(ctx, parent, "failed to load parent")
-			m.focusPane = m.loadPane(ctx, current, "failed to load current")
-			if m.parentPane != nil {
-				if x, ok := m.parentPane.component.(interface{ SelectName(string) bool }); ok {
-					x.SelectName(m.pathStack[len(m.pathStack)-1])
-				}
-			}
-		}
+		handles = append(handles, next)
+		current = next
+		depth = i + 1
+	}
+	if depth < len(m.pathStack) {
+		m.pathStack = append([]string(nil), m.pathStack[:depth]...)
 	}
 
+	lineage := make([]*volume, 0, len(handles))
+	for i, h := range handles {
+		errPrefix := "failed to load current"
+		if i == 0 {
+			errPrefix = "failed to load root"
+		} else if i < len(handles)-1 {
+			errPrefix = "failed to load ancestor"
+		}
+		lineage = append(lineage, m.loadPane(ctx, h, errPrefix))
+	}
+	for i := 0; i < len(lineage)-1 && i < len(m.pathStack); i++ {
+		if x, ok := lineage[i].component.(interface{ SelectName(string) bool }); ok {
+			x.SelectName(m.pathStack[i])
+		}
+	}
+	if len(lineage) == 0 {
+		lineage = append(lineage, m.newMessagePane("(no focus pane)"))
+	}
+	m.chain = append(lineage, m.newMessagePane("(no preview)"))
+
 	m.refreshPreview(ctx)
-	m.setReadStatus(m.focusPane)
+	m.setReadStatus(m.focusPane())
 	return nil
 }
 
-func (m *Model) setReadStatus(p *pane) {
+func (m *Model) setReadStatus(p *volume) {
 	if p == nil {
 		return
 	}
@@ -375,46 +375,83 @@ func (m *Model) resolveCurrent(ctx context.Context, root blobcache.Handle) (blob
 func (m *Model) refreshPreview(ctx context.Context) {
 	active := m.activeComponent()
 	if active == nil {
-		m.previewPane = m.newMessagePane("(no active component)")
+		m.setPreviewPane(m.newMessagePane("(no active component)"))
 		return
 	}
 	openable, ok := active.(interface {
 		OpenSelected(context.Context) (string, blobcache.Handle, bool, error)
 	})
 	if !ok {
-		m.previewPane = m.newMessagePane("(no preview)")
+		m.setPreviewPane(m.newMessagePane("(no preview)"))
 		return
 	}
 	name, next, ok, err := openable.OpenSelected(ctx)
 	if err != nil {
-		m.previewPane = m.newMessagePane("preview error", err.Error())
+		m.setPreviewPane(m.newMessagePane("preview error", err.Error()))
 		m.reportError(err)
 		return
 	}
 	if !ok {
-		m.previewPane = m.newMessagePane("(no preview)")
+		m.setPreviewPane(m.newMessagePane("(no preview)"))
 		return
 	}
-	if next == (blobcache.Handle{}) && m.focusPane != nil {
+	focus := m.focusPane()
+	if next == (blobcache.Handle{}) && focus != nil {
 		if name == "" {
-			m.previewPane = m.newMessagePane("(no preview)")
+			m.setPreviewPane(m.newMessagePane("(no preview)"))
 			return
 		}
-		next, err = openNamespaceEntryByName(ctx, m.svc, m.focusPane.handle, name)
+		next, err = openNamespaceEntryByName(ctx, m.svc, focus.handle, name)
 		if err != nil {
-			m.previewPane = m.newMessagePane("preview error", err.Error())
+			m.setPreviewPane(m.newMessagePane("preview error", err.Error()))
 			m.reportError(err)
 			return
 		}
 	}
-	m.previewPane = m.loadPane(ctx, next, "preview error")
+	m.setPreviewPane(m.loadPane(ctx, next, "preview error"))
+}
+
+func (m *Model) focusPane() *volume {
+	if len(m.chain) < 2 {
+		return nil
+	}
+	return m.chain[len(m.chain)-2]
+}
+
+func (m *Model) visiblePanes() []*volume {
+	if len(m.chain) == 0 {
+		return []*volume{m.newMessagePane("(no focus pane)"), m.newMessagePane("(no preview)")}
+	}
+	if len(m.chain) == 1 {
+		return []*volume{m.chain[0], m.newMessagePane("(no preview)")}
+	}
+	if len(m.chain) <= 3 {
+		return m.chain
+	}
+	return m.chain[len(m.chain)-3:]
+}
+
+func (m *Model) setPreviewPane(p *volume) {
+	if p == nil {
+		p = m.newMessagePane("(no preview)")
+	}
+	if len(m.chain) == 0 {
+		m.chain = []*volume{m.newMessagePane("(no focus pane)"), p}
+		return
+	}
+	if len(m.chain) == 1 {
+		m.chain = append(m.chain, p)
+		return
+	}
+	m.chain[len(m.chain)-1] = p
 }
 
 func (m *Model) activeComponent() Component {
-	if m.focusPane == nil {
+	focus := m.focusPane()
+	if focus == nil {
 		return nil
 	}
-	return m.focusPane.component
+	return focus.component
 }
 
 func (m *Model) actionCtx() ActionCtx {
@@ -430,37 +467,12 @@ func (m *Model) actionCtx() ActionCtx {
 	}
 }
 
-func (m *Model) goToLink(lt blobcache.LinkToken) {
-	if m.focusPane == nil {
-		return
-	}
+func (m *Model) goToLink(name string, lt blobcache.LinkToken) {
 	ctx := context.Background()
-	name, err := m.nameForLinkToken(ctx, m.focusPane.handle, lt)
-	if err != nil {
-		m.reportError(err)
-		return
-	}
 	m.pathStack = append(m.pathStack, name)
 	if err := m.refreshAll(ctx); err != nil {
 		m.reportError(err)
 	}
-}
-
-func (m *Model) nameForLinkToken(ctx context.Context, h blobcache.Handle, lt blobcache.LinkToken) (string, error) {
-	nsc, err := bcns.ClientForVolume(ctx, m.svc, h)
-	if err != nil {
-		return "", err
-	}
-	ents, err := nsc.List(ctx, h)
-	if err != nil {
-		return "", err
-	}
-	for _, ent := range ents {
-		if ent.LinkToken() == lt {
-			return ent.Name, nil
-		}
-	}
-	return "", fmt.Errorf("namespace entry not found for link token %s", lt.String())
 }
 
 func (m *Model) handleShortcut(key string) bool {
@@ -479,11 +491,11 @@ func (m *Model) handleShortcut(key string) bool {
 	return false
 }
 
-func (m *Model) newMessagePane(lines ...string) *pane {
-	return &pane{component: newMessageComponent("", lines...)}
+func (m *Model) newMessagePane(lines ...string) *volume {
+	return &volume{component: newMessageComponent("", lines...)}
 }
 
-func (m *Model) loadPane(ctx context.Context, h blobcache.Handle, errPrefix string) *pane {
+func (m *Model) loadPane(ctx context.Context, h blobcache.Handle, errPrefix string) *volume {
 	vinfo, err := m.svc.InspectVolume(ctx, h)
 	schemaName := blobcache.Schema_NONE
 	if err == nil {
@@ -523,7 +535,7 @@ func (m *Model) loadPane(ctx context.Context, h blobcache.Handle, errPrefix stri
 		oid = fqoid.OID
 	}
 
-	return &pane{
+	return &volume{
 		oid:        oid,
 		fqoid:      fqoid,
 		handle:     h,
@@ -809,8 +821,8 @@ func centerText(s string, width int) string {
 	return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
 }
 
-// pane holds the state for a pane, and can be rendered using view.
-type pane struct {
+// volume holds the state for a volume, and can be rendered using view.
+type volume struct {
 	oid        blobcache.OID
 	fqoid      blobcache.FQOID
 	handle     blobcache.Handle
@@ -818,7 +830,7 @@ type pane struct {
 	component  Component
 }
 
-func (p *pane) View(styles uiStyles, width, height int, focused bool) string {
+func (p *volume) View(styles uiStyles, width, height int, focused bool) string {
 	if width < 1 {
 		width = 1
 	}

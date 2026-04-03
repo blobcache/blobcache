@@ -74,7 +74,7 @@ func (c *NSComp) DoAction(actx ActionCtx, action Action) {
 		if !ok {
 			return
 		}
-		actx.GoTo(ent.LinkToken())
+		actx.GoTo(ent.Name, ent.LinkToken())
 	case a_Copy:
 		ent, ok := c.selectedEntry()
 		if !ok {

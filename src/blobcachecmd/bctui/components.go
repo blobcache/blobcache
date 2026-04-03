@@ -71,9 +71,8 @@ type ActionCtx struct {
 	// ClipboardRead reads from the system clipboard.
 	ClipboardRead func() string
 
-	// GoTo returns a link token which can be used along with the current volume handle
-	// to open up another Volume.
-	GoTo func(blobcache.LinkToken)
+	// GoTo navigates to another Volume linked from the current one.
+	GoTo func(name string, lt blobcache.LinkToken)
 	// Exit tells the UI to close this component.
 	Exit func()
 }
