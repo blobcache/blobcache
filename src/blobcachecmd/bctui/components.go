@@ -2,6 +2,7 @@ package bctui
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +34,10 @@ func loadComponent(ctx context.Context, svc blobcache.Service, h blobcache.Handl
 		return nil, err
 	}
 
+	if vinfo.Schema.Name == "" {
+		return loadNoneComponent(ctx, svc, h, vinfo.Schema.Name)
+	}
+
 	if vinfo.Schema.Name == mlog.SchemaName {
 		return loadMerklelogComponent(ctx, svc, h, vinfo.Schema.Name)
 	}
@@ -49,6 +54,17 @@ func loadComponent(ctx context.Context, svc blobcache.Service, h blobcache.Handl
 		vinfo.Schema.Name,
 		fmt.Sprintf("unsupported schema %q (%s)", vinfo.Schema.Name, fqoid),
 	), nil
+}
+
+func loadNoneComponent(ctx context.Context, svc blobcache.Service, h blobcache.Handle, schemaName blobcache.SchemaName) (component, error) {
+	dump, err := bcsdk.View1(ctx, svc, h, func(_ bcsdk.RO, root []byte) (string, error) {
+		header := fmt.Sprintf("CELL DATA (%d bytes):", len(root))
+		return header + "\n" + strings.TrimSuffix(hex.Dump(root), "\n"), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return newMessageComponent(schemaName, strings.Split(dump, "\n")...), nil
 }
 
 func componentFQOID(ctx context.Context, svc blobcache.Service, h blobcache.Handle, vinfo *blobcache.VolumeInfo) string {

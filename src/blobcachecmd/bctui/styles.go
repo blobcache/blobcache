@@ -3,8 +3,6 @@ package bctui
 import "github.com/charmbracelet/lipgloss"
 
 type uiStyles struct {
-	title            lipgloss.Style
-	path             lipgloss.Style
 	topBar           lipgloss.Style
 	statusBar        lipgloss.Style
 	pane             lipgloss.Style
@@ -21,16 +19,6 @@ type uiStyles struct {
 
 func defaultStyles() uiStyles {
 	return uiStyles{
-		title: lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("230")).
-			Background(lipgloss.Color("62")).
-			Padding(0, 1),
-
-		path: lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("252")),
-
 		topBar: lipgloss.NewStyle().
 			Background(lipgloss.Color("236")).
 			Foreground(lipgloss.Color("252")).

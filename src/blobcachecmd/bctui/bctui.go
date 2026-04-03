@@ -128,7 +128,7 @@ func (m *Model) View() string {
 	}
 
 	topText := ""
-	if m.focusPane != nil && m.focusPane.fqoid != (blobcache.FQOID{}) {
+	if m.focusPane != nil {
 		topText = m.focusPane.fqoid.String()
 	}
 	top := m.styles.topBar.Width(width).Render(centerText(topText, width-2))
@@ -147,24 +147,23 @@ func (m *Model) View() string {
 	if m.currentMode() == mode_ERROR && m.errorText != "" {
 		body = m.renderErrorModal(width, bodyHeight)
 	} else {
-		panes := make([]*pane, 0, 3)
+		type displayPane struct {
+			p       *pane
+			focused bool
+		}
+		panes := make([]displayPane, 0, 3)
 		if m.parentPane != nil {
-			m.parentPane.focused = false
-			panes = append(panes, m.parentPane)
+			panes = append(panes, displayPane{p: m.parentPane})
 		}
 		if m.focusPane != nil {
-			m.focusPane.focused = true
-			panes = append(panes, m.focusPane)
+			panes = append(panes, displayPane{p: m.focusPane, focused: true})
 		}
 		if m.previewPane != nil {
-			m.previewPane.focused = false
-			panes = append(panes, m.previewPane)
+			panes = append(panes, displayPane{p: m.previewPane})
 		}
 
 		if len(panes) == 0 {
-			empty := &pane{styles: m.styles, component: newMessageComponent("", "(no panes)")}
-			empty.SetDims(width, bodyHeight)
-			body = empty.View()
+			body = m.newMessagePane("(no panes)").View(m.styles, width, bodyHeight, false)
 		} else {
 			sepWidth := len(panes) - 1
 			contentWidth := width - sepWidth
@@ -173,19 +172,24 @@ func (m *Model) View() string {
 			}
 
 			colWidths := make([]int, len(panes))
-			base := contentWidth / len(panes)
-			extra := contentWidth % len(panes)
-			for i := range panes {
-				colWidths[i] = base
-				if i < extra {
-					colWidths[i]++
+			if len(panes) == 3 {
+				colWidths[0] = contentWidth / 4
+				colWidths[1] = contentWidth / 2
+				colWidths[2] = contentWidth - colWidths[0] - colWidths[1]
+			} else {
+				base := contentWidth / len(panes)
+				extra := contentWidth % len(panes)
+				for i := range panes {
+					colWidths[i] = base
+					if i < extra {
+						colWidths[i]++
+					}
 				}
 			}
 
 			paneBlocks := make([]string, len(panes))
 			for i := range panes {
-				panes[i].SetDims(colWidths[i], bodyHeight)
-				paneBlocks[i] = panes[i].View()
+				paneBlocks[i] = panes[i].p.View(m.styles, colWidths[i], bodyHeight, panes[i].focused)
 			}
 			body = lipgloss.JoinHorizontal(lipgloss.Top, paneBlocks...)
 		}
@@ -198,7 +202,7 @@ func (m *Model) View() string {
 	}
 	modalLine := modalStyle.Width(width).Render(truncate(modal, width-2))
 
-	return lipgloss.JoinVertical(lipgloss.Left, top, statusLine, body, modalLine)
+	return lipgloss.JoinVertical(lipgloss.Left, top, body, modalLine, statusLine)
 }
 
 func (m *Model) updateLeaderMode(msg tea.KeyMsg) {
@@ -313,7 +317,7 @@ func (m *Model) refreshAll(ctx context.Context) error {
 	}
 	m.root = root
 	m.parentPane = nil
-	m.focusPane = m.loadPane(ctx, root, true, "failed to load root")
+	m.focusPane = m.loadPane(ctx, root, "failed to load root")
 
 	if len(m.pathStack) > 0 {
 		current, parent, depth, err := m.resolveCurrent(ctx, root)
@@ -325,8 +329,8 @@ func (m *Model) refreshAll(ctx context.Context) error {
 		}
 
 		if len(m.pathStack) > 0 {
-			m.parentPane = m.loadPane(ctx, parent, false, "failed to load parent")
-			m.focusPane = m.loadPane(ctx, current, true, "failed to load current")
+			m.parentPane = m.loadPane(ctx, parent, "failed to load parent")
+			m.focusPane = m.loadPane(ctx, current, "failed to load current")
 			if m.parentPane != nil {
 				if x, ok := m.parentPane.component.(interface{ SelectName(string) bool }); ok {
 					x.SelectName(m.pathStack[len(m.pathStack)-1])
@@ -362,32 +366,20 @@ func (m *Model) resolveCurrent(ctx context.Context, root blobcache.Handle) (blob
 func (m *Model) refreshPreview(ctx context.Context) {
 	active := m.activeComponent()
 	if active == nil {
-		m.previewPane = &pane{
-			styles:     m.styles,
-			component:  newMessageComponent("", "(no active component)"),
-			schemaName: "",
-		}
+		m.previewPane = m.newMessagePane("(no active component)")
 		return
 	}
 	_, next, ok, err := active.OpenSelected(ctx)
 	if err != nil {
-		m.previewPane = &pane{
-			styles:     m.styles,
-			component:  newMessageComponent("", "preview error", err.Error()),
-			schemaName: "",
-		}
+		m.previewPane = m.newMessagePane("preview error", err.Error())
 		m.reportError(err)
 		return
 	}
 	if !ok {
-		m.previewPane = &pane{
-			styles:     m.styles,
-			component:  newMessageComponent("", "(no preview)"),
-			schemaName: "",
-		}
+		m.previewPane = m.newMessagePane("(no preview)")
 		return
 	}
-	m.previewPane = m.loadPane(ctx, next, false, "preview error")
+	m.previewPane = m.loadPane(ctx, next, "preview error")
 }
 
 func (m *Model) activeComponent() component {
@@ -397,24 +389,29 @@ func (m *Model) activeComponent() component {
 	return m.focusPane.component
 }
 
-func (m *Model) loadPane(ctx context.Context, h blobcache.Handle, focused bool, errPrefix string) *pane {
+func (m *Model) newMessagePane(lines ...string) *pane {
+	return &pane{component: newMessageComponent("", lines...)}
+}
+
+func (m *Model) loadPane(ctx context.Context, h blobcache.Handle, errPrefix string) *pane {
 	comp, err := loadComponent(ctx, m.svc, h)
 	if err != nil {
 		comp = newMessageComponent("", errPrefix, err.Error())
 	}
 
 	fqoid, err := resolveFQOID(ctx, m.svc, h)
+	oid := blobcache.OID{}
 	if err != nil {
 		fqoid = blobcache.FQOID{}
+		oid = resolveVolumeOID(ctx, m.svc, h)
+	} else {
+		oid = fqoid.OID
 	}
 
 	return &pane{
-		h:          h,
-		fqoid:      fqoid,
-		schemaName: componentSchemaName(comp),
-		component:  comp,
-		focused:    focused,
-		styles:     m.styles,
+		oid:       oid,
+		fqoid:     fqoid,
+		component: comp,
 	}
 }
 
@@ -435,17 +432,6 @@ func truncate(s string, width int) string {
 		s = s[:len(s)-1]
 	}
 	return s + "..."
-}
-
-func paneTitle(oid blobcache.OID, schemaName blobcache.SchemaName, width int) string {
-	return truncateMiddle(oid.String(), width)
-}
-
-func componentSchemaName(c component) blobcache.SchemaName {
-	if c == nil {
-		return ""
-	}
-	return c.SchemaName()
 }
 
 func truncateMiddle(s string, width int) string {
@@ -637,25 +623,12 @@ func centerText(s string, width int) string {
 
 // pane holds the state for a pane, and can be rendered using view.
 type pane struct {
-	// h is the handle to the volume
-	h          blobcache.Handle
-	fqoid      blobcache.FQOID
-	schemaName blobcache.SchemaName
-	component  component
-	focused    bool
-	styles     uiStyles
-	width      int
-	height     int
+	oid       blobcache.OID
+	fqoid     blobcache.FQOID
+	component component
 }
 
-func (p *pane) SetDims(w, h int) {
-	p.width = w
-	p.height = h
-}
-
-func (p *pane) View() string {
-	width := p.width
-	height := p.height
+func (p *pane) View(styles uiStyles, width, height int, focused bool) string {
 	if width < 1 {
 		width = 1
 	}
@@ -677,17 +650,17 @@ func (p *pane) View() string {
 
 	var rows []string
 	if p.component != nil {
-		rows = p.component.RenderRows(innerWidth, bodyHeight, p.focused)
+		rows = p.component.RenderRows(innerWidth, bodyHeight, focused)
 	}
 	body := strings.Join(rows, "\n")
 
-	headerStyle := p.styles.paneHeader
-	paneStyle := p.styles.pane
-	if p.focused {
-		headerStyle = p.styles.paneHeaderActive
-		paneStyle = p.styles.paneActive
+	headerStyle := styles.paneHeader
+	paneStyle := styles.pane
+	if focused {
+		headerStyle = styles.paneHeaderActive
+		paneStyle = styles.paneActive
 	}
-	title := paneTitle(p.fqoid.OID, p.schemaName, innerWidth)
+	title := truncateMiddle(p.oid.String(), innerWidth)
 	header := headerStyle.Width(innerWidth).Render(title)
 	content := lipgloss.JoinVertical(lipgloss.Left, header, body)
 	return paneStyle.Width(width).Height(height).Render(content)
