@@ -9,6 +9,7 @@ import (
 
 	bcclient "blobcache.io/blobcache/client/go"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/blobcachecmd/bctui"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
@@ -40,6 +41,7 @@ var rootCmd = star.NewDir(
 		"daemon-validate":  daemonValidateCmd,
 		"show-access":      showAccessCmd,
 		"own":              ownCmd,
+		"browse":           browseCmd,
 
 		// volumes
 		"mkvol":        mkVolCmd,
@@ -83,6 +85,30 @@ var endpointCmd = star.Command{
 		}
 		c.Printf("%s\n", ep.String())
 		return nil
+	},
+}
+
+var browseCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "opens a TUI for browsing volumes",
+	},
+	Flags: map[string]star.Flag{
+		"nsr": nsRoot,
+	},
+	F: func(c star.Context) error {
+		ctx := c.Context
+		svc, err := openService(c)
+		if err != nil {
+			return err
+		}
+		nsrExpr := getNSRoot(c)
+		nsrh, err := nsrExpr.Open(ctx, svc)
+		if err != nil {
+			return err
+		}
+		prog := bctui.New(svc, *nsrh)
+		_, err = prog.Run()
+		return err
 	},
 }
 
