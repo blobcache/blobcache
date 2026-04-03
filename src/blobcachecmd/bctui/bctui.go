@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -32,8 +33,9 @@ const (
 
 // Model contains all the application state
 type Model struct {
-	svc  blobcache.Service
-	root blobcache.Handle
+	svc        blobcache.Service
+	root       blobcache.Handle
+	components map[blobcache.SchemaName]Constructor
 
 	width  int
 	height int
@@ -55,9 +57,10 @@ type Model struct {
 
 func New(svc blobcache.Service, root blobcache.Handle) *tea.Program {
 	return tea.NewProgram(&Model{
-		svc:    svc,
-		root:   root,
-		styles: defaultStyles(),
+		svc:        svc,
+		root:       root,
+		components: defaultConstructors(),
+		styles:     defaultStyles(),
 	})
 }
 
@@ -289,7 +292,14 @@ func (m *Model) enterSelection() {
 		m.statusLine = "no active component"
 		return
 	}
-	name, _, ok, err := active.OpenSelected(context.Background())
+	openable, ok := active.(interface {
+		OpenSelected(context.Context) (string, blobcache.Handle, bool, error)
+	})
+	if !ok {
+		m.statusLine = "selection cannot be opened"
+		return
+	}
+	name, next, ok, err := openable.OpenSelected(context.Background())
 	if err != nil {
 		m.reportError(err)
 		return
@@ -297,6 +307,13 @@ func (m *Model) enterSelection() {
 	if !ok {
 		m.statusLine = "selection cannot be opened"
 		return
+	}
+	if next == (blobcache.Handle{}) && name != "" && m.focusPane != nil {
+		next, err = openNamespaceEntryByName(context.Background(), m.svc, m.focusPane.handle, name)
+		if err != nil {
+			m.reportError(err)
+			return
+		}
 	}
 	m.pathStack = append(m.pathStack, name)
 	if err := m.refreshAll(context.Background()); err != nil {
@@ -358,7 +375,7 @@ func (m *Model) setReadStatus(p *pane) {
 	if p == nil {
 		return
 	}
-	schema := p.schemaName()
+	schema := p.schemaName
 	if schema == "" {
 		schema = "(none)"
 	}
@@ -385,7 +402,14 @@ func (m *Model) refreshPreview(ctx context.Context) {
 		m.previewPane = m.newMessagePane("(no active component)")
 		return
 	}
-	_, next, ok, err := active.OpenSelected(ctx)
+	openable, ok := active.(interface {
+		OpenSelected(context.Context) (string, blobcache.Handle, bool, error)
+	})
+	if !ok {
+		m.previewPane = m.newMessagePane("(no preview)")
+		return
+	}
+	name, next, ok, err := openable.OpenSelected(ctx)
 	if err != nil {
 		m.previewPane = m.newMessagePane("preview error", err.Error())
 		m.reportError(err)
@@ -395,10 +419,22 @@ func (m *Model) refreshPreview(ctx context.Context) {
 		m.previewPane = m.newMessagePane("(no preview)")
 		return
 	}
+	if next == (blobcache.Handle{}) && m.focusPane != nil {
+		if name == "" {
+			m.previewPane = m.newMessagePane("(no preview)")
+			return
+		}
+		next, err = openNamespaceEntryByName(ctx, m.svc, m.focusPane.handle, name)
+		if err != nil {
+			m.previewPane = m.newMessagePane("preview error", err.Error())
+			m.reportError(err)
+			return
+		}
+	}
 	m.previewPane = m.loadPane(ctx, next, "preview error")
 }
 
-func (m *Model) activeComponent() component {
+func (m *Model) activeComponent() Component {
 	if m.focusPane == nil {
 		return nil
 	}
@@ -410,9 +446,34 @@ func (m *Model) newMessagePane(lines ...string) *pane {
 }
 
 func (m *Model) loadPane(ctx context.Context, h blobcache.Handle, errPrefix string) *pane {
-	comp, err := loadComponent(ctx, m.svc, h)
+	vinfo, err := m.svc.InspectVolume(ctx, h)
+	schemaName := blobcache.Schema_NONE
+	if err == nil {
+		schemaName = vinfo.Schema.Name
+	}
+
+	ctor := m.components[schemaName]
+	if ctor == nil {
+		ctor = m.components[blobcache.Schema_NONE]
+		schemaName = blobcache.Schema_NONE
+		ctor = func() Component { return newMessageComponent(blobcache.Schema_NONE) }
+		schemaName = blobcache.Schema_NONE
+	}
+	comp := ctor()
+	if err == nil {
+		comp.Init(vinfo)
+	}
+	if err == nil {
+		tx, txErr := bcsdk.BeginTx(ctx, m.svc, h, blobcache.TxParams{})
+		if txErr != nil {
+			err = txErr
+		} else {
+			defer tx.Abort(ctx)
+			err = comp.SetState(ctx, tx)
+		}
+	}
 	if err != nil {
-		comp = newMessageComponent("", errPrefix, err.Error())
+		comp = newMessageComponent(schemaName, errPrefix, err.Error())
 	}
 
 	fqoid, err := resolveFQOID(ctx, m.svc, h)
@@ -425,9 +486,11 @@ func (m *Model) loadPane(ctx context.Context, h blobcache.Handle, errPrefix stri
 	}
 
 	return &pane{
-		oid:       oid,
-		fqoid:     fqoid,
-		component: comp,
+		oid:        oid,
+		fqoid:      fqoid,
+		handle:     h,
+		schemaName: string(schemaName),
+		component:  comp,
 	}
 }
 
@@ -716,9 +779,11 @@ func centerText(s string, width int) string {
 
 // pane holds the state for a pane, and can be rendered using view.
 type pane struct {
-	oid       blobcache.OID
-	fqoid     blobcache.FQOID
-	component component
+	oid        blobcache.OID
+	fqoid      blobcache.FQOID
+	handle     blobcache.Handle
+	schemaName string
+	component  Component
 }
 
 func (p *pane) View(styles uiStyles, width, height int, focused bool) string {
@@ -754,7 +819,7 @@ func (p *pane) View(styles uiStyles, width, height int, focused bool) string {
 		paneStyle = styles.paneActive
 	}
 	titleWidth := innerWidth - headerStyle.GetHorizontalFrameSize()
-	title := paneHeaderLine(p.oid.String(), p.schemaName(), titleWidth)
+	title := paneHeaderLine(p.oid.String(), p.schemaName, titleWidth)
 	header := headerStyle.Render(title)
 	content := lipgloss.JoinVertical(lipgloss.Left, header, body)
 	return paneStyle.Width(width).Height(height).Render(content)
@@ -784,11 +849,4 @@ func paneHeaderLine(oid, schema string, width int) string {
 		spaces = 1
 	}
 	return oid + strings.Repeat(" ", spaces) + schema
-}
-
-func (p *pane) schemaName() string {
-	if p.component == nil {
-		return ""
-	}
-	return string(p.component.SchemaName())
 }
