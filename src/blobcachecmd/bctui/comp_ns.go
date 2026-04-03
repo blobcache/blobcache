@@ -64,9 +64,17 @@ func (c *NSComp) Palette() []Binding {
 func (c *NSComp) DoAction(actx ActionCtx, action Action) {
 	switch action {
 	case a_Up:
-		c.MoveCursor(-1)
+		c.moveCursor(-1)
+	case a_Left:
+		actx.Exit()
 	case a_Down:
-		c.MoveCursor(1)
+		c.moveCursor(1)
+	case a_Right:
+		ent, ok := c.selectedEntry()
+		if !ok {
+			return
+		}
+		actx.GoTo(ent.LinkToken())
 	case a_Copy:
 		ent, ok := c.selectedEntry()
 		if !ok {
@@ -84,7 +92,7 @@ func (c *NSComp) DoAction(actx ActionCtx, action Action) {
 		if actx.SetMode != nil {
 			actx.SetMode(mode_INSERT)
 		}
-	case a_Escape:
+	case a_No:
 		c.inSearch = false
 		c.filter = ""
 		c.rebuildFilter()
@@ -129,7 +137,7 @@ func (c *NSComp) SetState(ctx context.Context, tx *bcsdk.Tx) error {
 	return nil
 }
 
-func (c *NSComp) MoveCursor(delta int) {
+func (c *NSComp) moveCursor(delta int) {
 	if len(c.filtered) == 0 {
 		c.cursor = 0
 		return
@@ -143,7 +151,7 @@ func (c *NSComp) MoveCursor(delta int) {
 	}
 }
 
-func (c *NSComp) OpenSelected(ctx context.Context) (string, blobcache.Handle, bool, error) {
+func (c *NSComp) openSelected(ctx context.Context) (string, blobcache.Handle, bool, error) {
 	ent, ok := c.selectedEntry()
 	if !ok {
 		return "", blobcache.Handle{}, false, nil
@@ -152,7 +160,7 @@ func (c *NSComp) OpenSelected(ctx context.Context) (string, blobcache.Handle, bo
 	return ent.Name, blobcache.Handle{}, true, nil
 }
 
-func (c *NSComp) CopySelected() (string, error) {
+func (c *NSComp) copySelected() (string, error) {
 	ent, ok := c.selectedEntry()
 	if !ok {
 		return "", errNoSelection
@@ -172,13 +180,17 @@ func (c *NSComp) RenderRows(width, height int, _ bool) []string {
 	lines := make([]string, 0, height)
 	if !c.inSearch && c.filter == "" {
 		lines = append(lines, padOrTrim("(press / to search)", width))
-	} else if c.inSearch && c.filter == "" {
-		right := "(continue typing to filter)"
-		spaces := width - len(right)
-		if spaces < 0 {
-			spaces = 0
+	} else if c.inSearch {
+		left := c.filter + "█"
+		right := "(filtered)"
+		if c.filter == "" {
+			right = "(continue typing to filter)"
 		}
-		lines = append(lines, padOrTrim(strings.Repeat(" ", spaces)+right, width))
+		spaces := width - len(left) - len(right)
+		if spaces < 1 {
+			spaces = 1
+		}
+		lines = append(lines, padOrTrim(left+strings.Repeat(" ", spaces)+right, width))
 	} else {
 		left := c.filter
 		right := "(filtered)"
@@ -211,7 +223,7 @@ func (c *NSComp) RenderRows(width, height int, _ bool) []string {
 	return fillRows(lines, width, height)
 }
 
-func (c *NSComp) SelectName(name string) bool {
+func (c *NSComp) selectName(name string) bool {
 	for i, idx := range c.filtered {
 		if c.entries[idx].Name == name {
 			c.cursor = i

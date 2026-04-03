@@ -61,8 +61,10 @@ func (c *merklelogComponent) Palette() []Binding {
 	return []Binding{}
 }
 
-func (c *merklelogComponent) DoAction(_ ActionCtx, action Action) {
+func (c *merklelogComponent) DoAction(actx ActionCtx, action Action) {
 	switch action {
+	case a_Left:
+		actx.Exit()
 	case a_Up:
 		c.MoveCursor(-1)
 	case a_Down:

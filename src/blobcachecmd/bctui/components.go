@@ -35,11 +35,12 @@ const (
 	a_Copy  = Action("copy")
 	a_Paste = Action("paste")
 
-	// Confirm is usually the enter/return key.
-	a_Confirm = Action("confirm")
+	// a_Yes is usually the enter/return key.
+	a_Yes = Action("yes")
+	// a_No is usually the escape key.
 	// Escape should back out of or cancel whatever is going on.
 	// If a non-normal mode is active, then it will switch to normal mode.
-	a_Escape = Action("esc")
+	a_No = Action("no")
 )
 
 const (
@@ -58,6 +59,7 @@ type Binding struct {
 }
 
 type ActionCtx struct {
+	// Invariant: GoTo and Exit are always non-nil.
 	// Mode is the current mode that the UI is in.
 	Mode mode
 	// SetMode can be used to change the UI mode.
@@ -72,6 +74,8 @@ type ActionCtx struct {
 	// GoTo returns a link token which can be used along with the current volume handle
 	// to open up another Volume.
 	GoTo func(blobcache.LinkToken)
+	// Exit tells the UI to close this component.
+	Exit func()
 }
 
 // Component renders a blobcache Volume to the terminal
@@ -157,7 +161,11 @@ func (c *messageComponent) Palette() []Binding {
 	return []Binding{}
 }
 
-func (c *messageComponent) DoAction(ActionCtx, Action) {
+func (c *messageComponent) DoAction(actx ActionCtx, action Action) {
+	switch action {
+	case a_Left:
+		actx.Exit()
+	}
 }
 
 func (c *messageComponent) InsertKey(tea.KeyPressMsg) {
@@ -228,7 +236,11 @@ func (c *noneComponent) Palette() []Binding {
 	return []Binding{}
 }
 
-func (c *noneComponent) DoAction(ActionCtx, Action) {
+func (c *noneComponent) DoAction(actx ActionCtx, action Action) {
+	switch action {
+	case a_Left:
+		actx.Exit()
+	}
 }
 
 func (c *noneComponent) InsertKey(tea.KeyPressMsg) {

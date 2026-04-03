@@ -9,6 +9,7 @@ import (
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema/bcns"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -103,9 +104,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "k", "up":
 			m.dispatchAction(a_Up)
 		case "l", "right":
-			m.enterSelection()
+			m.dispatchAction(a_Right)
 		case "h", "left":
-			m.exitSelection()
+			m.dispatchAction(a_Left)
 		case " ", "space":
 			m.setMode(mode_MENU)
 		}
@@ -242,7 +243,7 @@ func (m *Model) updateInsertMode(msg tea.KeyPressMsg) {
 	if msg.String() == "esc" {
 		active := m.activeComponent()
 		if active != nil {
-			active.DoAction(m.actionCtx(), a_Escape)
+			active.DoAction(m.actionCtx(), a_No)
 		}
 		if c, ok := m.activeComponent().(interface{ SetInsertMode(bool) }); ok {
 			c.SetInsertMode(false)
@@ -424,7 +425,42 @@ func (m *Model) actionCtx() ActionCtx {
 		},
 		ClipboardWrite: m.writeClipboard,
 		ClipboardRead:  func() string { return "" },
+		GoTo:           m.goToLink,
+		Exit:           m.exitSelection,
 	}
+}
+
+func (m *Model) goToLink(lt blobcache.LinkToken) {
+	if m.focusPane == nil {
+		return
+	}
+	ctx := context.Background()
+	name, err := m.nameForLinkToken(ctx, m.focusPane.handle, lt)
+	if err != nil {
+		m.reportError(err)
+		return
+	}
+	m.pathStack = append(m.pathStack, name)
+	if err := m.refreshAll(ctx); err != nil {
+		m.reportError(err)
+	}
+}
+
+func (m *Model) nameForLinkToken(ctx context.Context, h blobcache.Handle, lt blobcache.LinkToken) (string, error) {
+	nsc, err := bcns.ClientForVolume(ctx, m.svc, h)
+	if err != nil {
+		return "", err
+	}
+	ents, err := nsc.List(ctx, h)
+	if err != nil {
+		return "", err
+	}
+	for _, ent := range ents {
+		if ent.LinkToken() == lt {
+			return ent.Name, nil
+		}
+	}
+	return "", fmt.Errorf("namespace entry not found for link token %s", lt.String())
 }
 
 func (m *Model) handleShortcut(key string) bool {

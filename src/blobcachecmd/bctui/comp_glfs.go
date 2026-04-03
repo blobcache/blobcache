@@ -82,6 +82,8 @@ func (c *GLFSComp) Palette() []Binding {
 
 func (c *GLFSComp) DoAction(actx ActionCtx, action Action) {
 	switch action {
+	case a_Left:
+		actx.Exit()
 	case a_Up:
 		c.MoveCursor(-1)
 	case a_Down:
