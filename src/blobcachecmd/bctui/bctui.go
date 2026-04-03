@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/aymanbagabas/go-osc52/v2"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 var _ tea.Model = &Model{}
@@ -57,14 +58,14 @@ func New(svc blobcache.Service, root blobcache.Handle) *tea.Program {
 		svc:    svc,
 		root:   root,
 		styles: defaultStyles(),
-	}, tea.WithAltScreen())
+	})
 }
 
 func (m *Model) Init() tea.Cmd {
 	if err := m.refreshAll(context.Background()); err != nil {
 		m.reportError(err)
 	}
-	return tea.WindowSize()
+	return tea.Raw(tea.RequestWindowSize())
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -73,7 +74,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
@@ -107,14 +108,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				c.SetFilter("")
 				m.refreshPreview(context.Background())
 			}
-		case " ":
+		case " ", "space":
 			m.pushMode(mode_LEADER)
 		}
 	}
 	return m, nil
 }
 
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	const defaultWidth = 120
 	const defaultHeight = 32
 
@@ -132,12 +133,6 @@ func (m *Model) View() string {
 		topText = m.focusPane.fqoid.String()
 	}
 	top := m.styles.topBar.Width(width).Render(centerText(topText, width-2))
-
-	status := m.statusLine
-	if status == "" {
-		status = m.defaultStatusLine()
-	}
-	statusLine := m.styles.statusBar.Width(width).Render(truncate(status, width-2))
 
 	bodyHeight := height - 5
 	if bodyHeight < 8 {
@@ -195,26 +190,35 @@ func (m *Model) View() string {
 		}
 	}
 
-	modal := m.modalLine()
-	modalStyle := m.styles.modalInactive
-	if modal != "" {
-		modalStyle = m.styles.modalActive
+	status := m.statusLine
+	if status == "" {
+		status = "ready"
 	}
-	modalLine := modalStyle.Width(width).Render(truncate(modal, width-2))
+	statusLine := m.styles.statusBar.Width(width).Render(truncate(status, width-2))
 
-	return lipgloss.JoinVertical(lipgloss.Left, top, body, modalLine, statusLine)
+	controlsLine := m.styles.controlsBar.Width(width).Render(truncate(m.controlsLine(), width-2))
+
+	screen := lipgloss.JoinVertical(lipgloss.Left, top, body, statusLine, controlsLine)
+	if m.currentMode() == mode_LEADER {
+		screen = m.renderLeaderOverlay(width, height, screen)
+	}
+	return fullScreenView(screen)
 }
 
-func (m *Model) updateLeaderMode(msg tea.KeyMsg) {
+func fullScreenView(content string) tea.View {
+	v := tea.NewView(content)
+	v.AltScreen = true
+	return v
+}
+
+func (m *Model) updateLeaderMode(msg tea.KeyPressMsg) {
 	switch msg.String() {
-	case "esc":
+	case "esc", "space", " ":
 		m.popMode()
 	case "r":
 		m.popMode()
 		if err := m.refreshAll(context.Background()); err != nil {
 			m.reportError(err)
-		} else {
-			m.statusLine = "refreshed"
 		}
 	case "y":
 		m.popMode()
@@ -228,7 +232,7 @@ func (m *Model) updateLeaderMode(msg tea.KeyMsg) {
 	}
 }
 
-func (m *Model) updateErrorMode(msg tea.KeyMsg) {
+func (m *Model) updateErrorMode(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc", "enter":
 		m.errorText = ""
@@ -236,7 +240,7 @@ func (m *Model) updateErrorMode(msg tea.KeyMsg) {
 	}
 }
 
-func (m *Model) updateSearchMode(msg tea.KeyMsg) {
+func (m *Model) updateSearchMode(msg tea.KeyPressMsg) {
 	active := m.activeComponent()
 	switch msg.String() {
 	case "esc", "enter":
@@ -260,8 +264,8 @@ func (m *Model) updateSearchMode(msg tea.KeyMsg) {
 	case "k", "up":
 		m.moveCursor(-1)
 	default:
-		if msg.Type == tea.KeyRunes {
-			m.searchQuery += string(msg.Runes)
+		if text := msg.Key().Text; text != "" {
+			m.searchQuery += text
 			if active != nil {
 				active.SetFilter(m.searchQuery)
 				m.refreshPreview(context.Background())
@@ -346,7 +350,19 @@ func (m *Model) refreshAll(ctx context.Context) error {
 	}
 
 	m.refreshPreview(ctx)
+	m.setReadStatus(m.focusPane)
 	return nil
+}
+
+func (m *Model) setReadStatus(p *pane) {
+	if p == nil {
+		return
+	}
+	schema := p.schemaName()
+	if schema == "" {
+		schema = "(none)"
+	}
+	m.statusLine = fmt.Sprintf("read from %s at %s, rendered using schema %s", p.oid.String(), time.Now().Format("15:04:05"), schema)
 }
 
 func (m *Model) resolveCurrent(ctx context.Context, root blobcache.Handle) (blobcache.Handle, blobcache.Handle, int, error) {
@@ -450,30 +466,70 @@ func truncateMiddle(s string, width int) string {
 	return s[:left] + "..." + s[len(s)-right:]
 }
 
-func (m *Model) defaultStatusLine() string {
-	switch m.currentMode() {
-	case mode_ERROR:
-		return "error mode"
-	case mode_LEADER:
-		return "menu mode"
-	case mode_SEARCH:
-		return "search mode"
-	default:
-		return "hjkl/arrows move  l/right enter  h/left back  / search  space menu  q quit"
+func (m *Model) controlsLine() string {
+	parts := []struct {
+		key  string
+		desc string
+	}{
+		{key: "hjkl/arrows", desc: "move"},
+		{key: "l/right", desc: "enter"},
+		{key: "h/left", desc: "back"},
+		{key: "/", desc: "search"},
+		{key: "space", desc: "menu"},
+		{key: "q", desc: "quit"},
 	}
+
+	segs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		segs = append(segs, m.keyDescSegment(part.key, part.desc))
+	}
+	return strings.Join(segs, "  ")
 }
 
 func (m *Model) modalLine() string {
 	switch m.currentMode() {
 	case mode_ERROR:
-		return "error: esc/enter dismiss"
+		return "error: " + m.keyText("esc") + "/" + m.keyText("enter") + " dismiss"
 	case mode_LEADER:
-		return "menu: r refresh, y copy selected item, esc cancel"
+		return "menu: " + m.keyText("r") + " refresh, " + m.keyText("y") + " copy selected item, " + m.keyText("esc") + " cancel"
 	case mode_SEARCH:
 		return fmt.Sprintf("search (case-sensitive substring): %s", m.searchQuery)
 	default:
 		return ""
 	}
+}
+
+func (m *Model) keyText(key string) string {
+	return m.styles.controlsKey.Render(key)
+}
+
+func (m *Model) keyTextIn(base lipgloss.Style, key string) string {
+	s := m.styles.controlsKey
+	if bg := base.GetBackground(); bg != nil {
+		s = s.Background(bg).ColorWhitespace(true)
+	}
+	return s.Render(key)
+}
+
+func (m *Model) keyDescSegment(key, desc string) string {
+	return m.keyText(key) + " " + m.styles.controlsDesc.Render(desc)
+}
+
+func (m *Model) menuCommandLine(key, desc string, width int) string {
+	if width <= 1 {
+		return m.keyTextIn(m.styles.leaderBody, key)
+	}
+	keyPart := m.keyTextIn(m.styles.leaderBody, key)
+	descPart := m.styles.leaderBody.Inherit(m.styles.controlsDesc).Render(desc)
+	spaces := width - lipgloss.Width(keyPart) - lipgloss.Width(descPart)
+	if spaces < 1 {
+		descPart = m.styles.leaderBody.Inherit(m.styles.controlsDesc).Render(truncate(desc, width-lipgloss.Width(keyPart)-1))
+		spaces = width - lipgloss.Width(keyPart) - lipgloss.Width(descPart)
+		if spaces < 1 {
+			spaces = 1
+		}
+	}
+	return keyPart + m.styles.leaderBody.Render(strings.Repeat(" ", spaces)) + descPart
 }
 
 func (m *Model) copySelectionToClipboard() error {
@@ -520,9 +576,46 @@ func (m *Model) renderErrorModal(width, height int) string {
 
 	title := m.styles.errorTitle.Width(w - 6).Render("API Error")
 	body := m.styles.errorBody.Width(w - 6).Render(m.errorText)
-	hint := m.styles.errorHint.Width(w - 6).Render("Press esc or enter to dismiss")
+	hint := m.styles.errorHint.Width(w - 6).Render("Press " + m.keyText("esc") + " or " + m.keyText("enter") + " to dismiss")
 	box := m.styles.errorBox.Width(w).Render(lipgloss.JoinVertical(lipgloss.Left, title, body, hint))
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m *Model) renderLeaderOverlay(width, height int, base string) string {
+	w := width - 10
+	if w > 72 {
+		w = 72
+	}
+	if w < 24 {
+		w = width
+	}
+
+	bodyWidth := w - 6
+	bodyLines := []string{
+		m.menuCommandLine("r", "refresh", bodyWidth),
+		m.menuCommandLine("y", "copy selected item", bodyWidth),
+		"",
+		m.styles.leaderHint.Render("Press ") +
+			m.keyTextIn(m.styles.leaderHint, "esc") +
+			m.styles.leaderHint.Render(" or ") +
+			m.keyTextIn(m.styles.leaderHint, "space") +
+			m.styles.leaderHint.Render(" to close this menu"),
+	}
+	body := m.styles.leaderBody.Width(bodyWidth).Render(strings.Join(bodyLines, "\n"))
+	box := m.styles.leaderBox.Width(w).Render(body)
+
+	x := (width - lipgloss.Width(box)) / 2
+	if x < 0 {
+		x = 0
+	}
+	y := (height - lipgloss.Height(box)) / 2
+	if y < 0 {
+		y = 0
+	}
+
+	baseLayer := lipgloss.NewLayer(base).Z(0)
+	modalLayer := lipgloss.NewLayer(box).X(x).Y(y).Z(1)
+	return lipgloss.NewCompositor(baseLayer, modalLayer).Render()
 }
 
 func (m *Model) currentMode() mode {
@@ -660,8 +753,42 @@ func (p *pane) View(styles uiStyles, width, height int, focused bool) string {
 		headerStyle = styles.paneHeaderActive
 		paneStyle = styles.paneActive
 	}
-	title := truncateMiddle(p.oid.String(), innerWidth)
-	header := headerStyle.Width(innerWidth).Render(title)
+	titleWidth := innerWidth - headerStyle.GetHorizontalFrameSize()
+	title := paneHeaderLine(p.oid.String(), p.schemaName(), titleWidth)
+	header := headerStyle.Render(title)
 	content := lipgloss.JoinVertical(lipgloss.Left, header, body)
 	return paneStyle.Width(width).Height(height).Render(content)
+}
+
+func paneHeaderLine(oid, schema string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	schema = strings.ReplaceAll(schema, "\n", " ")
+	if schema == "" {
+		return padOrTrim(truncateMiddle(oid, width), width)
+	}
+
+	schema = truncate(schema, width)
+	if lipgloss.Width(schema) >= width {
+		return padOrTrim(schema, width)
+	}
+
+	oidWidth := width - lipgloss.Width(schema) - 1
+	if oidWidth < 0 {
+		oidWidth = 0
+	}
+	oid = truncateMiddle(oid, oidWidth)
+	spaces := width - lipgloss.Width(oid) - lipgloss.Width(schema)
+	if spaces < 1 {
+		spaces = 1
+	}
+	return oid + strings.Repeat(" ", spaces) + schema
+}
+
+func (p *pane) schemaName() string {
+	if p.component == nil {
+		return ""
+	}
+	return string(p.component.SchemaName())
 }

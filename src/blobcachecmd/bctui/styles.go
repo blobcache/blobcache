@@ -1,16 +1,23 @@
 package bctui
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 type uiStyles struct {
 	topBar           lipgloss.Style
 	statusBar        lipgloss.Style
+	controlsBar      lipgloss.Style
+	controlsKey      lipgloss.Style
+	controlsDesc     lipgloss.Style
 	pane             lipgloss.Style
 	paneActive       lipgloss.Style
 	paneHeader       lipgloss.Style
 	paneHeaderActive lipgloss.Style
 	modalActive      lipgloss.Style
 	modalInactive    lipgloss.Style
+	leaderBox        lipgloss.Style
+	leaderTitle      lipgloss.Style
+	leaderBody       lipgloss.Style
+	leaderHint       lipgloss.Style
 	errorBox         lipgloss.Style
 	errorTitle       lipgloss.Style
 	errorBody        lipgloss.Style
@@ -28,6 +35,17 @@ func defaultStyles() uiStyles {
 			Foreground(lipgloss.Color("249")).
 			Background(lipgloss.Color("238")).
 			Padding(0, 1),
+
+		controlsBar: lipgloss.NewStyle().
+			Background(lipgloss.Color("236")).
+			Padding(0, 1),
+
+		controlsKey: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("255")),
+
+		controlsDesc: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")),
 
 		pane: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -62,6 +80,30 @@ func defaultStyles() uiStyles {
 			Foreground(lipgloss.Color("240")).
 			Background(lipgloss.Color("236")).
 			Padding(0, 1),
+
+		leaderBox: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("63")).
+			Background(lipgloss.Color("236")).
+			Foreground(lipgloss.Color("252")).
+			Padding(1, 2),
+
+		leaderTitle: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("230")).
+			Background(lipgloss.Color("24")).
+			Padding(0, 1),
+
+		leaderBody: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color("236")).
+			ColorWhitespace(true),
+
+		leaderHint: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Background(lipgloss.Color("236")).
+			ColorWhitespace(true).
+			Italic(true),
 
 		errorBox: lipgloss.NewStyle().
 			Border(lipgloss.DoubleBorder()).
