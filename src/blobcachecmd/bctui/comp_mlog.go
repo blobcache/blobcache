@@ -7,6 +7,7 @@ import (
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema/merklelog"
+	tea "charm.land/bubbletea/v2"
 )
 
 type merklelogRow struct {
@@ -50,6 +51,26 @@ func (c *merklelogComponent) SetState(ctx context.Context, tx *bcsdk.Tx) error {
 }
 
 func (c *merklelogComponent) SetFilter(_ string) {
+}
+
+func (c *merklelogComponent) Shortcuts() []Binding {
+	return []Binding{}
+}
+
+func (c *merklelogComponent) Palette() []Binding {
+	return []Binding{}
+}
+
+func (c *merklelogComponent) DoAction(_ ActionCtx, action Action) {
+	switch action {
+	case a_Up:
+		c.MoveCursor(-1)
+	case a_Down:
+		c.MoveCursor(1)
+	}
+}
+
+func (c *merklelogComponent) InsertKey(tea.KeyPressMsg) {
 }
 
 func (c *merklelogComponent) MoveCursor(delta int) {

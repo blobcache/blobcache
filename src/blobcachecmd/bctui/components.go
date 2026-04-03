@@ -3,10 +3,8 @@ package bctui
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"blobcache.io/blobcache/src/bcsdk"
@@ -15,12 +13,66 @@ import (
 	"blobcache.io/blobcache/src/schema/bcns"
 	"blobcache.io/blobcache/src/schema/jsonns"
 	"blobcache.io/blobcache/src/schema/merklelog"
+	tea "charm.land/bubbletea/v2"
 )
 
 var errNoSelection = errors.New("no row selected")
 
 // Constructor creates a component
 type Constructor = func() Component
+
+// Action is something that can be done in the application.
+// It is the internal canonical name for the Action regardless
+// of what the keybinding is set to.
+type Action string
+
+const (
+	a_Up    = Action("up")
+	a_Left  = Action("left")
+	a_Right = Action("right")
+	a_Down  = Action("down")
+
+	a_Copy  = Action("copy")
+	a_Paste = Action("paste")
+
+	// Confirm is usually the enter/return key.
+	a_Confirm = Action("confirm")
+	// Escape should back out of or cancel whatever is going on.
+	// If a non-normal mode is active, then it will switch to normal mode.
+	a_Escape = Action("esc")
+)
+
+const (
+	a_Refresh = Action("refresh")
+	a_Search  = Action("search")
+)
+
+// Binding is a KeyPress -> Action pair, and a description of the action
+type Binding struct {
+	// KeyPress is the key pressed to perform the action.
+	KeyPress string
+	// Name is the internal name for the action in the application
+	Action Action
+	// Desc is what action is performed.
+	Desc string
+}
+
+type ActionCtx struct {
+	// Mode is the current mode that the UI is in.
+	Mode mode
+	// SetMode can be used to change the UI mode.
+	SetMode func(mode)
+	// IO enqueues an IO operation
+	IO func(fn tea.Cmd)
+	// Clipboard writes to the system clipboard.
+	ClipboardWrite func(string)
+	// ClipboardRead reads from the system clipboard.
+	ClipboardRead func() string
+
+	// GoTo returns a link token which can be used along with the current volume handle
+	// to open up another Volume.
+	GoTo func(blobcache.LinkToken)
+}
 
 // Component renders a blobcache Volume to the terminal
 type Component interface {
@@ -29,14 +81,20 @@ type Component interface {
 
 	// Update is called to set the internal state of the component using a blobcache transaction
 	// for the volume.
-	// This will be called in a tea.Command so it is okay if it takes a while
+	// This will be called in a tea.Cmd so it is okay if it takes a while
 	// It will not block the UI.
 	// The Component should not retain the transaction.
 	SetState(ctx context.Context, tx *bcsdk.Tx) error
+	// Do requests that the action be taken.
+	DoAction(actx ActionCtx, a Action)
+	// InsertKey handles a keypress while the model is in insert mode.
+	InsertKey(msg tea.KeyPressMsg)
 
-	SetFilter(filter string)
-	MoveCursor(delta int)
-	CopySelected() (string, error)
+	// Shortcuts are bindings which can be pressed at any time while the Component is focused.
+	Shortcuts() []Binding
+	// Palette returns Bindings which correspond to actions that can be performed by the component
+	Palette() []Binding
+	// RenderRows renders the component to the terminal
 	RenderRows(width, height int, focused bool) []string
 }
 
@@ -45,7 +103,7 @@ func defaultConstructors() map[blobcache.SchemaName]Constructor {
 		blobcache.Schema_NONE: func() Component { return &noneComponent{} },
 		bcglfs.SchemaName:     func() Component { return &GLFSComp{} },
 		merklelog.SchemaName:  func() Component { return &merklelogComponent{} },
-		jsonns.SchemaName:     func() Component { return &namespaceComponent{} },
+		jsonns.SchemaName:     func() Component { return &NSComp{} },
 	}
 }
 
@@ -69,154 +127,6 @@ func openNamespaceEntryByName(ctx context.Context, svc blobcache.Service, nsHand
 	return *next, nil
 }
 
-type namespaceComponent struct {
-	schemaName blobcache.SchemaName
-	schema     bcns.Namespace
-	entries    []bcns.Entry
-
-	filter   string
-	filtered []int
-	cursor   int
-}
-
-func (c *namespaceComponent) Init(volInfo *blobcache.VolumeInfo) {
-	c.schemaName = volInfo.Schema.Name
-	c.schema = jsonns.Schema{}
-}
-
-func (c *namespaceComponent) SchemaName() blobcache.SchemaName {
-	return c.schemaName
-}
-
-func (c *namespaceComponent) SetFilter(filter string) {
-	c.filter = filter
-	c.rebuildFilter()
-}
-
-func (c *namespaceComponent) SetState(ctx context.Context, tx *bcsdk.Tx) error {
-	nstx, err := bcns.NewFromTx(ctx, c.schema, tx)
-	if err != nil {
-		return err
-	}
-	ents, err := nstx.List(ctx)
-	if err != nil {
-		return err
-	}
-	slices.SortFunc(ents, func(a, b bcns.Entry) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-	c.entries = ents
-	c.rebuildFilter()
-	return nil
-}
-
-func (c *namespaceComponent) MoveCursor(delta int) {
-	if len(c.filtered) == 0 {
-		c.cursor = 0
-		return
-	}
-	c.cursor += delta
-	if c.cursor < 0 {
-		c.cursor = 0
-	}
-	if c.cursor >= len(c.filtered) {
-		c.cursor = len(c.filtered) - 1
-	}
-}
-
-func (c *namespaceComponent) OpenSelected(ctx context.Context) (string, blobcache.Handle, bool, error) {
-	ent, ok := c.selectedEntry()
-	if !ok {
-		return "", blobcache.Handle{}, false, nil
-	}
-	_ = ctx
-	return ent.Name, blobcache.Handle{}, true, nil
-}
-
-func (c *namespaceComponent) CopySelected() (string, error) {
-	ent, ok := c.selectedEntry()
-	if !ok {
-		return "", errNoSelection
-	}
-	data, err := json.Marshal(ent)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-func (c *namespaceComponent) RenderRows(width, height int, _ bool) []string {
-	if height <= 0 {
-		return nil
-	}
-
-	lines := make([]string, 0, height)
-	lines = append(lines, padOrTrim("  NAME                 TARGET                             RIGHTS               SECRET", width))
-
-	if len(c.filtered) == 0 {
-		lines = append(lines, padOrTrim("  (no entries)", width))
-		return fillRows(lines, width, height)
-	}
-
-	bodyHeight := height - 1
-	start := scrollStart(c.cursor, len(c.filtered), bodyHeight)
-	for i := 0; i < bodyHeight && start+i < len(c.filtered); i++ {
-		idx := c.filtered[start+i]
-		ent := c.entries[idx]
-		marker := " "
-		if start+i == c.cursor {
-			marker = ">"
-		}
-		line := fmt.Sprintf("%s %-20s %-34s %-20s %048x", marker, ent.Name, ent.Target.String(), ent.Rights.String(), ent.Secret)
-		lines = append(lines, padOrTrim(line, width))
-	}
-
-	return fillRows(lines, width, height)
-}
-
-func (c *namespaceComponent) SelectName(name string) bool {
-	for i, idx := range c.filtered {
-		if c.entries[idx].Name == name {
-			c.cursor = i
-			return true
-		}
-	}
-	return false
-}
-
-func (c *namespaceComponent) selectedEntry() (bcns.Entry, bool) {
-	if len(c.filtered) == 0 {
-		return bcns.Entry{}, false
-	}
-	if c.cursor < 0 || c.cursor >= len(c.filtered) {
-		return bcns.Entry{}, false
-	}
-	return c.entries[c.filtered[c.cursor]], true
-}
-
-func (c *namespaceComponent) rebuildFilter() {
-	c.filtered = c.filtered[:0]
-	for i, ent := range c.entries {
-		if c.filter == "" || strings.Contains(namespaceSearchText(ent), c.filter) {
-			c.filtered = append(c.filtered, i)
-		}
-	}
-	if len(c.filtered) == 0 {
-		c.cursor = 0
-		return
-	}
-	if c.cursor < 0 {
-		c.cursor = 0
-	}
-	if c.cursor >= len(c.filtered) {
-		c.cursor = len(c.filtered) - 1
-	}
-}
-
-func namespaceSearchText(ent bcns.Entry) string {
-	return fmt.Sprintf("%s %s %s %048x", ent.Name, ent.Target.String(), ent.Rights.String(), ent.Secret)
-}
-
 type messageComponent struct {
 	schemaName blobcache.SchemaName
 	lines      []string
@@ -237,6 +147,20 @@ func (c *messageComponent) Init(_ *blobcache.VolumeInfo) {
 }
 
 func (c *messageComponent) SetFilter(_ string) {
+}
+
+func (c *messageComponent) Shortcuts() []Binding {
+	return []Binding{}
+}
+
+func (c *messageComponent) Palette() []Binding {
+	return []Binding{}
+}
+
+func (c *messageComponent) DoAction(ActionCtx, Action) {
+}
+
+func (c *messageComponent) InsertKey(tea.KeyPressMsg) {
 }
 
 func (c *messageComponent) SetState(context.Context, *bcsdk.Tx) error {
@@ -294,6 +218,20 @@ func (c *noneComponent) SetState(ctx context.Context, tx *bcsdk.Tx) error {
 }
 
 func (c *noneComponent) SetFilter(_ string) {
+}
+
+func (c *noneComponent) Shortcuts() []Binding {
+	return []Binding{}
+}
+
+func (c *noneComponent) Palette() []Binding {
+	return []Binding{}
+}
+
+func (c *noneComponent) DoAction(ActionCtx, Action) {
+}
+
+func (c *noneComponent) InsertKey(tea.KeyPressMsg) {
 }
 
 func (c *noneComponent) MoveCursor(_ int) {

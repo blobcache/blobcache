@@ -11,6 +11,7 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema/bcglfs"
 	"blobcache.io/glfs"
+	tea "charm.land/bubbletea/v2"
 )
 
 type glfsRow struct {
@@ -69,6 +70,36 @@ func (c *GLFSComp) SetState(ctx context.Context, tx *bcsdk.Tx) error {
 func (c *GLFSComp) SetFilter(filter string) {
 	c.filter = filter
 	c.rebuildFilter()
+}
+
+func (c *GLFSComp) Shortcuts() []Binding {
+	return []Binding{}
+}
+
+func (c *GLFSComp) Palette() []Binding {
+	return []Binding{}
+}
+
+func (c *GLFSComp) DoAction(actx ActionCtx, action Action) {
+	switch action {
+	case a_Up:
+		c.MoveCursor(-1)
+	case a_Down:
+		c.MoveCursor(1)
+	case a_Copy:
+		row, ok := c.selectedRow()
+		if !ok {
+			return
+		}
+		data, err := json.Marshal(row)
+		if err != nil {
+			return
+		}
+		actx.ClipboardWrite(string(data))
+	}
+}
+
+func (c *GLFSComp) InsertKey(tea.KeyPressMsg) {
 }
 
 func (c *GLFSComp) MoveCursor(delta int) {

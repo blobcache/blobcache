@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -12,8 +11,6 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/aymanbagabas/go-osc52/v2"
 )
 
 var _ tea.Model = &Model{}
@@ -22,12 +19,17 @@ var _ tea.Model = &Model{}
 type mode uint8
 
 const (
-	mode_UNKNOWN = mode(iota)
-	// LEADER means the leader key menu is active
-	mode_LEADER
-	// mode_SEARCH means that the search modal is active.
-	mode_SEARCH
+	// mode_NORMAL is the default mode
+	// In normal mode, some default keybindings are active
+	mode_NORMAL = mode(iota)
+	// mode_INSERT means that all the keys except for escape should be forwarded to the
+	// active component
+	mode_INSERT
+	// mode_MENU means the leader key menu is active
+	// Once a valid action is picked from the menu, the system will return to normal mode
+	mode_MENU
 	// mode_ERROR means an API error modal is active.
+	// once the error is cleared then the system will return to normal mode.
 	mode_ERROR
 )
 
@@ -40,19 +42,15 @@ type Model struct {
 	width  int
 	height int
 	styles uiStyles
-
 	// pathStack holds the elements of the namespace path
 	pathStack []string
-	// modes is a stack of the different modes that have been activated.
-	// modes are pushed onto the stack when they become active, and this changes the view.
-	// then they are popped off the stack usually with a confirm/cancel directive.
-	modes []mode
+	// mode is the UI mode
+	mode mode
 
 	parentPane, focusPane, previewPane *pane
 
-	searchQuery string
-	statusLine  string
-	errorText   string
+	statusLine string
+	errorText  string
 }
 
 func New(svc blobcache.Service, root blobcache.Handle) *tea.Program {
@@ -83,36 +81,33 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		switch m.currentMode() {
+		switch m.mode {
 		case mode_ERROR:
 			m.updateErrorMode(msg)
 			return m, nil
-		case mode_LEADER:
+		case mode_MENU:
 			m.updateLeaderMode(msg)
 			return m, nil
-		case mode_SEARCH:
-			m.updateSearchMode(msg)
+		case mode_INSERT:
+			m.updateInsertMode(msg)
+			return m, nil
+		}
+
+		if m.handleShortcut(msg.String()) {
 			return m, nil
 		}
 
 		switch msg.String() {
 		case "j", "down":
-			m.moveCursor(1)
+			m.dispatchAction(a_Down)
 		case "k", "up":
-			m.moveCursor(-1)
+			m.dispatchAction(a_Up)
 		case "l", "right":
 			m.enterSelection()
 		case "h", "left":
 			m.exitSelection()
-		case "/":
-			m.pushMode(mode_SEARCH)
-			m.searchQuery = ""
-			if c := m.activeComponent(); c != nil {
-				c.SetFilter("")
-				m.refreshPreview(context.Background())
-			}
 		case " ", "space":
-			m.pushMode(mode_LEADER)
+			m.setMode(mode_MENU)
 		}
 	}
 	return m, nil
@@ -142,7 +137,7 @@ func (m *Model) View() tea.View {
 		bodyHeight = 8
 	}
 	body := ""
-	if m.currentMode() == mode_ERROR && m.errorText != "" {
+	if m.mode == mode_ERROR && m.errorText != "" {
 		body = m.renderErrorModal(width, bodyHeight)
 	} else {
 		type displayPane struct {
@@ -202,7 +197,7 @@ func (m *Model) View() tea.View {
 	controlsLine := m.styles.controlsBar.Width(width).Render(truncate(m.controlsLine(), width-2))
 
 	screen := lipgloss.JoinVertical(lipgloss.Left, top, body, statusLine, controlsLine)
-	if m.currentMode() == mode_LEADER {
+	if m.mode == mode_MENU {
 		screen = m.renderLeaderOverlay(width, height, screen)
 	}
 	return fullScreenView(screen)
@@ -217,14 +212,14 @@ func fullScreenView(content string) tea.View {
 func (m *Model) updateLeaderMode(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc", "space", " ":
-		m.popMode()
+		m.setMode(mode_NORMAL)
 	case "r":
-		m.popMode()
+		m.setMode(mode_NORMAL)
 		if err := m.refreshAll(context.Background()); err != nil {
 			m.reportError(err)
 		}
 	case "y":
-		m.popMode()
+		m.setMode(mode_NORMAL)
 		if err := m.copySelectionToClipboard(); err != nil {
 			if errors.Is(err, errNoSelection) {
 				m.statusLine = err.Error()
@@ -239,50 +234,36 @@ func (m *Model) updateErrorMode(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc", "enter":
 		m.errorText = ""
-		m.popMode()
+		m.setMode(mode_NORMAL)
 	}
 }
 
-func (m *Model) updateSearchMode(msg tea.KeyPressMsg) {
-	active := m.activeComponent()
-	switch msg.String() {
-	case "esc", "enter":
+func (m *Model) updateInsertMode(msg tea.KeyPressMsg) {
+	if msg.String() == "esc" {
+		active := m.activeComponent()
 		if active != nil {
-			active.SetFilter("")
+			active.DoAction(m.actionCtx(), a_Escape)
 		}
-		m.searchQuery = ""
-		m.popMode()
-		m.refreshPreview(context.Background())
-	case "backspace", "ctrl+h":
-		if len(m.searchQuery) > 0 {
-			runes := []rune(m.searchQuery)
-			m.searchQuery = string(runes[:len(runes)-1])
-			if active != nil {
-				active.SetFilter(m.searchQuery)
-				m.refreshPreview(context.Background())
-			}
+		if c, ok := m.activeComponent().(interface{ SetInsertMode(bool) }); ok {
+			c.SetInsertMode(false)
 		}
-	case "j", "down":
-		m.moveCursor(1)
-	case "k", "up":
-		m.moveCursor(-1)
-	default:
-		if text := msg.Key().Text; text != "" {
-			m.searchQuery += text
-			if active != nil {
-				active.SetFilter(m.searchQuery)
-				m.refreshPreview(context.Background())
-			}
-		}
+		m.setMode(mode_NORMAL)
+		return
 	}
-}
-
-func (m *Model) moveCursor(delta int) {
 	active := m.activeComponent()
 	if active == nil {
 		return
 	}
-	active.MoveCursor(delta)
+	active.InsertKey(msg)
+	m.refreshPreview(context.Background())
+}
+
+func (m *Model) dispatchAction(action Action) {
+	active := m.activeComponent()
+	if active == nil {
+		return
+	}
+	active.DoAction(m.actionCtx(), action)
 	m.refreshPreview(context.Background())
 }
 
@@ -360,12 +341,6 @@ func (m *Model) refreshAll(ctx context.Context) error {
 		}
 	}
 
-	if m.currentMode() == mode_SEARCH {
-		if active := m.activeComponent(); active != nil {
-			active.SetFilter(m.searchQuery)
-		}
-	}
-
 	m.refreshPreview(ctx)
 	m.setReadStatus(m.focusPane)
 	return nil
@@ -439,6 +414,33 @@ func (m *Model) activeComponent() Component {
 		return nil
 	}
 	return m.focusPane.component
+}
+
+func (m *Model) actionCtx() ActionCtx {
+	return ActionCtx{
+		Mode:    m.mode,
+		SetMode: m.setMode,
+		IO: func(tea.Cmd) {
+		},
+		ClipboardWrite: m.writeClipboard,
+		ClipboardRead:  func() string { return "" },
+	}
+}
+
+func (m *Model) handleShortcut(key string) bool {
+	active := m.activeComponent()
+	if active == nil {
+		return false
+	}
+	for _, binding := range active.Shortcuts() {
+		if binding.KeyPress != key {
+			continue
+		}
+		active.DoAction(m.actionCtx(), binding.Action)
+		m.refreshPreview(context.Background())
+		return true
+	}
+	return false
 }
 
 func (m *Model) newMessagePane(lines ...string) *pane {
@@ -537,9 +539,24 @@ func (m *Model) controlsLine() string {
 		{key: "hjkl/arrows", desc: "move"},
 		{key: "l/right", desc: "enter"},
 		{key: "h/left", desc: "back"},
-		{key: "/", desc: "search"},
 		{key: "space", desc: "menu"},
 		{key: "q", desc: "quit"},
+	}
+
+	if active := m.activeComponent(); active != nil {
+		for _, binding := range active.Shortcuts() {
+			desc := binding.Desc
+			if desc == "" {
+				desc = string(binding.Action)
+			}
+			parts = append(parts, struct {
+				key  string
+				desc string
+			}{
+				key:  binding.KeyPress,
+				desc: desc,
+			})
+		}
 	}
 
 	segs := make([]string, 0, len(parts))
@@ -550,13 +567,15 @@ func (m *Model) controlsLine() string {
 }
 
 func (m *Model) modalLine() string {
-	switch m.currentMode() {
+	switch m.mode {
+	case mode_NORMAL:
+		return "NORM"
 	case mode_ERROR:
 		return "error: " + m.keyText("esc") + "/" + m.keyText("enter") + " dismiss"
-	case mode_LEADER:
-		return "menu: " + m.keyText("r") + " refresh, " + m.keyText("y") + " copy selected item, " + m.keyText("esc") + " cancel"
-	case mode_SEARCH:
-		return fmt.Sprintf("search (case-sensitive substring): %s", m.searchQuery)
+	case mode_MENU:
+		return "MENU: " + m.keyText("r") + " refresh, " + m.keyText("y") + " copy selected item, " + m.keyText("esc") + " cancel"
+	case mode_INSERT:
+		return "INS_: " + m.keyText("esc") + " exit"
 	default:
 		return ""
 	}
@@ -600,21 +619,12 @@ func (m *Model) copySelectionToClipboard() error {
 	if active == nil {
 		return fmt.Errorf("no active component")
 	}
-	value, err := active.CopySelected()
-	if err != nil {
-		return err
-	}
-	seq := osc52.New(value)
-	if os.Getenv("TMUX") != "" {
-		seq = seq.Tmux()
-	} else if strings.Contains(os.Getenv("TERM"), "screen") {
-		seq = seq.Screen()
-	}
-	if _, err := seq.WriteTo(os.Stderr); err != nil {
-		return err
-	}
-	m.statusLine = fmt.Sprintf("copied %d bytes", len(value))
+	active.DoAction(m.actionCtx(), a_Copy)
 	return nil
+}
+
+func (m *Model) writeClipboard(value string) {
+	// TODO
 }
 
 func (m *Model) reportError(err error) {
@@ -623,8 +633,8 @@ func (m *Model) reportError(err error) {
 	}
 	m.errorText = err.Error()
 	m.statusLine = ""
-	if m.currentMode() != mode_ERROR {
-		m.pushMode(mode_ERROR)
+	if m.mode != mode_ERROR {
+		m.setMode(mode_ERROR)
 	}
 }
 
@@ -681,22 +691,8 @@ func (m *Model) renderLeaderOverlay(width, height int, base string) string {
 	return lipgloss.NewCompositor(baseLayer, modalLayer).Render()
 }
 
-func (m *Model) currentMode() mode {
-	if len(m.modes) == 0 {
-		return mode_UNKNOWN
-	}
-	return m.modes[len(m.modes)-1]
-}
-
-func (m *Model) pushMode(md mode) {
-	m.modes = append(m.modes, md)
-}
-
-func (m *Model) popMode() {
-	if len(m.modes) == 0 {
-		return
-	}
-	m.modes = m.modes[:len(m.modes)-1]
+func (m *Model) setMode(md mode) {
+	m.mode = md
 }
 
 func ensureHandle(ctx context.Context, svc blobcache.Service, h blobcache.Handle) (blobcache.Handle, error) {
