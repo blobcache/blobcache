@@ -18,6 +18,10 @@ type FQOID struct {
 	OID  OID
 }
 
+func (fqoid FQOID) String() string {
+	return fqoid.Peer.String() + ":" + fqoid.OID.String()
+}
+
 // URL is the location of an Object in the Blobcache Network
 type URL struct {
 	// Node is the node that manages the object.
