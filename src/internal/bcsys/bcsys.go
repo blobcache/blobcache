@@ -470,7 +470,7 @@ func (s *Service[LK, LV, LQ]) KeepAlive(ctx context.Context, hs []blobcache.Hand
 	return nil
 }
 
-func (s *Service[LK, LV, LQ]) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
 	return nil, fmt.Errorf("Share not implemented")
@@ -491,14 +491,14 @@ func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Han
 	}, nil
 }
 
-func (s *Service[LK, LV, LQ]) Adopt(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "Adopt"), zap.Stringer("oid", h.OID), zap.Stringer("host", host))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Adopt"), zap.Stringer("oid", h.OID), zap.Stringer("host", host))
-	ep, info, err := s.inspectRemoteForAdopt(ctx, host, h)
+func (s *Service[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "ShareIn"), zap.Stringer("oid", h.OID), zap.Stringer("host", host))
+	defer logctx.Debug(ctx, "done", zap.String("method", "ShareIn"), zap.Stringer("oid", h.OID), zap.Stringer("host", host))
+	ep, info, err := s.inspectRemoteForShareIn(ctx, host, h)
 	if err != nil {
 		return blobcache.Handle{}, err
 	}
-	adopted, err := s.backends.remote.Adopt(ctx, ep, h, info)
+	adopted, err := s.backends.remote.ShareIn(ctx, ep, h, info)
 	if err != nil {
 		return blobcache.Handle{}, err
 	}
@@ -577,13 +577,13 @@ func (s *Service[LK, LV, LQ]) Inspect(ctx context.Context, h blobcache.Handle) (
 	return blobcache.Info{}, blobcache.ErrInvalidHandle{Handle: h}
 }
 
-func (s *Service[LK, LV, LQ]) inspectRemoteForAdopt(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Endpoint, blobcache.Info, error) {
+func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Endpoint, blobcache.Info, error) {
 	node, err := s.grabNode(ctx)
 	if err != nil {
 		return blobcache.Endpoint{}, blobcache.Info{}, err
 	}
 	if s.env.PeerLocator == nil {
-		return blobcache.Endpoint{}, blobcache.Info{}, fmt.Errorf("cannot adopt remote object, no PeerLocator configured")
+		return blobcache.Endpoint{}, blobcache.Info{}, fmt.Errorf("cannot share-in remote object, no PeerLocator configured")
 	}
 	var lastErr error
 	for addr := range s.env.PeerLocator.WhereIs(ctx, host) {
@@ -593,7 +593,7 @@ func (s *Service[LK, LV, LQ]) inspectRemoteForAdopt(ctx context.Context, host bl
 		cancel()
 		if err == nil {
 			if info.Tx != nil {
-				return blobcache.Endpoint{}, blobcache.Info{}, fmt.Errorf("cannot adopt transaction handles")
+				return blobcache.Endpoint{}, blobcache.Info{}, fmt.Errorf("cannot share-in transaction handles")
 			}
 			return ep, info, nil
 		}

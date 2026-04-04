@@ -118,20 +118,20 @@ func (kr *KeepAliveResp) Unmarshal(data []byte) error {
 	return nil
 }
 
-type ShareReq struct {
+type ShareOutReq struct {
 	Handle blobcache.Handle
 	Peer   blobcache.PeerID
 	Mask   blobcache.ActionSet
 }
 
-func (sr ShareReq) Marshal(out []byte) []byte {
+func (sr ShareOutReq) Marshal(out []byte) []byte {
 	out = sr.Handle.Marshal(out)
 	out = append(out, sr.Peer[:]...)
 	out = binary.BigEndian.AppendUint64(out, uint64(sr.Mask))
 	return out
 }
 
-func (sr *ShareReq) Unmarshal(data []byte) error {
+func (sr *ShareOutReq) Unmarshal(data []byte) error {
 	if len(data) < blobcache.HandleSize+blobcache.PeerIDSize+8 {
 		return fmt.Errorf("cannot unmarshal ShareReq, too short: %d", len(data))
 	}
@@ -144,47 +144,47 @@ func (sr *ShareReq) Unmarshal(data []byte) error {
 	return nil
 }
 
-type ShareResp struct {
+type ShareOutResp struct {
 	Handle blobcache.Handle
 }
 
-func (sr ShareResp) Marshal(out []byte) []byte {
+func (sr ShareOutResp) Marshal(out []byte) []byte {
 	out = sr.Handle.Marshal(out)
 	return out
 }
 
-func (sr *ShareResp) Unmarshal(data []byte) error {
+func (sr *ShareOutResp) Unmarshal(data []byte) error {
 	return sr.Handle.Unmarshal(data)
 }
 
-type AdoptReq struct {
+type ShareInReq struct {
 	Host   blobcache.PeerID
 	Handle blobcache.Handle
 }
 
-func (ar AdoptReq) Marshal(out []byte) []byte {
+func (ar ShareInReq) Marshal(out []byte) []byte {
 	out = append(out, ar.Host[:]...)
 	out = ar.Handle.Marshal(out)
 	return out
 }
 
-func (ar *AdoptReq) Unmarshal(data []byte) error {
+func (ar *ShareInReq) Unmarshal(data []byte) error {
 	if len(data) < blobcache.PeerIDSize+blobcache.HandleSize {
-		return fmt.Errorf("cannot unmarshal AdoptReq, too short: %d", len(data))
+		return fmt.Errorf("cannot unmarshal ShareInReq, too short: %d", len(data))
 	}
 	ar.Host = blobcache.PeerID(data[:blobcache.PeerIDSize])
 	return ar.Handle.Unmarshal(data[blobcache.PeerIDSize:])
 }
 
-type AdoptResp struct {
+type ShareInResp struct {
 	Handle blobcache.Handle
 }
 
-func (ar AdoptResp) Marshal(out []byte) []byte {
+func (ar ShareInResp) Marshal(out []byte) []byte {
 	return ar.Handle.Marshal(out)
 }
 
-func (ar *AdoptResp) Unmarshal(data []byte) error {
+func (ar *ShareInResp) Unmarshal(data []byte) error {
 	return ar.Handle.Unmarshal(data)
 }
 

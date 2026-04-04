@@ -106,11 +106,11 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 }
 
 func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	return bcp.Share(ctx, s.node, s.ep, h, to, mask)
+	return bcp.ShareOut(ctx, s.node, s.ep, h, to, mask)
 }
 
 func (s *Service) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
-	return bcp.Adopt(ctx, s.node, s.ep, host, h)
+	return bcp.ShareIn(ctx, s.node, s.ep, host, h)
 }
 
 func (s *Service) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {

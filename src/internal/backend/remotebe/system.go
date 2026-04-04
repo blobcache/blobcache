@@ -27,7 +27,7 @@ type System struct {
 	sf     singleflight.Group[Params, *Volume]
 }
 
-type AdoptResult struct {
+type ShareInResult struct {
 	Volume *Volume
 	Queue  *Queue
 }
@@ -137,12 +137,12 @@ func (sys *System) OpenFrom(ctx context.Context, base *Volume, token blobcache.L
 	return hinfo.Rights, NewVolume(sys, base.n, base.ep, *h, info), nil
 }
 
-func (sys *System) Adopt(ctx context.Context, ep blobcache.Endpoint, h blobcache.Handle, info blobcache.Info) (*AdoptResult, error) {
+func (sys *System) ShareIn(ctx context.Context, ep blobcache.Endpoint, h blobcache.Handle, info blobcache.Info) (*ShareInResult, error) {
 	node := sys.node.Load()
 	if node == nil {
-		return nil, fmt.Errorf("bcremote: cannot adopt remote object, no node")
+		return nil, fmt.Errorf("bcremote: cannot share-in remote object, no node")
 	}
-	ret := &AdoptResult{}
+	ret := &ShareInResult{}
 	switch {
 	case info.Volume != nil:
 		ret.Volume = NewVolume(sys, node, ep, h, info.Volume)
@@ -151,6 +151,6 @@ func (sys *System) Adopt(ctx context.Context, ep blobcache.Endpoint, h blobcache
 		ret.Queue = NewQueue(sys, node, ep, h, info.Queue.Config)
 		return ret, nil
 	default:
-		return nil, fmt.Errorf("bcremote: cannot adopt unknown object type")
+		return nil, fmt.Errorf("bcremote: cannot share-in unknown object type")
 	}
 }

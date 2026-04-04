@@ -76,7 +76,7 @@ func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache
 }
 
 func (s *Service) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
-	return blobcache.Handle{}, fmt.Errorf("Adopt not implemented")
+	return blobcache.Handle{}, fmt.Errorf("ShareIn not implemented")
 }
 
 func (s *Service) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {

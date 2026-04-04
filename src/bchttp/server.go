@@ -70,21 +70,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return &DropResp{}, nil
 		})
-	case r.URL.Path == "/Share":
-		handleRequest(w, r, func(ctx context.Context, req ShareReq) (*ShareResp, error) {
+	case r.URL.Path == "/ShareOut":
+		handleRequest(w, r, func(ctx context.Context, req ShareOutReq) (*ShareOutResp, error) {
 			handle, err := s.Service.ShareOut(ctx, req.Handle, req.Peer, req.Mask)
 			if err != nil {
 				return nil, err
 			}
-			return &ShareResp{Handle: *handle}, nil
+			return &ShareOutResp{Handle: *handle}, nil
 		})
-	case r.URL.Path == "/Adopt":
-		handleRequest(w, r, func(ctx context.Context, req AdoptReq) (*AdoptResp, error) {
+	case r.URL.Path == "/ShareIn":
+		handleRequest(w, r, func(ctx context.Context, req ShareInReq) (*ShareInResp, error) {
 			handle, err := s.Service.ShareIn(ctx, req.Host, req.Handle)
 			if err != nil {
 				return nil, err
 			}
-			return &AdoptResp{Handle: handle}, nil
+			return &ShareInResp{Handle: handle}, nil
 		})
 	case r.URL.Path == "/Inspect":
 		handleRequest(w, r, func(ctx context.Context, req InspectReq) (*InspectResp, error) {
