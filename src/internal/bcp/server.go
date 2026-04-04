@@ -67,7 +67,7 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		})
 	case MT_HANDLE_SHARE:
 		handleAsk(req, resp, &ShareReq{}, func(req *ShareReq) (*ShareResp, error) {
-			h, err := svc.Share(ctx, req.Handle, req.Peer, req.Mask)
+			h, err := svc.ShareOut(ctx, req.Handle, req.Peer, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -75,7 +75,7 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		})
 	case MT_HANDLE_ADOPT:
 		handleAsk(req, resp, &AdoptReq{}, func(req *AdoptReq) (*AdoptResp, error) {
-			h, err := svc.Adopt(ctx, req.Host, req.Handle)
+			h, err := svc.ShareIn(ctx, req.Host, req.Handle)
 			if err != nil {
 				return nil, err
 			}

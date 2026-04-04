@@ -42,7 +42,7 @@ var shareCmd = star.Command{
 		if !maskOK {
 			mask = blobcache.Action_ALL
 		}
-		h, err := svc.Share(c.Context, handleParam.Load(c), peerParam.Load(c), mask)
+		h, err := svc.ShareOut(c.Context, handleParam.Load(c), peerParam.Load(c), mask)
 		if err != nil {
 			return err
 		}

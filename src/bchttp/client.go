@@ -66,7 +66,7 @@ func (c *Client) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return c.doJSON(ctx, "POST", "/KeepAlive", nil, req, &resp)
 }
 
-func (c *Client) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (c *Client) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	req := ShareReq{Handle: h, Peer: to, Mask: mask}
 	var resp ShareResp
 	if err := c.doJSON(ctx, "POST", "/Share", nil, req, &resp); err != nil {
@@ -75,7 +75,7 @@ func (c *Client) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pee
 	return &resp.Handle, nil
 }
 
-func (c *Client) Adopt(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+func (c *Client) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
 	req := AdoptReq{Host: host, Handle: h}
 	var resp AdoptResp
 	if err := c.doJSON(ctx, "POST", "/Adopt", nil, req, &resp); err != nil {

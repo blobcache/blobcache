@@ -72,7 +72,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/Share":
 		handleRequest(w, r, func(ctx context.Context, req ShareReq) (*ShareResp, error) {
-			handle, err := s.Service.Share(ctx, req.Handle, req.Peer, req.Mask)
+			handle, err := s.Service.ShareOut(ctx, req.Handle, req.Peer, req.Mask)
 			if err != nil {
 				return nil, err
 			}
@@ -80,7 +80,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.URL.Path == "/Adopt":
 		handleRequest(w, r, func(ctx context.Context, req AdoptReq) (*AdoptResp, error) {
-			handle, err := s.Service.Adopt(ctx, req.Host, req.Handle)
+			handle, err := s.Service.ShareIn(ctx, req.Host, req.Handle)
 			if err != nil {
 				return nil, err
 			}
