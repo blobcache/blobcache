@@ -62,7 +62,7 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	return &hi, nil
 }
 
-func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := handleRegexp
 	ms, err := s.runParse([]string{"share", h.String(), to.String(), fmt.Sprint(uint64(mask))}, re)
 	if err != nil {
@@ -73,6 +73,31 @@ func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pe
 		return nil, err
 	}
 	return &nh, nil
+}
+
+func (s *Service) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	return blobcache.Handle{}, fmt.Errorf("ShareIn not implemented")
+}
+
+func (s *Service) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
+	hi, err := s.InspectHandle(ctx, h)
+	if err != nil {
+		return blobcache.Info{}, err
+	}
+	ret := blobcache.Info{Handle: *hi}
+	if vi, err := s.InspectVolume(ctx, h); err == nil {
+		ret.Volume = vi
+		return ret, nil
+	}
+	if ti, err := s.InspectTx(ctx, h); err == nil {
+		ret.Tx = ti
+		return ret, nil
+	}
+	if qi, err := s.InspectQueue(ctx, h); err == nil {
+		ret.Queue = &qi
+		return ret, nil
+	}
+	return blobcache.Info{}, fmt.Errorf("could not inspect object for handle %s", h)
 }
 
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {

@@ -51,9 +51,9 @@ func KeepAlive(ctx context.Context, tp Asker, ep blobcache.Endpoint, hs []blobca
 	return nil
 }
 
-func Share(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	var resp ShareResp
-	if err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE, ShareReq{Handle: h, Peer: to, Mask: mask}, &resp); err != nil {
+func ShareOut(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	var resp ShareOutResp
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE, ShareOutReq{Handle: h, Peer: to, Mask: mask}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil
@@ -65,6 +65,22 @@ func InspectHandle(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobc
 		return nil, err
 	}
 	return &resp.Info, nil
+}
+
+func ShareIn(ctx context.Context, tp Asker, ep blobcache.Endpoint, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	var resp ShareInResp
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_ADOPT, ShareInReq{Host: host, Handle: h}, &resp); err != nil {
+		return blobcache.Handle{}, err
+	}
+	return resp.Handle, nil
+}
+
+func Inspect(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle) (blobcache.Info, error) {
+	var resp InspectResp
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_INSPECT_OBJECT, InspectReq{Handle: h}, &resp); err != nil {
+		return blobcache.Info{}, err
+	}
+	return resp.Info, nil
 }
 
 func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {

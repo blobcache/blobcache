@@ -470,7 +470,7 @@ func (s *Service[LK, LV, LQ]) KeepAlive(ctx context.Context, hs []blobcache.Hand
 	return nil
 }
 
-func (s *Service[LK, LV, LQ]) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
 	return nil, fmt.Errorf("Share not implemented")
@@ -489,6 +489,120 @@ func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Han
 		CreatedAt: tai64.Now().TAI64(), // TODO: store creation time.
 		ExpiresAt: tai64.FromGoTime(hstate.expiresAt).TAI64(),
 	}, nil
+}
+
+func (s *Service[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "ShareIn"), zap.Stringer("oid", h.OID), zap.Stringer("host", host))
+	defer logctx.Debug(ctx, "done", zap.String("method", "ShareIn"), zap.Stringer("oid", h.OID), zap.Stringer("host", host))
+	ep, info, err := s.inspectRemoteForShareIn(ctx, host, h)
+	if err != nil {
+		return blobcache.Handle{}, err
+	}
+	adopted, err := s.backends.remote.ShareIn(ctx, ep, h, info)
+	if err != nil {
+		return blobcache.Handle{}, err
+	}
+	createdAt := time.Now()
+
+	switch {
+	case adopted.Volume != nil:
+		localOID := blobcache.RandomOID()
+		if !s.addVolume(localOID, adopted.Volume) {
+			return blobcache.Handle{}, fmt.Errorf("volume already exists")
+		}
+		expiresAt := createdAt.Add(DefaultVolumeTTL)
+		localHandle := s.handles.Create(localOID, info.Handle.Rights, createdAt, expiresAt)
+		return localHandle, nil
+	case adopted.Queue != nil:
+		localOID := blobcache.RandomOID()
+		remoteOID := info.Queue.ID
+		if remoteOID == (blobcache.OID{}) {
+			remoteOID = h.OID
+		}
+		if !s.addQueue(localOID, adopted.Queue, info.Queue.Config, blobcache.QueueBackend[blobcache.OID]{
+			Remote: &blobcache.QueueBackend_Remote{
+				Endpoint: ep,
+				OID:      remoteOID,
+			},
+		}) {
+			return blobcache.Handle{}, fmt.Errorf("queue already exists")
+		}
+		expiresAt := createdAt.Add(DefaultQueueTTL)
+		localHandle := s.handles.Create(localOID, info.Handle.Rights, createdAt, expiresAt)
+		return localHandle, nil
+	default:
+		return blobcache.Handle{}, fmt.Errorf("cannot adopt unsupported object type")
+	}
+}
+
+func (s *Service[LK, LV, LQ]) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
+	logctx.Debug(ctx, "begin", zap.String("method", "Inspect"), zap.Stringer("oid", h.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "Inspect"), zap.Stringer("oid", h.OID))
+	hi, err := s.InspectHandle(ctx, h)
+	if err != nil {
+		return blobcache.Info{}, err
+	}
+	ret := blobcache.Info{Handle: *hi}
+
+	s.mu.RLock()
+	_, isTx := s.txns[h.OID]
+	_, isQueue := s.queues[h.OID]
+	_, isVol := s.volumes[h.OID]
+	s.mu.RUnlock()
+
+	if h.OID == (blobcache.OID{}) || isVol {
+		vi, err := s.InspectVolume(ctx, h)
+		if err != nil {
+			return blobcache.Info{}, err
+		}
+		ret.Volume = vi
+		return ret, nil
+	}
+	if isTx {
+		tx, err := s.InspectTx(ctx, h)
+		if err != nil {
+			return blobcache.Info{}, err
+		}
+		ret.Tx = tx
+		return ret, nil
+	}
+	if isQueue {
+		qi, err := s.InspectQueue(ctx, h)
+		if err != nil {
+			return blobcache.Info{}, err
+		}
+		ret.Queue = &qi
+		return ret, nil
+	}
+	return blobcache.Info{}, blobcache.ErrInvalidHandle{Handle: h}
+}
+
+func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Endpoint, blobcache.Info, error) {
+	node, err := s.grabNode(ctx)
+	if err != nil {
+		return blobcache.Endpoint{}, blobcache.Info{}, err
+	}
+	if s.env.PeerLocator == nil {
+		return blobcache.Endpoint{}, blobcache.Info{}, fmt.Errorf("cannot share-in remote object, no PeerLocator configured")
+	}
+	var lastErr error
+	for addr := range s.env.PeerLocator.WhereIs(ctx, host) {
+		ep := blobcache.Endpoint{Peer: host, IPPort: addr}
+		askCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		info, err := bcp.Inspect(askCtx, node, ep, h)
+		cancel()
+		if err == nil {
+			if info.Tx != nil {
+				return blobcache.Endpoint{}, blobcache.Info{}, fmt.Errorf("cannot share-in transaction handles")
+			}
+			return ep, info, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return blobcache.Endpoint{}, blobcache.Info{}, lastErr
+	}
+	return blobcache.Endpoint{}, blobcache.Info{}, fmt.Errorf("could not locate peer %s", host)
 }
 
 func (s *Service[LK, LV, LQ]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {

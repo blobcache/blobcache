@@ -26,14 +26,31 @@ type KeepAliveReq struct {
 
 type KeepAliveResp struct{}
 
-type ShareReq struct {
+type ShareOutReq struct {
 	Handle blobcache.Handle    `json:"handle"`
 	Peer   blobcache.PeerID    `json:"peer"`
 	Mask   blobcache.ActionSet `json:"mask"`
 }
 
-type ShareResp struct {
+type ShareOutResp struct {
 	Handle blobcache.Handle `json:"handle"`
+}
+
+type ShareInReq struct {
+	Host   blobcache.PeerID `json:"host"`
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type ShareInResp struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type InspectReq struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type InspectResp struct {
+	Info blobcache.Info `json:"info"`
 }
 
 type OpenFromReq struct {

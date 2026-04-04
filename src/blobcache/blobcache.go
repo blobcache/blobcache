@@ -217,79 +217,12 @@ func (lt LinkToken) String() string {
 	return hex.EncodeToString(lt.Marshal(nil))
 }
 
-type VolumeAPI interface {
-	// CreateVolume creates a new volume.
-	// CreateVolume always creates a Volume on the local Node.
-	// CreateVolume returns a handle to the Volume.  If no other references to the Volume
-	// have been created by the time the handle expires, the Volume will be deleted.
-	// Leave caller nil to skip Authorization checks.
-	// Host describes where the Volume should be created.
-	// If the Host is nil, the Volume will be created on the local Node.
-	CreateVolume(ctx context.Context, host *Endpoint, vspec VolumeSpec) (*Handle, error)
-	// InspectVolume returns info about a Volume.
-	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
-	// OpenFiat returns a handle to an object by it's ID.
-	// This is where any Authorization checks are done.
-	// It's called "fiat" because it's up to the Node to say yes or no.
-	// The result is implementation dependent, unlike OpenFrom, which should behave
-	// the same way on any Node.
-	OpenFiat(ctx context.Context, x OID, mask ActionSet) (*Handle, error)
-	// OpenFrom returns a handle to an object by it's ID.
-	// base is the handle of a Volume, which links to the object.
-	// the base Volume's schema must be a Container.
-	OpenFrom(ctx context.Context, base Handle, ltok LinkToken, mask ActionSet) (*Handle, error)
+type Info struct {
+	Handle HandleInfo `json:"handle"`
 
-	// BeginTx begins a new transaction, on a Volume.
-	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
-	// CloneVolume clones a Volume, copying it's configuration, blobs, and cell data.
-	CloneVolume(ctx context.Context, caller *PeerID, volh Handle) (*Handle, error)
-}
-
-type TxAPI interface {
-	// InspectTx returns info about a transaction.
-	InspectTx(ctx context.Context, tx Handle) (*TxInfo, error)
-	// Commit commits a transaction.
-	Commit(ctx context.Context, tx Handle) error
-	// Abort aborts a transaction.
-	Abort(ctx context.Context, tx Handle) error
-	// Load loads the volume root into dst
-	Load(ctx context.Context, tx Handle, dst *[]byte) error
-	// Save writes to the volume root.
-	// Like all operations in a transaction, Save will not be visible until Commit is called.
-	Save(ctx context.Context, tx Handle, src []byte) error
-	// Post posts data to the volume
-	Post(ctx context.Context, tx Handle, data []byte, opts PostOpts) (CID, error)
-	// Get returns the data for a CID.
-	Get(ctx context.Context, tx Handle, cid CID, buf []byte, opts GetOpts) (int, error)
-	// Exists checks if several CID exists in the volume
-	// len(dst) must be equal to len(cids), or Exists will return an error.
-	Exists(ctx context.Context, tx Handle, cids []CID, dst []bool) error
-	// Delete deletes a CID from the volume
-	Delete(ctx context.Context, tx Handle, cids []CID) error
-	// Copy has the same effect as Post, but it does not require sending the data to Blobcache.
-	// It returns a slice of booleans, indicating if the CID could be added.
-	// srcTxns are the transactions to copy from.  They will be checked in random order.
-	// If none of them have the blob to copy, then false is written to success for that blob.
-	// Error is only returned if there is an internal error, otherwise the success slice is used to signal
-	// whether a CID was successfully copied.
-	Copy(ctx context.Context, tx Handle, srcTxns []Handle, cids []CID, success []bool) error
-	// Visit is only usable in a GC transaction.
-	// It marks each CID as being visited, so it will not be removed by GC.
-	Visit(ctx context.Context, tx Handle, cids []CID) error
-	// IsVisited is only usable in a GC transaction.
-	// It checks if each CID has been visited.
-	IsVisited(ctx context.Context, tx Handle, cids []CID, yesVisited []bool) error
-
-	// Link adds a link to another volume.
-	// All Link operations take effect atomically on Commit
-	Link(ctx context.Context, tx Handle, target Handle, mask ActionSet) (*LinkToken, error)
-	// Unlink removes a link from the transaction's volume to any and all of the OIDs
-	// All Unlink operations take effect atomically on Commit.
-	Unlink(ctx context.Context, tx Handle, ltoks []LinkToken) error
-	// VisitLink visits a link to another volume.
-	// This is only usable in a GC transaction.
-	// Any unvisited links will be deleted at the end of a GC transaction.
-	VisitLinks(ctx context.Context, tx Handle, targets []LinkToken) error
+	Volume *VolumeInfo `json:"volume,omitempty"`
+	Tx     *TxInfo     `json:"tx,omitempty"`
+	Queue  *QueueInfo  `json:"queue,omitempty"`
 }
 
 type Service interface {

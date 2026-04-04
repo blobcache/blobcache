@@ -27,6 +27,11 @@ type System struct {
 	sf     singleflight.Group[Params, *Volume]
 }
 
+type ShareInResult struct {
+	Volume *Volume
+	Queue  *Queue
+}
+
 func New(node *atomic.Pointer[bcnet.Node]) System {
 	return System{
 		node:   node,
@@ -130,4 +135,22 @@ func (sys *System) OpenFrom(ctx context.Context, base *Volume, token blobcache.L
 		return 0, nil, err
 	}
 	return hinfo.Rights, NewVolume(sys, base.n, base.ep, *h, info), nil
+}
+
+func (sys *System) ShareIn(ctx context.Context, ep blobcache.Endpoint, h blobcache.Handle, info blobcache.Info) (*ShareInResult, error) {
+	node := sys.node.Load()
+	if node == nil {
+		return nil, fmt.Errorf("bcremote: cannot share-in remote object, no node")
+	}
+	ret := &ShareInResult{}
+	switch {
+	case info.Volume != nil:
+		ret.Volume = NewVolume(sys, node, ep, h, info.Volume)
+		return ret, nil
+	case info.Queue != nil:
+		ret.Queue = NewQueue(sys, node, ep, h, info.Queue.Config)
+		return ret, nil
+	default:
+		return nil, fmt.Errorf("bcremote: cannot share-in unknown object type")
+	}
 }

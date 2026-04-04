@@ -70,13 +70,29 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return &DropResp{}, nil
 		})
-	case r.URL.Path == "/Share":
-		handleRequest(w, r, func(ctx context.Context, req ShareReq) (*ShareResp, error) {
-			handle, err := s.Service.Share(ctx, req.Handle, req.Peer, req.Mask)
+	case r.URL.Path == "/ShareOut":
+		handleRequest(w, r, func(ctx context.Context, req ShareOutReq) (*ShareOutResp, error) {
+			handle, err := s.Service.ShareOut(ctx, req.Handle, req.Peer, req.Mask)
 			if err != nil {
 				return nil, err
 			}
-			return &ShareResp{Handle: *handle}, nil
+			return &ShareOutResp{Handle: *handle}, nil
+		})
+	case r.URL.Path == "/ShareIn":
+		handleRequest(w, r, func(ctx context.Context, req ShareInReq) (*ShareInResp, error) {
+			handle, err := s.Service.ShareIn(ctx, req.Host, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &ShareInResp{Handle: handle}, nil
+		})
+	case r.URL.Path == "/Inspect":
+		handleRequest(w, r, func(ctx context.Context, req InspectReq) (*InspectResp, error) {
+			info, err := s.Service.Inspect(ctx, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectResp{Info: info}, nil
 		})
 	case strings.HasPrefix(r.URL.Path, "/queue/"):
 		s.handleQueue(w, r)

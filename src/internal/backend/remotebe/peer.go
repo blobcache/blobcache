@@ -39,6 +39,7 @@ func (ps *PeerSystem) VolumeUp(ctx context.Context, p PeerParams) (*Volume, erro
 		return nil, fmt.Errorf("bcpeer: no PeerLocator configured")
 	}
 	const dialTimeout = 3 * time.Second
+	var lastErr error
 	for addr := range ps.locator.WhereIs(ctx, p.Peer) {
 		ep := blobcache.Endpoint{
 			Peer:   p.Peer,
@@ -57,7 +58,11 @@ func (ps *PeerSystem) VolumeUp(ctx context.Context, p PeerParams) (*Volume, erro
 			return vol, nil
 		} else {
 			logctx.Warn(ctx, "error looking for peer", zap.Stringer("peer", p.Peer), zap.Error(err))
+			lastErr = err
 		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("bcpeer: could not reach peer %s: %w", p.Peer, lastErr)
 	}
 	return nil, fmt.Errorf("bcpeer: could not reach peer %s", p.Peer)
 }

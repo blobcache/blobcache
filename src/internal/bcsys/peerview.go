@@ -32,10 +32,22 @@ func (pv *peerView[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.H
 	return pv.svc.InspectHandle(ctx, pv.incoming(h))
 }
 
-func (pv *peerView[LK, LV, LQ]) Share(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (pv *peerView[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	// We need to transform the incoming, but apply no transformation to the outgoing.
 	// This returned handle will not work for the caller, unless they are sharing with themselves.
-	return pv.svc.Share(ctx, pv.incoming(h), to, mask)
+	return pv.svc.ShareOut(ctx, pv.incoming(h), to, mask)
+}
+
+func (pv *peerView[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	h2, err := pv.svc.ShareIn(ctx, host, h)
+	if err != nil {
+		return blobcache.Handle{}, err
+	}
+	return pv.outgoing(h2), nil
+}
+
+func (pv *peerView[LK, LV, LQ]) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
+	return pv.svc.Inspect(ctx, pv.incoming(h))
 }
 
 func (pv *peerView[LK, LV, LQ]) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {

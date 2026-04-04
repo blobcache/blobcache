@@ -66,12 +66,28 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 			return &KeepAliveResp{}, nil
 		})
 	case MT_HANDLE_SHARE:
-		handleAsk(req, resp, &ShareReq{}, func(req *ShareReq) (*ShareResp, error) {
-			h, err := svc.Share(ctx, req.Handle, req.Peer, req.Mask)
+		handleAsk(req, resp, &ShareOutReq{}, func(req *ShareOutReq) (*ShareOutResp, error) {
+			h, err := svc.ShareOut(ctx, req.Handle, req.Peer, req.Mask)
 			if err != nil {
 				return nil, err
 			}
-			return &ShareResp{Handle: *h}, nil
+			return &ShareOutResp{Handle: *h}, nil
+		})
+	case MT_HANDLE_ADOPT:
+		handleAsk(req, resp, &ShareInReq{}, func(req *ShareInReq) (*ShareInResp, error) {
+			h, err := svc.ShareIn(ctx, req.Host, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &ShareInResp{Handle: h}, nil
+		})
+	case MT_HANDLE_INSPECT_OBJECT:
+		handleAsk(req, resp, &InspectReq{}, func(req *InspectReq) (*InspectResp, error) {
+			info, err := svc.Inspect(ctx, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectResp{Info: info}, nil
 		})
 	// END HANDLE
 
