@@ -73,6 +73,22 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 			}
 			return &ShareResp{Handle: *h}, nil
 		})
+	case MT_HANDLE_ADOPT:
+		handleAsk(req, resp, &AdoptReq{}, func(req *AdoptReq) (*AdoptResp, error) {
+			h, err := svc.Adopt(ctx, req.Host, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &AdoptResp{Handle: h}, nil
+		})
+	case MT_HANDLE_INSPECT_OBJECT:
+		handleAsk(req, resp, &InspectReq{}, func(req *InspectReq) (*InspectResp, error) {
+			info, err := svc.Inspect(ctx, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectResp{Info: info}, nil
+		})
 	// END HANDLE
 
 	// BEGIN VOLUME

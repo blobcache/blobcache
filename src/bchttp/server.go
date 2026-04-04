@@ -78,6 +78,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return &ShareResp{Handle: *handle}, nil
 		})
+	case r.URL.Path == "/Adopt":
+		handleRequest(w, r, func(ctx context.Context, req AdoptReq) (*AdoptResp, error) {
+			handle, err := s.Service.Adopt(ctx, req.Host, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &AdoptResp{Handle: handle}, nil
+		})
+	case r.URL.Path == "/Inspect":
+		handleRequest(w, r, func(ctx context.Context, req InspectReq) (*InspectResp, error) {
+			info, err := s.Service.Inspect(ctx, req.Handle)
+			if err != nil {
+				return nil, err
+			}
+			return &InspectResp{Info: info}, nil
+		})
 	case strings.HasPrefix(r.URL.Path, "/queue/"):
 		s.handleQueue(w, r)
 	case strings.HasPrefix(r.URL.Path, "/volume/"):

@@ -63,6 +63,14 @@ func (c *Client) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pee
 	return bcp.Share(ctx, &c.tp, blobcache.Endpoint{}, h, to, mask)
 }
 
+func (c *Client) Adopt(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	return bcp.Adopt(ctx, &c.tp, blobcache.Endpoint{}, host, h)
+}
+
+func (c *Client) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
+	return bcp.Inspect(ctx, &c.tp, blobcache.Endpoint{}, h)
+}
+
 func (c *Client) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
 	return bcp.InspectHandle(ctx, &c.tp, blobcache.Endpoint{}, h)
 }

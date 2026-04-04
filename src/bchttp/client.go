@@ -75,6 +75,24 @@ func (c *Client) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pee
 	return &resp.Handle, nil
 }
 
+func (c *Client) Adopt(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	req := AdoptReq{Host: host, Handle: h}
+	var resp AdoptResp
+	if err := c.doJSON(ctx, "POST", "/Adopt", nil, req, &resp); err != nil {
+		return blobcache.Handle{}, err
+	}
+	return resp.Handle, nil
+}
+
+func (c *Client) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
+	req := InspectReq{Handle: h}
+	var resp InspectResp
+	if err := c.doJSON(ctx, "POST", "/Inspect", nil, req, &resp); err != nil {
+		return blobcache.Info{}, err
+	}
+	return resp.Info, nil
+}
+
 func (c *Client) OpenFiat(ctx context.Context, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	req := OpenFiatReq{Target: target, Mask: mask}
 	var resp OpenFiatResp

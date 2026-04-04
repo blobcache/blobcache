@@ -36,6 +36,23 @@ type ShareResp struct {
 	Handle blobcache.Handle `json:"handle"`
 }
 
+type AdoptReq struct {
+	Host   blobcache.PeerID `json:"host"`
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type AdoptResp struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type InspectReq struct {
+	Handle blobcache.Handle `json:"handle"`
+}
+
+type InspectResp struct {
+	Info blobcache.Info `json:"info"`
+}
+
 type OpenFromReq struct {
 	Base  blobcache.Handle    `json:"base"`
 	Token blobcache.LinkToken `json:"token"`

@@ -75,6 +75,31 @@ func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pe
 	return &nh, nil
 }
 
+func (s *Service) Adopt(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	return blobcache.Handle{}, fmt.Errorf("Adopt not implemented")
+}
+
+func (s *Service) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
+	hi, err := s.InspectHandle(ctx, h)
+	if err != nil {
+		return blobcache.Info{}, err
+	}
+	ret := blobcache.Info{Handle: *hi}
+	if vi, err := s.InspectVolume(ctx, h); err == nil {
+		ret.Volume = vi
+		return ret, nil
+	}
+	if ti, err := s.InspectTx(ctx, h); err == nil {
+		ret.Tx = ti
+		return ret, nil
+	}
+	if qi, err := s.InspectQueue(ctx, h); err == nil {
+		ret.Queue = &qi
+		return ret, nil
+	}
+	return blobcache.Info{}, fmt.Errorf("could not inspect object for handle %s", h)
+}
+
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	// Determine which CLI command to invoke based on the volume spec
 	var args []string

@@ -67,6 +67,22 @@ func InspectHandle(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobc
 	return &resp.Info, nil
 }
 
+func Adopt(ctx context.Context, tp Asker, ep blobcache.Endpoint, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	var resp AdoptResp
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_ADOPT, AdoptReq{Host: host, Handle: h}, &resp); err != nil {
+		return blobcache.Handle{}, err
+	}
+	return resp.Handle, nil
+}
+
+func Inspect(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle) (blobcache.Info, error) {
+	var resp InspectResp
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_INSPECT_OBJECT, InspectReq{Handle: h}, &resp); err != nil {
+		return blobcache.Info{}, err
+	}
+	return resp.Info, nil
+}
+
 func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp OpenFiatResp
 	if err := doAsk(ctx, tp, ep, MT_OPEN_FIAT, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {

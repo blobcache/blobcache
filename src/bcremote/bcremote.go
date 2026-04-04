@@ -109,6 +109,14 @@ func (s *Service) Share(ctx context.Context, h blobcache.Handle, to blobcache.Pe
 	return bcp.Share(ctx, s.node, s.ep, h, to, mask)
 }
 
+func (s *Service) Adopt(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	return bcp.Adopt(ctx, s.node, s.ep, host, h)
+}
+
+func (s *Service) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
+	return bcp.Inspect(ctx, s.node, s.ep, h)
+}
+
 func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
 	return bcp.InspectHandle(ctx, s.node, s.ep, h)
 }

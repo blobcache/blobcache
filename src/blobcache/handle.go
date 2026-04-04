@@ -23,6 +23,12 @@ type HandleAPI interface {
 	// Share creates a copy of the handle according to the mask, and the
 	// sharing rules for the handles actions.
 	Share(ctx context.Context, h Handle, to PeerID, mask ActionSet) (*Handle, error)
+	// Adopt takes a Handle for an object on another Node and
+	// creates a remote/peer object on the local node to access it.
+	// it returns the handle to the local object.
+	Adopt(ctx context.Context, host PeerID, h Handle) (Handle, error)
+	// Inspect inspects whatever the object is and returns an Info object.
+	Inspect(ctx context.Context, h Handle) (Info, error)
 }
 
 // HandleSize is the number of bytes in a handle.

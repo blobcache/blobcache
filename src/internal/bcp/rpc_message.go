@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha3"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -154,6 +155,68 @@ func (sr ShareResp) Marshal(out []byte) []byte {
 
 func (sr *ShareResp) Unmarshal(data []byte) error {
 	return sr.Handle.Unmarshal(data)
+}
+
+type AdoptReq struct {
+	Host   blobcache.PeerID
+	Handle blobcache.Handle
+}
+
+func (ar AdoptReq) Marshal(out []byte) []byte {
+	out = append(out, ar.Host[:]...)
+	out = ar.Handle.Marshal(out)
+	return out
+}
+
+func (ar *AdoptReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.PeerIDSize+blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal AdoptReq, too short: %d", len(data))
+	}
+	ar.Host = blobcache.PeerID(data[:blobcache.PeerIDSize])
+	return ar.Handle.Unmarshal(data[blobcache.PeerIDSize:])
+}
+
+type AdoptResp struct {
+	Handle blobcache.Handle
+}
+
+func (ar AdoptResp) Marshal(out []byte) []byte {
+	return ar.Handle.Marshal(out)
+}
+
+func (ar *AdoptResp) Unmarshal(data []byte) error {
+	return ar.Handle.Unmarshal(data)
+}
+
+type InspectReq struct {
+	Handle blobcache.Handle
+}
+
+func (r InspectReq) Marshal(out []byte) []byte {
+	return r.Handle.Marshal(out)
+}
+
+func (r *InspectReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal InspectReq, too short: %d", len(data))
+	}
+	return r.Handle.Unmarshal(data)
+}
+
+type InspectResp struct {
+	Info blobcache.Info
+}
+
+func (r InspectResp) Marshal(out []byte) []byte {
+	data, err := json.Marshal(r.Info)
+	if err != nil {
+		panic(err)
+	}
+	return append(out, data...)
+}
+
+func (r *InspectResp) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, &r.Info)
 }
 
 type OpenFiatReq struct {

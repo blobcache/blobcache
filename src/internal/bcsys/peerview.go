@@ -38,6 +38,18 @@ func (pv *peerView[LK, LV, LQ]) Share(ctx context.Context, h blobcache.Handle, t
 	return pv.svc.Share(ctx, pv.incoming(h), to, mask)
 }
 
+func (pv *peerView[LK, LV, LQ]) Adopt(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+	h2, err := pv.svc.Adopt(ctx, host, h)
+	if err != nil {
+		return blobcache.Handle{}, err
+	}
+	return pv.outgoing(h2), nil
+}
+
+func (pv *peerView[LK, LV, LQ]) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
+	return pv.svc.Inspect(ctx, pv.incoming(h))
+}
+
 func (pv *peerView[LK, LV, LQ]) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
 	pol := pv.svc.env.Policy
 	if !pol.CanCreate(pv.peer) {
