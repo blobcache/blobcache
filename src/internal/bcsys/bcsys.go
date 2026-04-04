@@ -931,15 +931,76 @@ func (s *Service[LK, LV, LQ]) Copy(ctx context.Context, txh blobcache.Handle, sr
 	if len(cids) != len(out) {
 		return fmt.Errorf("cids and out must have the same length")
 	}
-	_, err := s.resolveTx(txh, true, blobcache.Action_TX_COPY_FROM)
+	dstTx, err := s.resolveTx(txh, true, blobcache.Action_TX_COPY_TO)
 	if err != nil {
 		return err
 	}
-	// for now, we just return false for all cids.
-	// This is an allowed behavior, the caller can always fallback to Post.
-	ret := make([]bool, len(cids))
+	if p := dstTx.backend.Params(); !p.Modify {
+		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "COPY"}
+	}
+
+	type srcTxn struct {
+		oid blobcache.OID
+		tx  transaction
+	}
+	resolvedSrcs := make([]srcTxn, len(srcTxns))
+	for i, srcH := range srcTxns {
+		src, err := s.resolveTx(srcH, true, blobcache.Action_TX_COPY_FROM)
+		if err != nil {
+			return err
+		}
+		resolvedSrcs[i] = srcTxn{oid: srcH.OID, tx: src}
+	}
+
 	for i := range cids {
-		ret[i] = false
+		out[i] = false
+	}
+
+	var buf []byte
+	var exists [1]bool
+	for i, cid := range cids {
+		if len(resolvedSrcs) == 0 {
+			continue
+		}
+		start := int(cid[0]) % len(resolvedSrcs)
+		for j := range resolvedSrcs {
+			src := resolvedSrcs[(start+j)%len(resolvedSrcs)]
+			exists[0] = false
+			if err := src.tx.backend.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
+				return fmt.Errorf("copy from tx %v: %w", src.oid, err)
+			}
+			if !exists[0] {
+				continue
+			}
+			srcMax := src.tx.backend.MaxSize()
+			if cap(buf) < srcMax {
+				buf = make([]byte, srcMax)
+			}
+			n, err := src.tx.backend.Get(ctx, cid, buf[:srcMax], blobcache.GetOpts{})
+			if err != nil {
+				if blobcache.IsErrNotFound(err) {
+					continue
+				}
+				return fmt.Errorf("copy from tx %v: %w", src.oid, err)
+			}
+			data := buf[:n]
+			if dstTx.backend.Hash(nil, data) != cid {
+				continue
+			}
+			cid2, err := dstTx.backend.Post(ctx, data, blobcache.PostOpts{})
+			if err != nil {
+				var eTooLarge blobcache.ErrTooLarge
+				if errors.As(err, &eTooLarge) {
+					continue
+				}
+				return setErrTxOID(err, txh.OID)
+			}
+			if cid2 != cid {
+				continue
+			}
+			out[i] = true
+			break
+		}
 	}
 	return nil
 }
