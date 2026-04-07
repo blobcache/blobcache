@@ -456,8 +456,11 @@ func unitIter[T any](x T) iter.Seq[T] {
 	}
 }
 
+// DEKSize is the size of a data encryption key
+const DEKSize = 32
+
 // DEK is a data encryption key.
-type DEK [32]byte
+type DEK [DEKSize]byte
 
 func (d DEK) MarshalText() ([]byte, error) {
 	return json.Marshal(hex.EncodeToString(d[:]))
