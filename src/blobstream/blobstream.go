@@ -51,18 +51,3 @@ func ReadStream(r io.Reader) iter.Seq2[[]byte, error] {
 		}
 	}
 }
-
-// SeqConcat concatenates seqenences of a type T.
-// It is useful for prepending a blob to a seqenence blobs
-// before passing the sequence to WriteStream
-func SeqConcat[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for _, seq := range seqs {
-			for val := range seq {
-				if !yield(val) {
-					return
-				}
-			}
-		}
-	}
-}

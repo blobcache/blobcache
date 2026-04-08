@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"strings"
 
+	"go.brendoncarroll.net/exp/iter2"
 	"go.inet256.org/inet256/src/inet256"
 )
 
@@ -208,9 +209,9 @@ func (v *VolumeBackend[T]) Unmarshal(data []byte) error {
 func (v *VolumeBackend[T]) Deps() iter.Seq[T] {
 	switch {
 	case v.Vault != nil:
-		return unitIter[T](v.Vault.X)
+		return iter2.Unit[T](v.Vault.X)
 	default:
-		return emptyIter[T]()
+		return iter2.Empty[T]()
 	}
 }
 
@@ -443,16 +444,6 @@ type volSpecRef interface {
 func DefaultLocalSpec() VolumeSpec {
 	return VolumeSpec{
 		Local: VolumeBackend_LocalFromConfig(DefaultVolumeParams()),
-	}
-}
-
-func emptyIter[T any]() iter.Seq[T] {
-	return func(yield func(T) bool) {}
-}
-
-func unitIter[T any](x T) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		yield(x)
 	}
 }
 
