@@ -21,7 +21,7 @@ type Machine struct {
 	crypto *bccrypto.Machine
 }
 
-func NewMachine(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
+func NewMachine(salt *blobcache.CID, hf blobcache.KeyedHashFunc) *Machine {
 	cache, _ := lru.New(16)
 	return &Machine{
 		cache:  cache,

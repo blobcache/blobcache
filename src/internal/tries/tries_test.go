@@ -15,7 +15,7 @@ import (
 func TestPutGet(t *testing.T) {
 	ctx := context.TODO()
 	s := schema.NewTestStore(t)
-	hf := blobcache.HashAlgo_BLAKE3_256.HashFunc()
+	hf := blobcache.HashAlgo_BLAKE3_256.KeyedHash
 	mach := NewMachine(nil, hf)
 	const N = 1000
 
@@ -24,7 +24,7 @@ func TestPutGet(t *testing.T) {
 	// put
 	for i := range N {
 		buf := fmt.Appendf(nil, "test-value-%d", i)
-		key := blobcache.HashAlgo_BLAKE3_256.HashFunc()(nil, buf)
+		key := blobcache.HashAlgo_BLAKE3_256.KeyedHash(nil, buf)
 		x, err = mach.Put(ctx, s, *x, key[:], buf)
 		require.NoError(t, err)
 	}
@@ -37,7 +37,7 @@ func TestPutGet(t *testing.T) {
 	// get
 	for i := range N {
 		expected := fmt.Appendf(nil, "test-value-%d", i)
-		key := blobcache.HashAlgo_BLAKE3_256.HashFunc()(nil, expected)
+		key := blobcache.HashAlgo_BLAKE3_256.KeyedHash(nil, expected)
 		var actual []byte
 		found, err := mach.Get(ctx, s, *root2, key[:], &actual)
 		assert.NoError(t, err, "while fetching key %q", key[:])
@@ -48,7 +48,7 @@ func TestPutGet(t *testing.T) {
 
 func TestIterate(t *testing.T) {
 	ctx := context.TODO()
-	mach := NewMachine(nil, blobcache.HashAlgo_BLAKE3_256.HashFunc())
+	mach := NewMachine(nil, blobcache.HashAlgo_BLAKE3_256.KeyedHash)
 	const N = 1000
 
 	type testCase struct {

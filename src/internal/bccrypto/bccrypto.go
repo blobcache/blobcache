@@ -12,7 +12,7 @@ import (
 )
 
 // DeriveKey takes 256 bits of entropy, a hash function, and additional material and returns a 32 byte DEK.
-func DeriveKey(hf blobcache.HashFunc, entropy *[32]byte, additional []byte) DEK {
+func DeriveKey(hf blobcache.KeyedHashFunc, entropy *[32]byte, additional []byte) DEK {
 	salt := (*blobcache.CID)(entropy)
 	return DEK(hf(salt, additional))
 }
@@ -67,10 +67,10 @@ func (r *Ref) Unmarshal(data []byte) error {
 // Machine contains caches and configuration.
 type Machine struct {
 	salt *[32]byte
-	hf   blobcache.HashFunc
+	hf   blobcache.KeyedHashFunc
 }
 
-func NewMachine(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
+func NewMachine(salt *blobcache.CID, hf blobcache.KeyedHashFunc) *Machine {
 	return &Machine{hf: hf, salt: (*[32]byte)(salt)}
 }
 

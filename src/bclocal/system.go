@@ -225,8 +225,8 @@ func (t *txWrap) MaxSize() int {
 	return t.inner.MaxSize()
 }
 
-func (t *txWrap) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
-	return t.inner.Hash(salt, data)
+func (t *txWrap) HashAlgo() blobcache.HashAlgo {
+	return t.inner.HashAlgo()
 }
 
 func (t *txWrap) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol backend.Volume) (*blobcache.LinkToken, error) {

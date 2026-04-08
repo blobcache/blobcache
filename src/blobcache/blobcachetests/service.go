@@ -59,7 +59,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 			t.Run(string(algo), func(t *testing.T) {
 				spec := defaultLocalSpec()
 				spec.Local.HashAlgo = algo
-				hf := algo.HashFunc()
+				hf := algo.Hash
 				volh, err := s.CreateVolume(ctx, nil, spec)
 				require.NoError(t, err)
 				require.NotNil(t, volh)
@@ -69,7 +69,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 				defer s.Abort(ctx, *txh)
 
 				data := []byte("hello world")
-				expected := hf(nil, data)
+				expected := hf(data)
 				cid, err := s.Post(ctx, *txh, data, blobcache.PostOpts{})
 				require.NoError(t, err)
 				require.Equal(t, expected, cid)

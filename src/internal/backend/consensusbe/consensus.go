@@ -79,7 +79,7 @@ func (sys *System) VolumeDestroy(ctx context.Context, vol *Volume) error {
 
 // NewTID returns a TID from a SchemaSpec
 func NewTID(sch blobcache.SchemaSpec) blobcache.TID {
-	hf := blobcache.HashAlgo_CSHAKE256.HashFunc()
+	hf := blobcache.HashAlgo_CSHAKE256.KeyedHash
 	nameSalt := hf(nil, []byte(sch.Name))
 	return blobcache.TID(hf(&nameSalt, sch.Params))
 }

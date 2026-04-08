@@ -172,7 +172,7 @@ func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobca
 
 // Get returns the data for a CID.
 func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	hf, err := c.getHashFunc(ctx, tx)
+	hf, err := c.getHashAlgo(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
@@ -221,15 +221,15 @@ func (c *Client) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blob
 }
 
 // getHashFunc finds the hash function for a transaction.
-func (c *Client) getHashFunc(ctx context.Context, txh blobcache.Handle) (blobcache.HashFunc, error) {
+func (c *Client) getHashAlgo(ctx context.Context, txh blobcache.Handle) (blobcache.HashAlgo, error) {
 	txinfo, ok := c.cache.Get(txh.OID)
 	if ok {
-		return txinfo.HashAlgo.HashFunc(), nil
+		return txinfo.HashAlgo, nil
 	}
 	txinfo, err := bcp.InspectTx(ctx, &c.tp, blobcache.Endpoint{}, txh)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	c.cache.Add(txh.OID, txinfo)
-	return txinfo.HashAlgo.HashFunc(), nil
+	return txinfo.HashAlgo, nil
 }

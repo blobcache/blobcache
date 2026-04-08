@@ -35,7 +35,7 @@ func TestGet(t *testing.T) {
 			for i := range xs {
 				xs[i] = i
 			}
-			hf := blobcache.HashAlgo_BLAKE3_256.HashFunc()
+			hf := blobcache.HashAlgo_BLAKE3_256.Hash
 			rws := schema.NewMem(hf, 1<<21)
 
 			st := makeState(t, rws, xs)
@@ -87,7 +87,7 @@ func TestIncludes(t *testing.T) {
 
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			s := schema.NewMem(blobcache.HashAlgo_BLAKE3_256.HashFunc(), 1<<21)
+			s := schema.NewMem(blobcache.HashAlgo_BLAKE3_256.Hash, 1<<21)
 			astate := makeState(t, s, tc.A)
 			bstate := makeState(t, s, tc.B)
 			expected := hasPrefix(tc.A, tc.B)

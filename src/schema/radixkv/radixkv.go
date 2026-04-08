@@ -27,7 +27,7 @@ type (
 )
 
 // New constructs a new Machine
-func New(salt *blobcache.CID, hf blobcache.HashFunc) *Machine {
+func New(salt *blobcache.CID, hf blobcache.KeyedHashFunc) *Machine {
 	if salt == nil {
 		panic("salt cannot be nil, use new(blobcache.CID) for an all zero salt")
 	}

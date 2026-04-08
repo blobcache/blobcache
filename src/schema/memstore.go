@@ -11,7 +11,7 @@ import (
 )
 
 func NewTestStore(t testing.TB) *MemStore {
-	return NewMem(blobcache.HashAlgo_BLAKE3_256.HashFunc(), 1<<21)
+	return NewMem(blobcache.HashAlgo_BLAKE3_256.Hash, 1<<21)
 }
 
 // MemStore is a simple in-memory store, useful for testing.
@@ -78,7 +78,7 @@ func (ms *MemStore) Delete(ctx context.Context, cids []blobcache.CID) error {
 }
 
 func (ms *MemStore) Hash(data []byte) blobcache.CID {
-	return ms.hf(nil, data)
+	return ms.hf(data)
 }
 
 func (ms *MemStore) MaxSize() int {

@@ -238,8 +238,14 @@ type Service interface {
 
 // CheckBlob checks that the data matches the expected CID.
 // If there is a problem, it returns an ErrBadData.
-func CheckBlob(hf HashFunc, salt, cid *CID, data []byte) error {
-	actualCID := hf(salt, data)
+func CheckBlob(ha HashAlgo, salt, cid *CID, data []byte) error {
+	var actualCID CID
+	if salt == nil {
+		actualCID = ha.Hash(data)
+	} else {
+		hf := ha.KeyedHash
+		actualCID = hf(salt, data)
+	}
 	if *cid != actualCID {
 		return ErrBadData{
 			Salt:     salt,

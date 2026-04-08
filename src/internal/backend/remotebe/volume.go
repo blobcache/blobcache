@@ -135,7 +135,7 @@ func (tx *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (b
 	if err != nil {
 		return blobcache.CID{}, err
 	}
-	ourCID := tx.Hash(opts.Salt, data)
+	ourCID := tx.HashAlgo().KeyedHash(opts.Salt, data)
 	if theirCID != ourCID {
 		return blobcache.CID{}, fmt.Errorf("hash mismatch: ourCID=%s, theirCID=%s", ourCID, theirCID)
 	}
@@ -143,7 +143,7 @@ func (tx *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (b
 }
 
 func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	return bcp.Get(ctx, tx.vol.n, tx.vol.ep, tx.h, tx.Hash, cid, opts.Salt, buf)
+	return bcp.Get(ctx, tx.vol.n, tx.vol.ep, tx.h, tx.HashAlgo(), cid, opts.Salt, buf)
 }
 
 func (tx *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
@@ -158,9 +158,8 @@ func (tx *Tx) MaxSize() int {
 	return int(tx.info.MaxSize)
 }
 
-func (tx *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
-	hf := tx.info.HashAlgo.HashFunc()
-	return hf(salt, data)
+func (tx *Tx) HashAlgo() blobcache.HashAlgo {
+	return tx.info.HashAlgo
 }
 
 func (tx *Tx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {

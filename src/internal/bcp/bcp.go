@@ -209,7 +209,7 @@ func Post(ctx context.Context, tp Asker, ep blobcache.Endpoint, txh blobcache.Ha
 	return theirCID, nil
 }
 
-func Get(ctx context.Context, tp Asker, ep blobcache.Endpoint, txh blobcache.Handle, hf blobcache.HashFunc, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
+func Get(ctx context.Context, tp Asker, ep blobcache.Endpoint, txh blobcache.Handle, hf blobcache.HashAlgo, cid blobcache.CID, salt *blobcache.CID, buf []byte) (int, error) {
 	var body []byte
 	body = append(body, txh.OID[:]...)
 	body = append(body, txh.Secret[:]...)

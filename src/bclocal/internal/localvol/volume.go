@@ -84,7 +84,7 @@ type localTxnMut struct {
 	txParams blobcache.TxParams
 	schema   schema.Schema
 
-	hf blobcache.HashFunc
+	ha blobcache.HashAlgo
 
 	// mu protects the finished and links fields.
 	// mu must be taken exclusively to {Commit, Abort, AllowLink}
@@ -105,14 +105,14 @@ func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcac
 	if err := localSys.readVolumeLinks(localSys.db, mvid, vol.lvid, links); err != nil {
 		return nil, err
 	}
-	hf := vol.params.HashAlgo.HashFunc()
+	ha := vol.params.HashAlgo
 	return &localTxnMut{
 		localSys: localSys,
 		vol:      vol,
 		mvid:     mvid,
 		txParams: txParams,
 		schema:   schema,
-		hf:       hf,
+		ha:       ha,
 		links:    links,
 	}, nil
 }
@@ -129,8 +129,12 @@ func (v *localTxnMut) MaxSize() int {
 	return int(v.vol.params.MaxSize)
 }
 
-func (v *localTxnMut) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
-	return v.hf(salt, data)
+func (v *localTxnMut) Hash(data []byte) blobcache.CID {
+	return v.ha.Hash(data)
+}
+
+func (v *localTxnMut) HashAlgo() blobcache.HashAlgo {
+	return v.ha
 }
 
 func (v *localTxnMut) checkFinished() (func(), error) {
@@ -222,7 +226,12 @@ func (v *localTxnMut) Post(ctx context.Context, data []byte, opts blobcache.Post
 	if salt != nil && !v.vol.params.Salted {
 		return blobcache.CID{}, blobcache.ErrCannotSalt{}
 	}
-	cid := v.Hash(salt, data)
+	var cid blobcache.CID
+	if salt == nil {
+		cid = v.Hash(data)
+	} else {
+		cid = v.HashAlgo().KeyedHash(salt, data)
+	}
 	if err := v.localSys.postBlob(ctx, v.vol.lvid, v.mvid, cid, salt, data); err != nil {
 		return blobcache.CID{}, err
 	}
@@ -453,8 +462,12 @@ func (v *localTxnRO) MaxSize() int {
 	return int(v.vol.params.MaxSize)
 }
 
-func (v *localTxnRO) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
-	return v.vol.params.HashAlgo.HashFunc()(salt, data)
+func (v *localTxnRO) HashAlgo() blobcache.HashAlgo {
+	return v.vol.params.HashAlgo
+}
+
+func (v *localTxnRO) Hash(data []byte) blobcache.CID {
+	return v.vol.params.HashAlgo.Hash(data)
 }
 
 func (txn *localTxnRO) Volume() backend.Volume {

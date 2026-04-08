@@ -33,7 +33,7 @@ func run(ctx context.Context) error {
 	}
 	// prepare a Machine, it holds configuration and caches
 	// for the operations we are going to perform.
-	kvmach := radixkv.New(new(blobcache.CID), vspec.Local.HashAlgo.HashFunc())
+	kvmach := radixkv.New(new(blobcache.CID), vspec.Local.HashAlgo.KeyedHash)
 
 	// Put some keys
 	if err := radixkv.Modify(ctx, bc, *volh, kvmach, func(tx *radixkv.Tx) error {

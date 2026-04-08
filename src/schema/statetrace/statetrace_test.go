@@ -58,7 +58,7 @@ func TestMarshal(t *testing.T) {
 
 func TestCountUp(t *testing.T) {
 	ctx := testutil.Context(t)
-	s := schema.NewMem(blobcache.HashAlgo_BLAKE3_256.HashFunc(), 1<<21)
+	s := schema.NewMem(blobcache.HashAlgo_BLAKE3_256.Hash, 1<<21)
 	mach := Machine[autoMarshal[int]]{
 		HashAlgo:   blobcache.HashAlgo_BLAKE3_256,
 		ParseState: autoParse[int],

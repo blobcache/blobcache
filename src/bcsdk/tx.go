@@ -52,7 +52,7 @@ func NewTx(s blobcache.Service, h blobcache.Handle, hash blobcache.HashAlgo, max
 		s:       s,
 		h:       h,
 		hash:    hash,
-		hf:      hash.HashFunc(),
+		hf:      hash.Hash,
 		maxSize: maxSize,
 	}
 }
@@ -116,7 +116,7 @@ func (tx *Tx) GetBytes(ctx context.Context, cid CID, hardMax int) ([]byte, error
 }
 
 func (tx *Tx) Hash(data []byte) CID {
-	return tx.hf(nil, data)
+	return tx.hf(data)
 }
 
 // MaxSize is the largest Blob that could be accepted or returned.
@@ -178,7 +178,7 @@ type TxSalt struct {
 	s       blobcache.Service
 	h       Handle
 	hash    blobcache.HashAlgo
-	hf      blobcache.HashFunc
+	hf      blobcache.KeyedHashFunc
 	maxSize int
 
 	done bool
@@ -189,7 +189,7 @@ func NewTxSalt(s blobcache.Service, h Handle, hash blobcache.HashAlgo, maxSize i
 		s:       s,
 		h:       h,
 		hash:    hash,
-		hf:      hash.HashFunc(),
+		hf:      hash.KeyedHash,
 		maxSize: maxSize,
 	}
 }

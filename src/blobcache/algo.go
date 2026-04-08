@@ -9,8 +9,13 @@ import (
 	"lukechampine.com/blake3"
 )
 
+// KeyedHashFunc is a cryptographic hash function that takes a salt/key.
+// The behavior when salt == nil depends on the implementation
+// The implementation may fallback to an unkeyed function, but this is not required.
+type KeyedHashFunc func(salt *CID, data []byte) CID
+
 // HashFunc is a cryptographic hash function.
-type HashFunc func(salt *CID, data []byte) CID
+type HashFunc func(data []byte) CID
 
 // HashAlgo is a cryptographic hash algorithm.
 type HashAlgo string
@@ -49,20 +54,57 @@ func (h HashAlgo) Validate() error {
 	return fmt.Errorf("unknown hash algo: %q", h)
 }
 
-func (h HashAlgo) HashFunc() HashFunc {
+func (h HashAlgo) Hash(x []byte) CID {
 	switch h {
 	case HashAlgo_SHA2_256:
-		return func(salt *CID, x []byte) CID {
-			if salt != nil {
-				panic("salt not supported for sha2-256")
-			}
+		return sha256.Sum256(x)
+	case HashAlgo_SHA3_256:
+		return sha3.Sum256(x)
+	case HashAlgo_CSHAKE256:
+		return CID(sha3.SumSHAKE256(x, 32))
+	case HashAlgo_BLAKE2b_256:
+		h, err := blake2b.New(32, nil)
+		if err != nil {
+			panic(err)
+		}
+		h.Write(x)
+		var ret CID
+		copy(ret[:], h.Sum(nil))
+		return ret
+	case HashAlgo_BLAKE3_256:
+		h := blake3.New(32, nil)
+		h.Write(x)
+		var ret CID
+		copy(ret[:], h.Sum(nil))
+		return ret
+	default:
+		panic(h)
+	}
+}
+
+// KeyedHash performs a keyed hash if
+func (h HashAlgo) KeyedHash(salt *CID, x []byte) CID {
+	switch h {
+	case HashAlgo_SHA2_256:
+		if salt == nil {
 			return sha256.Sum256(x)
 		}
+		panic("sha2 does not take a salt")
 	case HashAlgo_SHA3_256:
-		return func(salt *CID, x []byte) CID {
-			if salt == nil {
-				return sha3.Sum256(x)
-			}
+		if salt == nil {
+			return sha3.Sum256(x)
+		}
+		h := sha3.NewCSHAKE256(nil, salt[:])
+		h.Write(x)
+		var ret CID
+		if _, err := h.Read(ret[:]); err != nil {
+			panic(err)
+		}
+		return ret
+	case HashAlgo_CSHAKE256:
+		if salt == nil {
+			return CID(sha3.SumSHAKE256(x, 32))
+		} else {
 			h := sha3.NewCSHAKE256(nil, salt[:])
 			h.Write(x)
 			var ret CID
@@ -71,45 +113,27 @@ func (h HashAlgo) HashFunc() HashFunc {
 			}
 			return ret
 		}
-	case HashAlgo_CSHAKE256:
-		return func(salt *CID, x []byte) CID {
-			if salt == nil {
-				return CID(sha3.SumSHAKE256(x, 32))
-			} else {
-				h := sha3.NewCSHAKE256(nil, salt[:])
-				h.Write(x)
-				var ret CID
-				if _, err := h.Read(ret[:]); err != nil {
-					panic(err)
-				}
-				return ret
-			}
-		}
 	case HashAlgo_BLAKE2b_256:
-		return func(salt *CID, x []byte) CID {
-			if salt == nil {
-				return blake2b.Sum256(x)
-			}
-			h, err := blake2b.New(32, salt[:])
-			if err != nil {
-				panic(err)
-			}
-			h.Write(x)
-			var ret CID
-			copy(ret[:], h.Sum(nil))
-			return ret
+		if salt == nil {
+			return blake2b.Sum256(x)
 		}
+		h, err := blake2b.New(32, salt[:])
+		if err != nil {
+			panic(err)
+		}
+		h.Write(x)
+		var ret CID
+		copy(ret[:], h.Sum(nil))
+		return ret
 	case HashAlgo_BLAKE3_256:
-		return func(salt *CID, x []byte) CID {
-			if salt == nil {
-				return blake3.Sum256(x)
-			}
-			h := blake3.New(32, salt[:])
-			h.Write(x)
-			var ret CID
-			copy(ret[:], h.Sum(nil))
-			return ret
+		if salt == nil {
+			return blake3.Sum256(x)
 		}
+		h := blake3.New(32, salt[:])
+		h.Write(x)
+		var ret CID
+		copy(ret[:], h.Sum(nil))
+		return ret
 	default:
 		panic(h)
 	}

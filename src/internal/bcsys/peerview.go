@@ -240,5 +240,5 @@ func derivePeerSecret(secret *[32]byte, peer blobcache.PeerID) [32]byte {
 }
 
 func deriveKey(entropy *[32]byte, additional []byte) [32]byte {
-	return bccrypto.DeriveKey(blobcache.HashAlgo_CSHAKE256.HashFunc(), entropy, additional)
+	return bccrypto.DeriveKey(blobcache.HashAlgo_CSHAKE256.KeyedHash, entropy, additional)
 }

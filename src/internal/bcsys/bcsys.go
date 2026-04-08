@@ -1013,7 +1013,7 @@ func (s *Service[LV, LK, LQ]) Get(ctx context.Context, txh blobcache.Handle, cid
 		return 0, setErrTxOID(err, txh.OID)
 	}
 	if !opts.SkipVerify {
-		cid2 := txn.backend.Hash(opts.Salt, buf[:n])
+		cid2 := txn.backend.HashAlgo().KeyedHash(opts.Salt, buf[:n])
 		if cid2 != cid {
 			return -1, blobcache.ErrBadData{
 				Salt:     opts.Salt,
@@ -1098,7 +1098,7 @@ func (s *Service[LK, LV, LQ]) Copy(ctx context.Context, txh blobcache.Handle, sr
 				return fmt.Errorf("copy from tx %v: %w", src.oid, err)
 			}
 			data := buf[:n]
-			if dstTx.backend.Hash(nil, data) != cid {
+			if dstTx.backend.HashAlgo().Hash(data) != cid {
 				continue
 			}
 			cid2, err := dstTx.backend.Post(ctx, data, blobcache.PostOpts{})
@@ -1404,7 +1404,7 @@ func (s *Service[LK, LV, LQ]) makeVault(ctx context.Context, backend blobcache.V
 	if err != nil {
 		return nil, err
 	}
-	return vaultvol.New(inner, backend.Secret, backend.HashAlgo.HashFunc()), nil
+	return vaultvol.New(inner, backend.Secret, backend.HashAlgo.KeyedHash), nil
 }
 
 func (s *Service[LK, LV, LQ]) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSpec) (blobcache.VolumeConfig, error) {

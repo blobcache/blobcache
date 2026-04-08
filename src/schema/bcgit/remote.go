@@ -14,7 +14,7 @@ import (
 const HashAlgo = blobcache.HashAlgo_SHA2_256
 
 func Hash(x []byte) blobcache.CID {
-	return HashAlgo.HashFunc()(nil, x)
+	return HashAlgo.Hash(x)
 }
 
 func DefaultVolumeSpec() blobcache.VolumeSpec {
@@ -41,7 +41,7 @@ func NewRemote(svc blobcache.Service, volh blobcache.Handle) *Remote {
 		svc:  svc,
 		volh: volh,
 
-		tmach: tries.NewMachine(nil, blobcache.HashAlgo_SHA2_256.HashFunc()),
+		tmach: tries.NewMachine(nil, blobcache.HashAlgo_SHA2_256.KeyedHash),
 	}
 }
 

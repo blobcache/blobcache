@@ -20,14 +20,14 @@ var _ backend.Volume = &Vault{}
 
 type Vault struct {
 	inner backend.Volume
-	hf    blobcache.HashFunc
+	hf    blobcache.KeyedHashFunc
 
 	aead  cipher.AEAD
 	tmach *tries.Machine
 	cmach *bccrypto.Machine
 }
 
-func New(inner backend.Volume, secret [32]byte, hf blobcache.HashFunc) *Vault {
+func New(inner backend.Volume, secret [32]byte, hf blobcache.KeyedHashFunc) *Vault {
 	dataSecret := bccrypto.DeriveKey(hf, &secret, []byte("blobcache/vault/data"))
 	trieSecret := bccrypto.DeriveKey(hf, &secret, []byte("blobcache/vault/trie"))
 	aeadSecret := bccrypto.DeriveKey(hf, &secret, []byte("blobcache/vault/cell"))
@@ -267,7 +267,7 @@ func (v *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (bl
 	defer release()
 
 	s := backend.NewUnsaltedStore(v.inner)
-	cid := v.inner.Hash(nil, data)
+	cid := v.inner.HashAlgo().Hash(data)
 	ref, err := v.vol.cmach.Post(ctx, s, data)
 	if err != nil {
 		return blobcache.CID{}, err
@@ -381,8 +381,12 @@ func (v *Tx) MaxSize() int {
 	return v.inner.MaxSize()
 }
 
-func (v *Tx) Hash(salt *blobcache.CID, data []byte) blobcache.CID {
-	return v.inner.Hash(salt, data)
+func (v *Tx) HashAlgo() blobcache.HashAlgo {
+	return v.inner.HashAlgo()
+}
+
+func (v *Tx) Hash(data []byte) blobcache.CID {
+	return v.HashAlgo().Hash(data)
 }
 
 func (v *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol backend.Volume) (*blobcache.LinkToken, error) {

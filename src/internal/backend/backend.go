@@ -76,7 +76,7 @@ type Tx interface {
 	Visit(ctx context.Context, cids []blobcache.CID) error
 
 	MaxSize() int
-	Hash(salt *blobcache.CID, data []byte) blobcache.CID
+	HashAlgo() blobcache.HashAlgo
 
 	// Link creates adds a handle to prove access to a volume.
 	Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol Volume) (*blobcache.LinkToken, error)
@@ -128,5 +128,9 @@ func (v UnsaltedStore) MaxSize() int {
 }
 
 func (v UnsaltedStore) Hash(data []byte) blobcache.CID {
-	return v.inner.Hash(nil, data)
+	return v.inner.HashAlgo().Hash(data)
+}
+
+func (v UnsaltedStore) HashAlgo() blobcache.HashAlgo {
+	return v.inner.HashAlgo()
 }

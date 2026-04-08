@@ -7,7 +7,6 @@ require (
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.2
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.0
-	github.com/aymanbagabas/go-osc52/v2 v2.0.1
 	github.com/cloudflare/circl v1.6.1
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/edsrzf/mmap-go v1.2.0

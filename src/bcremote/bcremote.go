@@ -212,11 +212,11 @@ func (s *Service) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobc
 
 // Get returns the data for a CID.
 func (s *Service) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	hf, err := s.getHashFunc(ctx, tx)
+	ha, err := s.getHashAlgo(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
-	return bcp.Get(ctx, s.node, s.ep, tx, hf, cid, opts.Salt, buf)
+	return bcp.Get(ctx, s.node, s.ep, tx, ha, cid, opts.Salt, buf)
 }
 
 func (s *Service) Visit(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID) error {
@@ -260,16 +260,16 @@ func (s *Service) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blo
 	return bcp.SubToVolume(ctx, s.node, s.ep, qh, volh, spec)
 }
 
-// getHashFunc finds the hash function for a transaction.
-func (s *Service) getHashFunc(ctx context.Context, txh blobcache.Handle) (blobcache.HashFunc, error) {
+// getHashAlgo finds the hash function for a transaction.
+func (s *Service) getHashAlgo(ctx context.Context, txh blobcache.Handle) (blobcache.HashAlgo, error) {
 	txinfo, ok := s.cache.Get(txh.OID)
 	if ok {
-		return txinfo.HashAlgo.HashFunc(), nil
+		return txinfo.HashAlgo, nil
 	}
 	txinfo, err := bcp.InspectTx(ctx, s.node, s.ep, txh)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	s.cache.Add(txh.OID, txinfo)
-	return txinfo.HashAlgo.HashFunc(), nil
+	return txinfo.HashAlgo, nil
 }

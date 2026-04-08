@@ -87,15 +87,15 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 	})
 	t.Run("Exists", func(t *testing.T) {
 		s, volh := mk(t)
-		hf := defaultLocalSpec().Local.HashAlgo.HashFunc()
+		hf := defaultLocalSpec().Local.HashAlgo.Hash
 
 		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		data1 := []byte("hello world")
-		require.False(t, Exists(t, s, txh, hf(nil, data1)))
+		require.False(t, Exists(t, s, txh, hf(data1)))
 		Post(t, s, txh, data1, blobcache.PostOpts{})
-		require.True(t, Exists(t, s, txh, hf(nil, data1)))
-		Delete(t, s, txh, hf(nil, data1))
-		require.False(t, Exists(t, s, txh, hf(nil, data1)))
+		require.True(t, Exists(t, s, txh, hf(data1)))
+		Delete(t, s, txh, hf(data1))
+		require.False(t, Exists(t, s, txh, hf(data1)))
 	})
 	t.Run("1WriterNReaders", func(t *testing.T) {
 		s, volh := mk(t)
@@ -146,9 +146,9 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true, GCBlobs: true})
 		defer Abort(t, s, txh)
 
-		hf := defaultLocalSpec().Local.HashAlgo.HashFunc()
+		hf := defaultLocalSpec().Local.HashAlgo.Hash
 		data1 := []byte("hello world")
-		cid1 := hf(nil, data1)
+		cid1 := hf(data1)
 		// should not be visited yet.
 		require.Equal(t, []bool{false}, IsVisited(t, s, txh, []blobcache.CID{cid1}))
 		Post(t, s, txh, data1, blobcache.PostOpts{})
@@ -281,7 +281,7 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		dstTx := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		defer Abort(t, s, dstTx)
 
-		missing := defaultLocalSpec().Local.HashAlgo.HashFunc()(nil, []byte("missing"))
+		missing := defaultLocalSpec().Local.HashAlgo.Hash([]byte("missing"))
 		out := make([]bool, 1)
 		err := s.Copy(ctx, dstTx, []blobcache.Handle{srcTx}, []blobcache.CID{missing}, out)
 		if isErrCopyUnsupported(err) {
