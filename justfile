@@ -26,11 +26,17 @@ build-exec: build-amd64-linux build-arm64-linux build-arm64-darwin
 test: capnp
 	go test ./...
 
+test-rs: build
+	cd ./client/rs && cargo test
+
 testv:
 	go test -count=1 -v ./pkg/...
 
-capnp:
-	cd ./src/internal/tries/triescnp && ./build.sh
+install-capnpc-go:
+	GOBIN="${GOBIN:-$(go env GOPATH)/bin}" go install capnproto.org/go/capnp/v3/capnpc-go@latest
+
+capnp: install-capnpc-go
+	PATH="$(go env GOPATH)/bin:${PATH}"; cd ./src/internal/tries/triescnp && ./build.sh
 
 clean:
 	rm -f ./build/out/*
