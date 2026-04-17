@@ -23,12 +23,16 @@ build-arm64-darwin: capnp
 
 build-exec: build-amd64-linux build-arm64-linux build-arm64-darwin
 
-test: capnp
+test-go: capnp
 	go test ./...
 
 test-rs: build
 	cd ./client/rs && cargo test
 
+test:
+	just test-go
+	just test-rs
+	
 testv:
 	go test -count=1 -v ./pkg/...
 
