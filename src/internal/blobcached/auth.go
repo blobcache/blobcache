@@ -71,7 +71,19 @@ const (
 	Action_LINK_FROM   Action = "LINK_FROM"
 	Action_LINK_TO     Action = "LINK_TO"
 	Action_UNLINK_FROM Action = "UNLINK_FROM"
-	Action_CREATE      Action = "CREATE"
+	Action_VISIT       Action = "VISIT"
+	Action_IS_VISITED  Action = "IS_VISITED"
+	Action_VISIT_LINKS Action = "VISIT_LINKS"
+)
+
+const (
+	Action_CREATE_VOLUME Action = "CREATE"
+	Action_CREATE_QUEUE  Action = "CREATE_QUEUE"
+)
+
+const (
+	action_CREATE_VOLUME blobcache.ActionSet = 1 << 62
+	action_CREATE_QUEUE  blobcache.ActionSet = 1 << 63
 )
 
 func (a Action) ToSet() blobcache.ActionSet {
@@ -95,9 +107,19 @@ func (a Action) ToSet() blobcache.ActionSet {
 	case Action_LINK_FROM:
 		return blobcache.Action_VOLUME_TX_LINK_FROM
 	case Action_LINK_TO:
-		return blobcache.Action_VOLUME_TX_LINK_FROM
+		return blobcache.Action_VOLUME_LINK_TO
 	case Action_UNLINK_FROM:
 		return blobcache.Action_VOLUME_TX_UNLINK_FROM
+	case Action_VISIT:
+		return blobcache.Action_VOLUME_TX_VISIT
+	case Action_IS_VISITED:
+		return blobcache.Action_VOLUME_TX_IS_VISITED
+	case Action_VISIT_LINKS:
+		return blobcache.Action_VOLUME_TX_VISIT_LINKS
+	case Action_CREATE_VOLUME:
+		return action_CREATE_VOLUME
+	case Action_CREATE_QUEUE:
+		return action_CREATE_QUEUE
 	}
 	panic(a)
 }
@@ -107,6 +129,7 @@ func AllActions() []Action {
 		Action_LOAD,
 		Action_SAVE,
 		Action_POST,
+		Action_GET,
 		Action_EXISTS,
 		Action_DELETE,
 		Action_COPY_FROM,
@@ -114,8 +137,12 @@ func AllActions() []Action {
 		Action_LINK_FROM,
 		Action_LINK_TO,
 		Action_UNLINK_FROM,
+		Action_IS_VISITED,
+		Action_VISIT,
+		Action_VISIT_LINKS,
 
-		Action_CREATE,
+		Action_CREATE_VOLUME,
+		Action_CREATE_QUEUE,
 	}
 }
 
@@ -143,8 +170,16 @@ func ParseAction(x []byte) (Action, error) {
 		return Action_LINK_TO, nil
 	case "UNLINK_FROM":
 		return Action_UNLINK_FROM, nil
+	case "VISIT":
+		return Action_VISIT, nil
+	case "IS_VISITED":
+		return Action_IS_VISITED, nil
+	case "VISIT_LINKS":
+		return Action_VISIT_LINKS, nil
 	case "CREATE":
-		return Action_CREATE, nil
+		return Action_CREATE_VOLUME, nil
+	case "CREATE_QUEUE":
+		return Action_CREATE_QUEUE, nil
 	}
 	return "", fmt.Errorf("invalid action: %s", x)
 }
@@ -369,6 +404,24 @@ func (p *Policy) OpenFiat(peer blobcache.NodeID, target blobcache.OID) blobcache
 		grant := p.grants[grantIndex]
 		rights |= p.expandActionMember(grant.Action)
 	}
+	volTxRights := blobcache.Action_VOLUME_TX_INSPECT |
+		blobcache.Action_VOLUME_TX_LOAD |
+		blobcache.Action_VOLUME_TX_SAVE |
+		blobcache.Action_VOLUME_TX_POST |
+		blobcache.Action_VOLUME_TX_GET |
+		blobcache.Action_VOLUME_TX_EXISTS |
+		blobcache.Action_VOLUME_TX_DELETE |
+		blobcache.Action_VOLUME_TX_COPY_FROM |
+		blobcache.Action_VOLUME_TX_COPY_TO |
+		blobcache.Action_VOLUME_TX_LINK_FROM |
+		blobcache.Action_VOLUME_TX_UNLINK_FROM |
+		blobcache.Action_VOLUME_TX_VISIT |
+		blobcache.Action_VOLUME_TX_IS_VISITED |
+		blobcache.Action_VOLUME_TX_VISIT_LINKS
+	if rights&volTxRights != 0 {
+		rights |= blobcache.Action_VOLUME_BEGIN_TX
+	}
+	rights &^= action_CREATE_VOLUME | action_CREATE_QUEUE
 	return rights
 }
 
@@ -381,7 +434,7 @@ func (p *Policy) CanCreate(peer blobcache.NodeID) bool {
 	for _, gi := range idenGrants {
 		grant := p.grants[gi]
 		rights := p.expandActionMember(grant.Action)
-		if rights&Action_CREATE.ToSet() != 0 {
+		if rights&(action_CREATE_VOLUME|action_CREATE_QUEUE) != 0 {
 			return true
 		}
 	}

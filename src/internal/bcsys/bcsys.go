@@ -844,9 +844,46 @@ func (s *Service[LK, LV, LQ]) InspectVolume(ctx context.Context, h blobcache.Han
 func (s *Service[LK, LV, LQ]) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
-	vol, _, err := s.resolveVol(ctx, volh)
+	if err := txspec.Validate(); err != nil {
+		return nil, err
+	}
+	vol, rights, err := s.resolveVol(ctx, volh)
 	if err != nil {
 		return nil, err
+	}
+	if !rights.Has(blobcache.Action_VOLUME_BEGIN_TX) {
+		return nil, blobcache.ErrPermission{
+			Handle:   volh,
+			Rights:   rights,
+			Requires: blobcache.Action_VOLUME_BEGIN_TX,
+		}
+	}
+	if txspec.GCBlobs {
+		gcBlobRights := blobcache.ActionSet(blobcache.Action_VOLUME_TX_VISIT | blobcache.Action_VOLUME_TX_IS_VISITED)
+		if rights&gcBlobRights == 0 {
+			return nil, blobcache.ErrPermission{
+				Handle:   volh,
+				Rights:   rights,
+				Requires: gcBlobRights,
+			}
+		}
+	}
+	if txspec.Modify {
+		mutatingRights := blobcache.ActionSet(blobcache.Action_VOLUME_TX_SAVE |
+			blobcache.Action_VOLUME_TX_POST |
+			blobcache.Action_VOLUME_TX_DELETE |
+			blobcache.Action_VOLUME_TX_COPY_TO |
+			blobcache.Action_VOLUME_TX_LINK_FROM |
+			blobcache.Action_VOLUME_TX_UNLINK_FROM |
+			blobcache.Action_VOLUME_TX_VISIT |
+			blobcache.Action_VOLUME_TX_VISIT_LINKS)
+		if rights&mutatingRights == 0 {
+			return nil, blobcache.ErrPermission{
+				Handle:   volh,
+				Rights:   rights,
+				Requires: mutatingRights,
+			}
+		}
 	}
 	tx, err := vol.backend.BeginTx(ctx, txspec)
 	if err != nil {
@@ -865,7 +902,24 @@ func (s *Service[LK, LV, LQ]) BeginTx(ctx context.Context, volh blobcache.Handle
 	s.mu.Unlock()
 	createdAt := time.Now()
 	expiresAt := createdAt.Add(DefaultTxTTL)
-	h := s.handles.Create(txoid, blobcache.Action_ALL, createdAt, expiresAt)
+	txRights := blobcache.Action_ACK | blobcache.Action_TX_INSPECT
+	volTxRightsMask := blobcache.Action_VOLUME_TX_INSPECT |
+		blobcache.Action_VOLUME_TX_LOAD |
+		blobcache.Action_VOLUME_TX_SAVE |
+		blobcache.Action_VOLUME_TX_POST |
+		blobcache.Action_VOLUME_TX_GET |
+		blobcache.Action_VOLUME_TX_EXISTS |
+		blobcache.Action_VOLUME_TX_DELETE |
+		blobcache.Action_VOLUME_TX_COPY_FROM |
+		blobcache.Action_VOLUME_TX_COPY_TO |
+		blobcache.Action_VOLUME_TX_LINK_FROM |
+		blobcache.Action_VOLUME_TX_UNLINK_FROM |
+		blobcache.Action_VOLUME_TX_VISIT |
+		blobcache.Action_VOLUME_TX_IS_VISITED |
+		blobcache.Action_VOLUME_TX_VISIT_LINKS
+	txRights |= (rights & volTxRightsMask) >> 8
+	txRights |= (rights & blobcache.SharedAction(volTxRightsMask)) >> 8
+	h := s.handles.Create(txoid, txRights, createdAt, expiresAt)
 	return &h, nil
 }
 
@@ -1122,7 +1176,7 @@ func (s *Service[LK, LV, LQ]) Copy(ctx context.Context, txh blobcache.Handle, sr
 func (s *Service[LK, LV, LQ]) Visit(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "Visit"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Visit"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then Visit it allowed.
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_VISIT)
 	if err != nil {
 		return err
 	}
@@ -1135,7 +1189,7 @@ func (s *Service[LK, LV, LQ]) IsVisited(ctx context.Context, txh blobcache.Handl
 	if len(cids) != len(dst) {
 		return fmt.Errorf("cids and out must have the same length")
 	}
-	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then IsVisited is allowed.
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_IS_VISITED)
 	if err != nil {
 		return err
 	}
@@ -1173,7 +1227,7 @@ func (s *Service[LK, LV, LQ]) Unlink(ctx context.Context, txh blobcache.Handle, 
 func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkToken) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "VisitLinks"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "VisitLinks"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, 0) // if a GC transaction was opened, then VisitLinks is allowed.
+	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_VISIT_LINKS)
 	if err != nil {
 		return err
 	}
