@@ -58,7 +58,7 @@ type Server = bcp.Server
 
 func NewServer(svc blobcache.Service) *Server {
 	return &bcp.Server{
-		Access: func(ep blobcache.PeerID) blobcache.Service {
+		Access: func(ep blobcache.NodeID) blobcache.Service {
 			return svc
 		},
 	}

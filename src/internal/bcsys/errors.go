@@ -8,7 +8,7 @@ import (
 )
 
 type ErrNotAllowed struct {
-	Peer blobcache.PeerID
+	Peer blobcache.NodeID
 	// TODO: this should be a blobcache.ActionSet
 	Action string
 	Target blobcache.OID

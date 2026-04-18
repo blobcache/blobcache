@@ -55,7 +55,7 @@ func TestService(t *testing.T) {
 		var eg errgroup.Group
 		eg.Go(func() error {
 			return ListenAndServe(ctx, sockPath, &bcp.Server{
-				Access: func(blobcache.PeerID) blobcache.Service {
+				Access: func(blobcache.NodeID) blobcache.Service {
 					return svc
 				},
 			})

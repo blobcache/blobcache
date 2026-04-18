@@ -43,7 +43,7 @@ func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.H
 			return nil, nil, err
 		}
 		return svolh, &blobcache.FQOID{
-			Peer: ep.Peer,
+			Node: ep.Peer,
 			OID:  svolh.OID,
 		}, nil
 	}

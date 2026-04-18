@@ -776,10 +776,10 @@ func ensureHandle(ctx context.Context, svc blobcache.Service, h blobcache.Handle
 func resolveFQOID(ctx context.Context, svc blobcache.Service, h blobcache.Handle) (blobcache.FQOID, error) {
 	ep, err := svc.Endpoint(ctx)
 	if err == nil {
-		if ep.Peer == (blobcache.PeerID{}) {
+		if ep.Peer == (blobcache.NodeID{}) {
 			return blobcache.FQOID{}, fmt.Errorf("endpoint returned zero peer id")
 		}
-		return blobcache.FQOID{Peer: ep.Peer, OID: h.OID}, nil
+		return blobcache.FQOID{Node: ep.Peer, OID: h.OID}, nil
 	}
 
 	vinfo, err := svc.InspectVolume(ctx, h)
@@ -787,11 +787,11 @@ func resolveFQOID(ctx context.Context, svc blobcache.Service, h blobcache.Handle
 		return blobcache.FQOID{}, err
 	}
 	if vinfo.Backend.Remote != nil {
-		if vinfo.Backend.Remote.Endpoint.Peer == (blobcache.PeerID{}) {
+		if vinfo.Backend.Remote.Endpoint.Peer == (blobcache.NodeID{}) {
 			return blobcache.FQOID{}, fmt.Errorf("remote backend returned zero peer id")
 		}
 		return blobcache.FQOID{
-			Peer: vinfo.Backend.Remote.Endpoint.Peer,
+			Node: vinfo.Backend.Remote.Endpoint.Peer,
 			OID:  vinfo.Backend.Remote.Volume,
 		}, nil
 	}

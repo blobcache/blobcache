@@ -28,7 +28,7 @@ type KeepAliveResp struct{}
 
 type ShareOutReq struct {
 	Handle blobcache.Handle    `json:"handle"`
-	Peer   blobcache.PeerID    `json:"peer"`
+	Peer   blobcache.NodeID    `json:"peer"`
 	Mask   blobcache.ActionSet `json:"mask"`
 }
 
@@ -37,7 +37,7 @@ type ShareOutResp struct {
 }
 
 type ShareInReq struct {
-	Host   blobcache.PeerID `json:"host"`
+	Host   blobcache.NodeID `json:"host"`
 	Handle blobcache.Handle `json:"handle"`
 }
 

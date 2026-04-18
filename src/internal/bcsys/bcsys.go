@@ -53,7 +53,7 @@ type LVParams[K any] struct {
 
 // PeerLocator finds the address of peers
 type PeerLocator interface {
-	WhereIs(ctx context.Context, peer blobcache.PeerID) iter.Seq[netip.AddrPort]
+	WhereIs(ctx context.Context, peer blobcache.NodeID) iter.Seq[netip.AddrPort]
 }
 
 type Env[LK any, LV LocalVolume[LK], LQ LocalQueue] struct {
@@ -138,7 +138,7 @@ func (s *Service[LK, LV, LQ]) Serve(ctx context.Context, pc net.PacketConn) erro
 	s.node.Store(node)
 
 	err := node.Serve(ctx, &bcp.Server{
-		Access: func(peer blobcache.PeerID) blobcache.Service {
+		Access: func(peer blobcache.NodeID) blobcache.Service {
 			if s.env.Policy.CanConnect(peer) {
 				return &peerView[LK, LV, LQ]{
 					svc:       s,
@@ -166,7 +166,7 @@ func (s *Service[LK, LV, LQ]) Ping(ctx context.Context, ep blobcache.Endpoint) e
 	return bcp.Ping(ctx, node, ep)
 }
 
-func (s *Service[LK, LV, LQ]) LocalID() blobcache.PeerID {
+func (s *Service[LK, LV, LQ]) LocalID() blobcache.NodeID {
 	return inet256.NewID(s.env.PrivateKey.Public().(inet256.PublicKey))
 }
 
@@ -470,7 +470,7 @@ func (s *Service[LK, LV, LQ]) KeepAlive(ctx context.Context, hs []blobcache.Hand
 	return nil
 }
 
-func (s *Service[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
 	return nil, fmt.Errorf("Share not implemented")
@@ -491,7 +491,7 @@ func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Han
 	}, nil
 }
 
-func (s *Service[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+func (s *Service[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "ShareIn"), zap.Stringer("oid", h.OID), zap.Stringer("host", host))
 	defer logctx.Debug(ctx, "done", zap.String("method", "ShareIn"), zap.Stringer("oid", h.OID), zap.Stringer("host", host))
 	ep, info, err := s.inspectRemoteForShareIn(ctx, host, h)
@@ -577,7 +577,7 @@ func (s *Service[LK, LV, LQ]) Inspect(ctx context.Context, h blobcache.Handle) (
 	return blobcache.Info{}, blobcache.ErrInvalidHandle{Handle: h}
 }
 
-func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Endpoint, blobcache.Info, error) {
+func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Endpoint, blobcache.Info, error) {
 	node, err := s.grabNode(ctx)
 	if err != nil {
 		return blobcache.Endpoint{}, blobcache.Info{}, err
@@ -803,7 +803,7 @@ func (s *Service[LK, LV, LQ]) createRemoteVolume(ctx context.Context, host blobc
 	return &localHandle, nil
 }
 
-func (s *Service[LK, LV, LQ]) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+func (s *Service[LK, LV, LQ]) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "CloneVolume"), zap.Stringer("oid", volh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "CloneVolume"), zap.Stringer("oid", volh.OID))
 	vol, _, err := s.resolveVol(ctx, volh)

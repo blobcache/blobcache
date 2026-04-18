@@ -120,7 +120,7 @@ func (kr *KeepAliveResp) Unmarshal(data []byte) error {
 
 type ShareOutReq struct {
 	Handle blobcache.Handle
-	Peer   blobcache.PeerID
+	Peer   blobcache.NodeID
 	Mask   blobcache.ActionSet
 }
 
@@ -139,7 +139,7 @@ func (sr *ShareOutReq) Unmarshal(data []byte) error {
 		return err
 	}
 	data = data[blobcache.HandleSize:]
-	sr.Peer = blobcache.PeerID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.PeerIDSize])
+	sr.Peer = blobcache.NodeID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.PeerIDSize])
 	sr.Mask = blobcache.ActionSet(binary.BigEndian.Uint64(data[blobcache.HandleSize+blobcache.PeerIDSize:]))
 	return nil
 }
@@ -158,7 +158,7 @@ func (sr *ShareOutResp) Unmarshal(data []byte) error {
 }
 
 type ShareInReq struct {
-	Host   blobcache.PeerID
+	Host   blobcache.NodeID
 	Handle blobcache.Handle
 }
 
@@ -172,7 +172,7 @@ func (ar *ShareInReq) Unmarshal(data []byte) error {
 	if len(data) < blobcache.PeerIDSize+blobcache.HandleSize {
 		return fmt.Errorf("cannot unmarshal ShareInReq, too short: %d", len(data))
 	}
-	ar.Host = blobcache.PeerID(data[:blobcache.PeerIDSize])
+	ar.Host = blobcache.NodeID(data[:blobcache.PeerIDSize])
 	return ar.Handle.Unmarshal(data[blobcache.PeerIDSize:])
 }
 

@@ -27,7 +27,7 @@ const (
 
 var Everyone = inet256.Everyone()
 
-type Identity = blobcache.PeerID
+type Identity = blobcache.NodeID
 
 func ParseIdentity(x []byte) (Identity, error) {
 	addr, err := inet256.ParseAddrBase64(x)
@@ -354,7 +354,7 @@ type Policy struct {
 	actionsClosure  map[GroupName]blobcache.ActionSet
 }
 
-func (p *Policy) CanConnect(peer blobcache.PeerID) bool {
+func (p *Policy) CanConnect(peer blobcache.NodeID) bool {
 	if len(p.anyoneGrants) > 0 {
 		return true
 	}
@@ -362,7 +362,7 @@ func (p *Policy) CanConnect(peer blobcache.PeerID) bool {
 	return exists
 }
 
-func (p *Policy) OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+func (p *Policy) OpenFiat(peer blobcache.NodeID, target blobcache.OID) blobcache.ActionSet {
 	volGrants := slices.Clone(p.vol2Grant[target])
 	volGrants = append(volGrants, p.allObjectGrants...)
 	idenGrants := append([]uint16{}, p.iden2Grant[peer]...)
@@ -382,7 +382,7 @@ func (p *Policy) OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache
 	return rights
 }
 
-func (p *Policy) CanCreate(peer blobcache.PeerID) bool {
+func (p *Policy) CanCreate(peer blobcache.NodeID) bool {
 	idenGrants := append([]uint16{}, p.iden2Grant[peer]...)
 	if len(p.anyoneGrants) > 0 {
 		idenGrants = append(idenGrants, p.anyoneGrants...)

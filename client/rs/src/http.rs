@@ -1,9 +1,9 @@
 use crate::service::Service;
 use crate::types::*;
-use reqwest::blocking::Client as Http;
 use reqwest::Method;
-use serde::de::DeserializeOwned;
+use reqwest::blocking::Client as Http;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 pub struct HttpClient {
     http: Http,
@@ -145,11 +145,11 @@ impl Service for HttpClient {
         Ok(())
     }
 
-    fn share_out(&self, handle: &Handle, to: &PeerID, mask: ActionSet) -> Result<Handle, Error> {
+    fn share_out(&self, handle: &Handle, to: &NodeID, mask: ActionSet) -> Result<Handle, Error> {
         #[derive(Serialize)]
         struct Req<'a> {
             handle: &'a Handle,
-            peer: &'a PeerID,
+            peer: &'a NodeID,
             mask: ActionSet,
         }
         #[derive(serde::Deserialize)]
@@ -170,10 +170,10 @@ impl Service for HttpClient {
             .handle)
     }
 
-    fn share_in(&self, host: &PeerID, handle: &Handle) -> Result<Handle, Error> {
+    fn share_in(&self, host: &NodeID, handle: &Handle) -> Result<Handle, Error> {
         #[derive(Serialize)]
         struct Req<'a> {
-            host: &'a PeerID,
+            host: &'a NodeID,
             handle: &'a Handle,
         }
         #[derive(serde::Deserialize)]
@@ -250,7 +250,7 @@ impl Service for HttpClient {
             .handle)
     }
 
-    fn clone_volume(&self, _caller: Option<&PeerID>, volume: &Handle) -> Result<Handle, Error> {
+    fn clone_volume(&self, _caller: Option<&NodeID>, volume: &Handle) -> Result<Handle, Error> {
         #[derive(Serialize)]
         struct Req<'a> {
             volume: &'a Handle,

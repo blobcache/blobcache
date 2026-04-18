@@ -1,6 +1,6 @@
+use base64::Engine;
 use base64::alphabet;
 use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
-use base64::Engine;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,7 +12,7 @@ pub const OID_SIZE: usize = 16;
 pub const CID_SIZE: usize = 32;
 pub const HANDLE_SIZE: usize = OID_SIZE + 16;
 pub const LINK_TOKEN_SIZE: usize = 16 + 8 + 24;
-pub const PEER_ID_SIZE: usize = 32;
+pub const NODE_ID_SIZE: usize = 32;
 
 pub type ActionSet = u64;
 
@@ -189,20 +189,20 @@ impl<'de> Deserialize<'de> for CID {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PeerID(pub [u8; PEER_ID_SIZE]);
+pub struct NodeID(pub [u8; NODE_ID_SIZE]);
 
-impl fmt::Display for PeerID {
+impl fmt::Display for NodeID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let url = base64::engine::general_purpose::URL_SAFE_NO_PAD;
         write!(f, "{}", url.encode(self.0))
     }
 }
 
-impl FromStr for PeerID {
+impl FromStr for NodeID {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut out = [0u8; PEER_ID_SIZE];
+        let mut out = [0u8; NODE_ID_SIZE];
         let mut decoded = None;
         for engine in [
             &base64::engine::general_purpose::URL_SAFE_NO_PAD,
@@ -214,13 +214,13 @@ impl FromStr for PeerID {
             }
         }
         match decoded {
-            Some(n) if n == PEER_ID_SIZE => Ok(Self(out)),
+            Some(n) if n == NODE_ID_SIZE => Ok(Self(out)),
             _ => Err(Error::InvalidPeerId(s.to_string())),
         }
     }
 }
 
-impl Serialize for PeerID {
+impl Serialize for NodeID {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -229,13 +229,13 @@ impl Serialize for PeerID {
     }
 }
 
-impl<'de> Deserialize<'de> for PeerID {
+impl<'de> Deserialize<'de> for NodeID {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        PeerID::from_str(&s).map_err(de::Error::custom)
+        NodeID::from_str(&s).map_err(de::Error::custom)
     }
 }
 
@@ -359,18 +359,18 @@ pub struct Info {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Endpoint {
-    pub peer: PeerID,
+    pub peer: NodeID,
     pub ip_port: String,
 }
 
 impl Endpoint {
     pub fn from_bcp_bytes(data: &[u8]) -> Result<Self, Error> {
-        if data.len() < PEER_ID_SIZE + 18 {
+        if data.len() < NODE_ID_SIZE + 18 {
             return Err(Error::InvalidEndpoint(format!("too short {}", data.len())));
         }
-        let mut peer = [0u8; PEER_ID_SIZE];
-        peer.copy_from_slice(&data[..PEER_ID_SIZE]);
-        let ap = &data[PEER_ID_SIZE..PEER_ID_SIZE + 18];
+        let mut peer = [0u8; NODE_ID_SIZE];
+        peer.copy_from_slice(&data[..NODE_ID_SIZE]);
+        let ap = &data[NODE_ID_SIZE..NODE_ID_SIZE + 18];
         let ip_port = if ap[6..].iter().all(|b| *b == 0) {
             let port = u16::from_le_bytes([ap[4], ap[5]]);
             format!("{}.{}.{}.{}:{port}", ap[0], ap[1], ap[2], ap[3])
@@ -382,7 +382,7 @@ impl Endpoint {
             format!("[{ip}]:{port}")
         };
         Ok(Self {
-            peer: PeerID(peer),
+            peer: NodeID(peer),
             ip_port,
         })
     }
@@ -458,7 +458,7 @@ pub struct VolumeBackendRemote {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeBackendPeer {
-    pub peer: PeerID,
+    pub peer: NodeID,
     pub volume: OID,
     pub hash_algo: HashAlgo,
 }

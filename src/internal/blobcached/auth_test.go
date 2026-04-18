@@ -188,10 +188,10 @@ func TestParseGrantsFile(t *testing.T) {
 	}
 }
 
-func mkPeerID(i int) blobcache.PeerID {
+func mkPeerID(i int) blobcache.NodeID {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(i))
-	return blobcache.PeerID(blake3.Sum256(buf))
+	return blobcache.NodeID(blake3.Sum256(buf))
 }
 
 func TestPolicy(t *testing.T) {
@@ -199,7 +199,7 @@ func TestPolicy(t *testing.T) {
 	vol1 := mkVolOID(1)
 
 	type Check struct {
-		Peer       blobcache.PeerID
+		Peer       blobcache.NodeID
 		Target     blobcache.OID
 		CanConnect bool
 		Open       blobcache.ActionSet

@@ -5,15 +5,15 @@ pub trait Service {
     fn inspect_handle(&self, handle: &Handle) -> Result<HandleInfo, Error>;
     fn drop_handle(&self, handle: &Handle) -> Result<(), Error>;
     fn keep_alive(&self, handles: &[Handle]) -> Result<(), Error>;
-    fn share_out(&self, handle: &Handle, to: &PeerID, mask: ActionSet) -> Result<Handle, Error>;
-    fn share_in(&self, host: &PeerID, handle: &Handle) -> Result<Handle, Error>;
+    fn share_out(&self, handle: &Handle, to: &NodeID, mask: ActionSet) -> Result<Handle, Error>;
+    fn share_in(&self, host: &NodeID, handle: &Handle) -> Result<Handle, Error>;
     fn inspect(&self, handle: &Handle) -> Result<Info, Error>;
 
     fn open_fiat(&self, target: OID, mask: ActionSet) -> Result<Handle, Error>;
     fn open_from(&self, base: &Handle, token: &LinkToken, mask: ActionSet)
-        -> Result<Handle, Error>;
+    -> Result<Handle, Error>;
     fn create_volume(&self, host: Option<&Endpoint>, spec: &VolumeSpec) -> Result<Handle, Error>;
-    fn clone_volume(&self, caller: Option<&PeerID>, volume: &Handle) -> Result<Handle, Error>;
+    fn clone_volume(&self, caller: Option<&NodeID>, volume: &Handle) -> Result<Handle, Error>;
     fn inspect_volume(&self, volume: &Handle) -> Result<VolumeInfo, Error>;
 
     fn begin_tx(&self, volume: &Handle, params: TxParams) -> Result<Handle, Error>;
@@ -36,7 +36,7 @@ pub trait Service {
     fn create_queue(&self, host: Option<&Endpoint>, spec: &QueueSpec) -> Result<Handle, Error>;
     fn inspect_queue(&self, queue: &Handle) -> Result<QueueInfo, Error>;
     fn dequeue(&self, queue: &Handle, max: usize, opts: DequeueOpts)
-        -> Result<Vec<Message>, Error>;
+    -> Result<Vec<Message>, Error>;
     fn enqueue(&self, queue: &Handle, messages: &[Message]) -> Result<InsertResp, Error>;
     fn sub_to_volume(
         &self,

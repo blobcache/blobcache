@@ -80,14 +80,14 @@ impl Service for Client {
         }
     }
 
-    fn share_out(&self, handle: &Handle, to: &PeerID, mask: ActionSet) -> Result<Handle, Error> {
+    fn share_out(&self, handle: &Handle, to: &NodeID, mask: ActionSet) -> Result<Handle, Error> {
         match self {
             Self::Http(c) => c.share_out(handle, to, mask),
             Self::Unix(c) => c.share_out(handle, to, mask),
         }
     }
 
-    fn share_in(&self, host: &PeerID, handle: &Handle) -> Result<Handle, Error> {
+    fn share_in(&self, host: &NodeID, handle: &Handle) -> Result<Handle, Error> {
         match self {
             Self::Http(c) => c.share_in(host, handle),
             Self::Unix(c) => c.share_in(host, handle),
@@ -127,7 +127,7 @@ impl Service for Client {
         }
     }
 
-    fn clone_volume(&self, caller: Option<&PeerID>, volume: &Handle) -> Result<Handle, Error> {
+    fn clone_volume(&self, caller: Option<&NodeID>, volume: &Handle) -> Result<Handle, Error> {
         match self {
             Self::Http(c) => c.clone_volume(caller, volume),
             Self::Unix(c) => c.clone_volume(caller, volume),

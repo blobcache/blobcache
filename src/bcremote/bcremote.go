@@ -87,7 +87,7 @@ func (s *Service) AwaitReady(ctx context.Context) error {
 func (s *Service) start(bgCtx context.Context) {
 	s.eg.Go(func() error {
 		return s.node.Serve(bgCtx, &bcp.Server{
-			Access: func(peer blobcache.PeerID) blobcache.Service { return nil },
+			Access: func(peer blobcache.NodeID) blobcache.Service { return nil },
 		})
 	})
 }
@@ -105,11 +105,11 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return bcp.KeepAlive(ctx, s.node, s.ep, hs)
 }
 
-func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	return bcp.ShareOut(ctx, s.node, s.ep, h, to, mask)
 }
 
-func (s *Service) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+func (s *Service) ShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
 	return bcp.ShareIn(ctx, s.node, s.ep, host, h)
 }
 
@@ -156,7 +156,7 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 	return bcp.InspectVolume(ctx, s.node, s.ep, h)
 }
 
-func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	return bcp.CloneVolume(ctx, s.node, s.ep, caller, volh)
 }
 

@@ -28,10 +28,10 @@ type hostPort struct {
 }
 
 type PeerLocator struct {
-	locs map[blobcache.PeerID][]hostPort
+	locs map[blobcache.NodeID][]hostPort
 }
 
-func (loc *PeerLocator) WhereIs(ctx context.Context, peer blobcache.PeerID) iter.Seq[netip.AddrPort] {
+func (loc *PeerLocator) WhereIs(ctx context.Context, peer blobcache.NodeID) iter.Seq[netip.AddrPort] {
 	return func(yield func(netip.AddrPort) bool) {
 		for _, hostport := range loc.locs[peer] {
 			var ap netip.AddrPort
@@ -54,7 +54,7 @@ func (loc *PeerLocator) WhereIs(ctx context.Context, peer blobcache.PeerID) iter
 }
 
 // PeerEntry is an entry in the Peer locations file.
-type PeerEntry = groupfile.Entry[blobcache.PeerID, hostPort]
+type PeerEntry = groupfile.Entry[blobcache.NodeID, hostPort]
 
 func ParsePeerLocs(data []byte) ([]PeerEntry, error) {
 	ents, err := groupfile.Parse(data, parsePeerID, parseHostPort)
@@ -73,8 +73,8 @@ func ParsePeerLocs(data []byte) ([]PeerEntry, error) {
 	return ents, nil
 }
 
-func parsePeerID(x []byte) (blobcache.PeerID, error) {
-	var ret blobcache.PeerID
+func parsePeerID(x []byte) (blobcache.NodeID, error) {
+	var ret blobcache.NodeID
 	err := ret.UnmarshalText(x)
 	return ret, err
 }
@@ -105,7 +105,7 @@ func LoadLocator(dir *os.Root, p string) (*PeerLocator, error) {
 	if err != nil {
 		return nil, err
 	}
-	locs := make(map[blobcache.PeerID][]hostPort, len(ents))
+	locs := make(map[blobcache.NodeID][]hostPort, len(ents))
 	for _, ent := range ents {
 		if mstmt := ent.MStmt; mstmt != nil {
 			for _, m := range mstmt.Members {
