@@ -2,6 +2,7 @@ package bcsys
 
 import (
 	"context"
+	"crypto/aes"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -473,7 +474,35 @@ func (s *Service[LK, LV, LQ]) KeepAlive(ctx context.Context, hs []blobcache.Hand
 func (s *Service[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
-	return nil, fmt.Errorf("Share not implemented")
+	oid, originalRights := s.handles.Resolve(h)
+	if originalRights == 0 {
+		return nil, blobcache.ErrInvalidHandle{Handle: h}
+	}
+	rights := originalRights.Share() & mask
+	if rights == 0 {
+		return nil, blobcache.ErrPermission{
+			Handle:   h,
+			Rights:   originalRights,
+			Requires: blobcache.Action_SHARE_ACK,
+		}
+	}
+	now := time.Now()
+	expiresAt := now.Add(DefaultVolumeTTL)
+	s.mu.RLock()
+	if _, exists := s.txns[oid]; exists {
+		expiresAt = now.Add(DefaultTxTTL)
+	} else if _, exists := s.queues[oid]; exists {
+		expiresAt = now.Add(DefaultQueueTTL)
+	}
+	s.mu.RUnlock()
+	out := s.handles.Create(oid, rights, now, expiresAt)
+	key := derivePeerSecret(s.tmpSecret, to)
+	ciph, err := aes.NewCipher(key[:])
+	if err != nil {
+		panic(err)
+	}
+	ciph.Encrypt(out.Secret[:], out.Secret[:])
+	return &out, nil
 }
 
 func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
@@ -1207,7 +1236,8 @@ func (s *Service[LK, LV, LQ]) Link(ctx context.Context, txh blobcache.Handle, ta
 	if err != nil {
 		return nil, err
 	}
-	ltok, err := txn.backend.Link(ctx, volTo.info.ID, rights&mask, volTo.backend)
+	linkRights := rights.Share() & mask
+	ltok, err := txn.backend.Link(ctx, volTo.info.ID, linkRights, volTo.backend)
 	if err != nil {
 		return nil, setErrTxOID(err, txh.OID)
 	}
