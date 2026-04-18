@@ -62,7 +62,7 @@ func (s *Service) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobc
 	return &hi, nil
 }
 
-func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	re := handleRegexp
 	ms, err := s.runParse([]string{"share", h.String(), to.String(), fmt.Sprint(uint64(mask))}, re)
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache
 	return &nh, nil
 }
 
-func (s *Service) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+func (s *Service) ShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
 	return blobcache.Handle{}, fmt.Errorf("ShareIn not implemented")
 }
 
@@ -225,7 +225,7 @@ func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobca
 	return &h, nil
 }
 
-func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	re := handleRegexp
 	ms, err := s.runParse([]string{"volume", "clone", volh.String()}, re)
 	if err != nil {

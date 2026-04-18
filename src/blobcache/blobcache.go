@@ -91,8 +91,8 @@ func (o *OID) Scan(src any) error {
 	return fmt.Errorf("OID: cannot scan %T", src)
 }
 
-// PeerID uniquely identifies a peer by hash of the public key.
-type PeerID = inet256.ID
+// NodeID uniquely identifies a peer by hash of the public key.
+type NodeID = inet256.ID
 
 const PeerIDSize = inet256.AddrSize
 

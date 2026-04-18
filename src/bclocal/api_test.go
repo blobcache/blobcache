@@ -85,7 +85,7 @@ func TestMultiNode(t *testing.T) {
 // based on endpoints registered via Add.
 type testPeerLocator struct {
 	mu                 sync.RWMutex
-	peers              map[blobcache.PeerID]netip.AddrPort
+	peers              map[blobcache.NodeID]netip.AddrPort
 	injectBadAddrFirst bool
 }
 
@@ -93,12 +93,12 @@ func (l *testPeerLocator) Add(ep blobcache.Endpoint) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.peers == nil {
-		l.peers = make(map[blobcache.PeerID]netip.AddrPort)
+		l.peers = make(map[blobcache.NodeID]netip.AddrPort)
 	}
 	l.peers[ep.Peer] = ep.IPPort
 }
 
-func (l *testPeerLocator) WhereIs(_ context.Context, peer blobcache.PeerID) iter.Seq[netip.AddrPort] {
+func (l *testPeerLocator) WhereIs(_ context.Context, peer blobcache.NodeID) iter.Seq[netip.AddrPort] {
 	return func(yield func(netip.AddrPort) bool) {
 		if l.injectBadAddrFirst {
 			// Return a bad address first to exercise retry logic.

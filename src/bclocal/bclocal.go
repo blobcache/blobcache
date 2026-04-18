@@ -206,7 +206,7 @@ func (s *Service) Ping(ctx context.Context, ep blobcache.Endpoint) error {
 	return s.sys.Ping(ctx, ep)
 }
 
-func (s *Service) LocalID() blobcache.PeerID {
+func (s *Service) LocalID() blobcache.NodeID {
 	return s.sys.LocalID()
 }
 
@@ -258,11 +258,11 @@ func (s *Service) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return s.sys.KeepAlive(ctx, hs)
 }
 
-func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (s *Service) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	return s.sys.ShareOut(ctx, h, to, mask)
 }
 
-func (s *Service) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+func (s *Service) ShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
 	return s.sys.ShareIn(ctx, host, h)
 }
 
@@ -286,7 +286,7 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 	return s.sys.CreateVolume(ctx, host, vspec)
 }
 
-func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	return s.sys.CloneVolume(ctx, caller, volh)
 }
 
@@ -419,20 +419,20 @@ func (s *Service) cleanupVolumes(ctx context.Context, db *pebble.DB, keep func(b
 
 // AllOrNothingPolicy is a policy that allows or disallows all actions for all peers.
 type AllOrNothingPolicy struct {
-	Allow []blobcache.PeerID
+	Allow []blobcache.NodeID
 }
 
-func (p *AllOrNothingPolicy) OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+func (p *AllOrNothingPolicy) OpenFiat(peer blobcache.NodeID, target blobcache.OID) blobcache.ActionSet {
 	if !slices.Contains(p.Allow, peer) {
 		return 0
 	}
 	return blobcache.Action_ALL
 }
 
-func (p *AllOrNothingPolicy) CanConnect(peer blobcache.PeerID) bool {
+func (p *AllOrNothingPolicy) CanConnect(peer blobcache.NodeID) bool {
 	return slices.Contains(p.Allow, peer)
 }
 
-func (p *AllOrNothingPolicy) CanCreate(peer blobcache.PeerID) bool {
+func (p *AllOrNothingPolicy) CanCreate(peer blobcache.NodeID) bool {
 	return slices.Contains(p.Allow, peer)
 }

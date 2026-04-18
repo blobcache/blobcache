@@ -12,7 +12,7 @@ import (
 
 type peerView[LK any, LV LocalVolume[LK], LQ LocalQueue] struct {
 	svc       *Service[LK, LV, LQ]
-	peer      blobcache.PeerID
+	peer      blobcache.NodeID
 	tmpSecret *[32]byte
 }
 
@@ -32,13 +32,13 @@ func (pv *peerView[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.H
 	return pv.svc.InspectHandle(ctx, pv.incoming(h))
 }
 
-func (pv *peerView[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (pv *peerView[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	// We need to transform the incoming, but apply no transformation to the outgoing.
 	// This returned handle will not work for the caller, unless they are sharing with themselves.
 	return pv.svc.ShareOut(ctx, pv.incoming(h), to, mask)
 }
 
-func (pv *peerView[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+func (pv *peerView[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
 	h2, err := pv.svc.ShareIn(ctx, host, h)
 	if err != nil {
 		return blobcache.Handle{}, err
@@ -114,7 +114,7 @@ func (pv *peerView[LK, LV, LQ]) BeginTx(ctx context.Context, volh blobcache.Hand
 	return &h2, nil
 }
 
-func (pv *peerView[LK, LV, LQ]) CloneVolume(ctx context.Context, _ *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+func (pv *peerView[LK, LV, LQ]) CloneVolume(ctx context.Context, _ *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	// Ignore the caller parameter provided by upstream; this view is already bound to pv.peer.
 	h, err := pv.svc.CloneVolume(ctx, &pv.peer, pv.incoming(volh))
 	if err != nil {
@@ -235,7 +235,7 @@ func (pv *peerView[LK, LV, LQ]) incoming(x blobcache.Handle) blobcache.Handle {
 	return x
 }
 
-func derivePeerSecret(secret *[32]byte, peer blobcache.PeerID) [32]byte {
+func derivePeerSecret(secret *[32]byte, peer blobcache.NodeID) [32]byte {
 	return deriveKey(secret, peer[:])
 }
 

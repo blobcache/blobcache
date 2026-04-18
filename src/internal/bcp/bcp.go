@@ -51,7 +51,7 @@ func KeepAlive(ctx context.Context, tp Asker, ep blobcache.Endpoint, hs []blobca
 	return nil
 }
 
-func ShareOut(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func ShareOut(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	var resp ShareOutResp
 	if err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE, ShareOutReq{Handle: h, Peer: to, Mask: mask}, &resp); err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func InspectHandle(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobc
 	return &resp.Info, nil
 }
 
-func ShareIn(ctx context.Context, tp Asker, ep blobcache.Endpoint, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+func ShareIn(ctx context.Context, tp Asker, ep blobcache.Endpoint, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
 	var resp ShareInResp
 	if err := doAsk(ctx, tp, ep, MT_HANDLE_ADOPT, ShareInReq{Host: host, Handle: h}, &resp); err != nil {
 		return blobcache.Handle{}, err
@@ -113,7 +113,7 @@ func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vspec bl
 	return &resp.Handle, nil
 }
 
-func CloneVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+func CloneVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	var resp CloneVolumeResp
 	if err := doAsk(ctx, tp, ep, MT_VOLUME_CLONE, CloneVolumeReq{Volume: volh}, &resp); err != nil {
 		return nil, err

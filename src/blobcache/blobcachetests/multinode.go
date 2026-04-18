@@ -145,7 +145,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 	})
 }
 
-func peerVolumeSpec(peer blobcache.PeerID, volOID blobcache.OID) blobcache.VolumeSpec {
+func peerVolumeSpec(peer blobcache.NodeID, volOID blobcache.OID) blobcache.VolumeSpec {
 	return blobcache.VolumeSpec{
 		Peer: &blobcache.VolumeBackend_Peer{
 			Peer:   peer,

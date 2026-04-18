@@ -13,7 +13,7 @@ import (
 // information should be sent to the initiator.
 //
 // "Get off the phone" https://i.gifer.com/2Yv2.gif
-type AccessFunc func(blobcache.PeerID) blobcache.Service
+type AccessFunc func(blobcache.NodeID) blobcache.Service
 
 type TopicMessage = blobcache.Message
 

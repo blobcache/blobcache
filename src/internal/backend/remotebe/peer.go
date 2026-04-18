@@ -19,7 +19,7 @@ type PeerParams = blobcache.VolumeBackend_Peer
 
 // PeerLocator finds the address of peers.
 type PeerLocator interface {
-	WhereIs(ctx context.Context, peer blobcache.PeerID) iter.Seq[netip.AddrPort]
+	WhereIs(ctx context.Context, peer blobcache.NodeID) iter.Seq[netip.AddrPort]
 }
 
 type PeerSystem struct {

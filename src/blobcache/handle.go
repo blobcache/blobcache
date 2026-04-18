@@ -22,11 +22,11 @@ type HandleAPI interface {
 	InspectHandle(ctx context.Context, h Handle) (*HandleInfo, error)
 	// ShareOut creates a copy of the handle according to the mask, and the
 	// sharing rules for the handles actions.
-	ShareOut(ctx context.Context, h Handle, to PeerID, mask ActionSet) (*Handle, error)
+	ShareOut(ctx context.Context, h Handle, to NodeID, mask ActionSet) (*Handle, error)
 	// ShareIn takes a Handle for an object on another Node and
 	// creates a remote/peer object on the local node to access it.
 	// it returns the handle to the local object.
-	ShareIn(ctx context.Context, host PeerID, h Handle) (Handle, error)
+	ShareIn(ctx context.Context, host NodeID, h Handle) (Handle, error)
 	// Inspect inspects whatever the object is and returns an Info object.
 	Inspect(ctx context.Context, h Handle) (Info, error)
 }

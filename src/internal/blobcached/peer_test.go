@@ -21,7 +21,7 @@ func TestPeerLocation(t *testing.T) {
 		daemon *Daemon
 		pc     net.PacketConn
 		lis    net.Listener
-		peerID blobcache.PeerID
+		peerID blobcache.NodeID
 	}
 	sites := make([]site, 2)
 	for i := range sites {

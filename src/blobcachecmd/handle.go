@@ -58,10 +58,10 @@ var handleParam = star.Required[blobcache.Handle]{
 	Parse:    blobcache.ParseHandle,
 }
 
-var peerParam = star.Required[blobcache.PeerID]{
+var peerParam = star.Required[blobcache.NodeID]{
 	ID:       "peer",
 	ShortDoc: "a PeerID",
-	Parse: func(s string) (blobcache.PeerID, error) {
+	Parse: func(s string) (blobcache.NodeID, error) {
 		return inet256.ParseAddrBase64([]byte(s))
 	},
 }

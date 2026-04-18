@@ -39,7 +39,7 @@ type VolumeAPI interface {
 	// BeginTx begins a new transaction, on a Volume.
 	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
 	// CloneVolume clones a Volume, copying it's configuration, blobs, and cell data.
-	CloneVolume(ctx context.Context, caller *PeerID, volh Handle) (*Handle, error)
+	CloneVolume(ctx context.Context, caller *NodeID, volh Handle) (*Handle, error)
 }
 
 type TxAPI interface {
@@ -92,7 +92,7 @@ type TxAPI interface {
 // Endpoint is somewhere that a blobcache node can be found.
 // The Zero endpoint means the node is not available on the network.
 type Endpoint struct {
-	Peer   PeerID         `json:"peer"`
+	Peer   NodeID         `json:"peer"`
 	IPPort netip.AddrPort `json:"ip_port"`
 }
 
@@ -116,7 +116,7 @@ func (e *Endpoint) Unmarshal(data []byte) error {
 	if len(data) < PeerIDSize+16+2 {
 		return fmt.Errorf("too small to be endpoint")
 	}
-	e.Peer, data = PeerID(data[:PeerIDSize]), data[PeerIDSize:]
+	e.Peer, data = NodeID(data[:PeerIDSize]), data[PeerIDSize:]
 	var ipaddr netip.AddrPort
 	if err := ipaddr.UnmarshalBinary(data[:16+2]); err != nil {
 		return err
@@ -176,7 +176,7 @@ func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
 		return FQOID{}
 	}
 	return FQOID{
-		Peer: vi.Backend.Remote.Endpoint.Peer,
+		Node: vi.Backend.Remote.Endpoint.Peer,
 		OID:  vi.Backend.Remote.Volume,
 	}
 }
@@ -375,7 +375,7 @@ type VolumeBackend_Remote struct {
 
 type VolumeBackend_Peer struct {
 	// Peer is the NodeID of the Node that controls the Volume.
-	Peer PeerID `json:"peer"`
+	Peer NodeID `json:"peer"`
 	// Volume is the OID of the Volume on the Node.
 	Volume OID `json:"volume"`
 	// HashAlgo is the HashAlgo used to hash the Volume.

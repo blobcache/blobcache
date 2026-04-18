@@ -179,16 +179,16 @@ func (d *Daemon) GetPolicy() (*Policy, error) {
 	return LoadPolicy(d.ConfigDir)
 }
 
-func (d *Daemon) GetPeerID() (blobcache.PeerID, error) {
+func (d *Daemon) GetPeerID() (blobcache.NodeID, error) {
 	privKey, err := d.EnsurePrivateKey()
 	if err != nil {
-		return blobcache.PeerID{}, err
+		return blobcache.NodeID{}, err
 	}
 	return inet256.NewID(privKey.Public().(ed25519.PublicKey)), nil
 }
 
 // AddPeerToAdmin adds a peer to the "admin" identity group in the IDENTITIES file.
-func (d *Daemon) AddPeerToAdmin(peerID blobcache.PeerID) error {
+func (d *Daemon) AddPeerToAdmin(peerID blobcache.NodeID) error {
 	f, err := d.ConfigDir.OpenFile(IdentitiesFilename, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", IdentitiesFilename, err)

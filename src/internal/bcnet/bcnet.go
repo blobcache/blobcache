@@ -54,7 +54,7 @@ func New(privateKey ed25519.PrivateKey, pc net.PacketConn) *Node {
 	}
 }
 
-func (n *Node) LocalID() blobcache.PeerID {
+func (n *Node) LocalID() blobcache.NodeID {
 	return inet256.NewID(n.privateKey.Public().(ed25519.PublicKey))
 }
 
@@ -266,7 +266,7 @@ func (qt *Node) handleUniStream(ctx context.Context, ep blobcache.Endpoint, s *q
 type messageHandler = func(ctx context.Context, ep blobcache.Endpoint, req *Message, resp *Message)
 
 // makeDialTlsConfig is called to create a tls.Config for outbound connections
-func (qt *Node) makeDialTlsConfig(desiredPeer blobcache.PeerID) *tls.Config {
+func (qt *Node) makeDialTlsConfig(desiredPeer blobcache.NodeID) *tls.Config {
 	cfg := qt.makeTlsConfig()
 	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
 		peer, err := peerIDFromTLSState(cs)
@@ -310,7 +310,7 @@ func (qt *Node) makeQuicConfig() *quic.Config {
 	}
 }
 
-func peerIDFromTLSState(tlsState tls.ConnectionState) (*blobcache.PeerID, error) {
+func peerIDFromTLSState(tlsState tls.ConnectionState) (*blobcache.NodeID, error) {
 	var cert *x509.Certificate
 	switch len(tlsState.PeerCertificates) {
 	case 0:

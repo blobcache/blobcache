@@ -72,14 +72,14 @@ func (l noOpLogger) Fatalf(msg string, args ...any) {}
 // Do not make this public.
 type allowAllPolicy struct{}
 
-func (p *allowAllPolicy) CanConnect(peer blobcache.PeerID) bool {
+func (p *allowAllPolicy) CanConnect(peer blobcache.NodeID) bool {
 	return true
 }
 
-func (p *allowAllPolicy) OpenFiat(peer blobcache.PeerID, target blobcache.OID) blobcache.ActionSet {
+func (p *allowAllPolicy) OpenFiat(peer blobcache.NodeID, target blobcache.OID) blobcache.ActionSet {
 	return blobcache.Action_ALL
 }
 
-func (p *allowAllPolicy) CanCreate(peer blobcache.PeerID) bool {
+func (p *allowAllPolicy) CanCreate(peer blobcache.NodeID) bool {
 	return true
 }

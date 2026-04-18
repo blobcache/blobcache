@@ -14,18 +14,18 @@ import (
 // It uniquely identifies an object anywhere on the Blobcache network.
 // Volumes and transactions are both considered Objects.
 type FQOID struct {
-	Peer PeerID
+	Node NodeID
 	OID  OID
 }
 
 func (fqoid FQOID) String() string {
-	return fqoid.Peer.String() + ":" + fqoid.OID.String()
+	return fqoid.Node.String() + ":" + fqoid.OID.String()
 }
 
 // URL is the location of an Object in the Blobcache Network
 type URL struct {
 	// Node is the node that manages the object.
-	Node PeerID
+	Node NodeID
 	// IPPort if non-nil is the IP address and UDP port where the Node
 	// that manages the object is listening.
 	IPPort *netip.AddrPort
@@ -126,14 +126,14 @@ func (u *URL) Endpoint() *Endpoint {
 
 func (u URL) BaseFQOID() FQOID {
 	return FQOID{
-		Peer: u.Node,
+		Node: u.Node,
 		OID:  u.Base,
 	}
 }
 
 func (u URL) TargetFQOID() FQOID {
 	return FQOID{
-		Peer: u.Node,
+		Node: u.Node,
 		OID:  u.Target(),
 	}
 }

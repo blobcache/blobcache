@@ -110,7 +110,7 @@ func saveEnts(ctx context.Context, s schema.WO, ents []Entry) ([]byte, error) {
 	return cid[:], nil
 }
 
-func (sch Schema) OpenAs(ctx context.Context, s schema.RO, root []byte, peer blobcache.PeerID) (blobcache.ActionSet, error) {
+func (sch Schema) OpenAs(ctx context.Context, s schema.RO, root []byte, peer blobcache.NodeID) (blobcache.ActionSet, error) {
 	// Don't modify the volume's permissions for any particular user.
 	return blobcache.Action_ALL, nil
 }

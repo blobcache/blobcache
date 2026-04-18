@@ -59,11 +59,11 @@ func (c *Client) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
 	return bcp.KeepAlive(ctx, &c.tp, blobcache.Endpoint{}, hs)
 }
 
-func (c *Client) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.PeerID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+func (c *Client) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	return bcp.ShareOut(ctx, &c.tp, blobcache.Endpoint{}, h, to, mask)
 }
 
-func (c *Client) ShareIn(ctx context.Context, host blobcache.PeerID, h blobcache.Handle) (blobcache.Handle, error) {
+func (c *Client) ShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
 	return bcp.ShareIn(ctx, &c.tp, blobcache.Endpoint{}, host, h)
 }
 
@@ -116,7 +116,7 @@ func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobca
 	return bcp.InspectVolume(ctx, &c.tp, blobcache.Endpoint{}, h)
 }
 
-func (c *Client) CloneVolume(ctx context.Context, caller *blobcache.PeerID, volh blobcache.Handle) (*blobcache.Handle, error) {
+func (c *Client) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
 	return bcp.CloneVolume(ctx, &c.tp, blobcache.Endpoint{}, caller, volh)
 }
 

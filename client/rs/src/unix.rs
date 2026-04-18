@@ -66,7 +66,7 @@ impl Service for UnixClient {
         Ok(())
     }
 
-    fn share_out(&self, handle: &Handle, to: &PeerID, mask: ActionSet) -> Result<Handle, Error> {
+    fn share_out(&self, handle: &Handle, to: &NodeID, mask: ActionSet) -> Result<Handle, Error> {
         let mut req = Vec::new();
         handle.marshal(&mut req);
         req.extend_from_slice(&to.0);
@@ -75,7 +75,7 @@ impl Service for UnixClient {
         Handle::unmarshal(&body)
     }
 
-    fn share_in(&self, host: &PeerID, handle: &Handle) -> Result<Handle, Error> {
+    fn share_in(&self, host: &NodeID, handle: &Handle) -> Result<Handle, Error> {
         let mut req = Vec::new();
         req.extend_from_slice(&host.0);
         handle.marshal(&mut req);
@@ -133,7 +133,7 @@ impl Service for UnixClient {
         Handle::unmarshal(&body[..HANDLE_SIZE])
     }
 
-    fn clone_volume(&self, _caller: Option<&PeerID>, volume: &Handle) -> Result<Handle, Error> {
+    fn clone_volume(&self, _caller: Option<&NodeID>, volume: &Handle) -> Result<Handle, Error> {
         let mut req = Vec::new();
         volume.marshal(&mut req);
         let body = self.ask(bcp::MT_VOLUME_CLONE, &req)?;
