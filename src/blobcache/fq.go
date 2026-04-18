@@ -119,7 +119,7 @@ func (u *URL) Endpoint() *Endpoint {
 		return nil
 	}
 	return &Endpoint{
-		Peer:   u.Node,
+		Node:   u.Node,
 		IPPort: *u.IPPort,
 	}
 }

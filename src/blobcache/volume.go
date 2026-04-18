@@ -14,6 +14,45 @@ import (
 	"go.inet256.org/inet256/src/inet256"
 )
 
+const (
+	// Action_VOLUME_INSPECT allows the inspection of volumes.
+	// It has no effect on a Transaction handle.
+	Action_VOLUME_INSPECT = Action_INSPECT
+	// Action_VOLUME_BEGIN_TX allows the beginning of transactions on a volume
+	// It has no effect on a Transaction handle.
+	Action_VOLUME_BEGIN_TX = ActionSet(1 << (iota + 1))
+	// Action_VOLUME_LINK_TO allows a volume to be linked to in an AllowLink operation.
+	// If this is not set, then there is no way for the volume to be persisted.
+	// It has no effect on a Transaction handle.
+	Action_VOLUME_LINK_TO
+	// Action_VOLUME_SUBCRIBE allows a Queue to be subscribed
+	// to a Volume's changes.
+	Action_VOLUME_SUBSCRIBE
+
+	action_VOLUME_MAX = 1 << 8
+)
+
+const (
+	// Action_VOLUME_TX_INSPECT controls whether Action_TX_INSPECT is set
+	// on transactions created using this handle.
+	Action_VOLUME_TX_INSPECT = Action_TX_INSPECT << 8
+	// Action_VOLUME_TX_LOAD controls whether Action_TX_LOAD is set
+	// on transactions created using this handle.
+	Action_VOLUME_TX_LOAD        = Action_TX_LOAD << 8
+	Action_VOLUME_TX_SAVE        = Action_TX_SAVE << 8
+	Action_VOLUME_TX_POST        = Action_TX_POST << 8
+	Action_VOLUME_TX_GET         = Action_TX_GET << 8
+	Action_VOLUME_TX_EXISTS      = Action_TX_EXISTS << 8
+	Action_VOLUME_TX_DELETE      = Action_TX_DELETE << 8
+	Action_VOLUME_TX_COPY_FROM   = Action_TX_COPY_FROM << 8
+	Action_VOLUME_TX_COPY_TO     = Action_TX_COPY_TO << 8
+	Action_VOLUME_TX_LINK_FROM   = Action_TX_LINK_FROM << 8
+	Action_VOLUME_TX_UNLINK_FROM = Action_TX_UNLINK_FROM << 8
+	Action_VOLUME_TX_VISIT       = Action_TX_VISIT << 8
+	Action_VOLUME_TX_IS_VISITED  = Action_TX_IS_VISITED << 8
+	Action_VOLUME_TX_VISIT_LINKS = Action_TX_VISIT_LINKS << 8
+)
+
 type VolumeAPI interface {
 	// CreateVolume creates a new volume.
 	// CreateVolume always creates a Volume on the local Node.
@@ -38,9 +77,62 @@ type VolumeAPI interface {
 
 	// BeginTx begins a new transaction, on a Volume.
 	BeginTx(ctx context.Context, volh Handle, txp TxParams) (*Handle, error)
-	// CloneVolume clones a Volume, copying it's configuration, blobs, and cell data.
-	CloneVolume(ctx context.Context, caller *NodeID, volh Handle) (*Handle, error)
 }
+
+const (
+	// Action_TX_INSPECT allows the transaction to be inspected.
+	// On a Transaction handle it gates the InspectTx operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_INSPECT = Action_INSPECT
+	// Action_TX_LOAD allows Load operations in the transaction.
+	// On a Transaction handle it gates the Load operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_LOAD = (1 << (iota + 1))
+	// Action_TX_SAVE allows Save operations in the transaction.
+	// On a Transaction handle it gates the Save operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_SAVE
+	// Action_TX_POST allows Post operations in the transaction.
+	// On a Transaction handle it gates the Post operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_POST
+	// Action_TX_GET allows Get operations in the transaction.
+	// On a Transaction handle it gates the Get operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_GET
+	// Action_TX_EXISTS allows Exists operations in the transaction.
+	// On a Transaction handle it gates the Exists operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_EXISTS
+	// Action_TX_DELETE allows Delete operations in the transaction.
+	// On a Transaction handle it gates the Delete operation.
+	// On a Volume handle:
+	// - constrains the operations that can be performed in transactions created with that handle.
+	// - gates opening GC transactions on the volume.
+	Action_TX_DELETE
+	// Action_TX_COPY_FROM allows Copy operations to pull from this transaction.
+	// On a Transaction handle is gates using the handle as a source in a Copy operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_COPY_FROM
+	// Action_TX_COPY_TO allows a Transaction to be written to in an Copy operation.
+	// On a Transaction handle it gates the Copy operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_COPY_TO
+	// Action_TX_LINK_FROM allows a transaction to add a link to another Volume.
+	// It gates the AllowLink operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_LINK_FROM
+	// Action_TX_UNLINK_FROM allows a transaction to remove a link to another Volume.
+	// It gates the Unlink operation.
+	// On a Volume handle it constrains the operations that can be performed in transactions created with that handle.
+	Action_TX_UNLINK_FROM
+	// Action_TX_VISIT marks a blob as visited in a GC transaction.
+	Action_TX_VISIT
+	// Action_TX_IS_VISITED checks if a blob has been visited in a GC transaction.
+	Action_TX_IS_VISITED
+	// Action_TX_VISIT_LINKS allows a GC transaction to visit links.
+	Action_TX_VISIT_LINKS
+)
 
 type TxAPI interface {
 	// InspectTx returns info about a transaction.
@@ -92,14 +184,14 @@ type TxAPI interface {
 // Endpoint is somewhere that a blobcache node can be found.
 // The Zero endpoint means the node is not available on the network.
 type Endpoint struct {
-	Peer   NodeID         `json:"peer"`
+	Node   NodeID         `json:"node"`
 	IPPort netip.AddrPort `json:"ip_port"`
 }
 
 const EndpointSize = PeerIDSize + 16 + 2
 
 func (e Endpoint) Marshal(out []byte) []byte {
-	out = append(out, e.Peer[:]...)
+	out = append(out, e.Node[:]...)
 
 	ipaddrData, err := e.IPPort.AppendBinary(nil)
 	if err != nil {
@@ -116,7 +208,7 @@ func (e *Endpoint) Unmarshal(data []byte) error {
 	if len(data) < PeerIDSize+16+2 {
 		return fmt.Errorf("too small to be endpoint")
 	}
-	e.Peer, data = NodeID(data[:PeerIDSize]), data[PeerIDSize:]
+	e.Node, data = NodeID(data[:PeerIDSize]), data[PeerIDSize:]
 	var ipaddr netip.AddrPort
 	if err := ipaddr.UnmarshalBinary(data[:16+2]); err != nil {
 		return err
@@ -126,7 +218,7 @@ func (e *Endpoint) Unmarshal(data []byte) error {
 }
 
 func (e Endpoint) String() string {
-	return fmt.Sprintf("%s:%s", e.Peer.String(), e.IPPort.String())
+	return fmt.Sprintf("%s:%s", e.Node.String(), e.IPPort.String())
 }
 
 func ParseEndpoint(s string) (Endpoint, error) {
@@ -143,7 +235,7 @@ func ParseEndpoint(s string) (Endpoint, error) {
 		return Endpoint{}, err
 	}
 	return Endpoint{
-		Peer:   peer,
+		Node:   peer,
 		IPPort: ap,
 	}, nil
 }
@@ -176,7 +268,7 @@ func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
 		return FQOID{}
 	}
 	return FQOID{
-		Node: vi.Backend.Remote.Endpoint.Peer,
+		Node: vi.Backend.Remote.Endpoint.Node,
 		OID:  vi.Backend.Remote.Volume,
 	}
 }
@@ -240,7 +332,7 @@ func (v VolumeBackend[T]) String() string {
 	}
 	if v.Remote != nil {
 		sb.WriteString("remote:")
-		sb.WriteString(v.Remote.Endpoint.Peer.String())
+		sb.WriteString(v.Remote.Endpoint.Node.String())
 		sb.WriteString(" ")
 		sb.WriteString(v.Remote.Volume.String())
 	}

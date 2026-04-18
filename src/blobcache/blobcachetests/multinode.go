@@ -93,8 +93,8 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 			vol1 := CreateVolume(t, s1, nil, defaultLocalSpec())
 			ep, err := s1.Endpoint(ctx)
 			require.NoError(t, err)
-			t.Log("creating peer volume", ep.Peer, vol1.OID)
-			vol2 := CreateVolume(t, s2, nil, peerVolumeSpec(ep.Peer, vol1.OID))
+			t.Log("creating peer volume", ep.Node, vol1.OID)
+			vol2 := CreateVolume(t, s2, nil, peerVolumeSpec(ep.Node, vol1.OID))
 			t.Log("setup peer volume, handing over to TxAPI test")
 			return s2, vol2
 		})

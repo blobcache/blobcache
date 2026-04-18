@@ -40,7 +40,7 @@ func CreateOnSameHost(t testing.TB, s blobcache.Service, base blobcache.Handle, 
 		ep, err := s.Endpoint(ctx)
 		require.NoError(t, err)
 		return *svolh, blobcache.FQOID{
-			Node: ep.Peer,
+			Node: ep.Node,
 			OID:  svolh.OID,
 		}
 	}

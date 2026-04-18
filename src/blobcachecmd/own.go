@@ -55,7 +55,7 @@ var ownCmd = star.Command{
 		spec := blobcache.VolumeSpec{
 			Remote: &blobcache.VolumeBackend_Remote{
 				Endpoint: blobcache.Endpoint{
-					Peer:   nodePeerID,
+					Node:   nodePeerID,
 					IPPort: ipPort,
 				},
 				Volume: rootOID,

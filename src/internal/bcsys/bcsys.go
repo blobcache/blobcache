@@ -587,7 +587,7 @@ func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host 
 	}
 	var lastErr error
 	for addr := range s.env.PeerLocator.WhereIs(ctx, host) {
-		ep := blobcache.Endpoint{Peer: host, IPPort: addr}
+		ep := blobcache.Endpoint{Node: host, IPPort: addr}
 		askCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		info, err := bcp.Inspect(askCtx, node, ep, h)
 		cancel()
@@ -701,7 +701,7 @@ func (s *Service[LK, LV, LQ]) CreateVolume(ctx context.Context, host *blobcache.
 		return nil, err
 	}
 
-	if host != nil && host.Peer != s.LocalID() {
+	if host != nil && host.Node != s.LocalID() {
 		return s.createRemoteVolume(ctx, *host, vspec)
 	}
 
@@ -1183,7 +1183,7 @@ func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Hand
 func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
 	logctx.Info(ctx, "begin", zap.String("method", "CreateQueue"))
 	defer logctx.Info(ctx, "done", zap.String("method", "CreateQueue"))
-	if host != nil && host.Peer != s.LocalID() {
+	if host != nil && host.Node != s.LocalID() {
 		return s.createRemoteQueue(ctx, *host, qspec)
 	}
 	if err := qspec.Validate(); err != nil {
@@ -1265,7 +1265,7 @@ func (s *Service[LK, LV, LQ]) Dequeue(ctx context.Context, qh blobcache.Handle, 
 	if len(buf) == 0 {
 		return 0, fmt.Errorf("dequeue buffer must be non-empty")
 	}
-	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_NEXT)
+	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_DEQUEUE)
 	if err != nil {
 		return 0, err
 	}
@@ -1275,7 +1275,7 @@ func (s *Service[LK, LV, LQ]) Dequeue(ctx context.Context, qh blobcache.Handle, 
 func (s *Service[LK, LV, LQ]) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "Enqueue"), zap.Stringer("oid", qh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Enqueue"), zap.Stringer("oid", qh.OID))
-	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSERT)
+	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_ENQUEUE)
 	if err != nil {
 		return nil, err
 	}
@@ -1307,11 +1307,11 @@ func (s *Service[LK, LV, LQ]) SubToVolume(ctx context.Context, qh blobcache.Hand
 	if err != nil {
 		return err
 	}
-	if rights&blobcache.Action_VOLUME_SUB_TO < blobcache.Action_VOLUME_SUB_TO {
+	if !rights.Has(blobcache.Action_VOLUME_SUBSCRIBE) {
 		return blobcache.ErrPermission{
 			Handle:   volh,
 			Rights:   rights,
-			Requires: blobcache.Action_VOLUME_SUB_TO,
+			Requires: blobcache.Action_VOLUME_SUBSCRIBE,
 		}
 	}
 	switch rv := vol.backend.(type) {

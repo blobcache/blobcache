@@ -71,38 +71,33 @@ const (
 	Action_LINK_FROM   Action = "LINK_FROM"
 	Action_LINK_TO     Action = "LINK_TO"
 	Action_UNLINK_FROM Action = "UNLINK_FROM"
-	Action_CLONE       Action = "CLONE"
 	Action_CREATE      Action = "CREATE"
 )
 
 func (a Action) ToSet() blobcache.ActionSet {
 	switch a {
 	case Action_LOAD:
-		return blobcache.Action_TX_LOAD
+		return blobcache.Action_VOLUME_TX_LOAD
 	case Action_SAVE:
-		return blobcache.Action_TX_SAVE
+		return blobcache.Action_VOLUME_TX_SAVE
 	case Action_POST:
-		return blobcache.Action_TX_POST
+		return blobcache.Action_VOLUME_TX_POST
 	case Action_GET:
-		return blobcache.Action_TX_GET
+		return blobcache.Action_VOLUME_TX_GET
 	case Action_EXISTS:
-		return blobcache.Action_TX_EXISTS
+		return blobcache.Action_VOLUME_TX_EXISTS
 	case Action_DELETE:
-		return blobcache.Action_TX_DELETE
+		return blobcache.Action_VOLUME_TX_DELETE
 	case Action_COPY_FROM:
-		return blobcache.Action_TX_COPY_FROM
+		return blobcache.Action_VOLUME_TX_COPY_FROM
 	case Action_COPY_TO:
-		return blobcache.Action_TX_COPY_TO
+		return blobcache.Action_VOLUME_TX_COPY_TO
 	case Action_LINK_FROM:
-		return blobcache.Action_TX_LINK_FROM
+		return blobcache.Action_VOLUME_TX_LINK_FROM
 	case Action_LINK_TO:
-		return blobcache.Action_TX_LINK_FROM
+		return blobcache.Action_VOLUME_TX_LINK_FROM
 	case Action_UNLINK_FROM:
-		return blobcache.Action_TX_UNLINK_FROM
-	case Action_CLONE:
-		return blobcache.Action_VOLUME_CLONE
-	case Action_CREATE:
-		return blobcache.Action_VOLUME_CREATE
+		return blobcache.Action_VOLUME_TX_UNLINK_FROM
 	}
 	panic(a)
 }
@@ -120,7 +115,6 @@ func AllActions() []Action {
 		Action_LINK_TO,
 		Action_UNLINK_FROM,
 
-		Action_CLONE,
 		Action_CREATE,
 	}
 }
@@ -149,8 +143,6 @@ func ParseAction(x []byte) (Action, error) {
 		return Action_LINK_TO, nil
 	case "UNLINK_FROM":
 		return Action_UNLINK_FROM, nil
-	case "CLONE":
-		return Action_CLONE, nil
 	case "CREATE":
 		return Action_CREATE, nil
 	}
@@ -377,8 +369,6 @@ func (p *Policy) OpenFiat(peer blobcache.NodeID, target blobcache.OID) blobcache
 		grant := p.grants[grantIndex]
 		rights |= p.expandActionMember(grant.Action)
 	}
-	// Open should never include Action_VOLUME_CREATE in the returned handle rights.
-	rights &^= blobcache.Action_VOLUME_CREATE
 	return rights
 }
 

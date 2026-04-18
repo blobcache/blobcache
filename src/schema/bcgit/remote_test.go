@@ -40,7 +40,7 @@ func TestLsRemote(t *testing.T) {
 	ep, err := bc.Endpoint(ctx)
 	require.NoError(t, err)
 	u := blobcache.URL{
-		Node: ep.Peer,
+		Node: ep.Node,
 		Base: te.Volume.OID,
 	}
 
@@ -138,7 +138,7 @@ func setup(t testing.TB) testEnv {
 		Service: bc,
 		Volume:  *gitVol,
 		URL: blobcache.URL{
-			Node: ep.Peer,
+			Node: ep.Node,
 			Base: gitVol.OID,
 		},
 	}
