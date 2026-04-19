@@ -236,7 +236,7 @@ func TestPolicy(t *testing.T) {
 				{Subject: Unit(Everyone), Action: Unit(Action_GET), Object: Unit(ObjectSet{ByOID: &vol1})},
 			},
 			Checks: []Check{
-				{Peer: peer1, Target: vol1, CanConnect: true, Open: blobcache.Action_TX_GET, CanCreate: false},
+				{Peer: peer1, Target: vol1, CanConnect: true, Open: blobcache.Action_VOLUME_BEGIN_TX | blobcache.Action_VOLUME_TX_GET, CanCreate: false},
 			},
 		},
 		{
@@ -248,7 +248,7 @@ func TestPolicy(t *testing.T) {
 				{Group: "look", Member: Unit(Action_GET)},
 				{Group: "touch", Member: GroupRef[Action]("look")},
 				{Group: "touch", Member: Unit(Action_SAVE)},
-				{Group: "touch", Member: Unit(Action_CREATE)},
+				{Group: "touch", Member: Unit(Action_CREATE_VOLUME)},
 			},
 			Objects: []Membership[ObjectSet]{
 				{Group: "vols", Member: Unit(ObjectSet{ByOID: &vol1})},
@@ -261,7 +261,7 @@ func TestPolicy(t *testing.T) {
 					Peer:       peer1,
 					Target:     vol1,
 					CanConnect: true,
-					Open:       blobcache.Action_TX_GET | blobcache.Action_TX_SAVE,
+					Open:       blobcache.Action_VOLUME_BEGIN_TX | blobcache.Action_VOLUME_TX_GET | blobcache.Action_VOLUME_TX_SAVE,
 					CanCreate:  true,
 				},
 			},
@@ -283,8 +283,7 @@ func TestPolicy(t *testing.T) {
 				{Group: "all", Member: Unit(Action_LINK_FROM)},
 				{Group: "all", Member: Unit(Action_LINK_TO)},
 				{Group: "all", Member: Unit(Action_UNLINK_FROM)},
-				{Group: "all", Member: Unit(Action_CLONE)},
-				{Group: "all", Member: Unit(Action_CREATE)},
+				{Group: "all", Member: Unit(Action_CREATE_VOLUME)},
 			},
 			Objects: []Membership[ObjectSet]{
 				{Group: "all", Member: Unit(ObjectSet{ByOID: &vol1})},
@@ -297,10 +296,11 @@ func TestPolicy(t *testing.T) {
 					Peer:       peer1,
 					Target:     vol1,
 					CanConnect: true,
-					Open: blobcache.Action_TX_LOAD | blobcache.Action_TX_SAVE | blobcache.Action_TX_POST |
-						blobcache.Action_TX_GET | blobcache.Action_TX_EXISTS | blobcache.Action_TX_DELETE |
-						blobcache.Action_TX_COPY_FROM | blobcache.Action_TX_COPY_TO |
-						blobcache.Action_TX_LINK_FROM | blobcache.Action_TX_UNLINK_FROM | blobcache.Action_VOLUME_CLONE,
+					Open: blobcache.Action_VOLUME_BEGIN_TX | blobcache.Action_VOLUME_LINK_TO |
+						blobcache.Action_VOLUME_TX_LOAD | blobcache.Action_VOLUME_TX_SAVE | blobcache.Action_VOLUME_TX_POST |
+						blobcache.Action_VOLUME_TX_GET | blobcache.Action_VOLUME_TX_EXISTS | blobcache.Action_VOLUME_TX_DELETE |
+						blobcache.Action_VOLUME_TX_COPY_FROM | blobcache.Action_VOLUME_TX_COPY_TO |
+						blobcache.Action_VOLUME_TX_LINK_FROM | blobcache.Action_VOLUME_TX_UNLINK_FROM,
 					CanCreate: true,
 				},
 			},

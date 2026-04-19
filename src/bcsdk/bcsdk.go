@@ -43,7 +43,7 @@ func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.H
 			return nil, nil, err
 		}
 		return svolh, &blobcache.FQOID{
-			Node: ep.Peer,
+			Node: ep.Node,
 			OID:  svolh.OID,
 		}, nil
 	}
@@ -54,7 +54,7 @@ func OpenURL(ctx context.Context, bc blobcache.Service, u blobcache.URL) (*blobc
 	if err != nil {
 		return nil, err
 	}
-	if localEP.Peer == u.Node {
+	if localEP.Node == u.Node {
 		volh, err := bc.OpenFiat(ctx, u.Base, blobcache.Action_ALL)
 		if err != nil {
 			return nil, err
@@ -103,7 +103,7 @@ func URLFor(ctx context.Context, bc blobcache.Service, volh blobcache.Handle) (*
 		voloid = vinfo.Backend.Remote.Volume
 	}
 	return &blobcache.URL{
-		Node: host.Peer,
+		Node: host.Node,
 		Base: voloid,
 	}, nil
 }

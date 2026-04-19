@@ -185,23 +185,6 @@ var ivolCmd = star.Command{
 	},
 }
 
-var cloneVolCmd = star.Command{
-	Metadata: star.Metadata{Short: "clone a volume and print handle"},
-	Pos:      []star.Positional{volHParam},
-	F: func(c star.Context) error {
-		svc, err := openService(c)
-		if err != nil {
-			return err
-		}
-		h, err := svc.CloneVolume(c.Context, nil, volHParam.Load(c))
-		if err != nil {
-			return err
-		}
-		c.Printf("%s\n", h.String())
-		return nil
-	},
-}
-
 var openFiatCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "opens a handle to an object by OID",

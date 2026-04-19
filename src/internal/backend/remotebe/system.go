@@ -119,7 +119,7 @@ func (sys *System) SubToVol(ctx context.Context, vol *Volume, q backend.Queue, s
 	if !ok {
 		return fmt.Errorf("bcremote: SubToVol requires a remote queue, got %T", q)
 	}
-	if rq.ep.Peer != vol.ep.Peer {
+	if rq.ep.Node != vol.ep.Node {
 		return fmt.Errorf("bcremote: SubToVol requires the queue and volume to be on the same peer")
 	}
 	return bcp.SubToVolume(ctx, vol.n, vol.ep, rq.h, vol.h, spec)

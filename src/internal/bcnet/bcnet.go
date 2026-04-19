@@ -64,7 +64,7 @@ func (n *Node) LocalAddr() netip.AddrPort {
 
 func (n *Node) LocalEndpoint() blobcache.Endpoint {
 	return blobcache.Endpoint{
-		Peer:   n.LocalID(),
+		Node:   n.LocalID(),
 		IPPort: n.LocalAddr(),
 	}
 }
@@ -129,7 +129,7 @@ func (n *Node) Serve(ctx context.Context, srv bcp.Handler) error {
 			continue
 		}
 		ep := blobcache.Endpoint{
-			Peer:   *peerID,
+			Node:   *peerID,
 			IPPort: ipPortFromConn(conn),
 		}
 		n.addConn(ctx, ep, conn, srv)
@@ -206,7 +206,7 @@ func (qt *Node) dialConn(ctx context.Context, ep blobcache.Endpoint) (*quic.Conn
 	raddr := net.UDPAddrFromAddrPort(ep.IPPort)
 	laddr := qt.tp.Conn.LocalAddr()
 	logctx.Info(ctx, "dialing", zap.Stringer("laddr", laddr), zap.Stringer("raddr", raddr))
-	conn, err := qt.tp.Dial(ctx, raddr, qt.makeDialTlsConfig(ep.Peer), qt.makeQuicConfig())
+	conn, err := qt.tp.Dial(ctx, raddr, qt.makeDialTlsConfig(ep.Node), qt.makeQuicConfig())
 	if err != nil {
 		logctx.Error(ctx, "dial failed", zap.Error(err), zap.Stringer("raddr", raddr))
 		return nil, err

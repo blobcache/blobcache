@@ -42,7 +42,7 @@ func (ps *PeerSystem) VolumeUp(ctx context.Context, p PeerParams) (*Volume, erro
 	var lastErr error
 	for addr := range ps.locator.WhereIs(ctx, p.Peer) {
 		ep := blobcache.Endpoint{
-			Peer:   p.Peer,
+			Node:   p.Peer,
 			IPPort: addr,
 		}
 		dialCtx, cf := context.WithTimeout(ctx, dialTimeout)

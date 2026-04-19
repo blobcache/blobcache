@@ -359,7 +359,7 @@ pub struct Info {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Endpoint {
-    pub peer: NodeID,
+    pub node: NodeID,
     pub ip_port: String,
 }
 
@@ -382,7 +382,7 @@ impl Endpoint {
             format!("[{ip}]:{port}")
         };
         Ok(Self {
-            peer: NodeID(peer),
+            node: NodeID(peer),
             ip_port,
         })
     }

@@ -77,6 +77,17 @@ func (vs *VolSubSpec) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, vs)
 }
 
+const (
+	//Action_QUEUE_INSPECT allows the queue to be inspected
+	Action_QUEUE_INSPECT = ActionSet(1 << (iota + 1))
+	// Action_QUEUE_NEXT allows items to be read form the Queue
+	Action_QUEUE_ENQUEUE
+	// Action_QUEUE_INSERT allows items to be inserted into the Queue
+	Action_QUEUE_DEQUEUE
+	// Action_QUEUE_SUB_VOLUME allows the Queue to be subscribed to volumes
+	Action_QUEUE_SUB_VOLUME
+)
+
 type QueueAPI interface {
 	// CreateQueue creates a new queue and returns a handle to it.
 	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)

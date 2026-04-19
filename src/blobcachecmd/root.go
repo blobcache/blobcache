@@ -50,7 +50,6 @@ var rootCmd = star.NewDir(
 		"mkvol.vault":  mkVolVaultCmd,
 		"mkvol.git":    mkVolGitCmd,
 		"ivol":         ivolCmd,
-		"clone":        cloneVolCmd,
 		"open-fiat":    openFiatCmd,
 		"open-from":    openFromCmd,
 

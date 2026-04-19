@@ -58,7 +58,7 @@ func TestDaemonAuth(t *testing.T) {
 	peer, err := d.GetPeerID()
 	require.NoError(t, err)
 	ep := blobcache.Endpoint{
-		Peer:   peer,
+		Node:   peer,
 		IPPort: pc.LocalAddr().(*net.UDPAddr).AddrPort(),
 	}
 

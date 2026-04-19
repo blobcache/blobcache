@@ -181,7 +181,7 @@ func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.Ac
 	if !ok {
 		return nil, fmt.Errorf("remotebe: can only link to remote volumes")
 	}
-	if rvol.ep.Peer != tx.vol.ep.Peer {
+	if rvol.ep.Node != tx.vol.ep.Node {
 		return nil, fmt.Errorf("remotebe: can only link to volumes on the same peer")
 	}
 	return bcp.Link(ctx, tx.vol.n, tx.vol.ep, tx.h, rvol.h, rights)

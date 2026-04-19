@@ -24,7 +24,7 @@ type Server struct {
 }
 
 func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Message, resp *Message) bool {
-	svc := s.Access(ep.Peer)
+	svc := s.Access(ep.Node)
 	if svc == nil {
 		return false
 	}
@@ -127,14 +127,6 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 				return nil, err
 			}
 			return &CreateVolumeResp{Handle: *h, Info: *info}, nil
-		})
-	case MT_VOLUME_CLONE:
-		handleAsk(req, resp, &CloneVolumeReq{}, func(req *CloneVolumeReq) (*CloneVolumeResp, error) {
-			h, err := svc.CloneVolume(ctx, &ep.Peer, req.Volume)
-			if err != nil {
-				return nil, err
-			}
-			return &CloneVolumeResp{Handle: *h}, nil
 		})
 	case MT_VOLUME_INSPECT:
 		handleAsk(req, resp, &InspectVolumeReq{}, func(req *InspectVolumeReq) (*InspectVolumeResp, error) {

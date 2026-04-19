@@ -95,7 +95,7 @@ func (l *testPeerLocator) Add(ep blobcache.Endpoint) {
 	if l.peers == nil {
 		l.peers = make(map[blobcache.NodeID]netip.AddrPort)
 	}
-	l.peers[ep.Peer] = ep.IPPort
+	l.peers[ep.Node] = ep.IPPort
 }
 
 func (l *testPeerLocator) WhereIs(_ context.Context, peer blobcache.NodeID) iter.Seq[netip.AddrPort] {
