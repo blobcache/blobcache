@@ -81,11 +81,6 @@ const (
 	Action_CREATE_QUEUE  Action = "CREATE_QUEUE"
 )
 
-const (
-	action_CREATE_VOLUME blobcache.ActionSet = 1 << 62
-	action_CREATE_QUEUE  blobcache.ActionSet = 1 << 63
-)
-
 func (a Action) ToSet() blobcache.ActionSet {
 	switch a {
 	case Action_LOAD:
@@ -117,9 +112,9 @@ func (a Action) ToSet() blobcache.ActionSet {
 	case Action_VISIT_LINKS:
 		return blobcache.Action_VOLUME_TX_VISIT_LINKS
 	case Action_CREATE_VOLUME:
-		return action_CREATE_VOLUME
+		return 0
 	case Action_CREATE_QUEUE:
-		return action_CREATE_QUEUE
+		return 0
 	}
 	panic(a)
 }
@@ -421,7 +416,6 @@ func (p *Policy) OpenFiat(peer blobcache.NodeID, target blobcache.OID) blobcache
 	if rights&volTxRights != 0 {
 		rights |= blobcache.Action_VOLUME_BEGIN_TX
 	}
-	rights &^= action_CREATE_VOLUME | action_CREATE_QUEUE
 	return rights
 }
 
@@ -433,8 +427,7 @@ func (p *Policy) CanCreate(peer blobcache.NodeID) bool {
 	// check if any corresponding grant has CREATE in its action closure
 	for _, gi := range idenGrants {
 		grant := p.grants[gi]
-		rights := p.expandActionMember(grant.Action)
-		if rights&(action_CREATE_VOLUME|action_CREATE_QUEUE) != 0 {
+		if p.expandActionMemberCanCreate(grant.Action) {
 			return true
 		}
 	}
@@ -644,6 +637,36 @@ func (p *Policy) expandActionMember(m Member[Action]) blobcache.ActionSet {
 		return 0
 	}
 	return m.Unit.ToSet()
+}
+
+func (p *Policy) expandActionMemberCanCreate(m Member[Action]) bool {
+	seen := make(map[GroupName]bool)
+	var visit func(Member[Action]) bool
+	visit = func(mx Member[Action]) bool {
+		switch {
+		case mx.GroupRef != nil:
+			if seen[*mx.GroupRef] {
+				return false
+			}
+			seen[*mx.GroupRef] = true
+			for _, sub := range p.actions[*mx.GroupRef] {
+				if visit(sub) {
+					return true
+				}
+			}
+			return false
+		case mx.Unit != nil:
+			switch *mx.Unit {
+			case Action_CREATE_VOLUME, Action_CREATE_QUEUE:
+				return true
+			default:
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return visit(m)
 }
 
 // Management and enumeration helpers used by admin CLI
