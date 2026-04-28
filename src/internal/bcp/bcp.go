@@ -113,14 +113,6 @@ func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vspec bl
 	return &resp.Handle, nil
 }
 
-func CloneVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	var resp CloneVolumeResp
-	if err := doAsk(ctx, tp, ep, MT_VOLUME_CLONE, CloneVolumeReq{Volume: volh}, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
-}
-
 func BeginTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, *blobcache.TxInfo, error) {
 	var resp BeginTxResp
 	if err := doAsk(ctx, tp, ep, MT_VOLUME_BEGIN_TX, BeginTxReq{Volume: volh, Params: txp}, &resp); err != nil {
@@ -263,7 +255,7 @@ func Delete(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.H
 
 func AddFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
 	var resp AddFromResp
-	if err := doAsk(ctx, tp, ep, MT_TX_ADD_FROM, AddFromReq{Tx: tx, CIDs: cids, Srcs: srcTxns}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_COPY, AddFromReq{Tx: tx, CIDs: cids, Srcs: srcTxns}, &resp); err != nil {
 		return err
 	}
 	copy(success, resp.Added)

@@ -156,10 +156,6 @@ func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobc
 	return bcp.InspectVolume(ctx, s.node, s.ep, h)
 }
 
-func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	return bcp.CloneVolume(ctx, s.node, s.ep, caller, volh)
-}
-
 // InspectTx returns info about a transaction.
 func (s *Service) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache.TxInfo, error) {
 	return bcp.InspectTx(ctx, s.node, s.ep, tx)

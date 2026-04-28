@@ -4,24 +4,23 @@ use std::io::{Read, Write};
 pub const HEADER_LEN: usize = 8;
 
 pub const MT_ENDPOINT: u8 = 2;
+pub const MT_INSPECT: u8 = 3;
 
 pub const MT_HANDLE_INSPECT: u8 = 16;
 pub const MT_HANDLE_DROP: u8 = 17;
 pub const MT_HANDLE_KEEP_ALIVE: u8 = 18;
 pub const MT_HANDLE_SHARE_OUT: u8 = 19;
 pub const MT_HANDLE_SHARE_IN: u8 = 20;
-pub const MT_INSPECT: u8 = 21;
 
-pub const MT_OPEN_FIAT: u8 = 32;
-pub const MT_OPEN_FROM: u8 = 33;
-pub const MT_VOLUME_INSPECT: u8 = 34;
-pub const MT_VOLUME_BEGIN_TX: u8 = 36;
-pub const MT_VOLUME_CLONE: u8 = 37;
+pub const MT_VOLUME_INSPECT: u8 = 32;
+pub const MT_VOLUME_BEGIN_TX: u8 = 33;
+pub const MT_OPEN_FIAT: u8 = 45;
+pub const MT_OPEN_FROM: u8 = 46;
 pub const MT_CREATE_VOLUME: u8 = 47;
 
 pub const MT_TX_INSPECT: u8 = 48;
-pub const MT_TX_COMMIT: u8 = 49;
-pub const MT_TX_ABORT: u8 = 50;
+pub const MT_TX_ABORT: u8 = 49;
+pub const MT_TX_COMMIT: u8 = 50;
 pub const MT_TX_LOAD: u8 = 51;
 pub const MT_TX_SAVE: u8 = 52;
 pub const MT_TX_POST: u8 = 53;
@@ -30,11 +29,11 @@ pub const MT_TX_GET: u8 = 55;
 pub const MT_TX_GET_SALT: u8 = 56;
 pub const MT_TX_EXISTS: u8 = 57;
 pub const MT_TX_DELETE: u8 = 58;
-pub const MT_TX_ADD_FROM: u8 = 59;
-pub const MT_TX_VISIT: u8 = 60;
-pub const MT_TX_IS_VISITED: u8 = 61;
-pub const MT_TX_LINK: u8 = 62;
-pub const MT_TX_UNLINK: u8 = 63;
+pub const MT_TX_COPY: u8 = 59;
+pub const MT_TX_LINK: u8 = 60;
+pub const MT_TX_UNLINK: u8 = 61;
+pub const MT_TX_VISIT: u8 = 62;
+pub const MT_TX_IS_VISITED: u8 = 63;
 pub const MT_TX_VISIT_LINKS: u8 = 64;
 
 pub const MT_QUEUE_INSPECT: u8 = 80;

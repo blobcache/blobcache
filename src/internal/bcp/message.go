@@ -25,6 +25,8 @@ const (
 	MT_PING
 	// MT_ENDPOINT is a request for the remote to respond with its Endpoint
 	MT_ENDPOINT
+	// MT_INSPECT can be used to inspect any object
+	MT_INSPECT
 )
 
 // Handle messages
@@ -34,27 +36,23 @@ const (
 	MT_HANDLE_KEEP_ALIVE
 	MT_HANDLE_SHARE_OUT
 	MT_HANDLE_SHARE_IN
-	MT_INSPECT
 )
 
 // Volume messages
 const (
-	MT_OPEN_FIAT MessageType = 32 + iota
-	MT_OPEN_FROM
-	MT_VOLUME_INSPECT
-	MT_VOLUME_AWAIT
+	MT_VOLUME_INSPECT MessageType = 32 + iota
 	MT_VOLUME_BEGIN_TX
-	MT_VOLUME_CLONE
 
+	MT_OPEN_FIAT     MessageType = 45
+	MT_OPEN_FROM     MessageType = 46
 	MT_CREATE_VOLUME MessageType = 47
 )
 
 // Tx messages
 const (
 	MT_TX_INSPECT MessageType = 48 + iota
-
-	MT_TX_COMMIT
 	MT_TX_ABORT
+	MT_TX_COMMIT
 
 	MT_TX_LOAD
 	MT_TX_SAVE
@@ -65,12 +63,12 @@ const (
 	MT_TX_GET_SALT
 	MT_TX_EXISTS
 	MT_TX_DELETE
-	MT_TX_ADD_FROM
-	MT_TX_VISIT
-	MT_TX_IS_VISITED
-
+	MT_TX_COPY
 	MT_TX_LINK
 	MT_TX_UNLINK
+
+	MT_TX_VISIT
+	MT_TX_IS_VISITED
 	MT_TX_VISIT_LINKS
 )
 

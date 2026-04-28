@@ -134,10 +134,10 @@ impl Service for UnixClient {
     }
 
     fn clone_volume(&self, _caller: Option<&NodeID>, volume: &Handle) -> Result<Handle, Error> {
-        let mut req = Vec::new();
-        volume.marshal(&mut req);
-        let body = self.ask(bcp::MT_VOLUME_CLONE, &req)?;
-        Handle::unmarshal(&body)
+        let _ = volume;
+        Err(Error::InvalidMessage(
+            "clone volume is not supported by current BCP wire protocol".to_string(),
+        ))
     }
 
     fn inspect_volume(&self, volume: &Handle) -> Result<VolumeInfo, Error> {
@@ -259,7 +259,7 @@ impl Service for UnixClient {
         for src in src_txs {
             src.marshal(&mut req);
         }
-        let body = self.ask(bcp::MT_TX_ADD_FROM, &req)?;
+        let body = self.ask(bcp::MT_TX_COPY, &req)?;
         Ok(bcp::decode_bools(&body, cids.len()))
     }
 
