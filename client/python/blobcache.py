@@ -196,8 +196,8 @@ class Client:
         req = {"handles": [str(h) for h in handles]}
         self._do_json("POST", "/KeepAlive", data=req)
 
-    def begin_tx(self, vol: Handle, mutate: bool) -> Handle:
-        req = {"volume": str(vol), "params": {"Mutate": mutate}}
+    def begin_tx(self, vol: Handle, modify: bool) -> Handle:
+        req = {"volume": str(vol), "params": {"modify": modify}}
         resp = self._do_json("POST", "/tx/", secret=vol.secret, data=req)
         return self._handle_from_response(resp)
 

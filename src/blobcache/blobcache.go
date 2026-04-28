@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.brendoncarroll.net/exp/sbe"
 	"go.inet256.org/inet256/src/inet256"
 )
 
@@ -102,10 +103,10 @@ const NodeIDSize = inet256.AddrSize
 type TxLimits struct {
 	// Duration is the number of milliseconds to limit the transaction to before it is automatically closed.
 	Duration *uint32 `json:"duration,omitempty"`
-	// PostedBytes are the number of total bytes which can be uploaded in the transaction
-	PostedBytes *uint64 `json:"posted_bytes,omitempty"`
 	// PostedBlobs is the total number of blobs which can be uploaded in the transaction
 	PostedBlobs *uint64 `json:"posted_blobs,omitempty"`
+	// PostedBytes are the number of total bytes which can be uploaded in the transaction
+	PostedBytes *uint64 `json:"posted_bytes,omitempty"`
 }
 
 // TxParams are parameters for a transaction.
@@ -135,15 +136,82 @@ func (tp TxParams) Validate() error {
 }
 
 func (tp TxParams) Marshal(out []byte) []byte {
-	data, err := json.Marshal(tp)
-	if err != nil {
-		panic(err)
+	flags := uint32(0)
+	for i, b := range []bool{
+		tp.Modify,
+		tp.GCBlobs,
+		tp.GCLinks,
+		tp.Limits.Duration != nil,
+		tp.Limits.PostedBlobs != nil,
+		tp.Limits.PostedBytes != nil,
+	} {
+		if b {
+			flags |= 1 << i
+		}
 	}
-	return append(out, data...)
+	out = sbe.AppendUint32(out, flags)
+	if tp.Limits.Duration != nil {
+		out = sbe.AppendUint32(out, *tp.Limits.Duration)
+	}
+	if tp.Limits.PostedBlobs != nil {
+		out = sbe.AppendUint64(out, *tp.Limits.PostedBlobs)
+	}
+	if tp.Limits.PostedBytes != nil {
+		out = sbe.AppendUint64(out, *tp.Limits.PostedBytes)
+	}
+	return out
 }
 
 func (tp *TxParams) Unmarshal(data []byte) error {
-	return json.Unmarshal(data, tp)
+	flags, data, err := sbe.ReadUint32(data)
+	if err != nil {
+		return err
+	}
+
+	tp.Modify = flags&(1<<0) != 0
+	tp.GCBlobs = flags&(1<<1) != 0
+	tp.GCLinks = flags&(1<<2) != 0
+
+	if flags&(1<<3) != 0 {
+		x, rest, err := sbe.ReadUint32(data)
+		if err != nil {
+			return err
+		}
+		tp.Limits.Duration = &x
+		data = rest
+	} else {
+		tp.Limits.Duration = nil
+	}
+
+	if flags&(1<<4) != 0 {
+		x, rest, err := sbe.ReadUint64(data)
+		if err != nil {
+			return err
+		}
+		tp.Limits.PostedBlobs = &x
+		data = rest
+	} else {
+		tp.Limits.PostedBlobs = nil
+	}
+
+	if flags&(1<<5) != 0 {
+		x, rest, err := sbe.ReadUint64(data)
+		if err != nil {
+			return err
+		}
+		tp.Limits.PostedBytes = &x
+		data = rest
+	} else {
+		tp.Limits.PostedBytes = nil
+	}
+
+	if flags&^uint32((1<<6)-1) != 0 {
+		return fmt.Errorf("TxParams: unknown flags set: 0x%x", flags&^uint32((1<<6)-1))
+	}
+	if len(data) > 0 {
+		return fmt.Errorf("TxParams: trailing bytes: %d", len(data))
+	}
+	return nil
 }
 
 type TxInfo struct {

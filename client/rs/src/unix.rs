@@ -150,7 +150,7 @@ impl Service for UnixClient {
     fn begin_tx(&self, volume: &Handle, params: TxParams) -> Result<Handle, Error> {
         let mut req = Vec::new();
         volume.marshal(&mut req);
-        req.extend_from_slice(&serde_json::to_vec(&params)?);
+        params.marshal_bcp(&mut req);
         let body = self.ask(bcp::MT_VOLUME_BEGIN_TX, &req)?;
         if body.len() < HANDLE_SIZE {
             return Err(Error::InvalidMessage(
