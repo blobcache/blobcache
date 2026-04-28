@@ -212,8 +212,8 @@ class Client:
             hash_algo=info['hash_algo']
         )
 
-    def commit(self, tx: Handle, root: bytes):
-        req = {"root": root}
+    def commit(self, tx: Handle, root: Optional[bytes] = None):
+        req = {}
         path = f"/tx/{tx.oid}.Commit"
         self._do_json("POST", path, secret=tx.secret, data=req)
 
