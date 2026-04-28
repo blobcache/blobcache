@@ -1,15 +1,14 @@
 package bcp
 
 import (
-	"crypto/rand"
-	"crypto/sha3"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/blobstream"
 	"go.brendoncarroll.net/exp/sbe"
-	"golang.org/x/crypto/chacha20poly1305"
 )
 
 type EndpointReq struct{}
@@ -132,15 +131,15 @@ func (sr ShareOutReq) Marshal(out []byte) []byte {
 }
 
 func (sr *ShareOutReq) Unmarshal(data []byte) error {
-	if len(data) < blobcache.HandleSize+blobcache.PeerIDSize+8 {
+	if len(data) < blobcache.HandleSize+blobcache.NodeIDSize+8 {
 		return fmt.Errorf("cannot unmarshal ShareReq, too short: %d", len(data))
 	}
 	if err := sr.Handle.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
 	}
 	data = data[blobcache.HandleSize:]
-	sr.Peer = blobcache.NodeID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.PeerIDSize])
-	sr.Mask = blobcache.ActionSet(binary.BigEndian.Uint64(data[blobcache.HandleSize+blobcache.PeerIDSize:]))
+	sr.Peer = blobcache.NodeID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.NodeIDSize])
+	sr.Mask = blobcache.ActionSet(binary.BigEndian.Uint64(data[blobcache.HandleSize+blobcache.NodeIDSize:]))
 	return nil
 }
 
@@ -169,11 +168,11 @@ func (ar ShareInReq) Marshal(out []byte) []byte {
 }
 
 func (ar *ShareInReq) Unmarshal(data []byte) error {
-	if len(data) < blobcache.PeerIDSize+blobcache.HandleSize {
+	if len(data) < blobcache.NodeIDSize+blobcache.HandleSize {
 		return fmt.Errorf("cannot unmarshal ShareInReq, too short: %d", len(data))
 	}
-	ar.Host = blobcache.NodeID(data[:blobcache.PeerIDSize])
-	return ar.Handle.Unmarshal(data[blobcache.PeerIDSize:])
+	ar.Host = blobcache.NodeID(data[:blobcache.NodeIDSize])
+	return ar.Handle.Unmarshal(data[blobcache.NodeIDSize:])
 }
 
 type ShareInResp struct {
@@ -383,24 +382,36 @@ func (btx *BeginTxReq) Unmarshal(data []byte) error {
 type BeginTxResp struct {
 	// Tx is the handle for the transaction.
 	Tx blobcache.Handle
-	// VolumeInfo is the volume info for the transaction.
+	// TxInfo is the info for the transaction.
 	Info blobcache.TxInfo
+	// PreemptData contains preemptively sent data in the blobstream protocol.
+	PreemptData [][]byte
 }
 
 func (btx BeginTxResp) Marshal(out []byte) []byte {
 	out = btx.Tx.Marshal(out)
-	return btx.Info.Marshal(out)
+	out = sbe.AppendLP16(out, btx.Info.Marshal(nil))
+	out = blobstream.AppendBytes(out, slices.Values(btx.PreemptData))
+	return out
 }
 
 func (btx *BeginTxResp) Unmarshal(data []byte) error {
-	if len(data) < blobcache.HandleSize {
-		return fmt.Errorf("cannot unmarshal BeginTxResp, too short: %d", len(data))
-	}
-	if err := btx.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+	h, data, err := readHandle(data)
+	if err != nil {
 		return err
 	}
-	data = data[blobcache.HandleSize:]
-	return btx.Info.Unmarshal(data)
+	btx.Tx = *h
+	infoData, data, err := sbe.ReadLP16(data)
+	if err != nil {
+		return err
+	}
+	if err := btx.Info.Unmarshal(infoData); err != nil {
+		return err
+	}
+	if btx.PreemptData, err = blobstream.ReadBytes(data); err != nil {
+		return err
+	}
+	return nil
 }
 
 type InspectTxReq struct {
@@ -432,15 +443,10 @@ func (r *InspectTxResp) Unmarshal(data []byte) error {
 
 type CommitReq struct {
 	Tx blobcache.Handle
-	// Root can be optionally set to call Save before Commit.
-	Root *[]byte
 }
 
 func (cr CommitReq) Marshal(out []byte) []byte {
 	out = cr.Tx.Marshal(out)
-	if cr.Root != nil {
-		out = append(out, *cr.Root...)
-	}
 	return out
 }
 
@@ -450,12 +456,6 @@ func (cr *CommitReq) Unmarshal(data []byte) error {
 	}
 	if err := cr.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
-	}
-	if len(data) > blobcache.HandleSize {
-		if cr.Root == nil {
-			cr.Root = new([]byte)
-		}
-		*cr.Root = append((*cr.Root)[:0], data[blobcache.HandleSize:]...)
 	}
 	return nil
 }
@@ -665,17 +665,13 @@ func (dr *DeleteResp) Unmarshal(data []byte) error {
 }
 
 type GetReq struct {
-	Tx   blobcache.Handle
-	CID  blobcache.CID
-	Salt *blobcache.CID
+	Tx  blobcache.Handle
+	CID blobcache.CID
 }
 
 func (gr GetReq) Marshal(out []byte) []byte {
 	out = gr.Tx.Marshal(out)
 	out = append(out, gr.CID[:]...)
-	if gr.Salt != nil {
-		out = append(out, gr.Salt[:]...)
-	}
 	return out
 }
 
@@ -687,10 +683,32 @@ func (gr *GetReq) Unmarshal(data []byte) error {
 		return err
 	}
 	gr.CID = blobcache.CID(data[blobcache.HandleSize : blobcache.HandleSize+blobcache.CIDSize])
-	if len(data) > blobcache.HandleSize+blobcache.CIDSize+blobcache.CIDSize {
-		gr.Salt = new(blobcache.CID)
-		copy(gr.Salt[:], data[blobcache.HandleSize+blobcache.CIDSize:])
+	return nil
+}
+
+type GetSaltReq struct {
+	Tx   blobcache.Handle
+	CID  blobcache.CID
+	Salt blobcache.CID
+}
+
+func (gsr GetSaltReq) Marshal(out []byte) []byte {
+	out = gsr.Tx.Marshal(out)
+	out = append(out, gsr.CID[:]...)
+	out = append(out, gsr.Salt[:]...)
+	return out
+}
+
+func (gsr *GetSaltReq) Unmarshal(data []byte) error {
+	if len(data) < blobcache.HandleSize+blobcache.CIDSize+blobcache.CIDSize {
+		return fmt.Errorf("cannot unmarshal GetSaltReq, too short: %d", len(data))
 	}
+	if err := gsr.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	data = data[blobcache.HandleSize:]
+	gsr.CID = blobcache.CID(data[:blobcache.CIDSize])
+	gsr.Salt = blobcache.CID(data[blobcache.CIDSize : blobcache.CIDSize*2])
 	return nil
 }
 
@@ -1285,72 +1303,6 @@ func (sr SubToVolumeResp) Marshal(out []byte) []byte {
 
 func (sr *SubToVolumeResp) Unmarshal(data []byte) error {
 	return nil
-}
-
-type TopicTellMsg struct {
-	// TopicHash is the hash of the topic ID
-	TopicHash  blobcache.CID
-	Ciphertext []byte
-}
-
-func (ttm TopicTellMsg) Marshal(out []byte) []byte {
-	out = append(out, ttm.TopicHash[:]...)
-	out = append(out, ttm.Ciphertext...)
-	return out
-}
-
-func (ttm *TopicTellMsg) Unmarshal(data []byte) error {
-	if len(data) < len(ttm.TopicHash) {
-		return fmt.Errorf("too short to be TopicTellMsg %d", len(data))
-	}
-	n := copy(ttm.TopicHash[:], data)
-	data = data[:n]
-	ttm.Ciphertext = append(ttm.Ciphertext[:0], data...)
-	return nil
-}
-
-// Encrypt sets the message to contain ciphertext for ptext on topicID.
-func (dst *TopicTellMsg) Encrypt(topicID blobcache.TID, ptext []byte) {
-	dek := getTopicDEK(topicID)
-	ciph, err := chacha20poly1305.NewX(dek[:])
-	if err != nil {
-		panic(err)
-	}
-	var nonce [24]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		panic(err)
-	}
-	dst.Ciphertext = append(dst.Ciphertext[:0], nonce[:]...)
-	dst.Ciphertext = ciph.Seal(dst.Ciphertext, nonce[:], ptext, nil)
-	dst.TopicHash = sha3.Sum256(topicID[:])
-}
-
-// Decrypt attempts to decrypt the message using topic ID.
-func (ttm *TopicTellMsg) Decrypt(tid blobcache.TID, dst *blobcache.Message) error {
-	if len(ttm.Ciphertext) < chacha20poly1305.NonceSizeX+chacha20poly1305.Overhead {
-		return fmt.Errorf("too short to contain cryptogram")
-	}
-	nonce := ttm.Ciphertext[:chacha20poly1305.NonceSizeX]
-	ctext := ttm.Ciphertext[chacha20poly1305.NonceSizeX:]
-
-	dek := getTopicDEK(tid)
-	ciph, err := chacha20poly1305.New(dek[:])
-	if err != nil {
-		panic(err)
-	}
-	dst.Bytes, err = ciph.Open(dst.Bytes[:0], nonce, ctext, nil)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func getTopicDEK(tid blobcache.TID) [32]byte {
-	h := sha3.NewCSHAKE256(nil, tid[:])
-	h.Write([]byte("chacha20poly1305"))
-	var ret [32]byte
-	h.Read(ret[:])
-	return ret
 }
 
 // unmarshalSections unmarshals according to the buffers passed in sections.

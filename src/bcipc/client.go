@@ -127,7 +127,7 @@ func (c *Client) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache
 
 // Commit commits a transaction.
 func (c *Client) Commit(ctx context.Context, tx blobcache.Handle) error {
-	return bcp.Commit(ctx, &c.tp, blobcache.Endpoint{}, tx, nil)
+	return bcp.Commit(ctx, &c.tp, blobcache.Endpoint{}, tx)
 }
 
 // Abort aborts a transaction.

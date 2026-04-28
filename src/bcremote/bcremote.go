@@ -167,7 +167,7 @@ func (s *Service) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcach
 
 // Commit commits a transaction.
 func (s *Service) Commit(ctx context.Context, tx blobcache.Handle) error {
-	return bcp.Commit(ctx, s.node, s.ep, tx, nil)
+	return bcp.Commit(ctx, s.node, s.ep, tx)
 }
 
 // Abort aborts a transaction.

@@ -94,22 +94,37 @@ func (o *OID) Scan(src any) error {
 // NodeID uniquely identifies a peer by hash of the public key.
 type NodeID = inet256.ID
 
-const PeerIDSize = inet256.AddrSize
+const NodeIDSize = inet256.AddrSize
+
+// TxLimits enforce limits on a transaction
+// TxLimits are not for implementing read-write-delete permissions;
+// they are to be used for quality of service only.
+type TxLimits struct {
+	// Duration is the number of milliseconds to limit the transaction to before it is automatically closed.
+	Duration *uint32 `json:"duration,omitempty"`
+	// PostedBytes are the number of total bytes which can be uploaded in the transaction
+	PostedBytes *uint64 `json:"posted_bytes,omitempty"`
+	// PostedBlobs is the total number of blobs which can be uploaded in the transaction
+	PostedBlobs *uint64 `json:"posted_blobs,omitempty"`
+}
 
 // TxParams are parameters for a transaction.
 // The zero value is a read-only transaction.
 type TxParams struct {
 	// Modify is true if the transaction will change the Volume's state.
-	Modify bool
+	Modify bool `json:"modify,omitempty"`
 	// GCBlobs causes the transaction to remove all blobs that have not been
 	// visited in the transaction.
 	// This happens at the end of the transaction.
 	// Modify must be true if GCBlobs is set, or BeginTx will return an error.
-	GCBlobs bool
+	GCBlobs bool `json:"gc_blobs,omitempty"`
 	// GCLinks causes the transaction to remove, on commit, all links that have not been
 	// Visited in the transaction
 	// Modify must be true if GCLinks is set, or BeginTx will return an error
-	GCLinks bool
+	GCLinks bool `json:"gc_links,omitempty"`
+
+	// Limits
+	Limits TxLimits `json:"limits,omitempty"`
 }
 
 func (tp TxParams) Validate() error {

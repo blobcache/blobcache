@@ -53,7 +53,7 @@ func KeepAlive(ctx context.Context, tp Asker, ep blobcache.Endpoint, hs []blobca
 
 func ShareOut(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	var resp ShareOutResp
-	if err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE, ShareOutReq{Handle: h, Peer: to, Mask: mask}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE_OUT, ShareOutReq{Handle: h, Peer: to, Mask: mask}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Handle, nil
@@ -69,7 +69,7 @@ func InspectHandle(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobc
 
 func ShareIn(ctx context.Context, tp Asker, ep blobcache.Endpoint, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
 	var resp ShareInResp
-	if err := doAsk(ctx, tp, ep, MT_HANDLE_ADOPT, ShareInReq{Host: host, Handle: h}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_HANDLE_SHARE_IN, ShareInReq{Host: host, Handle: h}, &resp); err != nil {
 		return blobcache.Handle{}, err
 	}
 	return resp.Handle, nil
@@ -77,7 +77,7 @@ func ShareIn(ctx context.Context, tp Asker, ep blobcache.Endpoint, host blobcach
 
 func Inspect(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.Handle) (blobcache.Info, error) {
 	var resp InspectResp
-	if err := doAsk(ctx, tp, ep, MT_HANDLE_INSPECT_OBJECT, InspectReq{Handle: h}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_INSPECT, InspectReq{Handle: h}, &resp); err != nil {
 		return blobcache.Info{}, err
 	}
 	return resp.Info, nil
@@ -137,9 +137,9 @@ func InspectTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcach
 	return &resp.Info, nil
 }
 
-func Commit(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, root *[]byte) error {
+func Commit(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle) error {
 	var resp CommitResp
-	if err := doAsk(ctx, tp, ep, MT_TX_COMMIT, CommitReq{Tx: tx, Root: root}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_COMMIT, CommitReq{Tx: tx}, &resp); err != nil {
 		return err
 	}
 	return nil
@@ -213,9 +213,14 @@ func Get(ctx context.Context, tp Asker, ep blobcache.Endpoint, txh blobcache.Han
 	var body []byte
 	body = append(body, txh.OID[:]...)
 	body = append(body, txh.Secret[:]...)
-	body = append(body, cid[:]...)
 	var reqMsg Message
-	reqMsg.SetCode(MT_TX_GET)
+	if salt != nil {
+		reqMsg.SetCode(MT_TX_GET_SALT)
+		body = append(body, salt[:]...)
+	} else {
+		reqMsg.SetCode(MT_TX_GET)
+	}
+	body = append(body, cid[:]...)
 	reqMsg.SetBody(body)
 
 	var respMsg Message
