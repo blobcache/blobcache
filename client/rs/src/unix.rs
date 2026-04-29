@@ -14,7 +14,7 @@ impl UnixClient {
         }
     }
 
-    fn ask(&self, code: u8, body: &[u8]) -> Result<Vec<u8>, Error> {
+    fn ask(&self, code: bcp::MessageCode, body: &[u8]) -> Result<Vec<u8>, Error> {
         let mut conn = UnixStream::connect(&self.socket_path)?;
         bcp::write_message(&mut conn, code, body)?;
         let (resp_code, resp_body) = bcp::read_message(&mut conn)?;

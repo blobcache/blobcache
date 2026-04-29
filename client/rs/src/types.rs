@@ -35,7 +35,7 @@ pub enum Error {
     #[error("invalid message: {0}")]
     InvalidMessage(String),
     #[error("wire error code {code}: {message}")]
-    WireError { code: u8, message: String },
+    WireError { code: u16, message: String },
     #[error("wire error: invalid handle: {0}")]
     WireInvalidHandle(String),
     #[error("wire error: not found: {0}")]

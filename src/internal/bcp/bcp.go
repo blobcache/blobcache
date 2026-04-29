@@ -362,7 +362,7 @@ func SubToVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobca
 	return nil
 }
 
-func doAsk[Req Sendable, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Asker, remote blobcache.Endpoint, code MessageType, req Req, resp Resp) error {
+func doAsk[Req Sendable, Resp interface{ Unmarshal(data []byte) error }](ctx context.Context, node Asker, remote blobcache.Endpoint, code MessageCode, req Req, resp Resp) error {
 	reqData := req.Marshal(nil)
 	var reqMsg Message
 	reqMsg.SetCode(code)
@@ -383,7 +383,7 @@ func doAsk[Req Sendable, Resp interface{ Unmarshal(data []byte) error }](ctx con
 	return nil
 }
 
-func doTell(ctx context.Context, tp Teller, ep blobcache.Endpoint, code MessageType, x Sendable) error {
+func doTell(ctx context.Context, tp Teller, ep blobcache.Endpoint, code MessageCode, x Sendable) error {
 	var x2 Message
 	x2.SetCode(code)
 	x2.SetBody(x.Marshal(nil))
