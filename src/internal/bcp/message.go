@@ -9,52 +9,72 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 )
 
-type MessageType uint8
+type MessageCode uint16
 
-func (mt MessageType) IsError() bool {
+// ObjectType is the first 8 bits on the wire
+func (mt MessageCode) ObjectType() uint8 {
+	return uint8(mt >> 8)
+}
+
+// OpCode is the second 8 bits on the wire.
+func (mt MessageCode) OpCode() uint8 {
+	return uint8(mt & 0xff)
+}
+
+func (mt *MessageCode) SetObjectType(oc uint8) {
+	*mt = (*mt & 0x00ff) | (MessageCode(oc) << 8)
+}
+
+func (mt *MessageCode) SetOpCode(oc uint8) {
+	*mt = (*mt & 0xff00) | MessageCode(oc)
+}
+
+func (mt MessageCode) IsError() bool {
 	return mt > MT_OK
 }
 
-func (mt MessageType) IsOK() bool {
+func (mt MessageCode) IsOK() bool {
 	return mt == MT_OK
 }
 
+const sectionSize = 256
+
 const (
-	MT_UNKNOWN MessageType = iota
+	MT_UNKNOWN MessageCode = iota
 	// MT_PING is a request to ping the remote peer.
 	MT_PING
 	// MT_ENDPOINT is a request for the remote to respond with its Endpoint
 	MT_ENDPOINT
+	// MT_INSPECT can be used to inspect any object
+	MT_INSPECT
+	// MT_OPEN_FIAT calls the OpenFiat method.
+	MT_OPEN_FIAT
 )
 
 // Handle messages
 const (
-	MT_HANDLE_INSPECT MessageType = 16 + iota
+	MT_HANDLE_INSPECT MessageCode = (1 * sectionSize) + iota
 	MT_HANDLE_DROP
 	MT_HANDLE_KEEP_ALIVE
-	MT_HANDLE_SHARE
-	MT_HANDLE_ADOPT
-	MT_HANDLE_INSPECT_OBJECT
+	MT_HANDLE_SHARE_OUT
+	MT_HANDLE_SHARE_IN
 )
 
 // Volume messages
 const (
-	MT_OPEN_FIAT MessageType = 32 + iota
-	MT_OPEN_FROM
-	MT_VOLUME_INSPECT
-	MT_VOLUME_AWAIT
+	MT_VOLUME_INSPECT MessageCode = (2 * sectionSize) + iota
 	MT_VOLUME_BEGIN_TX
-	MT_VOLUME_CLONE
+	MT_OPEN_FROM
 
-	MT_CREATE_VOLUME MessageType = 47
+	MT_CREATE_VOLUME MessageCode = (3 * sectionSize) - 1
 )
 
 // Tx messages
 const (
-	MT_TX_INSPECT MessageType = 48 + iota
+	MT_TX_INSPECT MessageCode = (3 * sectionSize) + iota
 
-	MT_TX_COMMIT
 	MT_TX_ABORT
+	MT_TX_COMMIT
 
 	MT_TX_LOAD
 	MT_TX_SAVE
@@ -62,29 +82,30 @@ const (
 	MT_TX_POST
 	MT_TX_POST_SALT
 	MT_TX_GET
+	MT_TX_GET_SALT
 	MT_TX_EXISTS
 	MT_TX_DELETE
-	MT_TX_ADD_FROM
-	MT_TX_VISIT
-	MT_TX_IS_VISITED
-
+	MT_TX_COPY
 	MT_TX_LINK
 	MT_TX_UNLINK
+
+	MT_TX_VISIT
+	MT_TX_IS_VISITED
 	MT_TX_VISIT_LINKS
 )
 
 const (
-	MT_QUEUE_INSPECT MessageType = 80 + iota
+	MT_QUEUE_INSPECT MessageCode = (4 * sectionSize) + iota
 	MT_QUEUE_ENQUEUE
 	MT_QUEUE_DEQUEUE
 	MT_QUEUE_SUB_TO_VOLUME
 
-	MT_QUEUE_CREATE MessageType = 96
+	MT_QUEUE_CREATE MessageCode = (5 * sectionSize) - 1
 )
 
 // Response messages
 const (
-	MT_OK = 128 + iota
+	MT_OK = MessageCode((255 * sectionSize) + iota)
 
 	MT_ERROR_TIMEOUT
 	MT_ERROR_INVALID_HANDLE
@@ -93,19 +114,22 @@ const (
 	MT_ERROR_NO_LINK
 	MT_ERROR_TOO_LARGE
 
-	MT_ERROR_UNKNOWN = 255
+	MT_ERROR_UNKNOWN = MessageCode(256*sectionSize - 1)
 )
 
 const HeaderLen = 8
 
 type MessageHeader [HeaderLen]byte
 
-func (h *MessageHeader) SetCode(code MessageType) {
-	h[0] = byte(code)
+func (h *MessageHeader) SetCode(code MessageCode) {
+	h[0] = code.ObjectType()
+	h[1] = code.OpCode()
 }
 
-func (h MessageHeader) Code() MessageType {
-	return MessageType(h[0])
+func (h MessageHeader) Code() (ret MessageCode) {
+	ret.SetObjectType(h[0])
+	ret.SetOpCode(h[1])
+	return ret
 }
 
 func (h MessageHeader) BodyLen() int {
@@ -134,7 +158,7 @@ func (m *Message) setHeader(header MessageHeader) {
 	m.buf = append(m.buf[:0], header[:]...)
 }
 
-func (m *Message) SetCode(code MessageType) {
+func (m *Message) SetCode(code MessageCode) {
 	m.buf = extendToLen(m.buf, HeaderLen)
 	h := m.Header()
 	h.SetCode(code)
@@ -215,7 +239,7 @@ func (m *Message) SetError(err error) {
 	m.SetBody(jsonMarshal(err))
 }
 
-func parseWireError(code MessageType, x []byte) error {
+func parseWireError(code MessageCode, x []byte) error {
 	var ret error
 	switch code {
 	case MT_ERROR_INVALID_HANDLE:

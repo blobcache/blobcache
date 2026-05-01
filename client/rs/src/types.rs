@@ -35,7 +35,7 @@ pub enum Error {
     #[error("invalid message: {0}")]
     InvalidMessage(String),
     #[error("wire error code {code}: {message}")]
-    WireError { code: u8, message: String },
+    WireError { code: u16, message: String },
     #[error("wire error: invalid handle: {0}")]
     WireInvalidHandle(String),
     #[error("wire error: not found: {0}")]
@@ -390,12 +390,28 @@ impl Endpoint {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TxParams {
-    #[serde(rename = "Modify")]
+    #[serde(default)]
     pub modify: bool,
-    #[serde(rename = "GCBlobs")]
+    #[serde(default)]
     pub gc_blobs: bool,
-    #[serde(rename = "GCLinks")]
+    #[serde(default)]
     pub gc_links: bool,
+}
+
+impl TxParams {
+    pub fn marshal_bcp(&self, out: &mut Vec<u8>) {
+        let mut flags = 0u32;
+        if self.modify {
+            flags |= 1 << 0;
+        }
+        if self.gc_blobs {
+            flags |= 1 << 1;
+        }
+        if self.gc_links {
+            flags |= 1 << 2;
+        }
+        out.extend_from_slice(&flags.to_le_bytes());
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

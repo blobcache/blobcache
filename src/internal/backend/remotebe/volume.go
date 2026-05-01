@@ -105,11 +105,12 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
-	var root *[]byte
 	if tx.root != nil {
-		root = &tx.root
+		if err := bcp.Save(ctx, tx.vol.n, tx.vol.ep, tx.h, tx.root); err != nil {
+			return err
+		}
 	}
-	return bcp.Commit(ctx, tx.vol.n, tx.vol.ep, tx.h, root)
+	return bcp.Commit(ctx, tx.vol.n, tx.vol.ep, tx.h)
 }
 
 func (tx *Tx) Abort(ctx context.Context) error {

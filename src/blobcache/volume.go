@@ -188,7 +188,7 @@ type Endpoint struct {
 	IPPort netip.AddrPort `json:"ip_port"`
 }
 
-const EndpointSize = PeerIDSize + 16 + 2
+const EndpointSize = NodeIDSize + 16 + 2
 
 func (e Endpoint) Marshal(out []byte) []byte {
 	out = append(out, e.Node[:]...)
@@ -205,10 +205,10 @@ func (e Endpoint) Marshal(out []byte) []byte {
 }
 
 func (e *Endpoint) Unmarshal(data []byte) error {
-	if len(data) < PeerIDSize+16+2 {
+	if len(data) < NodeIDSize+16+2 {
 		return fmt.Errorf("too small to be endpoint")
 	}
-	e.Node, data = NodeID(data[:PeerIDSize]), data[PeerIDSize:]
+	e.Node, data = NodeID(data[:NodeIDSize]), data[NodeIDSize:]
 	var ipaddr netip.AddrPort
 	if err := ipaddr.UnmarshalBinary(data[:16+2]); err != nil {
 		return err

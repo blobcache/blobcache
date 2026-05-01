@@ -2,57 +2,61 @@ use crate::types::{Error, Message};
 use std::io::{Read, Write};
 
 pub const HEADER_LEN: usize = 8;
+pub type MessageCode = u16;
+const SECTION_SIZE: u16 = 256;
 
-pub const MT_ENDPOINT: u8 = 2;
+pub const MT_ENDPOINT: MessageCode = 2;
+pub const MT_INSPECT: MessageCode = 3;
 
-pub const MT_HANDLE_INSPECT: u8 = 16;
-pub const MT_HANDLE_DROP: u8 = 17;
-pub const MT_HANDLE_KEEP_ALIVE: u8 = 18;
-pub const MT_HANDLE_SHARE: u8 = 19;
-pub const MT_HANDLE_ADOPT: u8 = 20;
-pub const MT_HANDLE_INSPECT_OBJECT: u8 = 21;
+pub const MT_HANDLE_INSPECT: MessageCode = (1 * SECTION_SIZE) + 0;
+pub const MT_HANDLE_DROP: MessageCode = (1 * SECTION_SIZE) + 1;
+pub const MT_HANDLE_KEEP_ALIVE: MessageCode = (1 * SECTION_SIZE) + 2;
+pub const MT_HANDLE_SHARE_OUT: MessageCode = (1 * SECTION_SIZE) + 3;
+pub const MT_HANDLE_SHARE_IN: MessageCode = (1 * SECTION_SIZE) + 4;
 
-pub const MT_OPEN_FIAT: u8 = 32;
-pub const MT_OPEN_FROM: u8 = 33;
-pub const MT_VOLUME_INSPECT: u8 = 34;
-pub const MT_VOLUME_BEGIN_TX: u8 = 36;
-pub const MT_VOLUME_CLONE: u8 = 37;
-pub const MT_CREATE_VOLUME: u8 = 47;
+pub const MT_VOLUME_INSPECT: MessageCode = (2 * SECTION_SIZE) + 0;
+pub const MT_VOLUME_BEGIN_TX: MessageCode = (2 * SECTION_SIZE) + 1;
+pub const MT_OPEN_FIAT: MessageCode = 4;
+pub const MT_OPEN_FROM: MessageCode = (2 * SECTION_SIZE) + 2;
+pub const MT_CREATE_VOLUME: MessageCode = (3 * SECTION_SIZE) - 1;
 
-pub const MT_TX_INSPECT: u8 = 48;
-pub const MT_TX_COMMIT: u8 = 49;
-pub const MT_TX_ABORT: u8 = 50;
-pub const MT_TX_LOAD: u8 = 51;
-pub const MT_TX_SAVE: u8 = 52;
-pub const MT_TX_POST: u8 = 53;
-pub const MT_TX_POST_SALT: u8 = 54;
-pub const MT_TX_GET: u8 = 55;
-pub const MT_TX_EXISTS: u8 = 56;
-pub const MT_TX_DELETE: u8 = 57;
-pub const MT_TX_ADD_FROM: u8 = 58;
-pub const MT_TX_VISIT: u8 = 59;
-pub const MT_TX_IS_VISITED: u8 = 60;
-pub const MT_TX_LINK: u8 = 61;
-pub const MT_TX_UNLINK: u8 = 62;
-pub const MT_TX_VISIT_LINKS: u8 = 63;
+pub const MT_TX_INSPECT: MessageCode = (3 * SECTION_SIZE) + 0;
+pub const MT_TX_ABORT: MessageCode = (3 * SECTION_SIZE) + 1;
+pub const MT_TX_COMMIT: MessageCode = (3 * SECTION_SIZE) + 2;
+pub const MT_TX_LOAD: MessageCode = (3 * SECTION_SIZE) + 3;
+pub const MT_TX_SAVE: MessageCode = (3 * SECTION_SIZE) + 4;
+pub const MT_TX_POST: MessageCode = (3 * SECTION_SIZE) + 5;
+pub const MT_TX_POST_SALT: MessageCode = (3 * SECTION_SIZE) + 6;
+pub const MT_TX_GET: MessageCode = (3 * SECTION_SIZE) + 7;
+pub const MT_TX_GET_SALT: MessageCode = (3 * SECTION_SIZE) + 8;
+pub const MT_TX_EXISTS: MessageCode = (3 * SECTION_SIZE) + 9;
+pub const MT_TX_DELETE: MessageCode = (3 * SECTION_SIZE) + 10;
+pub const MT_TX_COPY: MessageCode = (3 * SECTION_SIZE) + 11;
+pub const MT_TX_LINK: MessageCode = (3 * SECTION_SIZE) + 12;
+pub const MT_TX_UNLINK: MessageCode = (3 * SECTION_SIZE) + 13;
+pub const MT_TX_VISIT: MessageCode = (3 * SECTION_SIZE) + 14;
+pub const MT_TX_IS_VISITED: MessageCode = (3 * SECTION_SIZE) + 15;
+pub const MT_TX_VISIT_LINKS: MessageCode = (3 * SECTION_SIZE) + 16;
 
-pub const MT_QUEUE_INSPECT: u8 = 80;
-pub const MT_QUEUE_ENQUEUE: u8 = 81;
-pub const MT_QUEUE_DEQUEUE: u8 = 82;
-pub const MT_QUEUE_SUB_TO_VOLUME: u8 = 83;
-pub const MT_QUEUE_CREATE: u8 = 96;
+pub const MT_QUEUE_INSPECT: MessageCode = (4 * SECTION_SIZE) + 0;
+pub const MT_QUEUE_ENQUEUE: MessageCode = (4 * SECTION_SIZE) + 1;
+pub const MT_QUEUE_DEQUEUE: MessageCode = (4 * SECTION_SIZE) + 2;
+pub const MT_QUEUE_SUB_TO_VOLUME: MessageCode = (4 * SECTION_SIZE) + 3;
+pub const MT_QUEUE_CREATE: MessageCode = (5 * SECTION_SIZE) - 1;
 
-pub const MT_OK: u8 = 128;
-pub const MT_ERROR_INVALID_HANDLE: u8 = 130;
-pub const MT_ERROR_NOT_FOUND: u8 = 131;
-pub const MT_ERROR_NO_PERMISSION: u8 = 132;
-pub const MT_ERROR_NO_LINK: u8 = 133;
-pub const MT_ERROR_TOO_LARGE: u8 = 134;
-pub const MT_ERROR_UNKNOWN: u8 = 255;
+pub const MT_OK: MessageCode = (255 * SECTION_SIZE) + 0;
+pub const MT_ERROR_TIMEOUT: MessageCode = (255 * SECTION_SIZE) + 1;
+pub const MT_ERROR_INVALID_HANDLE: MessageCode = (255 * SECTION_SIZE) + 2;
+pub const MT_ERROR_NOT_FOUND: MessageCode = (255 * SECTION_SIZE) + 3;
+pub const MT_ERROR_NO_PERMISSION: MessageCode = (255 * SECTION_SIZE) + 4;
+pub const MT_ERROR_NO_LINK: MessageCode = (255 * SECTION_SIZE) + 5;
+pub const MT_ERROR_TOO_LARGE: MessageCode = (255 * SECTION_SIZE) + 6;
+pub const MT_ERROR_UNKNOWN: MessageCode = u16::MAX;
 
-pub fn write_message<W: Write>(mut w: W, code: u8, body: &[u8]) -> Result<(), Error> {
+pub fn write_message<W: Write>(mut w: W, code: MessageCode, body: &[u8]) -> Result<(), Error> {
     let mut header = [0u8; HEADER_LEN];
-    header[0] = code;
+    header[0] = (code >> 8) as u8;
+    header[1] = (code & 0xff) as u8;
     let body_len = (body.len() as u32).to_le_bytes();
     header[4..8].copy_from_slice(&body_len);
     w.write_all(&header)?;
@@ -60,22 +64,24 @@ pub fn write_message<W: Write>(mut w: W, code: u8, body: &[u8]) -> Result<(), Er
     Ok(())
 }
 
-pub fn read_message<R: Read>(mut r: R) -> Result<(u8, Vec<u8>), Error> {
+pub fn read_message<R: Read>(mut r: R) -> Result<(MessageCode, Vec<u8>), Error> {
     let mut header = [0u8; HEADER_LEN];
     r.read_exact(&mut header)?;
+    let code = u16::from_be_bytes([header[0], header[1]]);
     let body_len = u32::from_le_bytes([header[4], header[5], header[6], header[7]]) as usize;
     let mut body = vec![0u8; body_len];
     r.read_exact(&mut body)?;
-    Ok((header[0], body))
+    Ok((code, body))
 }
 
-pub fn check_ok(code: u8, body: &[u8]) -> Result<(), Error> {
+pub fn check_ok(code: MessageCode, body: &[u8]) -> Result<(), Error> {
     if code == MT_OK {
         return Ok(());
     }
     if code > MT_OK {
         let msg = String::from_utf8_lossy(body).to_string();
         return Err(match code {
+            MT_ERROR_TIMEOUT => Error::WireError { code, message: msg },
             MT_ERROR_INVALID_HANDLE => Error::WireInvalidHandle(msg),
             MT_ERROR_NOT_FOUND => Error::WireNotFound(msg),
             MT_ERROR_NO_PERMISSION => Error::WireNoPermission(msg),

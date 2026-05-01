@@ -116,10 +116,6 @@ func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobca
 	return bcp.InspectVolume(ctx, &c.tp, blobcache.Endpoint{}, h)
 }
 
-func (c *Client) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	return bcp.CloneVolume(ctx, &c.tp, blobcache.Endpoint{}, caller, volh)
-}
-
 // InspectTx returns info about a transaction.
 func (c *Client) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache.TxInfo, error) {
 	return bcp.InspectTx(ctx, &c.tp, blobcache.Endpoint{}, tx)
@@ -127,7 +123,7 @@ func (c *Client) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache
 
 // Commit commits a transaction.
 func (c *Client) Commit(ctx context.Context, tx blobcache.Handle) error {
-	return bcp.Commit(ctx, &c.tp, blobcache.Endpoint{}, tx, nil)
+	return bcp.Commit(ctx, &c.tp, blobcache.Endpoint{}, tx)
 }
 
 // Abort aborts a transaction.

@@ -1,12 +1,13 @@
 # This library provides a Python client for the Blobcache API.
 
-import os
-import json
 import base64
-from dataclasses import dataclass, asdict, field
+import json
+import os
+from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
 import requests_unixsocket
+
 
 class EnhancedJSONEncoder(json.JSONEncoder):
     def default(self, o):
@@ -15,18 +16,22 @@ class EnhancedJSONEncoder(json.JSONEncoder):
         if isinstance(o, (Handle, OID, CID)):
             return str(o)
         if isinstance(o, bytes):
-            return base64.b64encode(o).decode('utf-8')
+            return base64.b64encode(o).decode("utf-8")
         return super().default(o)
+
 
 @dataclass
 class CID:
     id: bytes
 
-    _LEX_B64_ALPHABET = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
-    _STANDARD_B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    _LEX_B64_ALPHABET = (
+        "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+    )
+    _STANDARD_B64_ALPHABET = (
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    )
     _STANDARD_TO_LEX_B64 = str.maketrans(_STANDARD_B64_ALPHABET, _LEX_B64_ALPHABET)
     _LEX_TO_STANDARD_B64 = str.maketrans(_LEX_B64_ALPHABET, _STANDARD_B64_ALPHABET)
-
 
     def __str__(self):
         return self._encode(self.id)
@@ -34,11 +39,11 @@ class CID:
     @classmethod
     def from_string(cls, s: str) -> "CID":
         return cls(id=cls._decode(s))
-    
+
     @classmethod
     def _encode(cls, data: bytes) -> str:
         """Encodes bytes using the order-preserving base64 alphabet."""
-        encoded = base64.b64encode(data).decode('ascii')
+        encoded = base64.b64encode(data).decode("ascii")
         return encoded.translate(cls._STANDARD_TO_LEX_B64)
 
     @classmethod
@@ -47,12 +52,14 @@ class CID:
         standard_b64_str = s.translate(cls._LEX_TO_STANDARD_B64)
         return base64.b64decode(standard_b64_str)
 
+
 @dataclass
 class OID:
     id: bytes
 
     def __str__(self):
         return self.id.hex().upper()
+
 
 @dataclass
 class Handle:
@@ -64,22 +71,26 @@ class Handle:
 
     @classmethod
     def from_string(cls, s: str) -> "Handle":
-        oid_part, secret_part = s.split('.')
+        oid_part, secret_part = s.split(".")
         return cls(oid=OID(bytes.fromhex(oid_part)), secret=secret_part)
+
 
 @dataclass
 class VolumeSpec:
     hash_algo: str
+
 
 @dataclass
 class VolumeInfo:
     id: OID
     spec: VolumeSpec
 
+
 @dataclass
 class HandleInfo:
     oid: OID
     is_volume: bool
+
 
 @dataclass
 class TxInfo:
@@ -88,14 +99,17 @@ class TxInfo:
     max_size: int
     hash_algo: str
 
+
 @dataclass
 class Entry:
     name: str
     oid: OID
 
+
 @dataclass
 class Conditions:
     all_equal: List[Handle] = field(default_factory=list)
+
 
 # Client is used to connect to a Blobcache service..
 class Client:
@@ -106,14 +120,14 @@ class Client:
         self.session = requests_unixsocket.Session()
 
     def _do_json(self, method, path, secret=None, data=None):
-        headers = {'Content-Type': 'application/json'}
+        headers = {"Content-Type": "application/json"}
         if secret:
-            headers['X-Secret'] = secret
-        
+            headers["X-Secret"] = secret
+
         url = f"{self.endpoint}{path}"
-        
+
         encoded_data = json.dumps(data, cls=EnhancedJSONEncoder)
-        
+
         response = self.session.request(method, url, data=encoded_data, headers=headers)
         response.raise_for_status()
         if response.content:
@@ -125,7 +139,7 @@ class Client:
         response = self.session.request(method, url, headers=headers, data=data)
         response.raise_for_status()
         return response.content
-        
+
     def _handle_from_response(self, resp: dict) -> Handle:
         return Handle.from_string(resp["handle"])
 
@@ -142,18 +156,20 @@ class Client:
         req = {"namespace": str(ns), "name": name}
         resp = self._do_json("POST", "/OpenAt", data=req)
         return self._handle_from_response(resp)
-    
+
     def inspect_handle(self, h: Handle) -> HandleInfo:
         req = {"handle": str(h)}
         resp = self._do_json("POST", "/InspectHandle", data=req)
-        info = resp['info']
-        return HandleInfo(oid=OID(bytes.fromhex(info["oid"])), is_volume=info["is_volume"])
+        info = resp["info"]
+        return HandleInfo(
+            oid=OID(bytes.fromhex(info["oid"])), is_volume=info["is_volume"]
+        )
 
     def get_entry(self, ns: Handle, name: str) -> Entry:
         req = {"namespace": str(ns), "name": name}
         resp = self._do_json("POST", "/GetEntry", data=req)
-        entry = resp['entry']
-        return Entry(name=entry['name'], oid=OID(bytes.fromhex(entry['target'])))
+        entry = resp["entry"]
+        return Entry(name=entry["name"], oid=OID(bytes.fromhex(entry["target"])))
 
     def put_entry(self, ns: Handle, name: str, target: Handle):
         req = {"namespace": str(ns), "name": name, "Target": str(target)}
@@ -185,7 +201,7 @@ class Client:
         info = json.loads(resp_data)
         return VolumeInfo(
             id=OID(bytes.fromhex(info["id"])),
-            spec=VolumeSpec(hash_algo=info["backend"]["local"]["hash_algo"])
+            spec=VolumeSpec(hash_algo=info["backend"]["local"]["hash_algo"]),
         )
 
     def drop(self, h: Handle):
@@ -196,24 +212,24 @@ class Client:
         req = {"handles": [str(h) for h in handles]}
         self._do_json("POST", "/KeepAlive", data=req)
 
-    def begin_tx(self, vol: Handle, mutate: bool) -> Handle:
-        req = {"volume": str(vol), "params": {"Mutate": mutate}}
+    def begin_tx(self, vol: Handle, modify: bool) -> Handle:
+        req = {"volume": str(vol), "params": {"modify": modify}}
         resp = self._do_json("POST", "/tx/", secret=vol.secret, data=req)
         return self._handle_from_response(resp)
 
     def inspect_tx(self, tx: Handle) -> TxInfo:
         req = {"tx": str(tx)}
         resp = self._do_json("POST", "/tx/", secret=tx.secret, data=req)
-        info = resp['info']
+        info = resp["info"]
         return TxInfo(
-            id=OID(bytes.fromhex(info['id'])),
-            volume=OID(bytes.fromhex(info['volume'])),
-            max_size=info['max_size'],
-            hash_algo=info['hash_algo']
+            id=OID(bytes.fromhex(info["id"])),
+            volume=OID(bytes.fromhex(info["volume"])),
+            max_size=info["max_size"],
+            hash_algo=info["hash_algo"],
         )
 
-    def commit(self, tx: Handle, root: bytes):
-        req = {"root": root}
+    def commit(self, tx: Handle):
+        req = {}
         path = f"/tx/{tx.oid}.Commit"
         self._do_json("POST", path, secret=tx.secret, data=req)
 
@@ -224,7 +240,7 @@ class Client:
     def load(self, tx: Handle) -> bytes:
         path = f"/tx/{tx.oid}.Load"
         resp = self._do_json("POST", path, secret=tx.secret, data={})
-        return base64.b64decode(resp['root'])
+        return base64.b64decode(resp["root"])
 
     def post(self, tx: Handle, data: bytes, salt: Optional[CID] = None) -> CID:
         path = f"/tx/{tx.oid}.Post"
@@ -250,29 +266,29 @@ class Client:
         req = {"cid": str(cid)}
         if salt:
             req["salt"] = str(salt)
-        
+
         req_body = json.dumps(req)
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'X-Secret': tx.secret
-        }
+
+        headers = {"Content-Type": "application/json", "X-Secret": tx.secret}
 
         url = f"{self.endpoint}{path}"
         response = self.session.post(url, data=req_body, headers=headers, stream=True)
         response.raise_for_status()
         return response.content
 
+
 def new_client(endpoint: str) -> Client:
     return Client(endpoint)
 
+
 def new_client_from_env() -> Client:
     endpoint = os.environ.get("BLOBCACHE_API", "http+unix:///tmp/blobcache.sock")
-    
+
     if "://" not in endpoint:
         endpoint = f"http+unix://{endpoint}"
     elif not endpoint.startswith("http+unix://"):
-        raise ValueError("BLOBCACHE_API must be a unix socket path or a http+unix:// URL")
+        raise ValueError(
+            "BLOBCACHE_API must be a unix socket path or a http+unix:// URL"
+        )
 
     return Client(endpoint)
- 

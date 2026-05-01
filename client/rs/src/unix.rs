@@ -14,7 +14,7 @@ impl UnixClient {
         }
     }
 
-    fn ask(&self, code: u8, body: &[u8]) -> Result<Vec<u8>, Error> {
+    fn ask(&self, code: bcp::MessageCode, body: &[u8]) -> Result<Vec<u8>, Error> {
         let mut conn = UnixStream::connect(&self.socket_path)?;
         bcp::write_message(&mut conn, code, body)?;
         let (resp_code, resp_body) = bcp::read_message(&mut conn)?;
@@ -71,7 +71,7 @@ impl Service for UnixClient {
         handle.marshal(&mut req);
         req.extend_from_slice(&to.0);
         req.extend_from_slice(&mask.to_be_bytes());
-        let body = self.ask(bcp::MT_HANDLE_SHARE, &req)?;
+        let body = self.ask(bcp::MT_HANDLE_SHARE_OUT, &req)?;
         Handle::unmarshal(&body)
     }
 
@@ -79,14 +79,14 @@ impl Service for UnixClient {
         let mut req = Vec::new();
         req.extend_from_slice(&host.0);
         handle.marshal(&mut req);
-        let body = self.ask(bcp::MT_HANDLE_ADOPT, &req)?;
+        let body = self.ask(bcp::MT_HANDLE_SHARE_IN, &req)?;
         Handle::unmarshal(&body)
     }
 
     fn inspect(&self, handle: &Handle) -> Result<Info, Error> {
         let mut req = Vec::new();
         handle.marshal(&mut req);
-        let body = self.ask(bcp::MT_HANDLE_INSPECT_OBJECT, &req)?;
+        let body = self.ask(bcp::MT_INSPECT, &req)?;
         Ok(serde_json::from_slice(&body)?)
     }
 
@@ -134,10 +134,10 @@ impl Service for UnixClient {
     }
 
     fn clone_volume(&self, _caller: Option<&NodeID>, volume: &Handle) -> Result<Handle, Error> {
-        let mut req = Vec::new();
-        volume.marshal(&mut req);
-        let body = self.ask(bcp::MT_VOLUME_CLONE, &req)?;
-        Handle::unmarshal(&body)
+        let _ = volume;
+        Err(Error::InvalidMessage(
+            "clone volume is not supported by current BCP wire protocol".to_string(),
+        ))
     }
 
     fn inspect_volume(&self, volume: &Handle) -> Result<VolumeInfo, Error> {
@@ -150,7 +150,7 @@ impl Service for UnixClient {
     fn begin_tx(&self, volume: &Handle, params: TxParams) -> Result<Handle, Error> {
         let mut req = Vec::new();
         volume.marshal(&mut req);
-        req.extend_from_slice(&serde_json::to_vec(&params)?);
+        params.marshal_bcp(&mut req);
         let body = self.ask(bcp::MT_VOLUME_BEGIN_TX, &req)?;
         if body.len() < HANDLE_SIZE {
             return Err(Error::InvalidMessage(
@@ -209,11 +209,17 @@ impl Service for UnixClient {
         CID::from_bytes(&body)
     }
 
-    fn get(&self, tx: &Handle, cid: CID, buf: &mut [u8], _opts: GetOpts) -> Result<usize, Error> {
+    fn get(&self, tx: &Handle, cid: CID, buf: &mut [u8], opts: GetOpts) -> Result<usize, Error> {
         let mut req = Vec::new();
         tx.marshal(&mut req);
+        let code = if let Some(salt) = opts.salt {
+            req.extend_from_slice(salt.as_bytes());
+            bcp::MT_TX_GET_SALT
+        } else {
+            bcp::MT_TX_GET
+        };
         req.extend_from_slice(cid.as_bytes());
-        let body = self.ask(bcp::MT_TX_GET, &req)?;
+        let body = self.ask(code, &req)?;
         if body.len() > buf.len() {
             return Err(Error::InvalidMessage("buffer too short".to_string()));
         }
@@ -253,7 +259,7 @@ impl Service for UnixClient {
         for src in src_txs {
             src.marshal(&mut req);
         }
-        let body = self.ask(bcp::MT_TX_ADD_FROM, &req)?;
+        let body = self.ask(bcp::MT_TX_COPY, &req)?;
         Ok(bcp::decode_bools(&body, cids.len()))
     }
 

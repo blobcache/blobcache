@@ -65,7 +65,7 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 			}
 			return &KeepAliveResp{}, nil
 		})
-	case MT_HANDLE_SHARE:
+	case MT_HANDLE_SHARE_OUT:
 		handleAsk(req, resp, &ShareOutReq{}, func(req *ShareOutReq) (*ShareOutResp, error) {
 			h, err := svc.ShareOut(ctx, req.Handle, req.Peer, req.Mask)
 			if err != nil {
@@ -73,7 +73,7 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 			}
 			return &ShareOutResp{Handle: *h}, nil
 		})
-	case MT_HANDLE_ADOPT:
+	case MT_HANDLE_SHARE_IN:
 		handleAsk(req, resp, &ShareInReq{}, func(req *ShareInReq) (*ShareInResp, error) {
 			h, err := svc.ShareIn(ctx, req.Host, req.Handle)
 			if err != nil {
@@ -81,7 +81,7 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 			}
 			return &ShareInResp{Handle: h}, nil
 		})
-	case MT_HANDLE_INSPECT_OBJECT:
+	case MT_INSPECT:
 		handleAsk(req, resp, &InspectReq{}, func(req *InspectReq) (*InspectResp, error) {
 			info, err := svc.Inspect(ctx, req.Handle)
 			if err != nil {
@@ -153,11 +153,6 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 	// BEGIN TX
 	case MT_TX_COMMIT:
 		handleAsk(req, resp, &CommitReq{}, func(req *CommitReq) (*CommitResp, error) {
-			if req.Root != nil {
-				if err := svc.Save(ctx, req.Tx, *req.Root); err != nil {
-					return nil, err
-				}
-			}
 			if err := svc.Commit(ctx, req.Tx); err != nil {
 				return nil, err
 			}
@@ -240,7 +235,7 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		}
 		resp.SetCode(MT_OK)
 		resp.SetBody(cid[:])
-	case MT_TX_ADD_FROM:
+	case MT_TX_COPY:
 		handleAsk(req, resp, &AddFromReq{}, func(req *AddFromReq) (*AddFromResp, error) {
 			success := make([]bool, len(req.CIDs))
 			if err := svc.Copy(ctx, req.Tx, req.Srcs, req.CIDs, success); err != nil {
@@ -268,6 +263,34 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		}
 		buf := make([]byte, info.MaxSize)
 		n, err := svc.Get(ctx, *h, cid, buf, blobcache.GetOpts{SkipVerify: true})
+		if err != nil {
+			resp.SetError(err)
+			return true
+		}
+		resp.SetCode(MT_OK)
+		resp.SetBody(buf[:n])
+	case MT_TX_GET_SALT:
+		h, body, err := readHandle(req.Body())
+		if err != nil {
+			resp.SetError(err)
+			return true
+		}
+		if len(body) != 2*blobcache.CIDSize {
+			resp.SetError(fmt.Errorf("invalid request body length: %d", len(body)))
+			return true
+		}
+		salt := blobcache.CID(body[:blobcache.CIDSize])
+		body = body[blobcache.CIDSize:]
+		var cid blobcache.CID
+		copy(cid[:], body)
+
+		info, err := svc.InspectTx(ctx, *h)
+		if err != nil {
+			resp.SetError(err)
+			return true
+		}
+		buf := make([]byte, info.MaxSize)
+		n, err := svc.Get(ctx, *h, cid, buf, blobcache.GetOpts{SkipVerify: true, Salt: &salt})
 		if err != nil {
 			resp.SetError(err)
 			return true

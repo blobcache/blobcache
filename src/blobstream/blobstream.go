@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"io"
 	"iter"
+
+	"go.brendoncarroll.net/exp/sbe"
 )
 
 // WriteStream writes a sequence of blobs to Writer in the blobstream format.
@@ -50,4 +52,27 @@ func ReadStream(r io.Reader) iter.Seq2[[]byte, error] {
 			}
 		}
 	}
+}
+
+// AppendBytes appends the blobstream format to a slice of bytes.
+func AppendBytes(out []byte, blobs iter.Seq[[]byte]) []byte {
+	for blob := range blobs {
+		out = binary.AppendUvarint(out, uint64(len(blob)))
+		out = append(out, blob...)
+	}
+	return out
+}
+
+// ReadBytes interprets data as the blobstream format and returns a slice.
+func ReadBytes(data []byte) ([][]byte, error) {
+	var ret [][]byte
+	for len(data) > 0 {
+		blob, rest, err := sbe.ReadLP(data)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, blob)
+		data = rest
+	}
+	return ret, nil
 }
