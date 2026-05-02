@@ -81,16 +81,18 @@ func (sys *System) CreateVolume(ctx context.Context, ep blobcache.Endpoint, vspe
 	if node == nil {
 		return nil, fmt.Errorf("bcremote: cannot create remote volume, no node")
 	}
-	h, volinfo, err := bcp.CreateVolume(ctx, node, ep, vspec)
+	// The host cannot be set to non-zero when using bcnet.Node
+	resp, err := bcp.CreateVolume(ctx, node, ep, bcp.CreateVolumeReq{Spec: vspec})
 	if err != nil {
 		return nil, err
 	}
-	vol := NewVolume(sys, node, ep, *h, volinfo)
+	h := resp.Handle
+	vol := NewVolume(sys, node, ep, resp.Handle, &resp.Info)
 	sys.mu.Lock()
 	defer sys.mu.Unlock()
 	p := Params{Endpoint: ep, Volume: h.OID, HashAlgo: hashAlgo}
 	if _, exists := sys.remote[p]; exists {
-		return nil, fmt.Errorf("peer %v reused OID in reply to CreateVolume", ep.Node, h.OID)
+		return nil, fmt.Errorf("peer %v reused OID %v  in reply to CreateVolume", ep.Node, h.OID)
 	}
 	sys.remote[p] = vol
 	return vol, nil

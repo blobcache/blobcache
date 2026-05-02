@@ -89,27 +89,28 @@ func (c *Client) OpenFrom(ctx context.Context, base blobcache.Handle, token blob
 }
 
 func (c *Client) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
-	h, info, err := bcp.BeginTx(ctx, &c.tp, blobcache.Endpoint{}, volh, txp)
+	resp, err := bcp.BeginTx(ctx, &c.tp, blobcache.Endpoint{}, bcp.BeginTxReq{
+		Volume: volh,
+		Params: txp,
+	})
 	if err != nil {
 		return nil, err
 	}
-	c.cache.Add(h.OID, info)
-	return h, nil
+	c.cache.Add(resp.Tx.OID, &resp.Info)
+	return &resp.Tx, nil
 }
 
 // CreateVolume creates a new volume.
 func (c *Client) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	var host2 blobcache.Endpoint
 	if host != nil {
-		ep, err := c.Endpoint(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if *host != ep {
-			return nil, fmt.Errorf("bcipc: caller cannot be different from the node ID")
-		}
+		host2 = *host
 	}
-	vol, _, err := bcp.CreateVolume(ctx, &c.tp, blobcache.Endpoint{}, vspec)
-	return vol, err
+	resp, err := bcp.CreateVolume(ctx, &c.tp, blobcache.Endpoint{}, bcp.CreateVolumeReq{
+		Host: host2,
+		Spec: vspec,
+	})
+	return &resp.Handle, err
 }
 
 // InspectVolume returns info about a Volume.

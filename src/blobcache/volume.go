@@ -188,32 +188,33 @@ type Endpoint struct {
 	IPPort netip.AddrPort `json:"ip_port"`
 }
 
-const EndpointSize = NodeIDSize + 16 + 2
-
+// Marshal marshals a variable length binary encoding
 func (e Endpoint) Marshal(out []byte) []byte {
 	out = append(out, e.Node[:]...)
 
-	ipaddrData, err := e.IPPort.AppendBinary(nil)
-	if err != nil {
-		panic(err)
+	if e.IPPort.IsValid() {
+		ipaddrData, err := e.IPPort.AppendBinary(nil)
+		if err != nil {
+			panic(err)
+		}
+		out = append(out, ipaddrData...)
 	}
-	for len(ipaddrData) < 16+2 { // 16 bytes for the IP address, 2 bytes for the port
-		ipaddrData = append(ipaddrData, 0)
-	}
-	out = append(out, ipaddrData...)
 	return out
 }
 
+// Unmarshal gets an endpoint from the format produced by Marshal
 func (e *Endpoint) Unmarshal(data []byte) error {
-	if len(data) < NodeIDSize+16+2 {
+	if len(data) < NodeIDSize {
 		return fmt.Errorf("too small to be endpoint")
 	}
 	e.Node, data = NodeID(data[:NodeIDSize]), data[NodeIDSize:]
-	var ipaddr netip.AddrPort
-	if err := ipaddr.UnmarshalBinary(data[:16+2]); err != nil {
-		return err
+	if len(data) != 0 {
+		var ipaddr netip.AddrPort
+		if err := ipaddr.UnmarshalBinary(data); err != nil {
+			return err
+		}
+		e.IPPort = ipaddr
 	}
-	e.IPPort = ipaddr
 	return nil
 }
 
@@ -223,16 +224,19 @@ func (e Endpoint) String() string {
 
 func ParseEndpoint(s string) (Endpoint, error) {
 	parts := strings.SplitN(s, ":", 2)
-	if len(parts) != 2 {
+	if len(parts) == 0 {
 		return Endpoint{}, fmt.Errorf("invalid endpoint: %s", s)
 	}
 	peer, err := inet256.ParseAddrBase64([]byte(parts[0]))
 	if err != nil {
 		return Endpoint{}, err
 	}
-	ap, err := netip.ParseAddrPort(parts[1])
-	if err != nil {
-		return Endpoint{}, err
+	var ap netip.AddrPort
+	if len(parts) >= 2 {
+		ap, err = netip.ParseAddrPort(parts[1])
+		if err != nil {
+			return Endpoint{}, err
+		}
 	}
 	return Endpoint{
 		Node:   peer,
@@ -347,12 +351,10 @@ func (v VolumeBackend[T]) String() string {
 	return sb.String()
 }
 
+// Validate checks that only one backend is set
 func (v *VolumeBackend[T]) Validate() (err error) {
 	var count int
 	if v.Local != nil {
-		if err := v.Local.Validate(); err != nil {
-			return err
-		}
 		count++
 	}
 	if v.Remote != nil {
@@ -365,9 +367,6 @@ func (v *VolumeBackend[T]) Validate() (err error) {
 		count++
 	}
 	if v.Vault != nil {
-		if err := v.Vault.Validate(); err != nil {
-			return err
-		}
 		count++
 	}
 

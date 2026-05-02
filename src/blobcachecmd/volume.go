@@ -168,25 +168,16 @@ var vspecLocalCmd = star.Command{
 
 func localSpec(c star.Context) blobcache.VolumeSpec {
 	spec := blobcache.DefaultLocalSpec()
-	ha, ok := hashAlgoParam.LoadOpt(c)
-	if ok {
+	if ha, ok := hashAlgoParam.LoadOpt(c); ok {
 		spec.Local.HashAlgo = ha
 	}
-	maxSize, ok := maxSizeParam.LoadOpt(c)
-	if ok {
+	if maxSize, ok := maxSizeParam.LoadOpt(c); ok {
 		spec.Local.MaxSize = maxSize
 	}
-	schema, ok := schemaParam.LoadOpt(c)
-	if ok {
+	if schema, ok := schemaParam.LoadOpt(c); ok {
 		spec.Local.Schema = schema
 	}
-	return blobcache.VolumeSpec{
-		Local: &blobcache.VolumeBackend_Local{
-			HashAlgo: ha,
-			MaxSize:  maxSize,
-			Schema:   schema,
-		},
-	}
+	return spec
 }
 
 var ivolCmd = star.Command{

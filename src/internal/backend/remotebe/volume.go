@@ -51,15 +51,15 @@ func (v *Volume) Handle() blobcache.Handle {
 }
 
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.Tx, error) {
-	txh, info, err := bcp.BeginTx(ctx, v.n, v.ep, v.h, spec)
+	resp, err := bcp.BeginTx(ctx, v.n, v.ep, bcp.BeginTxReq{Volume: v.h, Params: spec})
 	if err != nil {
 		return nil, err
 	}
 	return &Tx{
 		vol:    v,
 		params: spec,
-		h:      *txh,
-		info:   info,
+		h:      resp.Tx,
+		info:   &resp.Info,
 	}, nil
 }
 

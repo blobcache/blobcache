@@ -1067,15 +1067,32 @@ func (ir *IsVisitedResp) Unmarshal(data []byte) error {
 }
 
 type CreateVolumeReq struct {
+	Host blobcache.Endpoint
 	Spec blobcache.VolumeSpec
 }
 
 func (cr CreateVolumeReq) Marshal(out []byte) []byte {
-	return cr.Spec.Marshal(out)
+	out = sbe.AppendLP16(out, cr.Host.Marshal(nil))
+	out = sbe.AppendLP16(out, cr.Spec.Marshal(nil))
+	return out
 }
 
 func (cr *CreateVolumeReq) Unmarshal(data []byte) error {
-	return cr.Spec.Unmarshal(data)
+	hostData, data, err := sbe.ReadLP16(data)
+	if err != nil {
+		return err
+	}
+	specData, data, err := sbe.ReadLP16(data)
+	if err != nil {
+		return err
+	}
+	if err := cr.Host.Unmarshal(hostData); err != nil {
+		return err
+	}
+	if err := cr.Spec.Unmarshal(specData); err != nil {
+		return err
+	}
+	return nil
 }
 
 type CreateVolumeResp struct {

@@ -118,7 +118,11 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		})
 	case MT_CREATE_VOLUME:
 		handleAsk(req, resp, &CreateVolumeReq{}, func(req *CreateVolumeReq) (*CreateVolumeResp, error) {
-			h, err := svc.CreateVolume(ctx, nil, req.Spec)
+			var host *blobcache.Endpoint
+			if req.Host != (blobcache.Endpoint{}) {
+				host = &req.Host
+			}
+			h, err := svc.CreateVolume(ctx, host, req.Spec)
 			if err != nil {
 				return nil, err
 			}

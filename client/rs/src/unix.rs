@@ -122,8 +122,26 @@ impl Service for UnixClient {
         Handle::unmarshal(&body[..HANDLE_SIZE])
     }
 
-    fn create_volume(&self, _host: Option<&Endpoint>, spec: &VolumeSpec) -> Result<Handle, Error> {
-        let req = serde_json::to_vec(spec)?;
+    fn create_volume(&self, host: Option<&Endpoint>, spec: &VolumeSpec) -> Result<Handle, Error> {
+        let mut req = Vec::new();
+        let mut host_data = Vec::new();
+        match host {
+            Some(host) => host.marshal_bcp(&mut host_data)?,
+            None => host_data.extend_from_slice(&[0u8; NODE_ID_SIZE]),
+        }
+        if host_data.len() > u16::MAX as usize {
+            return Err(Error::InvalidEndpoint("host endpoint too large".to_string()));
+        }
+        req.extend_from_slice(&(host_data.len() as u16).to_le_bytes());
+        req.extend_from_slice(&host_data);
+
+        let spec_data = serde_json::to_vec(spec)?;
+        if spec_data.len() > u16::MAX as usize {
+            return Err(Error::InvalidMessage("volume spec too large".to_string()));
+        }
+        req.extend_from_slice(&(spec_data.len() as u16).to_le_bytes());
+        req.extend_from_slice(&spec_data);
+
         let body = self.ask(bcp::MT_CREATE_VOLUME, &req)?;
         if body.len() < HANDLE_SIZE {
             return Err(Error::InvalidMessage(
