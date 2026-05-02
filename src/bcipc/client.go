@@ -198,8 +198,19 @@ func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []
 	return bcp.VisitLinks(ctx, &c.tp, blobcache.Endpoint{}, tx, targets)
 }
 
-func (c *Client) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
-	return bcp.CreateQueue(ctx, &c.tp, blobcache.Endpoint{}, qspec)
+func (c *Client) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+	var host2 blobcache.Endpoint
+	if host != nil {
+		host2 = *host
+	}
+	resp, err := bcp.CreateQueue(ctx, &c.tp, blobcache.Endpoint{}, bcp.CreateQueueReq{
+		Host: host2,
+		Spec: qspec,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
 }
 
 func (c *Client) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {

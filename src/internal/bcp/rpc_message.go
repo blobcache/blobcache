@@ -1117,27 +1117,56 @@ func (cr *CreateVolumeResp) Unmarshal(data []byte) error {
 }
 
 type CreateQueueReq struct {
+	Host blobcache.Endpoint
 	Spec blobcache.QueueSpec
 }
 
 func (cq CreateQueueReq) Marshal(out []byte) []byte {
-	return cq.Spec.Marshal(out)
+	out = sbe.AppendLP16(out, cq.Host.Marshal(nil))
+	out = sbe.AppendLP16(out, cq.Spec.Marshal(nil))
+	return out
 }
 
 func (cq *CreateQueueReq) Unmarshal(data []byte) error {
-	return cq.Spec.Unmarshal(data)
+	hostData, data, err := sbe.ReadLP16(data)
+	if err != nil {
+		return err
+	}
+	specData, data, err := sbe.ReadLP16(data)
+	if err != nil {
+		return err
+	}
+	if err := cq.Host.Unmarshal(hostData); err != nil {
+		return err
+	}
+	if err := cq.Spec.Unmarshal(specData); err != nil {
+		return err
+	}
+	return nil
 }
 
 type CreateQueueResp struct {
 	Handle blobcache.Handle
+	Info   blobcache.QueueInfo
 }
 
 func (cq CreateQueueResp) Marshal(out []byte) []byte {
-	return cq.Handle.Marshal(out)
+	out = cq.Handle.Marshal(out)
+	out = cq.Info.Marshal(out)
+	return out
 }
 
 func (cq *CreateQueueResp) Unmarshal(data []byte) error {
-	return cq.Handle.Unmarshal(data)
+	if len(data) < blobcache.HandleSize {
+		return fmt.Errorf("cannot unmarshal CreateQueueReq, too short: %d", len(data))
+	}
+	if err := cq.Handle.Unmarshal(data[:blobcache.HandleSize]); err != nil {
+		return err
+	}
+	if err := cq.Info.Unmarshal(data[blobcache.HandleSize:]); err != nil {
+		return err
+	}
+	return nil
 }
 
 type DequeueReq struct {

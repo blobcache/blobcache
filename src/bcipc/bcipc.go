@@ -3,6 +3,7 @@ package bcipc
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -20,6 +21,9 @@ type clientTransport struct {
 }
 
 func (ct *clientTransport) Ask(ctx context.Context, remEp blobcache.Endpoint, req bcp.Message, resp *bcp.Message) error {
+	if remEp != (blobcache.Endpoint{}) {
+		return fmt.Errorf("bcipc: endpoint must be zeroed in call to Ask.  HAVE: %v", remEp)
+	}
 	conn, err := ct.pool.Take(ctx)
 	if err != nil {
 		return err

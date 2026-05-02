@@ -245,7 +245,11 @@ func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets [
 }
 
 func (s *Service) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
-	return bcp.CreateQueue(ctx, s.node, s.ep, qspec)
+	resp, err := bcp.CreateQueue(ctx, s.node, s.ep, bcp.CreateQueueReq{Spec: qspec})
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
 }
 
 func (s *Service) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {

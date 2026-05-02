@@ -109,15 +109,17 @@ func (sys *System) CreateQueue(ctx context.Context, ep blobcache.Endpoint, qspec
 	if node == nil {
 		return nil, nil, fmt.Errorf("bcremote: cannot create remote queue, no node")
 	}
-	qh, err := bcp.CreateQueue(ctx, node, ep, qspec)
+	resp, err := bcp.CreateQueue(ctx, node, ep, bcp.CreateQueueReq{
+		Spec: qspec,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	info, err := bcp.InspectQueue(ctx, node, ep, *qh)
+	info, err := bcp.InspectQueue(ctx, node, ep, resp.Handle)
 	if err != nil {
 		return nil, nil, err
 	}
-	return NewQueue(sys, node, ep, *qh, info.Config), &info, nil
+	return NewQueue(sys, node, ep, resp.Handle, info.Config), &info, nil
 }
 
 // QueueUp opens an existing remote queue and returns a local proxy.

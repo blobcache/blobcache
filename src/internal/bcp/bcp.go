@@ -312,12 +312,10 @@ func InspectVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vol blo
 	return &resp.Info, nil
 }
 
-func CreateQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+func CreateQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, req CreateQueueReq) (CreateQueueResp, error) {
 	var resp CreateQueueResp
-	if err := doAsk(ctx, tp, ep, MT_QUEUE_CREATE, CreateQueueReq{Spec: qspec}, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
+	err := doAsk(ctx, tp, ep, MT_QUEUE_CREATE, req, &resp)
+	return resp, err
 }
 
 func InspectQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle) (blobcache.QueueInfo, error) {
