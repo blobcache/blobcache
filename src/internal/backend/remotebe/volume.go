@@ -16,11 +16,12 @@ var (
 
 // Volume is a remote volume.
 type Volume struct {
-	sys  *System
-	n    bcp.Asker
-	ep   blobcache.Endpoint
-	h    blobcache.Handle
-	info *blobcache.VolumeInfo
+	sys    *System
+	n      bcp.Asker
+	ep     blobcache.Endpoint
+	h      blobcache.Handle
+	info   *blobcache.VolumeInfo
+	isPeer bool
 }
 
 func NewVolume(sys *System, node bcp.Asker, ep blobcache.Endpoint, h blobcache.Handle, info *blobcache.VolumeInfo) *Volume {
@@ -34,12 +35,27 @@ func NewVolume(sys *System, node bcp.Asker, ep blobcache.Endpoint, h blobcache.H
 }
 
 func (v *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
-	return blobcache.VolumeBackend[blobcache.OID]{
-		Remote: &blobcache.VolumeBackend_Remote{
-			Endpoint: v.ep,
-			Volume:   v.h.OID,
-		},
+	if v.isPeer {
+		return blobcache.VolumeBackend[blobcache.OID]{
+			Peer: &blobcache.VolumeBackend_Peer{
+				Peer:     v.ep.Node,
+				Volume:   v.h.OID,
+				HashAlgo: v.info.HashAlgo,
+			},
+		}
+	} else {
+		return blobcache.VolumeBackend[blobcache.OID]{
+			Remote: &blobcache.VolumeBackend_Remote{
+				Endpoint: v.ep,
+				Volume:   v.h.OID,
+				HashAlgo: v.info.HashAlgo,
+			},
+		}
 	}
+}
+
+func (v *Volume) GetParams() blobcache.VolumeConfig {
+	return v.info.VolumeConfig
 }
 
 func (v *Volume) Endpoint() blobcache.Endpoint {
@@ -77,10 +93,6 @@ func (v *Volume) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) 
 		return 0, err
 	}
 	return hinfo.Rights, nil
-}
-
-func (v *Volume) GetParams() blobcache.VolumeConfig {
-	return v.info.VolumeConfig
 }
 
 // Tx is a transaction on a remote volume.

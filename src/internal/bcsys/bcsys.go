@@ -1473,7 +1473,11 @@ func (s *Service[LK, LV, LQ]) makeVault(ctx context.Context, backend blobcache.V
 func (s *Service[LK, LV, LQ]) findVolumeParams(ctx context.Context, vspec blobcache.VolumeSpec) (blobcache.VolumeConfig, error) {
 	switch {
 	case vspec.Local != nil:
-		return vspec.Config(), nil
+		cfg := vspec.Config()
+		if cfg.HashAlgo == "" {
+			cfg.HashAlgo = blobcache.HashAlgo_BLAKE3_256
+		}
+		return cfg, nil
 	case vspec.Git != nil:
 		return vspec.Config(), nil
 	case vspec.Remote != nil:

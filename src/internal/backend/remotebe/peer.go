@@ -55,7 +55,12 @@ func (ps *PeerSystem) VolumeDestroy(ctx context.Context, vol *Volume) error {
 // Create creates a new volume on the remote
 func (ps *PeerSystem) CreateVolume(ctx context.Context, peer blobcache.NodeID, vspec blobcache.VolumeSpec) (*Volume, error) {
 	return withEndpoint(ctx, ps.locator, peer, func(ep blobcache.Endpoint) (*Volume, error) {
-		return ps.inner.CreateVolume(ctx, ep, vspec)
+		vol, err := ps.inner.CreateVolume(ctx, ep, vspec)
+		if err != nil {
+			return nil, err
+		}
+		vol.isPeer = true
+		return vol, nil
 	})
 }
 

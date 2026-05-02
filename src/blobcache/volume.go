@@ -64,12 +64,6 @@ type VolumeAPI interface {
 	CreateVolume(ctx context.Context, host *Endpoint, vspec VolumeSpec) (*Handle, error)
 	// InspectVolume returns info about a Volume.
 	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
-	// OpenFiat returns a handle to an object by it's ID.
-	// This is where any Authorization checks are done.
-	// It's called "fiat" because it's up to the Node to say yes or no.
-	// The result is implementation dependent, unlike OpenFrom, which should behave
-	// the same way on any Node.
-	OpenFiat(ctx context.Context, x OID, mask ActionSet) (*Handle, error)
 	// OpenFrom returns a handle to an object by it's ID.
 	// base is the handle of a Volume, which links to the object.
 	// the base Volume's schema must be a Container.

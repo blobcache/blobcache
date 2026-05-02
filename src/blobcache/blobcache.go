@@ -313,6 +313,14 @@ type Service interface {
 	// If the endpoint is the zero value, the service is not listening for peers.
 	Endpoint(ctx context.Context) (Endpoint, error)
 
+	// OpenFiat returns a handle to an object by it's ID.
+	// This is where any Authorization checks are done.
+	// It's called "fiat" because it's up to the Node to say yes or no.
+	// The result is implementation dependent, unlike OpenFrom, which should behave
+	// the same way on any Node.
+	// If not nil, then the Endpoint is used for a remote OpenFiat call
+	OpenFiat(ctx context.Context, x OID, mask ActionSet) (*Handle, error)
+
 	HandleAPI
 	VolumeAPI
 	TxAPI

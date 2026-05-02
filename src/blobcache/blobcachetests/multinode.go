@@ -35,17 +35,20 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		svcs := mk(t, 2)
 		s1, s2 := svcs[0], svcs[1]
 		s1ep := Endpoint(t, s1)
-		s1ep.IPPort = netip.AddrPort{}
+		s1ep.IPPort = netip.AddrPort{} // should create a peer volume
 
 		volh, err := s2.CreateVolume(ctx, &s1ep, defaultLocalSpec())
 		require.NoError(t, err)
 
 		volinfo, err := s2.InspectVolume(ctx, *volh)
 		require.NoError(t, err)
+		require.NoError(t, volinfo.Validate())
+		require.NoError(t, volinfo.Backend.Validate())
 
 		require.Nil(t, volinfo.Backend.Local)
-		require.NotNil(t, volinfo.Backend.Remote)
-		require.Equal(t, s1ep.Node, volinfo.Backend.Remote.Endpoint.Node)
+		require.Nil(t, volinfo.Backend.Remote)
+		require.NotNil(t, volinfo.Backend.Peer)
+		require.Equal(t, s1ep.Node, volinfo.Backend.Peer.Peer)
 
 		tx, err := s2.BeginTx(ctx, *volh, blobcache.TxParams{})
 		require.NoError(t, err)
