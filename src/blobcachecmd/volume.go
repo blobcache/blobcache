@@ -20,12 +20,7 @@ var mkVolCmd = star.Command{
 		"host": hostParam,
 	},
 	F: func(c star.Context) error {
-		s, err := openService(c)
-		if err != nil {
-			return err
-		}
-		host, _ := hostParam.LoadOpt(c)
-		logctx.Infof(c.Context, "reading VolumeSpec JSON from stdin")
+		logctx.Infof(c.Context, "reading JSON spec from stdin...")
 		data, err := io.ReadAll(c.StdIn)
 		if err != nil {
 			return err
@@ -34,14 +29,23 @@ var mkVolCmd = star.Command{
 		if err := json.Unmarshal(data, &spec); err != nil {
 			return err
 		}
-		h, err := s.CreateVolume(c.Context, host, spec)
-		if err != nil {
-			return err
-		}
-		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v\n", *h)
-		return nil
+		return mkvol(c, spec)
 	},
+}
+
+func mkvol(c star.Context, spec blobcache.VolumeSpec) error {
+	s, err := openService(c)
+	if err != nil {
+		return err
+	}
+	host, _ := hostParam.LoadOpt(c)
+	h, err := s.CreateVolume(c.Context, host, spec)
+	if err != nil {
+		return err
+	}
+	c.Printf("Volume successfully created.\n\n")
+	c.Printf("HANDLE: %v\n", *h)
+	return nil
 }
 
 var mkVolLocalCmd = star.Command{
@@ -56,19 +60,7 @@ var mkVolLocalCmd = star.Command{
 	},
 	Pos: []star.Positional{},
 	F: func(c star.Context) error {
-		s, err := openService(c)
-		if err != nil {
-			return err
-		}
-		host, _ := hostParam.LoadOpt(c)
-		spec := localSpec(c)
-		h, err := s.CreateVolume(c.Context, host, spec)
-		if err != nil {
-			return err
-		}
-		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v\n", *h)
-		return nil
+		return mkvol(c, localSpec(c))
 	},
 }
 
@@ -76,24 +68,28 @@ var mkVolRemoteCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "create a new remote volume",
 	},
+	Flags: map[string]star.Flag{
+		"host": hostParam,
+	},
 	Pos: []star.Positional{endpointParam, volOIDParam},
 	F: func(c star.Context) error {
-		svc, err := openService(c)
+		spec, err := remoteSpec(c)
 		if err != nil {
 			return err
 		}
-		h, err := svc.CreateVolume(c.Context, nil, blobcache.VolumeSpec{
-			Remote: &blobcache.VolumeBackend_Remote{
-				Endpoint: endpointParam.Load(c),
-				Volume:   volOIDParam.Load(c),
-			},
-		})
-		if err != nil {
-			return err
-		}
-		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v\n", *h)
-		return nil
+		return mkvol(c, spec)
+	},
+}
+
+var mkVolPeerCmd = star.Command{
+	Metadata: star.Metadata{Short: "create a new peer volume"},
+	Flags: map[string]star.Flag{
+		"host": hostParam,
+		"hash": hashAlgoParam,
+	},
+	Pos: []star.Positional{peerParam, volOIDParam},
+	F: func(c star.Context) error {
+		return mkvol(c, peerSpec(c))
 	},
 }
 
@@ -102,50 +98,24 @@ var mkVolVaultCmd = star.Command{
 		Short: "create a new vault volume",
 	},
 	Flags: map[string]star.Flag{
+		"host":   hostParam,
 		"hash":   hashAlgoParam,
 		"secret": secretParam,
 	},
 	Pos: []star.Positional{volHParam},
 	F: func(c star.Context) error {
-		svc, err := openService(c)
-		if err != nil {
-			return err
-		}
-
-		hashAlgo := blobcache.HashAlgo_BLAKE3_256
-		if ha, ok := hashAlgoParam.LoadOpt(c); ok {
-			hashAlgo = ha
-		}
-
-		secret := blobcache.Secret{}
-		if s, ok := secretParam.LoadOpt(c); ok {
-			secret = s
-		}
-
-		h, err := svc.CreateVolume(c.Context, nil, blobcache.VolumeSpec{
-			Vault: &blobcache.VolumeBackend_Vault[blobcache.Handle]{
-				X:        volHParam.Load(c),
-				HashAlgo: hashAlgo,
-				Secret:   secret,
-			},
-		})
-		if err != nil {
-			return err
-		}
-		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v\n", *h)
-		return nil
+		spec := vaultSpec(c)
+		return mkvol(c, spec)
 	},
 }
 
-var mkVolGitCmd = star.Command{
-	Metadata: star.Metadata{
-		Short: "create a new git volume",
-	},
-	Pos: []star.Positional{volHParam},
-	F: func(c star.Context) error {
-		return fmt.Errorf("not yet implemented")
-	},
+func printVSpec(c star.Context, vspec blobcache.VolumeSpec) error {
+	data, err := json.MarshalIndent(vspec, "", "  ")
+	if err != nil {
+		return nil
+	}
+	_, err = c.StdOut.Write(data)
+	return err
 }
 
 var vspecLocalCmd = star.Command{
@@ -156,13 +126,18 @@ var vspecLocalCmd = star.Command{
 		"max-size": maxSizeParam,
 	},
 	F: func(c star.Context) error {
-		vspec := localSpec(c)
-		data, err := json.MarshalIndent(vspec, "", "  ")
-		if err != nil {
-			return nil
-		}
-		_, err = c.StdOut.Write(data)
-		return err
+		return printVSpec(c, localSpec(c))
+	},
+}
+
+var vspecPeerCmd = star.Command{
+	Metadata: star.Metadata{Short: "print a volume spec, suitable for piping to mkvol"},
+	Flags: map[string]star.Flag{
+		"hash": hashAlgoParam,
+	},
+	Pos: []star.Positional{peerParam, volOIDParam},
+	F: func(c star.Context) error {
+		return printVSpec(c, peerSpec(c))
 	},
 }
 
@@ -178,6 +153,48 @@ func localSpec(c star.Context) blobcache.VolumeSpec {
 		spec.Local.Schema = schema
 	}
 	return spec
+}
+
+func remoteSpec(c star.Context) (blobcache.VolumeSpec, error) {
+	ep := endpointParam.Load(c)
+	if !ep.IPPort.IsValid() && ep.IPPort.Port() != 0 {
+		return blobcache.VolumeSpec{}, fmt.Errorf("AddrPort must be valid for remote Volume")
+	}
+	return blobcache.VolumeSpec{
+		Remote: &blobcache.VolumeBackend_Remote{
+			Endpoint: ep,
+			Volume:   volOIDParam.Load(c),
+		},
+	}, nil
+}
+
+func peerSpec(c star.Context) blobcache.VolumeSpec {
+	ha, _ := hashAlgoParam.LoadOpt(c)
+	return blobcache.VolumeSpec{
+		Peer: &blobcache.VolumeBackend_Peer{
+			Peer:     peerParam.Load(c),
+			Volume:   volOIDParam.Load(c),
+			HashAlgo: ha,
+		},
+	}
+}
+
+func vaultSpec(c star.Context) blobcache.VolumeSpec {
+	hashAlgo := blobcache.HashAlgo_BLAKE3_256
+	if ha, ok := hashAlgoParam.LoadOpt(c); ok {
+		hashAlgo = ha
+	}
+	secret := blobcache.Secret{}
+	if s, ok := secretParam.LoadOpt(c); ok {
+		secret = s
+	}
+	return blobcache.VolumeSpec{
+		Vault: &blobcache.VolumeBackend_Vault[blobcache.Handle]{
+			X:        volHParam.Load(c),
+			HashAlgo: hashAlgo,
+			Secret:   secret,
+		},
+	}
 }
 
 var ivolCmd = star.Command{

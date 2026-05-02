@@ -44,6 +44,7 @@ func (ps *PeerSystem) VolumeUp(ctx context.Context, p PeerParams) (*Volume, erro
 			Volume:   p.Volume,
 			HashAlgo: p.HashAlgo,
 		})
+		vol.isPeer = true
 		return vol, err
 	})
 }

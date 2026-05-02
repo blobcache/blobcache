@@ -30,6 +30,9 @@ var nsCmd = star.NewDir(star.Metadata{
 })
 
 var nsInitCmd = star.Command{
+	Flags: map[string]star.Flag{
+		"nsr": nsRoot,
+	},
 	F: func(c star.Context) error {
 		nsc, nsh, err := getNS(c)
 		if err != nil {

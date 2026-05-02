@@ -798,10 +798,10 @@ func (ur *UnlinkReq) Unmarshal(data []byte) error {
 		if len(data) < blobcache.LinkTokenSize {
 			return fmt.Errorf("cannot unmarshal UnlinkReq, too short: %d", len(data))
 		}
-		if err := ur.Targets[i].Unmarshal(data[:blobcache.OIDSize]); err != nil {
+		if err := ur.Targets[i].Unmarshal(data[:blobcache.LinkTokenSize]); err != nil {
 			return err
 		}
-		data = data[blobcache.OIDSize:]
+		data = data[blobcache.LinkTokenSize:]
 	}
 	return nil
 }
@@ -846,13 +846,13 @@ func (vr *VisitLinksReq) Unmarshal(data []byte) error {
 	}
 	vr.Targets = make([]blobcache.LinkToken, numTargets)
 	for i := range vr.Targets {
-		if len(data) < blobcache.OIDSize {
+		if len(data) < blobcache.LinkTokenSize {
 			return fmt.Errorf("cannot unmarshal VisitLinksReq, too short: %d", len(data))
 		}
-		if err := vr.Targets[i].Unmarshal(data[:blobcache.OIDSize]); err != nil {
+		if err := vr.Targets[i].Unmarshal(data[:blobcache.LinkTokenSize]); err != nil {
 			return err
 		}
-		data = data[blobcache.OIDSize:]
+		data = data[blobcache.LinkTokenSize:]
 	}
 	return nil
 }
