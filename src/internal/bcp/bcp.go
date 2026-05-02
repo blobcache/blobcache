@@ -105,20 +105,16 @@ func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcac
 	return &resp.Handle, &resp.Info, nil
 }
 
-func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, req CreateVolumeReq) (CreateVolumeResp, error) {
 	var resp CreateVolumeResp
-	if err := doAsk(ctx, tp, ep, MT_CREATE_VOLUME, CreateVolumeReq{Spec: vspec}, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
+	err := doAsk(ctx, tp, ep, MT_CREATE_VOLUME, req, &resp)
+	return resp, err
 }
 
-func BeginTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, *blobcache.TxInfo, error) {
+func BeginTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, req BeginTxReq) (BeginTxResp, error) {
 	var resp BeginTxResp
-	if err := doAsk(ctx, tp, ep, MT_VOLUME_BEGIN_TX, BeginTxReq{Volume: volh, Params: txp}, &resp); err != nil {
-		return nil, nil, err
-	}
-	return &resp.Tx, &resp.Info, nil
+	err := doAsk(ctx, tp, ep, MT_VOLUME_BEGIN_TX, req, &resp)
+	return resp, err
 }
 
 func InspectTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle) (*blobcache.TxInfo, error) {
@@ -316,12 +312,10 @@ func InspectVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vol blo
 	return &resp.Info, nil
 }
 
-func CreateQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
+func CreateQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, req CreateQueueReq) (CreateQueueResp, error) {
 	var resp CreateQueueResp
-	if err := doAsk(ctx, tp, ep, MT_QUEUE_CREATE, CreateQueueReq{Spec: qspec}, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Handle, nil
+	err := doAsk(ctx, tp, ep, MT_QUEUE_CREATE, req, &resp)
+	return resp, err
 }
 
 func InspectQueue(ctx context.Context, tp Asker, ep blobcache.Endpoint, qh blobcache.Handle) (blobcache.QueueInfo, error) {

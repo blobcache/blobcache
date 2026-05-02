@@ -75,6 +75,29 @@ func (sys *System) VolumeDown(ctx context.Context, vol *Volume) error {
 	return nil
 }
 
+func (sys *System) CreateVolume(ctx context.Context, ep blobcache.Endpoint, vspec blobcache.VolumeSpec) (*Volume, error) {
+	hashAlgo := vspec.Config().HashAlgo
+	node := sys.node.Load()
+	if node == nil {
+		return nil, fmt.Errorf("bcremote: cannot create remote volume, no node")
+	}
+	// The host cannot be set to non-zero when using bcnet.Node
+	resp, err := bcp.CreateVolume(ctx, node, ep, bcp.CreateVolumeReq{Spec: vspec})
+	if err != nil {
+		return nil, err
+	}
+	h := resp.Handle
+	vol := NewVolume(sys, node, ep, resp.Handle, &resp.Info)
+	sys.mu.Lock()
+	defer sys.mu.Unlock()
+	p := Params{Endpoint: ep, Volume: h.OID, HashAlgo: hashAlgo}
+	if _, exists := sys.remote[p]; exists {
+		return nil, fmt.Errorf("peer %v reused OID %v  in reply to CreateVolume", ep.Node, h.OID)
+	}
+	sys.remote[p] = vol
+	return vol, nil
+}
+
 func (sys *System) VolumeDestroy(ctx context.Context, vol *Volume) error {
 	// no way for us to destroy a remote volume
 	return nil
@@ -86,15 +109,17 @@ func (sys *System) CreateQueue(ctx context.Context, ep blobcache.Endpoint, qspec
 	if node == nil {
 		return nil, nil, fmt.Errorf("bcremote: cannot create remote queue, no node")
 	}
-	qh, err := bcp.CreateQueue(ctx, node, ep, qspec)
+	resp, err := bcp.CreateQueue(ctx, node, ep, bcp.CreateQueueReq{
+		Spec: qspec,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	info, err := bcp.InspectQueue(ctx, node, ep, *qh)
+	info, err := bcp.InspectQueue(ctx, node, ep, resp.Handle)
 	if err != nil {
 		return nil, nil, err
 	}
-	return NewQueue(sys, node, ep, *qh, info.Config), &info, nil
+	return NewQueue(sys, node, ep, resp.Handle, info.Config), &info, nil
 }
 
 // QueueUp opens an existing remote queue and returns a local proxy.

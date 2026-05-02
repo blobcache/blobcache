@@ -1,6 +1,7 @@
 package blobcachetests
 
 import (
+	"net/netip"
 	"testing"
 
 	"blobcache.io/blobcache/src/blobcache"
@@ -9,7 +10,8 @@ import (
 )
 
 func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Service) {
-	t.Run("CreateVolumeRemote", func(t *testing.T) {
+	t.Run("OpenRemoteVolume", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		svcs := mk(t, 2)
 		s1, s2 := svcs[0], svcs[1]
@@ -27,7 +29,30 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		require.NoError(t, err)
 		require.NoError(t, s2.Abort(ctx, *tx))
 	})
+	t.Run("CreateVolumeOnRemote", func(t *testing.T) {
+		t.Parallel()
+		ctx := testutil.Context(t)
+		svcs := mk(t, 2)
+		s1, s2 := svcs[0], svcs[1]
+		s1ep := Endpoint(t, s1)
+		s1ep.IPPort = netip.AddrPort{}
+
+		volh, err := s2.CreateVolume(ctx, &s1ep, defaultLocalSpec())
+		require.NoError(t, err)
+
+		volinfo, err := s2.InspectVolume(ctx, *volh)
+		require.NoError(t, err)
+
+		require.Nil(t, volinfo.Backend.Local)
+		require.NotNil(t, volinfo.Backend.Remote)
+		require.Equal(t, s1ep.Node, volinfo.Backend.Remote.Endpoint.Node)
+
+		tx, err := s2.BeginTx(ctx, *volh, blobcache.TxParams{})
+		require.NoError(t, err)
+		require.NoError(t, s2.Abort(ctx, *tx))
+	})
 	t.Run("Remote/Tx", func(t *testing.T) {
+		t.Parallel()
 		ctx := testutil.Context(t)
 		TxAPI(t, func(t testing.TB) (blobcache.Service, blobcache.Handle) {
 			svcs := mk(t, 2)
@@ -42,6 +67,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		})
 	})
 	t.Run("Remote/Queue", func(t *testing.T) {
+		t.Parallel()
 		QueueAPI(t, func(t testing.TB) (blobcache.QueueAPI, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			svcs := mk(t, 2)
@@ -62,6 +88,7 @@ func TestMultiNode(t *testing.T, mk func(t testing.TB, n int) []blobcache.Servic
 		})
 	})
 	t.Run("Remote/SubToVol", func(t *testing.T) {
+		t.Parallel()
 		TestVolumeSubscribe(t, func(t testing.TB) (blobcache.Service, blobcache.Handle, blobcache.Handle) {
 			ctx := testutil.Context(t)
 			svcs := mk(t, 2)

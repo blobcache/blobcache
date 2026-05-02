@@ -49,6 +49,7 @@ var rootCmd = star.NewDir(
 		"mkvol.remote": mkVolRemoteCmd,
 		"mkvol.vault":  mkVolVaultCmd,
 		"mkvol.git":    mkVolGitCmd,
+		"vspec.local":  vspecLocalCmd,
 		"ivol":         ivolCmd,
 		"open-fiat":    openFiatCmd,
 		"open-from":    openFromCmd,

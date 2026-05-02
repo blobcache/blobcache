@@ -365,26 +365,66 @@ pub struct Endpoint {
 
 impl Endpoint {
     pub fn from_bcp_bytes(data: &[u8]) -> Result<Self, Error> {
-        if data.len() < NODE_ID_SIZE + 18 {
+        if data.len() < NODE_ID_SIZE {
             return Err(Error::InvalidEndpoint(format!("too short {}", data.len())));
         }
         let mut peer = [0u8; NODE_ID_SIZE];
         peer.copy_from_slice(&data[..NODE_ID_SIZE]);
-        let ap = &data[NODE_ID_SIZE..NODE_ID_SIZE + 18];
-        let ip_port = if ap[6..].iter().all(|b| *b == 0) {
-            let port = u16::from_le_bytes([ap[4], ap[5]]);
-            format!("{}.{}.{}.{}:{port}", ap[0], ap[1], ap[2], ap[3])
-        } else {
-            let mut octets = [0u8; 16];
-            octets.copy_from_slice(&ap[..16]);
-            let port = u16::from_le_bytes([ap[16], ap[17]]);
-            let ip = std::net::Ipv6Addr::from(octets);
-            format!("[{ip}]:{port}")
+        let ap = &data[NODE_ID_SIZE..];
+        let ip_port = match ap.len() {
+            0 => String::new(),
+            6 => {
+                let port = u16::from_le_bytes([ap[4], ap[5]]);
+                let ip = std::net::Ipv4Addr::new(ap[0], ap[1], ap[2], ap[3]);
+                format!("{ip}:{port}")
+            }
+            n if n >= 18 => {
+                let port = u16::from_le_bytes([ap[n - 2], ap[n - 1]]);
+                let addr = &ap[..n - 2];
+                if addr.len() < 16 {
+                    return Err(Error::InvalidEndpoint(format!(
+                        "invalid addr bytes {}",
+                        addr.len()
+                    )));
+                }
+                let mut octets = [0u8; 16];
+                octets.copy_from_slice(&addr[..16]);
+                let ip = std::net::Ipv6Addr::from(octets);
+                if addr.len() == 16 {
+                    format!("[{ip}]:{port}")
+                } else {
+                    let zone = String::from_utf8_lossy(&addr[16..]);
+                    format!("[{ip}%{zone}]:{port}")
+                }
+            }
+            n => {
+                return Err(Error::InvalidEndpoint(format!(
+                    "invalid endpoint addr-port length {}",
+                    n
+                )));
+            }
         };
         Ok(Self {
             node: NodeID(peer),
             ip_port,
         })
+    }
+
+    pub fn marshal_bcp(&self, out: &mut Vec<u8>) -> Result<(), Error> {
+        out.extend_from_slice(&self.node.0);
+        if self.ip_port.is_empty() {
+            return Ok(());
+        }
+        let sock: std::net::SocketAddr = self
+            .ip_port
+            .parse()
+            .map_err(|_| Error::InvalidEndpoint(self.ip_port.clone()))?;
+        match sock.ip() {
+            std::net::IpAddr::V4(v4) => out.extend_from_slice(&v4.octets()),
+            std::net::IpAddr::V6(v6) => out.extend_from_slice(&v6.octets()),
+        }
+        out.extend_from_slice(&sock.port().to_le_bytes());
+        Ok(())
     }
 }
 

@@ -135,20 +135,28 @@ func (s *Service) OpenFrom(ctx context.Context, base blobcache.Handle, token blo
 }
 
 func (s *Service) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {
-	h, info, err := bcp.BeginTx(ctx, s.node, s.ep, volh, txp)
+	resp, err := bcp.BeginTx(ctx, s.node, s.ep, bcp.BeginTxReq{
+		Volume: volh,
+		Params: txp,
+	})
 	if err != nil {
 		return nil, err
 	}
-	s.cache.Add(h.OID, info)
-	return h, nil
+	s.cache.Add(resp.Tx.OID, &resp.Info)
+	return &resp.Tx, nil
 }
 
 // CreateVolume creates a new volume.
 func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	if host != nil && *host != s.ep {
-		return nil, fmt.Errorf("bcremote: caller cannot be different from the node ID")
+	var host2 blobcache.Endpoint
+	if host != nil {
+		host2 = *host
 	}
-	return bcp.CreateVolume(ctx, s.node, s.ep, vspec)
+	resp, err := bcp.CreateVolume(ctx, s.node, s.ep, bcp.CreateVolumeReq{
+		Host: host2,
+		Spec: vspec,
+	})
+	return &resp.Handle, err
 }
 
 // InspectVolume returns info about a Volume.
@@ -237,7 +245,11 @@ func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets [
 }
 
 func (s *Service) CreateQueue(ctx context.Context, _ *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
-	return bcp.CreateQueue(ctx, s.node, s.ep, qspec)
+	resp, err := bcp.CreateQueue(ctx, s.node, s.ep, bcp.CreateQueueReq{Spec: qspec})
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Handle, nil
 }
 
 func (s *Service) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {

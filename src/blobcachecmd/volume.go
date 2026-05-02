@@ -50,6 +50,7 @@ var mkVolLocalCmd = star.Command{
 	},
 	Flags: map[string]star.Flag{
 		"host":     hostParam,
+		"schema":   schemaParam,
 		"hash":     hashAlgoParam,
 		"max-size": maxSizeParam,
 	},
@@ -60,13 +61,7 @@ var mkVolLocalCmd = star.Command{
 			return err
 		}
 		host, _ := hostParam.LoadOpt(c)
-		spec := blobcache.DefaultLocalSpec()
-		if ha, ok := hashAlgoParam.LoadOpt(c); ok {
-			spec.Local.HashAlgo = ha
-		}
-		if maxSize, ok := maxSizeParam.LoadOpt(c); ok {
-			spec.Local.MaxSize = maxSize
-		}
+		spec := localSpec(c)
 		h, err := s.CreateVolume(c.Context, host, spec)
 		if err != nil {
 			return err
@@ -153,18 +148,36 @@ var mkVolGitCmd = star.Command{
 	},
 }
 
-var awaitCmd = star.Command{
-	Metadata: star.Metadata{
-		Short: "await for a volume to change",
+var vspecLocalCmd = star.Command{
+	Metadata: star.Metadata{Short: "print a volume spec, suitable for piping to mkvol"},
+	Flags: map[string]star.Flag{
+		"schema":   schemaParam,
+		"hash":     hashAlgoParam,
+		"max-size": maxSizeParam,
 	},
-	Pos: []star.Positional{volHParam},
 	F: func(c star.Context) error {
-		_, err := openService(c)
+		vspec := localSpec(c)
+		data, err := json.MarshalIndent(vspec, "", "  ")
 		if err != nil {
-			return err
+			return nil
 		}
-		return fmt.Errorf("not yet implemented")
+		_, err = c.StdOut.Write(data)
+		return err
 	},
+}
+
+func localSpec(c star.Context) blobcache.VolumeSpec {
+	spec := blobcache.DefaultLocalSpec()
+	if ha, ok := hashAlgoParam.LoadOpt(c); ok {
+		spec.Local.HashAlgo = ha
+	}
+	if maxSize, ok := maxSizeParam.LoadOpt(c); ok {
+		spec.Local.MaxSize = maxSize
+	}
+	if schema, ok := schemaParam.LoadOpt(c); ok {
+		spec.Local.Schema = schema
+	}
+	return spec
 }
 
 var ivolCmd = star.Command{
@@ -322,5 +335,14 @@ var linkTokenParam = star.Required[blobcache.LinkToken]{
 			return blobcache.LinkToken{}, err
 		}
 		return ltok, nil
+	},
+}
+
+var schemaParam = star.Optional[blobcache.SchemaSpec]{
+	ID: "schema",
+	Parse: func(x string) (blobcache.SchemaSpec, error) {
+		var ret blobcache.SchemaSpec
+		err := json.Unmarshal([]byte(x), &ret)
+		return ret, err
 	},
 }
