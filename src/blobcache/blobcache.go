@@ -318,7 +318,6 @@ type Service interface {
 	// It's called "fiat" because it's up to the Node to say yes or no.
 	// The result is implementation dependent, unlike OpenFrom, which should behave
 	// the same way on any Node.
-	// If not nil, then the Endpoint is used for a remote OpenFiat call
 	OpenFiat(ctx context.Context, x OID, mask ActionSet) (*Handle, error)
 
 	HandleAPI
