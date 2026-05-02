@@ -32,7 +32,7 @@ test-rs: build
 test:
 	just test-go
 	just test-rs
-	
+
 testv:
 	go test -count=1 -v ./pkg/...
 
@@ -49,12 +49,16 @@ clean:
 build-images: build-amd64-linux
 	./build/build_images.sh
 
+cargo-publish:
+	cargo publish --manifest-path ./client/rs/Cargo.toml
+
 release-build:
     just build-exec
     just build-images
 
 release-publish:
 	./build/push_images.sh
+	just cargo-publish
 
 # Installs just the blobcache binary to /usr/bin/blobcache
 install-unix: build
