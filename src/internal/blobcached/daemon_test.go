@@ -43,3 +43,39 @@ func TestRun(t *testing.T) {
 	<-done
 	t.Log("done")
 }
+
+func TestListenUnix(t *testing.T) {
+	sockDir := t.TempDir()
+
+	t.Run("creates socket in test temp dir", func(t *testing.T) {
+		for _, name := range []string{"one.sock", "two.sock"} {
+			sockPath := filepath.Join(sockDir, name)
+			lis, err := ListenUnix(sockPath)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, lis.Close())
+			})
+			_, err = os.Stat(sockPath)
+			require.NoError(t, err)
+		}
+	})
+
+	t.Run("replaces stale socket", func(t *testing.T) {
+		sockPath := filepath.Join(sockDir, "stale.sock")
+
+		laddr := net.UnixAddr{Name: sockPath, Net: "unix"}
+		staleLis, err := net.ListenUnix("unix", &laddr)
+		require.NoError(t, err)
+		staleLis.SetUnlinkOnClose(false)
+		require.NoError(t, staleLis.Close())
+
+		_, err = os.Stat(sockPath)
+		require.NoError(t, err)
+
+		lis, err := ListenUnix(sockPath)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, lis.Close())
+		})
+	})
+}

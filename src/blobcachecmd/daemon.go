@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"blobcache.io/blobcache/src/bcipc"
 	"blobcache.io/blobcache/src/internal/blobcached"
 	"go.brendoncarroll.net/star"
 )
@@ -157,7 +156,7 @@ var serveHTTPParam = star.Optional[net.Listener]{
 
 var serveIPCParam = star.Optional[*net.UnixListener]{
 	ID:    "serve-ipc",
-	Parse: bcipc.Listen,
+	Parse: blobcached.ListenUnix,
 }
 
 var netParam = star.Optional[net.PacketConn]{

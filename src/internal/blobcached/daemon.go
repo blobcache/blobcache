@@ -314,3 +314,20 @@ func bgTestDaemon(t testing.TB, d *Daemon, pc net.PacketConn, httpOn []net.Liste
 		t.Log("service is up")
 	}
 }
+
+// ListenUnix implements robust listening on a unix socket.
+// It attempts to unlink an existing socket before listening.
+func ListenUnix(p string) (*net.UnixListener, error) {
+	if fi, err := os.Stat(p); err == nil {
+		if fi.Mode()&os.ModeSocket == 0 {
+			return nil, fmt.Errorf("socket path exists and is not a socket: %s", p)
+		}
+		if err := os.Remove(p); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	laddr := net.UnixAddr{Name: p, Net: "unix"}
+	return net.ListenUnix("unix", &laddr)
+}
