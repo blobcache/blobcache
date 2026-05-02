@@ -32,7 +32,7 @@ func (ent *Entry) LinkToken() blobcache.LinkToken {
 	}
 }
 
-var nameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9/_-]*[a-zA-Z0-9]$|^[a-zA-Z]$`)
+var nameRe = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9/_.-]*[A-Za-z0-9])?$`)
 
 func IsValidName(name string) bool {
 	return nameRe.MatchString(name)
@@ -226,9 +226,6 @@ func (nsc *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name stri
 func (nsc *Client) Move(ctx context.Context, nsh blobcache.Handle, oldName, newName string) error {
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
-		return err
-	}
-	if err := CheckName(oldName); err != nil {
 		return err
 	}
 	if err := CheckName(newName); err != nil {
