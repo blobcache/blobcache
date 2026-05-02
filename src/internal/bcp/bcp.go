@@ -105,12 +105,12 @@ func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcac
 	return &resp.Handle, &resp.Info, nil
 }
 
-func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
 	var resp CreateVolumeResp
 	if err := doAsk(ctx, tp, ep, MT_CREATE_VOLUME, CreateVolumeReq{Spec: vspec}, &resp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &resp.Handle, nil
+	return &resp.Handle, &resp.Info, nil
 }
 
 func BeginTx(ctx context.Context, tp Asker, ep blobcache.Endpoint, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, *blobcache.TxInfo, error) {

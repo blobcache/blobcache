@@ -75,6 +75,27 @@ func (sys *System) VolumeDown(ctx context.Context, vol *Volume) error {
 	return nil
 }
 
+func (sys *System) CreateVolume(ctx context.Context, ep blobcache.Endpoint, vspec blobcache.VolumeSpec) (*Volume, error) {
+	hashAlgo := vspec.Config().HashAlgo
+	node := sys.node.Load()
+	if node == nil {
+		return nil, fmt.Errorf("bcremote: cannot create remote volume, no node")
+	}
+	h, volinfo, err := bcp.CreateVolume(ctx, node, ep, vspec)
+	if err != nil {
+		return nil, err
+	}
+	vol := NewVolume(sys, node, ep, *h, volinfo)
+	sys.mu.Lock()
+	defer sys.mu.Unlock()
+	p := Params{Endpoint: ep, Volume: h.OID, HashAlgo: hashAlgo}
+	if _, exists := sys.remote[p]; exists {
+		return nil, fmt.Errorf("peer %v reused OID in reply to CreateVolume", ep.Node, h.OID)
+	}
+	sys.remote[p] = vol
+	return vol, nil
+}
+
 func (sys *System) VolumeDestroy(ctx context.Context, vol *Volume) error {
 	// no way for us to destroy a remote volume
 	return nil

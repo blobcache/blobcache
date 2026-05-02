@@ -789,46 +789,25 @@ func (s *Service[LK, LV, LQ]) CreateVolume(ctx context.Context, host *blobcache.
 // createRemoteVolume calls CreateVolume on a remote node
 // it then creates a new local volume with a new random OID
 func (s *Service[LK, LV, LQ]) createRemoteVolume(ctx context.Context, host blobcache.Endpoint, vspec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	node, err := s.grabNode(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// the request is for a remote node.
-	rvh, err := bcp.CreateVolume(ctx, node, host, vspec)
-	if err != nil {
-		return nil, err
-	}
-	rvInfo, err := bcp.InspectVolume(ctx, node, host, *rvh)
-	if err != nil {
-		return nil, err
-	}
-	vp, err := s.findVolumeParams(ctx, vspec)
-	if err != nil {
-		return nil, err
+	var vol *remotebe.Volume
+	var err error
+	if host.IPPort.IsValid() && host.IPPort.Port() != 0 {
+		vol, err = s.backends.remote.CreateVolume(ctx, host, vspec)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		vol, err = s.backends.peer.CreateVolume(ctx, host.Node, vspec)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// now we have a handle to the remote volume.
 	// The handle is only valid on the remote node.
-	localInfo := blobcache.VolumeInfo{
-		ID: blobcache.RandomOID(),
-		Backend: blobcache.VolumeBackend[blobcache.OID]{
-			Remote: &blobcache.VolumeBackend_Remote{
-				Endpoint: host,
-				Volume:   rvInfo.ID,
-				HashAlgo: vp.HashAlgo,
-			},
-		},
-	}
-	vol, err := s.backends.remote.VolumeUp(ctx, remotebe.Params{
-		Endpoint: host,
-		Volume:   rvInfo.ID,
-		HashAlgo: vp.HashAlgo,
-	})
-	if err != nil {
-		return nil, err
-	}
-	s.addVolume(localInfo.ID, vol)
+	id := blobcache.RandomOID()
+	s.addVolume(id, vol)
 	// create a local handle
-	localHandle := s.handles.Create(localInfo.ID, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL))
+	localHandle := s.handles.Create(id, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL))
 	return &localHandle, nil
 }
 

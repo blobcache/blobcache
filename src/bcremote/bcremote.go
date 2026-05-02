@@ -148,7 +148,8 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 	if host != nil && *host != s.ep {
 		return nil, fmt.Errorf("bcremote: caller cannot be different from the node ID")
 	}
-	return bcp.CreateVolume(ctx, s.node, s.ep, vspec)
+	vol, _, err := bcp.CreateVolume(ctx, s.node, s.ep, vspec)
+	return vol, err
 }
 
 // InspectVolume returns info about a Volume.

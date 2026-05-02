@@ -108,7 +108,8 @@ func (c *Client) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vsp
 			return nil, fmt.Errorf("bcipc: caller cannot be different from the node ID")
 		}
 	}
-	return bcp.CreateVolume(ctx, &c.tp, blobcache.Endpoint{}, vspec)
+	vol, _, err := bcp.CreateVolume(ctx, &c.tp, blobcache.Endpoint{}, vspec)
+	return vol, err
 }
 
 // InspectVolume returns info about a Volume.
