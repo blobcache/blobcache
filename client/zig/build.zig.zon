@@ -8,10 +8,8 @@
         "build.zig",
         "build.zig.zon",
         "lib.zig",
-        "client.zig",
-        "protocol.zig",
-        "types.zig",
+        "bcp.zig",
+        "blobcache.zig",
         "unix_client.zig",
-        "tests",
     },
 }

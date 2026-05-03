@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const protocol = @import("protocol.zig");
+const bcp = @import("bcp.zig");
 
 pub const ENV_BLOBCACHE_API = "BLOBCACHE_API";
 pub const ENV_BLOBCACHE_NS_ROOT = "BLOBCACHE_NS_ROOT";
@@ -77,7 +77,7 @@ pub const LinkToken = struct {
 
     pub fn marshal(self: *const LinkToken, out: *std.array_list.Managed(u8)) !void {
         try out.appendSlice(self.target.asBytes());
-        try protocol.appendInt(out, u64, self.rights, .little);
+        try bcp.appendInt(out, u64, self.rights, .little);
         try out.appendSlice(&self.secret);
     }
 
@@ -144,11 +144,11 @@ pub const Endpoint = struct {
         switch (ip) {
             .ip4 => |ip4| {
                 try out.appendSlice(&ip4.bytes);
-                try protocol.appendInt(out, u16, ip4.port, .little);
+                try bcp.appendInt(out, u16, ip4.port, .little);
             },
             .ip6 => |ip6| {
                 try out.appendSlice(&ip6.bytes);
-                try protocol.appendInt(out, u16, ip6.port, .little);
+                try bcp.appendInt(out, u16, ip6.port, .little);
             },
         }
     }
@@ -164,7 +164,7 @@ pub const TxParams = struct {
         if (self.modify) flags |= 1 << 0;
         if (self.gc_blobs) flags |= 1 << 1;
         if (self.gc_links) flags |= 1 << 2;
-        try protocol.appendInt(out, u32, flags, .little);
+        try bcp.appendInt(out, u32, flags, .little);
     }
 };
 
@@ -192,7 +192,7 @@ pub const Message = struct {
     }
 
     pub fn marshal(self: *const Message, out: *std.array_list.Managed(u8)) !void {
-        try protocol.appendInt(out, u32, @intCast(self.handles.len), .little);
+        try bcp.appendInt(out, u32, @intCast(self.handles.len), .little);
         for (self.handles) |h| try h.marshal(out);
         try out.appendSlice(self.bytes);
     }
