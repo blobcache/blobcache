@@ -32,6 +32,7 @@ test-rs: build
 test:
 	just test-go
 	just test-rs
+	just test-zig
 
 testv:
 	go test -count=1 -v ./pkg/...
@@ -59,6 +60,12 @@ release-build:
 release-publish:
 	./build/push_images.sh
 	just cargo-publish
+
+build-zig:
+	cd ./client/zig && zig build
+
+test-zig: build
+	cd ./client/zig && zig build test --summary all
 
 # Installs just the blobcache binary to /usr/bin/blobcache
 install-unix: build
