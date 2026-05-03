@@ -349,6 +349,32 @@ func (s *Service[LK, LV, LQ]) inspectVolume(ctx context.Context, volID blobcache
 	return ve.Info(), nil
 }
 
+func (s *Service[LK, LV, LQ]) ensureVolumeMetadata(ctx context.Context, oid blobcache.OID) error {
+	if oid == (blobcache.OID{}) {
+		return nil
+	}
+	if info, err := s.inspectVolume(ctx, oid); err != nil {
+		return err
+	} else if info != nil {
+		return nil
+	}
+
+	vol, exists := s.volByOID(oid)
+	if !exists {
+		return fmt.Errorf("cannot ensure metadata for unknown volume %v", oid)
+	}
+	ve := VolumeEntry{
+		OID:      oid,
+		MaxSize:  vol.info.MaxSize,
+		Schema:   vol.info.Schema,
+		HashAlgo: vol.info.HashAlgo,
+		Salted:   vol.info.Salted,
+		Backend:  vol.info.Backend,
+		Deps:     nil,
+	}
+	return s.env.MDS.Put(ctx, oid, ve)
+}
+
 type volume struct {
 	info    blobcache.VolumeInfo
 	backend backend.Volume
@@ -1213,6 +1239,9 @@ func (s *Service[LK, LV, LQ]) Link(ctx context.Context, txh blobcache.Handle, ta
 	}
 	volTo, rights, err := s.resolveVol(ctx, target)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureVolumeMetadata(ctx, volTo.info.ID); err != nil {
 		return nil, err
 	}
 	linkRights := rights.Share() & mask

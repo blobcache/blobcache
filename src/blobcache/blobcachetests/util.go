@@ -29,6 +29,8 @@ func CreateOnSameHost(t testing.TB, s blobcache.Service, base blobcache.Handle, 
 	var host *blobcache.Endpoint
 	if info.Backend.Remote != nil {
 		host = &info.Backend.Remote.Endpoint
+	} else if info.Backend.Peer != nil {
+		host = &blobcache.Endpoint{Node: info.Backend.Peer.Peer}
 	}
 	svolh, err := s.CreateVolume(ctx, host, spec)
 	require.NoError(t, err)
