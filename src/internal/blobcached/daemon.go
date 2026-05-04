@@ -37,36 +37,10 @@ var pki = inet256.PKI{
 // Run runs the blobcache daemon, until the context is cancelled.
 // If the context is cancelled, Run returns nil.  Run returns an error if it returns for any other reason.
 func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, httpOn []net.Listener, unixOn []*net.UnixListener) error {
-	if err := d.EnsurePolicyFiles(); err != nil {
-		return err
-	}
-	pol, err := d.GetPolicy()
+	svc, err := d.newService(ctx)
 	if err != nil {
 		return err
 	}
-	var privateKey ed25519.PrivateKey
-	privKey, err := d.EnsurePrivateKey()
-	if err != nil {
-		return err
-	}
-	privateKey = privKey.(ed25519.PrivateKey)
-	loc, err := d.EnsureLocator()
-	if err != nil {
-		return err
-	}
-	svc, err := bclocal.New(bclocal.Env{
-		Background:  ctx,
-		StateDir:    d.StateDir.Name(),
-		PrivateKey:  privateKey,
-		Policy:      pol,
-		MkSchema:    schemareg.Factory,
-		Root:        schemareg.DefaultRoot(),
-		PeerLocator: loc,
-	}, bclocal.Config{})
-	if err != nil {
-		return err
-	}
-
 	eg, ctx := errgroup.WithContext(ctx)
 	for _, lis := range httpOn {
 		eg.Go(func() error {
@@ -115,6 +89,39 @@ func (d *Daemon) Run(ctx context.Context, pc net.PacketConn, httpOn []net.Listen
 		return err
 	}
 	return nil
+}
+
+func (d *Daemon) newService(bgCtx context.Context) (*bclocal.Service, error) {
+	if err := d.EnsurePolicyFiles(); err != nil {
+		return nil, err
+	}
+	pol, err := d.GetPolicy()
+	if err != nil {
+		return nil, err
+	}
+	var privateKey ed25519.PrivateKey
+	privKey, err := d.EnsurePrivateKey()
+	if err != nil {
+		return nil, err
+	}
+	privateKey = privKey.(ed25519.PrivateKey)
+	loc, err := d.EnsureLocator()
+	if err != nil {
+		return nil, err
+	}
+	svc, err := bclocal.New(bclocal.Env{
+		Background:  bgCtx,
+		StateDir:    d.StateDir.Name(),
+		PrivateKey:  privateKey,
+		Policy:      pol,
+		MkSchema:    schemareg.Factory,
+		Root:        schemareg.DefaultRoot(),
+		PeerLocator: loc,
+	}, bclocal.Config{})
+	if err != nil {
+		return nil, err
+	}
+	return svc, nil
 }
 
 // Daemon manages the state and configuration for running a Blobache node.

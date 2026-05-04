@@ -76,7 +76,7 @@ docker run \
 This is a good option if you just want to play around with the API, and don't want to persist any data, or connect to peers.
 
 ```shell
-$ blobcache daemon-ephemeral \
+$ blobcache daemon ephemeral \
     --serve-ipc ./blobcache.sock \
     --net 0.0.0.0:6025
 ```
@@ -84,7 +84,7 @@ $ blobcache daemon-ephemeral \
 ### Running the daemon
 The following command runs a daemon with state in the specified directory. 
 ```shell
-$ blobcache daemon \
+$ blobcache daemon run \
     --state $HOME/.local/blobcache \
     --serve-ipc /run/blobcache/blobcache.sock \
     --net 0.0.0.0:6025
