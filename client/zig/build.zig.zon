@@ -11,5 +11,6 @@
         "bcp.zig",
         "blobcache.zig",
         "unix_client.zig",
+        "tests",
     },
 }

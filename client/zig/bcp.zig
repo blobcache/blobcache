@@ -73,14 +73,27 @@ pub fn writeMessage(writer: anytype, code: MessageCode, body: []const u8) !void 
     try writer.writeAll(body);
 }
 
+fn readExact(reader: anytype, out: []u8) !void {
+    const reader_ty = @TypeOf(reader.*);
+    if (@hasDecl(reader_ty, "readSliceAll")) {
+        try reader.readSliceAll(out);
+        return;
+    }
+    if (@hasDecl(reader_ty, "readNoEof")) {
+        try reader.readNoEof(out);
+        return;
+    }
+    @compileError("reader type must support readSliceAll or readNoEof");
+}
+
 pub fn readMessageAlloc(allocator: std.mem.Allocator, reader: anytype) !Response {
     var header: [header_len]u8 = undefined;
-    try reader.readNoEof(&header);
+    try readExact(reader, &header);
     const code = (@as(u16, header[0]) << 8) | @as(u16, header[1]);
     const body_len = std.mem.readInt(u32, header[4..8], .little);
     const body = try allocator.alloc(u8, body_len);
     errdefer allocator.free(body);
-    try reader.readNoEof(body);
+    try readExact(reader, body);
     return .{ .code = code, .body = body };
 }
 
