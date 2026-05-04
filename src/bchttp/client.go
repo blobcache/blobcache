@@ -296,13 +296,13 @@ func (c *Client) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache
 	return &resp.Token, nil
 }
 
-func (c *Client) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkToken) error {
+func (c *Client) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
 	req := UnlinkReq{Targets: targets}
 	var resp UnlinkResp
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Unlink", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
-func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkToken) error {
+func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
 	req := VisitLinksReq{Targets: targets}
 	var resp VisitLinksResp
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.VisitLinks", tx.OID.String()), &tx.Secret, req, &resp)

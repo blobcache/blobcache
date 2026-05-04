@@ -100,7 +100,9 @@ func Link(t testing.TB, s blobcache.Service, txh blobcache.Handle, volh blobcach
 
 func Unlink(t testing.TB, s blobcache.Service, txh blobcache.Handle, ltok blobcache.LinkToken) {
 	ctx := testutil.Context(t)
-	require.NoError(t, s.Unlink(ctx, txh, []blobcache.LinkToken{ltok}))
+	txInfo, err := s.InspectTx(ctx, txh)
+	require.NoError(t, err)
+	require.NoError(t, s.Unlink(ctx, txh, []blobcache.LinkTokenID{ltok.GetID(txInfo.HashAlgo)}))
 }
 
 func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx *bcsdk.Tx) ([]byte, error)) {

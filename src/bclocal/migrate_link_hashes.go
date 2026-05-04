@@ -20,8 +20,8 @@ import (
 )
 
 type linkHashRemap struct {
-	Old    blobcache.CID
-	New    blobcache.CID
+	Old    blobcache.LinkTokenID
+	New    blobcache.LinkTokenID
 	Target blobcache.OID
 }
 
@@ -127,11 +127,11 @@ func migrateOneNamespaceVolume(ctx context.Context, sys *Service, lvid localvol.
 		return stats, err
 	}
 
-	remaps := make(map[blobcache.CID]linkHashRemap)
+	remaps := make(map[blobcache.LinkTokenID]linkHashRemap)
 	for _, ent := range entries {
 		lt := ent.LinkToken()
-		oldHash := lt.Hash(blobcache.HashAlgo_SHA3_256)
-		newHash := lt.Hash(cfg.HashAlgo)
+		oldHash := lt.GetID(blobcache.HashAlgo_SHA3_256)
+		newHash := lt.GetID(cfg.HashAlgo)
 		if oldHash == newHash {
 			stats.Unchanged++
 			continue
@@ -187,7 +187,7 @@ func migrateOneNamespaceVolume(ctx context.Context, sys *Service, lvid localvol.
 	return stats, ba.Commit(nil)
 }
 
-func findLegacyLinkRows(db *pebble.DB, lvid localvol.ID, remaps map[blobcache.CID]linkHashRemap) ([][]byte, error) {
+func findLegacyLinkRows(db *pebble.DB, lvid localvol.ID, remaps map[blobcache.LinkTokenID]linkHashRemap) ([][]byte, error) {
 	sn := db.NewSnapshot()
 	defer sn.Close()
 

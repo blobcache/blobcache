@@ -236,11 +236,11 @@ func (s *Service) Link(ctx context.Context, tx blobcache.Handle, subvol blobcach
 	return bcp.Link(ctx, s.node, s.ep, tx, subvol, mask)
 }
 
-func (s *Service) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkToken) error {
+func (s *Service) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
 	return bcp.Unlink(ctx, s.node, s.ep, tx, targets)
 }
 
-func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkToken) error {
+func (s *Service) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
 	return bcp.VisitLinks(ctx, s.node, s.ep, tx, targets)
 }
 

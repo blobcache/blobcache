@@ -49,7 +49,7 @@ func (v *Volume) AccessSubVolume(ctx context.Context, lt blobcache.LinkToken) (b
 	if err := v.sys.readLinksFrom(0, v.lvid, links); err != nil {
 		return 0, err
 	}
-	h := lt.Hash(v.params.HashAlgo)
+	h := lt.GetID(v.params.HashAlgo)
 	if _, exists := links[h]; exists {
 		return lt.Rights, nil
 	}
@@ -294,20 +294,19 @@ func (txn *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights bl
 	return &ltok, nil
 }
 
-func (txn *localTxnMut) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
+func (txn *localTxnMut) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	if txn.finished {
 		return blobcache.ErrTxDone{}
 	}
-	for _, lt := range targets {
-		h := txn.hashLinkToken(lt)
-		delete(txn.links, h)
+	for _, target := range targets {
+		delete(txn.links, [32]byte(target))
 	}
 	return nil
 }
 
-func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
+func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	if txn.finished {
@@ -319,13 +318,12 @@ func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.Link
 	if txn.visitedLinks == nil {
 		txn.visitedLinks = make(map[[32]byte]struct{})
 	}
-	for _, lt := range targets {
-		h := txn.hashLinkToken(lt)
-		txn.visitedLinks[h] = struct{}{}
+	for _, target := range targets {
+		txn.visitedLinks[[32]byte(target)] = struct{}{}
 	}
 	return nil
 }
 
 func (txn *localTxnMut) hashLinkToken(lt blobcache.LinkToken) [32]byte {
-	return lt.Hash(txn.ha)
+	return lt.GetID(txn.ha)
 }

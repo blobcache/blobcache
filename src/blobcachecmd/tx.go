@@ -342,8 +342,14 @@ var txUnlinkCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		ltoks := []blobcache.LinkToken{linkTokenParam.Load(c)}
-		if err := svc.Unlink(c.Context, txHParam.Load(c), ltoks); err != nil {
+		txh := txHParam.Load(c)
+		txInfo, err := svc.InspectTx(c.Context, txh)
+		if err != nil {
+			return err
+		}
+		ltok := linkTokenParam.Load(c)
+		ltokID := ltok.GetID(txInfo.HashAlgo)
+		if err := svc.Unlink(c.Context, txh, []blobcache.LinkTokenID{ltokID}); err != nil {
 			return err
 		}
 		printOK(c, "UNLINK")
@@ -361,8 +367,14 @@ var txVisitLinksCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		ltoks := []blobcache.LinkToken{linkTokenParam.Load(c)}
-		if err := svc.VisitLinks(c.Context, txHParam.Load(c), ltoks); err != nil {
+		txh := txHParam.Load(c)
+		txInfo, err := svc.InspectTx(c.Context, txh)
+		if err != nil {
+			return err
+		}
+		ltok := linkTokenParam.Load(c)
+		ltokID := ltok.GetID(txInfo.HashAlgo)
+		if err := svc.VisitLinks(c.Context, txh, []blobcache.LinkTokenID{ltokID}); err != nil {
 			return err
 		}
 		printOK(c, "VISIT-LINKS")
