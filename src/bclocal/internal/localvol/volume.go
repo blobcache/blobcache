@@ -3,13 +3,9 @@ package localvol
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha3"
 	"fmt"
 	"sync"
 
-	"github.com/cockroachdb/pebble"
-
-	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
@@ -53,7 +49,7 @@ func (v *Volume) AccessSubVolume(ctx context.Context, lt blobcache.LinkToken) (b
 	if err := v.sys.readLinksFrom(0, v.lvid, links); err != nil {
 		return 0, err
 	}
-	h := hashLinkToken(lt)
+	h := lt.Hash(v.params.HashAlgo)
 	if _, exists := links[h]; exists {
 		return lt.Rights, nil
 	}
@@ -117,173 +113,173 @@ func newLocalTxn(localSys *System, vol *Volume, mvid pdb.MVTag, txParams blobcac
 	}, nil
 }
 
-func (v *localTxnMut) Volume() backend.Volume {
-	return v.vol
+func (txn *localTxnMut) Volume() backend.Volume {
+	return txn.vol
 }
 
-func (v *localTxnMut) Params() blobcache.TxParams {
-	return v.txParams
+func (txn *localTxnMut) Params() blobcache.TxParams {
+	return txn.txParams
 }
 
-func (v *localTxnMut) MaxSize() int {
-	return int(v.vol.params.MaxSize)
+func (txn *localTxnMut) MaxSize() int {
+	return int(txn.vol.params.MaxSize)
 }
 
-func (v *localTxnMut) Hash(data []byte) blobcache.CID {
-	return v.ha.Hash(data)
+func (txn *localTxnMut) Hash(data []byte) blobcache.CID {
+	return txn.ha.Hash(data)
 }
 
-func (v *localTxnMut) HashAlgo() blobcache.HashAlgo {
-	return v.ha
+func (txn *localTxnMut) HashAlgo() blobcache.HashAlgo {
+	return txn.ha
 }
 
-func (v *localTxnMut) checkFinished() (func(), error) {
-	v.mu.RLock()
-	if v.finished {
+func (txn *localTxnMut) checkFinished() (func(), error) {
+	txn.mu.RLock()
+	if txn.finished {
 		return nil, blobcache.ErrTxDone{}
 	}
-	return v.mu.RUnlock, nil
+	return txn.mu.RUnlock, nil
 }
 
-func (ltx *localTxnMut) Commit(ctx context.Context) error {
-	ltx.mu.Lock()
-	defer ltx.mu.Unlock()
-	if ltx.finished {
+func (txn *localTxnMut) Commit(ctx context.Context) error {
+	txn.mu.Lock()
+	defer txn.mu.Unlock()
+	if txn.finished {
 		return blobcache.ErrTxDone{}
 	}
 
-	if ltx.txParams.GCBlobs {
-		if err := ltx.localSys.gc(ctx, ltx.vol.lvid, ltx.mvid); err != nil {
+	if txn.txParams.GCBlobs {
+		if err := txn.localSys.gc(ctx, txn.vol.lvid, txn.mvid); err != nil {
 			return err
 		}
 	}
-	if ltx.txParams.GCLinks {
+	if txn.txParams.GCLinks {
 		// filter out the links that are not visited
-		for h := range ltx.links {
-			delete(ltx.links, h)
+		for h := range txn.links {
+			delete(txn.links, h)
 		}
 	}
-	if err := ltx.localSys.commit(ltx.vol.lvid, ltx.mvid, ltx.links); err != nil {
+	if err := txn.localSys.commit(txn.vol.lvid, txn.mvid, txn.links); err != nil {
 		return err
 	}
-	ltx.finished = true
+	txn.finished = true
 	return nil
 }
 
-func (v *localTxnMut) Abort(ctx context.Context) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.finished {
+func (txn *localTxnMut) Abort(ctx context.Context) error {
+	txn.mu.Lock()
+	defer txn.mu.Unlock()
+	if txn.finished {
 		return nil
 	}
-	if err := v.localSys.abortMut(v.vol.lvid, v.mvid); err != nil {
+	if err := txn.localSys.abortMut(txn.vol.lvid, txn.mvid); err != nil {
 		return err
 	}
-	v.finished = true
+	txn.finished = true
 	return nil
 }
 
-func (v *localTxnMut) Save(ctx context.Context, root []byte) error {
-	unlock, err := v.checkFinished()
+func (txn *localTxnMut) Save(ctx context.Context, root []byte) error {
+	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	if len(root) > v.MaxSize()/2 {
+	if len(root) > txn.MaxSize()/2 {
 		return fmt.Errorf("root cannot be more than half the max blob size. %d", len(root))
 	}
-	return lvSave(v.localSys.db, v.vol.lvid, v.mvid, root)
+	return lvSave(txn.localSys.db, txn.vol.lvid, txn.mvid, root)
 }
 
-func (v *localTxnMut) Load(ctx context.Context, dst *[]byte) error {
-	unlock, err := v.checkFinished()
+func (txn *localTxnMut) Load(ctx context.Context, dst *[]byte) error {
+	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	return v.localSys.load(v.vol.lvid, v.mvid, dst)
+	return txn.localSys.load(txn.vol.lvid, txn.mvid, dst)
 }
 
-func (v *localTxnMut) Delete(ctx context.Context, cids []blobcache.CID) error {
-	unlock, err := v.checkFinished()
+func (txn *localTxnMut) Delete(ctx context.Context, cids []blobcache.CID) error {
+	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	return v.localSys.deleteBlob(v.vol.lvid, v.mvid, cids)
+	return txn.localSys.deleteBlob(txn.vol.lvid, txn.mvid, cids)
 }
 
-func (v *localTxnMut) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
-	unlock, err := v.checkFinished()
+func (txn *localTxnMut) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
+	unlock, err := txn.checkFinished()
 	if err != nil {
 		return blobcache.CID{}, err
 	}
 	defer unlock()
-	if len(data) > int(v.vol.params.MaxSize) {
-		return blobcache.CID{}, blobcache.ErrTooLarge{BlobSize: len(data), MaxSize: int(v.vol.params.MaxSize)}
+	if len(data) > int(txn.vol.params.MaxSize) {
+		return blobcache.CID{}, blobcache.ErrTooLarge{BlobSize: len(data), MaxSize: int(txn.vol.params.MaxSize)}
 	}
 	salt := opts.Salt
-	if salt != nil && !v.vol.params.Salted {
+	if salt != nil && !txn.vol.params.Salted {
 		return blobcache.CID{}, blobcache.ErrCannotSalt{}
 	}
 	var cid blobcache.CID
 	if salt == nil {
-		cid = v.Hash(data)
+		cid = txn.Hash(data)
 	} else {
-		cid = v.HashAlgo().KeyedHash(salt, data)
+		cid = txn.HashAlgo().KeyedHash(salt, data)
 	}
-	if err := v.localSys.postBlob(ctx, v.vol.lvid, v.mvid, cid, salt, data); err != nil {
+	if err := txn.localSys.postBlob(ctx, txn.vol.lvid, txn.mvid, cid, salt, data); err != nil {
 		return blobcache.CID{}, err
 	}
 	return cid, nil
 }
 
-func (v *localTxnMut) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	unlock, err := v.checkFinished()
+func (txn *localTxnMut) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
+	unlock, err := txn.checkFinished()
 	if err != nil {
 		return 0, err
 	}
 	defer unlock()
-	return v.localSys.getBlob(v.vol.lvid, v.mvid, cid, buf)
+	return txn.localSys.getBlob(txn.vol.lvid, txn.mvid, cid, buf)
 }
 
-func (v *localTxnMut) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	unlock, err := v.checkFinished()
+func (txn *localTxnMut) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	return v.localSys.blobExists(v.vol.lvid, v.mvid, cids, dst)
+	return txn.localSys.blobExists(txn.vol.lvid, txn.mvid, cids, dst)
 }
 
-func (v *localTxnMut) Visit(ctx context.Context, cids []blobcache.CID) error {
-	unlock, err := v.checkFinished()
+func (txn *localTxnMut) Visit(ctx context.Context, cids []blobcache.CID) error {
+	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	if !v.txParams.GCBlobs {
+	if !txn.txParams.GCBlobs {
 		return blobcache.ErrTxNotGC{Op: "Visit"}
 	}
-	return v.localSys.visit(v.vol.lvid, v.mvid, cids)
+	return txn.localSys.visit(txn.vol.lvid, txn.mvid, cids)
 }
 
-func (v *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	unlock, err := v.checkFinished()
+func (txn *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	if !v.txParams.GCBlobs {
+	if !txn.txParams.GCBlobs {
 		return blobcache.ErrTxNotGC{Op: "IsVisited"}
 	}
-	return v.localSys.isVisited(v.vol.lvid, v.mvid, cids, dst)
+	return txn.localSys.isVisited(txn.vol.lvid, txn.mvid, cids, dst)
 }
 
-func (v *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.finished {
+func (txn *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
+	txn.mu.Lock()
+	defer txn.mu.Unlock()
+	if txn.finished {
 		return nil, blobcache.ErrTxDone{}
 	}
 	ltok := blobcache.LinkToken{
@@ -293,20 +289,20 @@ func (v *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights blob
 	if _, err := rand.Read(ltok.Secret[:]); err != nil {
 		return nil, err
 	}
-	h := hashLinkToken(ltok)
-	v.links[h] = ltok.Target
+	h := txn.hashLinkToken(ltok)
+	txn.links[h] = ltok.Target
 	return &ltok, nil
 }
 
-func (v *localTxnMut) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.finished {
+func (txn *localTxnMut) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
+	txn.mu.Lock()
+	defer txn.mu.Unlock()
+	if txn.finished {
 		return blobcache.ErrTxDone{}
 	}
 	for _, lt := range targets {
-		h := hashLinkToken(lt)
-		delete(v.links, h)
+		h := txn.hashLinkToken(lt)
+		delete(txn.links, h)
 	}
 	return nil
 }
@@ -324,184 +320,12 @@ func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.Link
 		txn.visitedLinks = make(map[[32]byte]struct{})
 	}
 	for _, lt := range targets {
-		h := hashLinkToken(lt)
+		h := txn.hashLinkToken(lt)
 		txn.visitedLinks[h] = struct{}{}
 	}
 	return nil
 }
 
-var _ backend.Tx = &localTxnRO{}
-
-// localTxnRO is a read-only transaction on a local volume.
-type localTxnRO struct {
-	sys *System
-	vol *Volume
-	sp  *pebble.Snapshot
-
-	// activeTxns is the set of active transactions for the volume.
-	mu         sync.RWMutex
-	closed     bool
-	activeTxns map[pdb.MVTag]struct{}
-}
-
-func newLocalTxnRO(sys *System, vol *Volume, sp *pebble.Snapshot) *localTxnRO {
-	return &localTxnRO{
-		sys: sys,
-		vol: vol,
-		sp:  sp,
-	}
-}
-
-func (v *localTxnRO) checkClosed() (func(), error) {
-	v.mu.RLock()
-	if v.closed {
-		return nil, blobcache.ErrTxDone{}
-	}
-	return v.mu.RUnlock, nil
-}
-
-func (v *localTxnRO) Params() blobcache.TxParams {
-	return blobcache.TxParams{}
-}
-
-func (v *localTxnRO) Abort(ctx context.Context) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.closed {
-		return nil
-	}
-	if err := v.sp.Close(); err != nil {
-		return err
-	}
-	v.closed = true
-	return nil
-}
-
-func (v *localTxnRO) Commit(ctx context.Context) error {
-	return blobcache.ErrTxReadOnly{Op: "Commit"}
-}
-
-func (v *localTxnRO) Load(ctx context.Context, dst *[]byte) error {
-	activeTxns, err := v.getExcluded()
-	if err != nil {
-		return err
-	}
-	unlock, err := v.checkClosed()
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	mvr, closer, err := pdb.MVGet(v.sp, dbtab.TID_LOCAL_VOLUME_CELLS, v.vol.lvid.Marshal(nil), activeTxns)
-	if err != nil {
-		return err
-	}
-	defer closer.Close()
-	if mvr == nil {
-		*dst = (*dst)[:0]
-	} else {
-		*dst = append((*dst)[:0], mvr.Value...)
-	}
-	return nil
-}
-
-func (v *localTxnRO) Save(ctx context.Context, root []byte) error {
-	return blobcache.ErrTxReadOnly{Op: "Save"}
-}
-
-func (v *localTxnRO) Delete(ctx context.Context, cids []blobcache.CID) error {
-	return blobcache.ErrTxReadOnly{Op: "Delete"}
-}
-
-func (v *localTxnRO) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
-	return blobcache.CID{}, blobcache.ErrTxReadOnly{Op: "Post"}
-}
-
-func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	var exists [1]bool
-	if err := v.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
-		return 0, err
-	} else if !exists[0] {
-		return 0, blobcache.ErrNotFound{CID: cid}
-	}
-	unlock, err := v.checkClosed()
-	if err != nil {
-		return 0, err
-	}
-	defer unlock()
-	return v.sys.readBlobData(cid, buf)
-}
-
-func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	activeTxns, err := v.getExcluded()
-	if err != nil {
-		return err
-	}
-	for i, cid := range cids {
-		exists, err := volumeBlobExists(v.sp, v.vol.lvid, cid, activeTxns)
-		if err != nil {
-			return err
-		}
-		dst[i] = exists
-	}
-	return nil
-}
-
-func (v *localTxnRO) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
-	return nil, blobcache.ErrTxReadOnly{Op: "AllowLink"}
-}
-
-func (v *localTxnRO) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
-	return blobcache.ErrTxReadOnly{Op: "Unlink"}
-}
-
-func (v *localTxnRO) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
-	return blobcache.ErrTxReadOnly{Op: "VisitLinks"}
-}
-
-func (v *localTxnRO) MaxSize() int {
-	return int(v.vol.params.MaxSize)
-}
-
-func (v *localTxnRO) HashAlgo() blobcache.HashAlgo {
-	return v.vol.params.HashAlgo
-}
-
-func (v *localTxnRO) Hash(data []byte) blobcache.CID {
-	return v.vol.params.HashAlgo.Hash(data)
-}
-
-func (txn *localTxnRO) Volume() backend.Volume {
-	return txn.vol
-}
-
-func (v *localTxnRO) Visit(ctx context.Context, cids []blobcache.CID) error {
-	return blobcache.ErrTxReadOnly{Op: "Visit"}
-}
-
-func (v *localTxnRO) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	return blobcache.ErrTxReadOnly{Op: "IsVisited"}
-}
-
-func (v *localTxnRO) getExcluded() (func(pdb.MVTag) bool, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.activeTxns == nil {
-		activeTxns := make(map[pdb.MVTag]struct{})
-		if err := v.sys.txSys.ReadActive(v.sp, activeTxns); err != nil {
-			return nil, err
-		}
-		v.activeTxns = activeTxns
-	}
-	return v.isExcluded, nil
-}
-
-// isExcluded returns true if the given transaction is excluded from the snapshot.
-// Do not call this directly, use getExcluded instead.
-func (v *localTxnRO) isExcluded(mvid pdb.MVTag) bool {
-	_, ok := v.activeTxns[mvid]
-	return ok
-}
-
-func hashLinkToken(lt blobcache.LinkToken) [32]byte {
-	return sha3.Sum256(lt.Marshal(nil))
+func (txn *localTxnMut) hashLinkToken(lt blobcache.LinkToken) [32]byte {
+	return lt.Hash(txn.ha)
 }

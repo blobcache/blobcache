@@ -300,6 +300,10 @@ func (lt LinkToken) String() string {
 	return hex.EncodeToString(lt.Marshal(nil))
 }
 
+func (lt LinkToken) Hash(ha HashAlgo) CID {
+	return ha.Hash(lt.Marshal(nil))
+}
+
 type Info struct {
 	Handle HandleInfo `json:"handle"`
 

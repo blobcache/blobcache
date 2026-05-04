@@ -11,7 +11,16 @@ import (
 	"go.brendoncarroll.net/star"
 )
 
-var daemonCmd = star.Command{
+var daemonCmd = star.NewDir(star.Metadata{
+	Short: "blobcache daemon operations",
+}, map[string]star.Command{
+	"run":             daemonRunCmd,
+	"ephemeral":       daemonEphemeralCmd,
+	"validate":        daemonValidateCmd,
+	"mig-link-hashes": daemonMigrateLinkHashesCmd,
+})
+
+var daemonRunCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "runs the blobcache daemon",
 	},
@@ -97,6 +106,23 @@ var daemonValidateCmd = star.Command{
 		}
 		c.Printf(checkmark + " configuration is valid\n")
 		return nil
+	},
+}
+
+var daemonMigrateLinkHashesCmd = star.Command{
+	Metadata: star.Metadata{
+		Short: "migrate legacy link token hashes",
+	},
+	Flags: map[string]star.Flag{
+		"state": stateDirParam,
+	},
+	F: func(c star.Context) error {
+		stateDir := stateDirParam.Load(c)
+		d := blobcached.Daemon{
+			StateDir:  stateDir,
+			ConfigDir: stateDir,
+		}
+		return d.MigrateLinkTokenHashes(c.Context)
 	},
 }
 

@@ -37,8 +37,6 @@ var rootCmd = star.NewDir(
 	}, map[string]star.Command{
 		"endpoint":         endpointCmd,
 		"daemon":           daemonCmd,
-		"daemon-ephemeral": daemonEphemeralCmd,
-		"daemon-validate":  daemonValidateCmd,
 		"show-access":      showAccessCmd,
 		"own":              ownCmd,
 		"browse":           browseCmd,
