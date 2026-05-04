@@ -3,3 +3,4 @@ build/out
 scratch
 **/.envrc
 **/.env
+**/.zig-cache
