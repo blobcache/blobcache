@@ -407,8 +407,8 @@ var oidsParam = &star.Repeated[blobcache.OID]{
 	Parse:    blobcache.ParseOID,
 }
 
-var linkTokenIDParam = star.Required[blobcache.LinkTokenID]{
-	ID:       "link-token-id",
+var linkTokenIDParam = &star.Required[blobcache.LinkTokenID]{
+	PosName:  "link-token-id",
 	ShortDoc: "a link token id (base64 CID format)",
 	Parse: func(s string) (blobcache.LinkTokenID, error) {
 		cid, err := blobcache.ParseCID(s)
