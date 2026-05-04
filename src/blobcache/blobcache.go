@@ -300,9 +300,12 @@ func (lt LinkToken) String() string {
 	return hex.EncodeToString(lt.Marshal(nil))
 }
 
-func (lt LinkToken) Hash(ha HashAlgo) CID {
-	return ha.Hash(lt.Marshal(nil))
+func (lt LinkToken) GetID(ha HashAlgo) LinkTokenID {
+	return LinkTokenID(ha.Hash(lt.Marshal(nil)))
 }
+
+// LinkTokenID uniquely identifies a link token within a volume.
+type LinkTokenID [32]byte
 
 type Info struct {
 	Handle HandleInfo `json:"handle"`

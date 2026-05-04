@@ -168,11 +168,11 @@ type TxAPI interface {
 	Link(ctx context.Context, tx Handle, target Handle, mask ActionSet) (*LinkToken, error)
 	// Unlink removes a link from the transaction's volume to any and all of the OIDs
 	// All Unlink operations take effect atomically on Commit.
-	Unlink(ctx context.Context, tx Handle, ltoks []LinkToken) error
+	Unlink(ctx context.Context, tx Handle, ltoks []LinkTokenID) error
 	// VisitLink visits a link to another volume.
 	// This is only usable in a GC transaction.
 	// Any unvisited links will be deleted at the end of a GC transaction.
-	VisitLinks(ctx context.Context, tx Handle, targets []LinkToken) error
+	VisitLinks(ctx context.Context, tx Handle, targets []LinkTokenID) error
 }
 
 // Endpoint is somewhere that a blobcache node can be found.

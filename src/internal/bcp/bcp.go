@@ -286,7 +286,7 @@ func Link(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Han
 	return &resp.Token, nil
 }
 
-func Unlink(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.LinkToken) error {
+func Unlink(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
 	var resp UnlinkResp
 	if err := doAsk(ctx, tp, ep, MT_TX_UNLINK, UnlinkReq{Tx: tx, Targets: targets}, &resp); err != nil {
 		return err
@@ -294,7 +294,7 @@ func Unlink(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.H
 	return nil
 }
 
-func VisitLinks(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.LinkToken) error {
+func VisitLinks(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
 	var resp VisitLinksResp
 	if err := doAsk(ctx, tp, ep, MT_TX_VISIT_LINKS, VisitLinksReq{Tx: tx, Targets: targets}, &resp); err != nil {
 		return err

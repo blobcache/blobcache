@@ -233,10 +233,10 @@ func (t *txWrap) Link(ctx context.Context, svoid blobcache.OID, rights blobcache
 	return t.inner.Link(ctx, svoid, rights, subvol)
 }
 
-func (t *txWrap) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
+func (t *txWrap) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
 	return t.inner.Unlink(ctx, targets)
 }
 
-func (t *txWrap) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
+func (t *txWrap) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
 	return t.inner.VisitLinks(ctx, targets)
 }

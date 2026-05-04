@@ -196,13 +196,13 @@ type LinkResp struct {
 }
 
 type UnlinkReq struct {
-	Targets []blobcache.LinkToken `json:"targets"`
+	Targets []blobcache.LinkTokenID `json:"targets"`
 }
 
 type UnlinkResp struct{}
 
 type VisitLinksReq struct {
-	Targets []blobcache.LinkToken `json:"targets"`
+	Targets []blobcache.LinkTokenID `json:"targets"`
 }
 
 type VisitLinksResp struct{}

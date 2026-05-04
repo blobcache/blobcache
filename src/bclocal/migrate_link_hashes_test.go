@@ -36,8 +36,8 @@ func TestMigrateLinkTokenHashes(t *testing.T) {
 	require.True(t, found)
 
 	lt := ent.LinkToken()
-	oldHash := lt.Hash(blobcache.HashAlgo_SHA3_256)
-	newHash := lt.Hash(blobcache.DefaultVolumeParams().HashAlgo)
+	oldHash := lt.GetID(blobcache.HashAlgo_SHA3_256)
+	newHash := lt.GetID(blobcache.DefaultVolumeParams().HashAlgo)
 	require.NotEqual(t, oldHash, newHash)
 
 	require.NoError(t, rewriteLinkHashForVolume(t, svc, 0, lt.Target, newHash, oldHash))
@@ -66,7 +66,7 @@ func TestMigrateLinkTokenHashes(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func rewriteLinkHashForVolume(t testing.TB, svc *Service, lvid localvol.ID, target blobcache.OID, fromHash, toHash blobcache.CID) error {
+func rewriteLinkHashForVolume(t testing.TB, svc *Service, lvid localvol.ID, target blobcache.OID, fromHash, toHash blobcache.LinkTokenID) error {
 	t.Helper()
 
 	deleteKeys, err := collectLinkKeys(svc.db, lvid, target, fromHash)
@@ -101,7 +101,7 @@ func rewriteLinkHashForVolume(t testing.TB, svc *Service, lvid localvol.ID, targ
 	return ba.Commit(nil)
 }
 
-func collectLinkKeys(db *pebble.DB, lvid localvol.ID, target blobcache.OID, h blobcache.CID) ([][]byte, error) {
+func collectLinkKeys(db *pebble.DB, lvid localvol.ID, target blobcache.OID, h blobcache.LinkTokenID) ([][]byte, error) {
 	sn := db.NewSnapshot()
 	defer sn.Close()
 

@@ -770,14 +770,14 @@ func (ar *LinkResp) Unmarshal(data []byte) error {
 
 type UnlinkReq struct {
 	Tx      blobcache.Handle
-	Targets []blobcache.LinkToken
+	Targets []blobcache.LinkTokenID
 }
 
 func (ur UnlinkReq) Marshal(out []byte) []byte {
 	out = ur.Tx.Marshal(out)
 	out = binary.AppendUvarint(out, uint64(len(ur.Targets)))
 	for _, target := range ur.Targets {
-		out = target.Marshal(out)
+		out = append(out, target[:]...)
 	}
 	return out
 }
@@ -793,15 +793,13 @@ func (ur *UnlinkReq) Unmarshal(data []byte) error {
 	if err != nil {
 		return err
 	}
-	ur.Targets = make([]blobcache.LinkToken, numTargets)
+	ur.Targets = make([]blobcache.LinkTokenID, numTargets)
 	for i := range ur.Targets {
-		if len(data) < blobcache.LinkTokenSize {
+		if len(data) < blobcache.CIDSize {
 			return fmt.Errorf("cannot unmarshal UnlinkReq, too short: %d", len(data))
 		}
-		if err := ur.Targets[i].Unmarshal(data[:blobcache.LinkTokenSize]); err != nil {
-			return err
-		}
-		data = data[blobcache.LinkTokenSize:]
+		copy(ur.Targets[i][:], data[:blobcache.CIDSize])
+		data = data[blobcache.CIDSize:]
 	}
 	return nil
 }
@@ -821,14 +819,14 @@ func (ur *UnlinkResp) Unmarshal(data []byte) error {
 
 type VisitLinksReq struct {
 	Tx      blobcache.Handle
-	Targets []blobcache.LinkToken
+	Targets []blobcache.LinkTokenID
 }
 
 func (vr VisitLinksReq) Marshal(out []byte) []byte {
 	out = vr.Tx.Marshal(out)
 	out = binary.AppendUvarint(out, uint64(len(vr.Targets)))
 	for _, target := range vr.Targets {
-		out = target.Marshal(out)
+		out = append(out, target[:]...)
 	}
 	return out
 }
@@ -844,15 +842,13 @@ func (vr *VisitLinksReq) Unmarshal(data []byte) error {
 	if err != nil {
 		return err
 	}
-	vr.Targets = make([]blobcache.LinkToken, numTargets)
+	vr.Targets = make([]blobcache.LinkTokenID, numTargets)
 	for i := range vr.Targets {
-		if len(data) < blobcache.LinkTokenSize {
+		if len(data) < blobcache.CIDSize {
 			return fmt.Errorf("cannot unmarshal VisitLinksReq, too short: %d", len(data))
 		}
-		if err := vr.Targets[i].Unmarshal(data[:blobcache.LinkTokenSize]); err != nil {
-			return err
-		}
-		data = data[blobcache.LinkTokenSize:]
+		copy(vr.Targets[i][:], data[:blobcache.CIDSize])
+		data = data[blobcache.CIDSize:]
 	}
 	return nil
 }

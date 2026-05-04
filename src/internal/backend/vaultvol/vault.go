@@ -398,7 +398,7 @@ func (v *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.Act
 	return v.inner.Link(ctx, svoid, rights, subvol)
 }
 
-func (v *Tx) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
+func (v *Tx) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return err
@@ -407,7 +407,7 @@ func (v *Tx) Unlink(ctx context.Context, targets []blobcache.LinkToken) error {
 	return v.inner.Unlink(ctx, targets)
 }
 
-func (v *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error {
+func (v *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return err

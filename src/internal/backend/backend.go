@@ -81,10 +81,10 @@ type Tx interface {
 	// Link creates adds a handle to prove access to a volume.
 	Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol Volume) (*blobcache.LinkToken, error)
 	// Unlink removes a link from the volume.
-	Unlink(ctx context.Context, targets []blobcache.LinkToken) error
+	Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error
 	// VisitLinks visits a link to another volume.
 	// This is only usable in a GC transaction.
-	VisitLinks(ctx context.Context, targets []blobcache.LinkToken) error
+	VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error
 }
 
 func ViewUnsalted(ctx context.Context, tx Tx) (*UnsaltedStore, []byte, error) {

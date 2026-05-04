@@ -389,12 +389,22 @@ func (s *Service) Link(ctx context.Context, h blobcache.Handle, subvol blobcache
 	return &ltok, nil
 }
 
-func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkToken) error {
-	return s.run([]string{"tx", "unlink", h.String()}, nil, nil)
+func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkTokenID) error {
+	for _, target := range targets {
+		if err := s.run([]string{"tx", "unlink", h.String(), blobcache.CID(target).String()}, nil, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkToken) error {
-	return s.run([]string{"tx", "visit-links", h.String()}, nil, nil)
+func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkTokenID) error {
+	for _, target := range targets {
+		if err := s.run([]string{"tx", "visit-links", h.String(), blobcache.CID(target).String()}, nil, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
