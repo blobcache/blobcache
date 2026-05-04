@@ -38,7 +38,8 @@ fn unique_socket_path() -> PathBuf {
 
 fn start_daemon(socket_path: &PathBuf) -> DaemonHandle {
     let child = Command::new(blobcache_bin())
-        .arg("daemon-ephemeral")
+        .arg("daemon")
+        .arg("ephemeral")
         .arg("--serve-ipc")
         .arg(socket_path)
         .arg("--net")
@@ -46,7 +47,7 @@ fn start_daemon(socket_path: &PathBuf) -> DaemonHandle {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("failed to start blobcache daemon-ephemeral");
+        .expect("failed to start blobcache daemon ephemeral");
     DaemonHandle { child }
 }
 
