@@ -336,20 +336,13 @@ var txUnlinkCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "removes a link from the Volume",
 	},
-	Pos: []star.Positional{txHParam, linkTokenParam},
+	Pos: []star.Positional{txHParam, linkTokenIDParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		txh := txHParam.Load(c)
-		txInfo, err := svc.InspectTx(c.Context, txh)
-		if err != nil {
-			return err
-		}
-		ltok := linkTokenParam.Load(c)
-		ltokID := ltok.GetID(txInfo.HashAlgo)
-		if err := svc.Unlink(c.Context, txh, []blobcache.LinkTokenID{ltokID}); err != nil {
+		if err := svc.Unlink(c.Context, txHParam.Load(c), []blobcache.LinkTokenID{linkTokenIDParam.Load(c)}); err != nil {
 			return err
 		}
 		printOK(c, "UNLINK")
@@ -361,20 +354,13 @@ var txVisitLinksCmd = star.Command{
 	Metadata: star.Metadata{
 		Short: "mark a link as visited in a GC transaction",
 	},
-	Pos: []star.Positional{txHParam, linkTokenParam},
+	Pos: []star.Positional{txHParam, linkTokenIDParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		txh := txHParam.Load(c)
-		txInfo, err := svc.InspectTx(c.Context, txh)
-		if err != nil {
-			return err
-		}
-		ltok := linkTokenParam.Load(c)
-		ltokID := ltok.GetID(txInfo.HashAlgo)
-		if err := svc.VisitLinks(c.Context, txh, []blobcache.LinkTokenID{ltokID}); err != nil {
+		if err := svc.VisitLinks(c.Context, txHParam.Load(c), []blobcache.LinkTokenID{linkTokenIDParam.Load(c)}); err != nil {
 			return err
 		}
 		printOK(c, "VISIT-LINKS")
@@ -420,6 +406,18 @@ var oidsParam = star.Repeated[blobcache.OID]{
 	ID:       "oid",
 	ShortDoc: "an object identifier (OID)",
 	Parse:    blobcache.ParseOID,
+}
+
+var linkTokenIDParam = star.Required[blobcache.LinkTokenID]{
+	ID:       "link-token-id",
+	ShortDoc: "a link token id (base64 CID format)",
+	Parse: func(s string) (blobcache.LinkTokenID, error) {
+		cid, err := blobcache.ParseCID(s)
+		if err != nil {
+			return blobcache.LinkTokenID{}, err
+		}
+		return blobcache.LinkTokenID(cid), nil
+	},
 }
 
 const checkmark = "✓"
