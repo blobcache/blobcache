@@ -15,12 +15,19 @@ import (
 	"blobcache.io/blobcache/src/internal/backend"
 	"blobcache.io/blobcache/src/schema/bcns"
 	"github.com/cockroachdb/pebble"
+	"go.brendoncarroll.net/stdctx/logctx"
+	"go.uber.org/zap"
 )
 
 type linkHashRemap struct {
 	Old    blobcache.CID
 	New    blobcache.CID
 	Target blobcache.OID
+}
+
+type linkHashMigrateStats struct {
+	Affected  int
+	Unchanged int
 }
 
 // MigrateLinkTokenHashes rewrites legacy sha3-based link-token hashes to per-volume hashes
@@ -32,9 +39,15 @@ func MigrateLinkTokenHashes(ctx context.Context, sys *Service, nss map[string]bc
 	}
 	rootCfg := sys.env.Root.Config()
 	if ns, ok := nss[string(rootCfg.Schema.Name)]; ok {
-		if err := migrateOneNamespaceVolume(ctx, sys, 0, rootCfg, ns); err != nil {
+		stats, err := migrateOneNamespaceVolume(ctx, sys, 0, rootCfg, ns)
+		if err != nil {
 			return fmt.Errorf("volume %s: %w", blobcache.OID{}, err)
 		}
+		logctx.Info(ctx, "migrated link token hashes",
+			zap.Stringer("volume", blobcache.OID{}),
+			zap.Int("affected", stats.Affected),
+			zap.Int("unchanged", stats.Unchanged),
+		)
 	}
 
 	sn := sys.db.NewSnapshot()
@@ -84,27 +97,34 @@ func MigrateLinkTokenHashes(ctx context.Context, sys *Service, nss map[string]bc
 		}
 
 		cfg := blobcache.VolumeConfig(*volBackend.Local)
-		if err := migrateOneNamespaceVolume(ctx, sys, lvid, cfg, ns); err != nil {
+		stats, err := migrateOneNamespaceVolume(ctx, sys, lvid, cfg, ns)
+		if err != nil {
 			return fmt.Errorf("volume %s: %w", oid, err)
 		}
+		logctx.Info(ctx, "migrated link token hashes",
+			zap.Stringer("volume", oid),
+			zap.Int("affected", stats.Affected),
+			zap.Int("unchanged", stats.Unchanged),
+		)
 	}
 	return nil
 }
 
-func migrateOneNamespaceVolume(ctx context.Context, sys *Service, lvid localvol.ID, cfg blobcache.VolumeConfig, ns bcns.Namespace) error {
+func migrateOneNamespaceVolume(ctx context.Context, sys *Service, lvid localvol.ID, cfg blobcache.VolumeConfig, ns bcns.Namespace) (linkHashMigrateStats, error) {
+	stats := linkHashMigrateStats{}
 	vol := sys.lvs.UpNoErr(localvol.Params{Key: lvid, Params: cfg})
 
 	entries, err := readNamespaceEntries(ctx, vol, ns)
 	if err != nil {
-		return err
+		return stats, err
 	}
 	if len(entries) == 0 {
-		return nil
+		return stats, nil
 	}
 
 	links := make(backend.LinkSet)
 	if err := vol.ReadLinks(ctx, links); err != nil {
-		return err
+		return stats, err
 	}
 
 	remaps := make(map[blobcache.CID]linkHashRemap)
@@ -113,31 +133,34 @@ func migrateOneNamespaceVolume(ctx context.Context, sys *Service, lvid localvol.
 		oldHash := lt.Hash(blobcache.HashAlgo_SHA3_256)
 		newHash := lt.Hash(cfg.HashAlgo)
 		if oldHash == newHash {
+			stats.Unchanged++
 			continue
 		}
 		if to, exists := links[newHash]; exists && to != lt.Target {
-			return fmt.Errorf("hash collision for target %s", lt.Target)
+			return stats, fmt.Errorf("hash collision for target %s", lt.Target)
 		}
 		if prev, exists := remaps[oldHash]; exists {
 			if prev.New != newHash || prev.Target != lt.Target {
-				return fmt.Errorf("conflicting remap for old hash %x", oldHash)
+				return stats, fmt.Errorf("conflicting remap for old hash %x", oldHash)
 			}
 			continue
 		}
 		remaps[oldHash] = linkHashRemap{Old: oldHash, New: newHash, Target: lt.Target}
 	}
 	if len(remaps) == 0 {
-		return nil
+		return stats, nil
 	}
 
 	keysToDelete, err := findLegacyLinkRows(sys.db, lvid, remaps)
 	if err != nil {
-		return err
+		return stats, err
 	}
+	stats.Affected += len(keysToDelete)
+	stats.Unchanged += len(remaps) - len(keysToDelete)
 
 	mvid, err := sys.txSys.AllocateTxID()
 	if err != nil {
-		return err
+		return stats, err
 	}
 
 	ba := sys.db.NewBatch()
@@ -145,7 +168,7 @@ func migrateOneNamespaceVolume(ctx context.Context, sys *Service, lvid localvol.
 
 	for _, k := range keysToDelete {
 		if err := ba.Delete(k, nil); err != nil {
-			return err
+			return stats, err
 		}
 	}
 
@@ -157,11 +180,11 @@ func migrateOneNamespaceVolume(ctx context.Context, sys *Service, lvid localvol.
 		}
 		v := remap.New[:]
 		if err := ba.Set(k.Marshal(nil), v, nil); err != nil {
-			return err
+			return stats, err
 		}
 	}
 
-	return ba.Commit(nil)
+	return stats, ba.Commit(nil)
 }
 
 func findLegacyLinkRows(db *pebble.DB, lvid localvol.ID, remaps map[blobcache.CID]linkHashRemap) ([][]byte, error) {
