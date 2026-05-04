@@ -183,10 +183,6 @@ pub const UnixClient = struct {
         return blobcache.Handle.unmarshal(body[0..blobcache.handle_size]);
     }
 
-    pub fn cloneVolume(_: *const UnixClient, _: std.Io, _: ?blobcache.NodeID, _: blobcache.Handle) !blobcache.Handle {
-        return error.UnsupportedOperation;
-    }
-
     pub fn inspectVolume(self: *const UnixClient, io: std.Io, volume: blobcache.Handle) !std.json.Parsed(std.json.Value) {
         var req = self.requestBuffer();
         defer req.deinit();
@@ -241,11 +237,17 @@ pub const UnixClient = struct {
         try self.askVoid(io, bcp.mt_tx_save, req.items);
     }
 
-    pub fn load(self: *const UnixClient, io: std.Io, tx: blobcache.Handle) ![]u8 {
+    pub fn load(self: *const UnixClient, io: std.Io, tx: blobcache.Handle, buffer: []u8) !usize {
         var req = self.requestBuffer();
         defer req.deinit();
         try tx.marshal(&req);
-        return self.ask(io, bcp.mt_tx_load, req.items);
+
+        const body = try self.ask(io, bcp.mt_tx_load, req.items);
+        defer self.allocator.free(body);
+
+        if (body.len > buffer.len) return error.BufferTooShort;
+        @memcpy(buffer[0..body.len], body);
+        return body.len;
     }
 
     pub fn post(self: *const UnixClient, io: std.Io, tx: blobcache.Handle, data: []const u8, opts: blobcache.PostOpts) !blobcache.CID {

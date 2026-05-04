@@ -69,9 +69,9 @@ test "daemon ephemeral create volume and edit transaction" {
     });
 
     try client.save(io, tx, "hello from zig");
-    const loaded = try client.load(io, tx);
-    defer allocator.free(loaded);
-    try std.testing.expectEqualStrings("hello from zig", loaded);
+    var root_buf: [128]u8 = undefined;
+    const loaded_n = try client.load(io, tx, &root_buf);
+    try std.testing.expectEqualStrings("hello from zig", root_buf[0..loaded_n]);
 
     try client.commit(io, tx);
 }
