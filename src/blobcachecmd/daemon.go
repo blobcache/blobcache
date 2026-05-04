@@ -157,20 +157,17 @@ var showAccessCmd = star.Command{
 	},
 }
 
-var stateDirParam = star.Required[*os.Root]{
-	ID:       "state",
+var stateDirParam = &star.Required[*os.Root]{
 	Parse:    os.OpenRoot,
 	ShortDoc: "the directory to used to store node data",
 }
 
-var configDirParam = star.Optional[*os.Root]{
-	ID:       "config",
+var configDirParam = &star.Optional[*os.Root]{
 	Parse:    os.OpenRoot,
 	ShortDoc: "the directory to store config file in, defaults to the state dir",
 }
 
-var serveHTTPParam = star.Optional[net.Listener]{
-	ID: "serve-http",
+var serveHTTPParam = &star.Optional[net.Listener]{
 	Parse: func(s string) (net.Listener, error) {
 		parts := strings.Split(s, "://")
 		if len(parts) != 2 {
@@ -180,13 +177,11 @@ var serveHTTPParam = star.Optional[net.Listener]{
 	},
 }
 
-var serveIPCParam = star.Optional[*net.UnixListener]{
-	ID:    "serve-ipc",
+var serveIPCParam = &star.Optional[*net.UnixListener]{
 	Parse: blobcached.ListenUnix,
 }
 
-var netParam = star.Optional[net.PacketConn]{
-	ID: "net",
+var netParam = &star.Optional[net.PacketConn]{
 	Parse: func(s string) (net.PacketConn, error) {
 		ap, err := netip.ParseAddrPort(s)
 		if err != nil {

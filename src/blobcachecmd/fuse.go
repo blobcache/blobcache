@@ -48,8 +48,8 @@ var fuseMountCmd = star.Command{
 	},
 }
 
-var mountpointParam = star.Required[string]{
-	ID:       "mountpoint",
+var mountpointParam = &star.Required[string]{
+	PosName:  "mountpoint",
 	ShortDoc: "the path in the host filesystem to mount the FUSE filesystem",
 	Parse:    star.ParseString,
 }

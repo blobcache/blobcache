@@ -219,9 +219,9 @@ var nsLookupCmd = star.Command{
 	},
 }
 
-var newNameParam = star.Required[string]{
-	ID:    "new-name",
-	Parse: star.ParseString,
+var newNameParam = &star.Required[string]{
+	PosName: "new-name",
+	Parse:   star.ParseString,
 }
 
 var nsMvCmd = star.Command{
@@ -247,8 +247,8 @@ var nsMvCmd = star.Command{
 	},
 }
 
-var nsRoot = star.Optional[bcns.ObjectExpr]{
-	ID:       "nsroot",
+var nsRoot = &star.Optional[bcns.ObjectExpr]{
+	PosName:  "nsr",
 	Parse:    bcns.ParseObjectish,
 	ShortDoc: "a handle or object id for the root",
 }
@@ -263,9 +263,9 @@ func openAt(c star.Context) (*blobcache.Handle, error) {
 	return nsc.OpenAt(c, *nsh, name, mask)
 }
 
-var volNameParam = star.Required[string]{
-	ID:    "volname",
-	Parse: star.ParseString,
+var volNameParam = &star.Required[string]{
+	PosName: "volume-name",
+	Parse:   star.ParseString,
 }
 
 func getNS(c star.Context) (*bcns.Client, *blobcache.Handle, error) {
