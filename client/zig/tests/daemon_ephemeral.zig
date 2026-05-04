@@ -35,7 +35,8 @@ test "daemon ephemeral create volume and edit transaction" {
 
     const argv: []const []const u8 = &.{
         daemon_path,
-        "daemon-ephemeral",
+        "daemon",
+        "ephemeral",
         "--serve-ipc",
         socket_path,
         "--net",
