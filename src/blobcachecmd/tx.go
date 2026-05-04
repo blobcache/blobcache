@@ -372,38 +372,37 @@ func printOK(c star.Context, method string) {
 	c.Printf("%s %s OK\n", checkmark, method)
 }
 
-var volHParam = star.Required[blobcache.Handle]{
-	ID:       "volh",
+var volHParam = &star.Required[blobcache.Handle]{
+	PosName:  "volh",
 	ShortDoc: "a volume handle",
 	Parse:    blobcache.ParseHandle,
 }
 
-var txHParam = star.Required[blobcache.Handle]{
-	ID:       "txh",
+var txHParam = &star.Required[blobcache.Handle]{
+	PosName:  "txh",
 	ShortDoc: "a transaction handle",
 	Parse:    blobcache.ParseHandle,
 }
 
-var cidParam = star.Required[blobcache.CID]{
-	ID:       "cid",
+var cidParam = &star.Required[blobcache.CID]{
+	PosName:  "cid",
 	ShortDoc: "a content identifier",
 	Parse:    blobcache.ParseCID,
 }
 
-var cidsParam = star.Repeated[blobcache.CID]{
-	ID:       "cid",
+var cidsParam = &star.Repeated[blobcache.CID]{
+	PosName:  "cids",
 	ShortDoc: "a list of content identifiers",
 	Parse:    blobcache.ParseCID,
 }
 
-var subvolHParam = star.Required[blobcache.Handle]{
-	ID:       "subvol",
+var subvolHParam = &star.Required[blobcache.Handle]{
+	PosName:  "subvolh",
 	ShortDoc: "a handle to a volume",
 	Parse:    blobcache.ParseHandle,
 }
 
-var oidsParam = star.Repeated[blobcache.OID]{
-	ID:       "oid",
+var oidsParam = &star.Repeated[blobcache.OID]{
 	ShortDoc: "an object identifier (OID)",
 	Parse:    blobcache.ParseOID,
 }

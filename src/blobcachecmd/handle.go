@@ -52,14 +52,14 @@ var shareCmd = star.Command{
 	},
 }
 
-var handleParam = star.Required[blobcache.Handle]{
-	ID:       "handle",
+var handleParam = &star.Required[blobcache.Handle]{
+	PosName:  "handle",
 	ShortDoc: "any handle",
 	Parse:    blobcache.ParseHandle,
 }
 
-var peerParam = star.Required[blobcache.NodeID]{
-	ID:       "peer",
+var peerParam = &star.Required[blobcache.NodeID]{
+	PosName:  "peer",
 	ShortDoc: "a PeerID",
 	Parse: func(s string) (blobcache.NodeID, error) {
 		return inet256.ParseAddrBase64([]byte(s))

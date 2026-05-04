@@ -263,16 +263,15 @@ var openFromCmd = star.Command{
 	},
 }
 
-var oidParam = star.Required[blobcache.OID]{
-	ID:       "oid",
+var oidParam = &star.Required[blobcache.OID]{
+	PosName:  "oid",
 	ShortDoc: "an object identifier (OID)",
 	Parse:    blobcache.ParseOID,
 }
 
 // hostParam is for rerouting CreateVolume calls to a remote Node.
 // It is a pointer so that the zero value works out to nil.
-var hostParam = star.Optional[*blobcache.Endpoint]{
-	ID:       "host",
+var hostParam = &star.Optional[*blobcache.Endpoint]{
 	ShortDoc: "the endpoint of the node to perform the operation on",
 	Parse: func(s string) (*blobcache.Endpoint, error) {
 		ep, err := blobcache.ParseEndpoint(s)
@@ -280,21 +279,21 @@ var hostParam = star.Optional[*blobcache.Endpoint]{
 	},
 }
 
-var endpointParam = star.Required[blobcache.Endpoint]{
-	ID:       "endpoint",
+var endpointParam = &star.Required[blobcache.Endpoint]{
+	PosName:  "endpoint",
 	ShortDoc: "an endpoint for connecting to another node",
 	Parse:    blobcache.ParseEndpoint,
 }
 
-var volOIDParam = star.Required[blobcache.OID]{
-	ID:       "volid",
+var volOIDParam = &star.Required[blobcache.OID]{
+	PosName:  "volume-oid",
 	ShortDoc: "the OID of a volume",
 	Parse:    blobcache.ParseOID,
 }
 
 // maskParam is an ActionSet encoded as a hex string.
-var maskParam = star.Optional[blobcache.ActionSet]{
-	ID:       "mask",
+var maskParam = &star.Optional[blobcache.ActionSet]{
+	PosName:  "mask",
 	ShortDoc: "a bitwise mask to AND with an ActionSet",
 	Parse: func(s string) (blobcache.ActionSet, error) {
 		n, err := strconv.ParseUint(s, 16, 64)
@@ -305,8 +304,7 @@ var maskParam = star.Optional[blobcache.ActionSet]{
 	},
 }
 
-var hashAlgoParam = star.Optional[blobcache.HashAlgo]{
-	ID:       "hash",
+var hashAlgoParam = &star.Optional[blobcache.HashAlgo]{
 	ShortDoc: "the hash algorithm to use",
 	Parse: func(s string) (blobcache.HashAlgo, error) {
 		ha := blobcache.HashAlgo(s)
@@ -317,8 +315,7 @@ var hashAlgoParam = star.Optional[blobcache.HashAlgo]{
 	},
 }
 
-var maxSizeParam = star.Optional[int64]{
-	ID:       "max-size",
+var maxSizeParam = &star.Optional[int64]{
 	ShortDoc: "the maximum size of blobs in the volume",
 	Parse: func(s string) (int64, error) {
 		n, err := strconv.ParseInt(s, 10, 64)
@@ -329,8 +326,7 @@ var maxSizeParam = star.Optional[int64]{
 	},
 }
 
-var secretParam = star.Optional[blobcache.Secret]{
-	ID:       "secret",
+var secretParam = &star.Optional[blobcache.Secret]{
 	ShortDoc: "the secret for vault encryption (hex string)",
 	Parse: func(s string) (blobcache.Secret, error) {
 		var secret blobcache.Secret
@@ -339,8 +335,8 @@ var secretParam = star.Optional[blobcache.Secret]{
 	},
 }
 
-var linkTokenParam = star.Required[blobcache.LinkToken]{
-	ID:       "link-token",
+var linkTokenParam = &star.Required[blobcache.LinkToken]{
+	PosName:  "link-token",
 	ShortDoc: "a token that proves access from one volume to another",
 	Parse: func(s string) (blobcache.LinkToken, error) {
 		data, err := hex.DecodeString(s)
@@ -355,8 +351,8 @@ var linkTokenParam = star.Required[blobcache.LinkToken]{
 	},
 }
 
-var schemaParam = star.Optional[blobcache.SchemaSpec]{
-	ID: "schema",
+var schemaParam = &star.Optional[blobcache.SchemaSpec]{
+	PosName: "schema",
 	Parse: func(x string) (blobcache.SchemaSpec, error) {
 		var ret blobcache.SchemaSpec
 		err := json.Unmarshal([]byte(x), &ret)

@@ -233,32 +233,32 @@ var glfsSyncCmd = star.Command{
 	},
 }
 
-var dstPathParam = star.Required[string]{
-	ID:       "dst",
+var dstPathParam = &star.Required[string]{
+	PosName:  "dst-path",
 	ShortDoc: "the destination path",
 	Parse:    star.ParseString,
 }
 
-var srcPathParam = star.Required[string]{
-	ID:       "src",
+var srcPathParam = &star.Required[string]{
+	PosName:  "src-path",
 	ShortDoc: "the source path",
 	Parse:    star.ParseString,
 }
 
-var volumeNameParam = star.Required[string]{
-	ID:       "volume",
+var volumeNameParam = &star.Required[string]{
+	PosName:  "volume-name",
 	ShortDoc: "the name of a volume in a namespace",
 	Parse:    star.ParseString,
 }
 
-var srcVolumeParam = star.Required[string]{
-	ID:       "src",
+var srcVolumeParam = &star.Required[string]{
+	PosName:  "src-volume",
 	ShortDoc: "the source volume",
 	Parse:    star.ParseString,
 }
 
-var dstVolumeParam = star.Required[string]{
-	ID:       "dst",
+var dstVolumeParam = &star.Required[string]{
+	PosName:  "dst-volume",
 	ShortDoc: "the destination volume",
 	Parse:    star.ParseString,
 }
