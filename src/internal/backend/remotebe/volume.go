@@ -3,6 +3,7 @@ package remotebe
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
@@ -16,6 +17,8 @@ var (
 
 // Volume is a remote volume.
 type Volume struct {
+	mu sync.RWMutex
+
 	sys    *System
 	n      bcp.Asker
 	ep     blobcache.Endpoint
@@ -35,11 +38,14 @@ func NewVolume(sys *System, node bcp.Asker, ep blobcache.Endpoint, h blobcache.H
 }
 
 func (v *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
+	v.mu.RLock()
+	h := v.h
+	v.mu.RUnlock()
 	if v.isPeer {
 		return blobcache.VolumeBackend[blobcache.OID]{
 			Peer: &blobcache.VolumeBackend_Peer{
 				Peer:     v.ep.Node,
-				Volume:   v.h.OID,
+				Volume:   h.OID,
 				HashAlgo: v.info.HashAlgo,
 			},
 		}
@@ -47,7 +53,7 @@ func (v *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
 		return blobcache.VolumeBackend[blobcache.OID]{
 			Remote: &blobcache.VolumeBackend_Remote{
 				Endpoint: v.ep,
-				Volume:   v.h.OID,
+				Volume:   h.OID,
 				HashAlgo: v.info.HashAlgo,
 			},
 		}
@@ -63,12 +69,19 @@ func (v *Volume) Endpoint() blobcache.Endpoint {
 }
 
 func (v *Volume) Handle() blobcache.Handle {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
 	return v.h
 }
 
 func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.Tx, error) {
-	resp, err := bcp.BeginTx(ctx, v.n, v.ep, bcp.BeginTxReq{Volume: v.h, Params: spec})
+	h, err := v.getHandle(ctx)
 	if err != nil {
+		return nil, err
+	}
+	resp, err := bcp.BeginTx(ctx, v.n, v.ep, bcp.BeginTxReq{Volume: h, Params: spec})
+	if err != nil {
+		v.clearHandleOnInvalid(err)
 		return nil, err
 	}
 	return &Tx{
@@ -84,8 +97,13 @@ func (v *Volume) VolumeDown(ctx context.Context) error {
 }
 
 func (v *Volume) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) (blobcache.ActionSet, error) {
-	h, _, err := bcp.OpenFrom(ctx, v.n, v.ep, v.h, ltok, blobcache.Action_ALL)
+	baseH, err := v.getHandle(ctx)
 	if err != nil {
+		return 0, err
+	}
+	h, _, err := bcp.OpenFrom(ctx, v.n, v.ep, baseH, ltok, blobcache.Action_ALL)
+	if err != nil {
+		v.clearHandleOnInvalid(err)
 		return 0, err
 	}
 	hinfo, err := bcp.InspectHandle(ctx, v.n, v.ep, *h)
@@ -93,6 +111,36 @@ func (v *Volume) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) 
 		return 0, err
 	}
 	return hinfo.Rights, nil
+}
+
+func (v *Volume) getHandle(ctx context.Context) (blobcache.Handle, error) {
+	v.mu.RLock()
+	h := v.h
+	v.mu.RUnlock()
+	if h.Secret != ([16]byte{}) {
+		return h, nil
+	}
+
+	h2, _, err := bcp.OpenFiat(ctx, v.n, v.ep, h.OID, blobcache.Action_ALL)
+	if err != nil {
+		return blobcache.Handle{}, err
+	}
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.h.Secret == ([16]byte{}) {
+		v.h = *h2
+	}
+	return v.h, nil
+}
+
+func (v *Volume) clearHandleOnInvalid(err error) {
+	if !blobcache.IsErrInvalidHandle(err) {
+		return
+	}
+	v.mu.Lock()
+	v.h.Secret = [16]byte{}
+	v.mu.Unlock()
 }
 
 // Tx is a transaction on a remote volume.

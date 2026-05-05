@@ -71,7 +71,9 @@ func (sys *System) VolumeDown(ctx context.Context, vol *Volume) error {
 	defer sys.mu.Unlock()
 	delete(sys.remote, *vol.GetBackend().Remote)
 	// zero the handle so it can't be used.
+	vol.mu.Lock()
 	vol.h.Secret = [16]byte{}
+	vol.mu.Unlock()
 	return nil
 }
 
@@ -147,12 +149,25 @@ func (sys *System) SubToVol(ctx context.Context, vol *Volume, q backend.Queue, s
 	if rq.ep.Node != vol.ep.Node {
 		return fmt.Errorf("bcremote: SubToVol requires the queue and volume to be on the same peer")
 	}
-	return bcp.SubToVolume(ctx, vol.n, vol.ep, rq.h, vol.h, spec)
+	volh, err := vol.getHandle(ctx)
+	if err != nil {
+		return err
+	}
+	err = bcp.SubToVolume(ctx, vol.n, vol.ep, rq.h, volh, spec)
+	if err != nil {
+		vol.clearHandleOnInvalid(err)
+	}
+	return err
 }
 
 func (sys *System) OpenFrom(ctx context.Context, base *Volume, token blobcache.LinkToken, mask blobcache.ActionSet) (blobcache.ActionSet, *Volume, error) {
-	h, info, err := bcp.OpenFrom(ctx, base.n, base.ep, base.h, token, mask)
+	baseH, err := base.getHandle(ctx)
 	if err != nil {
+		return 0, nil, err
+	}
+	h, info, err := bcp.OpenFrom(ctx, base.n, base.ep, baseH, token, mask)
+	if err != nil {
+		base.clearHandleOnInvalid(err)
 		return 0, nil, err
 	}
 	hinfo, err := bcp.InspectHandle(ctx, base.n, base.ep, *h)
