@@ -30,6 +30,9 @@ const (
 	Action_VOLUME_SUBSCRIBE
 
 	action_VOLUME_MAX = 1 << 8
+	// Action_VOLUME_ADMIN allows the volume to be reconfigured
+	// and for any dependencies to be opened
+	Action_VOLUME_ADMIN = ActionSet(1 << 31)
 )
 
 const (

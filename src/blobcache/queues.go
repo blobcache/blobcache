@@ -86,6 +86,10 @@ const (
 	Action_QUEUE_DEQUEUE
 	// Action_QUEUE_SUB_VOLUME allows the Queue to be subscribed to volumes
 	Action_QUEUE_SUB_VOLUME
+
+	// Action_QUEUE_ADMIN allows the queue to be reconfigured and
+	// allows the dependent objects to be opened for modification
+	Action_QUEUE_ADMIN = ActionSet(1 << 31)
 )
 
 type QueueAPI interface {
