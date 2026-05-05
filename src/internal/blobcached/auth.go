@@ -180,15 +180,14 @@ func ParseAction(x []byte) (Action, error) {
 }
 
 func DefaultActionsFile() (ret string) {
-	appendLine := func(out string, group string, as ...Action) string {
-		out += group +
+	appendLine := func(group string, as ...Action) {
+		ret += group +
 			" " +
 			strings.Join(slices2.Map(as, Action.String), " ") +
 			"\n"
-		return out
 	}
-	ret += appendLine(ret, "all", AllActions()...)
-	ret += appendLine(ret, "look",
+	appendLine("all", AllActions()...)
+	appendLine("look",
 		Action_LOAD, Action_GET, Action_COPY_FROM, Action_LINK_TO,
 	)
 	ret += "touch @look SAVE POST DELETE COPY_TO\n"

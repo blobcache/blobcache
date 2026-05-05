@@ -60,9 +60,20 @@ func TestParseIdentitiesFile(t *testing.T) {
 }
 
 func TestDefaultActionsFile(t *testing.T) {
-	actions, err := ParseActionsFile([]byte(DefaultActionsFile()))
+	data := DefaultActionsFile()
+	require.Equal(t, 1, strings.Count(data, "all LOAD SAVE POST GET EXISTS DELETE COPY_FROM COPY_TO LINK_FROM LINK_TO UNLINK_FROM IS_VISITED VISIT VISIT_LINKS CREATE CREATE_QUEUE\n"))
+
+	actions, err := ParseActionsFile([]byte(data))
 	require.NoError(t, err)
 	require.NotEmpty(t, actions)
+
+	allCount := 0
+	for _, m := range mFromE(actions) {
+		if m.Group == "all" {
+			allCount++
+		}
+	}
+	require.Equal(t, len(AllActions()), allCount)
 }
 
 func Unit[T any](x T) Member[T] {

@@ -231,6 +231,8 @@ func (m *Message) SetError(err error) {
 		m.SetCode(MT_ERROR_NO_LINK)
 	case blobcache.ErrTooLarge:
 		m.SetCode(MT_ERROR_TOO_LARGE)
+	case blobcache.ErrPermission:
+		m.SetCode(MT_ERROR_NO_PERMISSION)
 	default:
 		m.SetCode(MT_ERROR_UNKNOWN)
 		m.SetBody([]byte(err.Error()))
@@ -256,6 +258,12 @@ func parseWireError(code MessageCode, x []byte) error {
 		ret = &e
 	case MT_ERROR_NO_LINK:
 		var e blobcache.ErrNoLink
+		if err := json.Unmarshal(x, &e); err != nil {
+			return err
+		}
+		ret = &e
+	case MT_ERROR_NO_PERMISSION:
+		var e blobcache.ErrPermission
 		if err := json.Unmarshal(x, &e); err != nil {
 			return err
 		}
