@@ -422,6 +422,8 @@ func (s *Service[LK, LV, LQ]) resolveVol(ctx context.Context, x blobcache.Handle
 // resolveTx looks up the transaction handle from memory.
 // If the handle is valid it will load a new transaction.
 func (s *Service[LK, LV, LQ]) resolveTx(txh blobcache.Handle, touch bool, requires blobcache.ActionSet) (transaction, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	oid, rights := s.handles.Resolve(txh)
 	if rights == 0 {
 		return transaction{}, blobcache.ErrInvalidHandle{Handle: txh}
