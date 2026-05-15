@@ -539,19 +539,17 @@ func DefaultLocalSpec() VolumeSpec {
 type DEK [32]byte
 
 func (d DEK) MarshalText() ([]byte, error) {
-	return json.Marshal(hex.EncodeToString(d[:]))
+	return hex.AppendEncode(nil, d[:]), nil
 }
 
 func (d *DEK) UnmarshalText(data []byte) error {
-	var hexString string
-	if err := json.Unmarshal(data, &hexString); err != nil {
-		return err
-	}
-	decoded, err := hex.DecodeString(hexString)
+	n, err := hex.Decode(d[:], data)
 	if err != nil {
 		return err
 	}
-	copy(d[:], decoded)
+	if n != len(d) {
+		return fmt.Errorf("wrong length to be DEK %d", n)
+	}
 	return nil
 }
 
