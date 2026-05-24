@@ -1,9 +1,10 @@
 module blobcache.io/blobcache
 
-go 1.26.0
+go 1.26.2
 
 require (
 	blobcache.io/glfs v0.0.0-20260313021227-407298e99fa7
+	blobcache.io/hljson v0.0.0-20260503173545-b92ef575f5c8
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.2
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.0

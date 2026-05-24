@@ -1,5 +1,7 @@
 blobcache.io/glfs v0.0.0-20260313021227-407298e99fa7 h1:4IZMxPIdTBYJGEz0+Ryq1hHcd0EDm9eQ+shaDAdSGyU=
 blobcache.io/glfs v0.0.0-20260313021227-407298e99fa7/go.mod h1:yFuEsv/bQYND9Mc3LlK6j/ulWi5ELHhw3hzzCDThSmQ=
+blobcache.io/hljson v0.0.0-20260503173545-b92ef575f5c8 h1:OoDSRw0+i/j307BEAAKhy8pPdR93dm+t85Wgd+4Kblk=
+blobcache.io/hljson v0.0.0-20260503173545-b92ef575f5c8/go.mod h1:Y8Jlq2v2MVxK4L1GLvkMv8z6qX5b38aWy2vlSlbr7+U=
 capnproto.org/go/capnp/v3 v3.1.0-alpha.2 h1:93ISpqHf2/3WQlfrBP0tT8Dg/RQc3uq6DV36vN0ePWk=
 capnproto.org/go/capnp/v3 v3.1.0-alpha.2/go.mod h1:2vT5D2dtG8sJGEoEKU17e+j7shdaYp1Myl8X03B3hmc=
 charm.land/bubbletea/v2 v2.0.2 h1:4CRtRnuZOdFDTWSff9r8QFt/9+z6Emubz3aDMnf/dx0=
