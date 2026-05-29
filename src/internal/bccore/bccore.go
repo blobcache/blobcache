@@ -19,9 +19,9 @@ const (
 )
 
 type (
-	Queue  = backend.Queue
-	Volume = backend.Volume
-	Tx     = backend.Tx
+	Queue  backend.Queue
+	Volume backend.Volume
+	Tx     backend.Tx
 )
 
 type volume struct {
@@ -127,8 +127,7 @@ func (s *System) Cleanup(ctx context.Context, now time.Time, onDown func(blobcac
 	return nil
 }
 
-func (sys *System) Create(ctx context.Context, x AnyObject, rights blobcache.ActionSet, createdAt time.Time, ttl time.Duration) (blobcache.Handle, error) {
-	oid := blobcache.RandomOID()
+func (sys *System) Create(ctx context.Context, oid blobcache.OID, x AnyObject, rights blobcache.ActionSet, createdAt time.Time, ttl time.Duration) (blobcache.Handle, error) {
 	switch {
 	case x.Volume != nil:
 		if !sys.addVolume(oid, x.Volume) {
@@ -156,6 +155,10 @@ func (sys *System) Create(ctx context.Context, x AnyObject, rights blobcache.Act
 		}
 	}
 	return h, nil
+}
+
+func (sys *System) Mint(x blobcache.OID, rights blobcache.ActionSet, createdAt time.Time, ttl time.Duration) blobcache.Handle {
+	return sys.handles.Create(x, rights, createdAt, createdAt.Add(ttl))
 }
 
 func (sys *System) resolveVol(_ context.Context, x blobcache.Handle) (volume, blobcache.ActionSet, error) {
@@ -270,7 +273,7 @@ func (sys *System) Share(x blobcache.Handle, mask blobcache.ActionSet) (blobcach
 	if originalRights == 0 {
 		return blobcache.Handle{}, blobcache.ErrInvalidHandle{Handle: x}
 	}
-	rights := originalRights.Share() & mask
+	rights := originalRights.Share()
 	if rights == 0 {
 		return blobcache.Handle{}, blobcache.ErrPermission{
 			Handle:   x,
@@ -278,6 +281,7 @@ func (sys *System) Share(x blobcache.Handle, mask blobcache.ActionSet) (blobcach
 			Requires: blobcache.Action_SHARE_ACK,
 		}
 	}
+	rights &= mask
 	now := time.Now()
 	expiresAt := now.Add(DefaultQueueTTL)
 	out := sys.handles.Create(oid, rights, now, expiresAt)
