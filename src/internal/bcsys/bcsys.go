@@ -9,7 +9,6 @@ import (
 	"iter"
 	"net"
 	"net/netip"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,12 +18,12 @@ import (
 	"blobcache.io/blobcache/src/internal/backend/memory"
 	"blobcache.io/blobcache/src/internal/backend/remotebe"
 	"blobcache.io/blobcache/src/internal/backend/vaultvol"
+	"blobcache.io/blobcache/src/internal/bccore"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"go.brendoncarroll.net/stdctx/logctx"
-	"go.brendoncarroll.net/tai64"
 	"go.inet256.org/inet256/src/inet256"
 	"go.uber.org/zap"
 )
@@ -100,6 +99,53 @@ func New[LK any, LV LocalVolume[LK], LQ LocalQueue](env Env[LK, LV, LQ], cfg Con
 		Background: s.env.Background,
 	})
 	s.queueSys.memory = &memory.System{}
+	s.core = bccore.New(bccore.Params{
+		Root: env.Root,
+		Up:   s.up,
+		OnLink: func(ctx context.Context, info blobcache.Info, ao bccore.AnyObject) error {
+			if ao.Volume == nil {
+				return fmt.Errorf("can only persist Volumes")
+			}
+			// TODO: need to call ensureVolumeMetadata
+			return nil
+		},
+		SubToVolume: func(ctx context.Context, vol bccore.Volume, q bccore.Queue, spec blobcache.VolSubSpec) error {
+			switch rv := vol.(type) {
+			case *remotebe.Volume:
+				return s.backends.remote.SubToVol(ctx, rv, q, spec)
+			default:
+				lv, ok := vol.(LV)
+				if !ok {
+					return fmt.Errorf("SubToVolume not supported for volume type:%T", vol)
+				}
+				return s.env.Local.SubToVol(ctx, lv, q, spec)
+			}
+		},
+		OnSave: func(ctx context.Context, vol bccore.Volume, tx bccore.Tx, root []byte) error {
+			// validate against the schema.
+			var prevRoot []byte
+			if err := tx.Load(ctx, &prevRoot); err != nil {
+				return err
+			}
+			src := backend.NewUnsaltedStore(tx)
+			schSpec := vol.GetParams().Schema
+			sch, err := env.MkSchema(schSpec)
+			if err != nil {
+				return err
+			}
+			change := schema.Change{
+				Prev: schema.Value{
+					Cell:  prevRoot,
+					Store: src,
+				},
+				Next: schema.Value{
+					Cell:  root,
+					Store: src,
+				},
+			}
+			return sch.ValidateChange(ctx, change)
+		},
+	})
 	return s
 }
 
@@ -119,15 +165,7 @@ type Service[LK any, LV LocalVolume[LK], LQ LocalQueue] struct {
 		memory *memory.System
 	}
 	tmpSecret *[32]byte
-
-	handles handleSystem
-	// mu guards the volumes, queues, and txns.
-	// pure handle operations like Drop, KeepAlive, Inspect, etc. do not require this lock.
-	// mu should always be taken for a superset of the time that the handle system's lock is taken.
-	mu      sync.RWMutex
-	volumes map[blobcache.OID]volume
-	queues  map[blobcache.OID]queue
-	txns    map[blobcache.OID]transaction
+	core      bccore.System
 }
 
 // Serve handles requests from the network.
@@ -173,16 +211,7 @@ func (s *Service[LK, LV, LQ]) LocalID() blobcache.NodeID {
 
 // AbortAll aborts all transactions.
 func (s *Service[LK, LV, LQ]) AbortAll(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for oid, txn := range s.txns {
-		if err := txn.backend.Abort(ctx); err != nil {
-			logctx.Warn(ctx, "aborting transaction", zap.Error(err))
-		}
-		s.handles.DropAllForOID(oid)
-		delete(s.txns, oid)
-	}
-	return nil
+	return s.core.AbortAll(ctx)
 }
 
 // Cleanup runs the full cleanup process.
@@ -193,148 +222,26 @@ func (s *Service[LK, LV, LQ]) Cleanup(ctx context.Context) ([]blobcache.OID, err
 	logctx.Info(ctx, "cleanup BEGIN")
 	defer logctx.Info(ctx, "cleanup END")
 	now := time.Now()
-
-	// 1. Delete expired handles.
-	logctx.Info(ctx, "cleaning up handles")
-	s.handles.filter(func(h handle) bool {
-		// return true to keep, false to delete.
-		return h.expiresAt.After(now)
+	var downed []blobcache.OID
+	err := s.core.Cleanup(ctx, now, func(o blobcache.OID) {
+		downed = append(downed, o)
 	})
-
-	// 2. Release resources for transactions which do not have a handle.
-	logctx.Info(ctx, "cleaning up transactions")
-	s.mu.Lock()
-	for oid := range s.txns {
-		if !s.handles.isAlive(oid) {
-			delete(s.txns, oid)
-		}
-	}
-
-	// 3. Release resources for mounted volumes which do not have a handle.
-	logctx.Info(ctx, "cleaning up volumes")
-	var ret []blobcache.OID
-	for oid := range s.volumes {
-		if !s.handles.isAlive(oid) {
-			vol := s.volumes[oid]
-			delete(s.volumes, oid)
-			ret = append(ret, oid)
-			_ = vol.backend.VolumeDown(ctx)
-		}
-	}
-
-	// 4. Release resources for queues which do not have a handle.
-	logctx.Info(ctx, "cleaning up queues")
-	for oid := range s.queues {
-		if !s.handles.isAlive(oid) {
-			q := s.queues[oid]
-			delete(s.queues, oid)
-			_ = q.backend.QueueDown(ctx)
-		}
-	}
-	s.mu.Unlock()
-	return ret, nil
+	return downed, err
 }
 
-// addVolume adds a volume to the volumes map.
-// It acquires mu exclusively, and returns false if the volume already exists.
-func (s *Service[LK, LV, LQ]) addVolume(oid blobcache.OID, vol backend.Volume) bool {
+func (s *Service[LK, LV, LQ]) up(ctx context.Context, oid blobcache.OID) (bccore.AnyObject, error) {
 	if oid == (blobcache.OID{}) {
-		return false
+		panic("bcsys.up: root OID must not be loaded through up")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.volumes[oid]; exists {
-		return false
-	}
-	if s.volumes == nil {
-		s.volumes = make(map[blobcache.OID]volume)
-	}
-	s.volumes[oid] = volume{
-		info: blobcache.VolumeInfo{
-			ID:           oid,
-			VolumeConfig: vol.GetParams(),
-			Backend:      vol.GetBackend(),
-		},
-		backend: vol,
-	}
-	return true
-}
-
-// addQueue adds a queue to the queues map.
-// It acquires mu exclusively, and returns false if the queue already exists.
-func (s *Service[LK, LV, LQ]) addQueue(oid blobcache.OID, q backend.Queue, cfg blobcache.QueueConfig, spec blobcache.QueueBackend[blobcache.OID]) bool {
-	if oid == (blobcache.OID{}) {
-		return false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.queues[oid]; exists {
-		return false
-	}
-	if s.queues == nil {
-		s.queues = make(map[blobcache.OID]queue)
-	}
-	s.queues[oid] = queue{
-		info: blobcache.QueueInfo{
-			ID:      oid,
-			Config:  cfg,
-			Backend: spec,
-		},
-		backend: q,
-	}
-	return true
-}
-
-func (s *Service[LK, LV, LQ]) queueByOID(x blobcache.OID) (queue, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	q, exists := s.queues[x]
-	return q, exists
-}
-
-func (s *Service[LK, LV, LQ]) volByOID(x blobcache.OID) (volume, bool) {
-	if x == (blobcache.OID{}) {
-		rootVol := s.env.Root
-		return volume{
-			info: blobcache.VolumeInfo{
-				VolumeConfig: rootVol.GetParams(),
-				Backend:      rootVol.GetBackend(),
-			},
-			backend: rootVol,
-		}, true
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	vol, exists := s.volumes[x]
-	return vol, exists
-}
-
-// mountVolume ensures the volume is available.
-// if the volume is already in memory, it does nothing.
-// otherwise it calls makeVolume and writes to the volumes map.
-func (s *Service[LK, LV, LQ]) mountVolume(ctx context.Context, oid blobcache.OID) error {
-	s.mu.RLock()
-	_, exists := s.volumes[oid]
-	s.mu.RUnlock()
-	if exists {
-		return nil
-	}
-	if oid == (blobcache.OID{}) {
-		return nil
-	}
-	info, err := s.inspectVolume(ctx, oid)
+	vinfo, err := s.inspectVolume(ctx, oid)
 	if err != nil {
-		return err
+		return bccore.AnyObject{}, err
 	}
-	if info == nil {
-		return fmt.Errorf("volume %s not found", oid)
-	}
-	vol, err := s.makeVolume(ctx, oid, info.Backend)
+	vol, err := s.makeVolume(ctx, oid, vinfo.Backend)
 	if err != nil {
-		return err
+		return bccore.AnyObject{}, err
 	}
-	s.addVolume(oid, vol)
-	return nil
+	return bccore.AnyObject{Volume: vol}, nil
 }
 
 func (s *Service[LK, LV, LQ]) inspectVolume(ctx context.Context, volID blobcache.OID) (*blobcache.VolumeInfo, error) {
@@ -347,103 +254,6 @@ func (s *Service[LK, LV, LQ]) inspectVolume(ctx context.Context, volID blobcache
 		return nil, nil
 	}
 	return ve.Info(), nil
-}
-
-func (s *Service[LK, LV, LQ]) ensureVolumeMetadata(ctx context.Context, oid blobcache.OID) error {
-	if oid == (blobcache.OID{}) {
-		return nil
-	}
-	if info, err := s.inspectVolume(ctx, oid); err != nil {
-		return err
-	} else if info != nil {
-		return nil
-	}
-
-	vol, exists := s.volByOID(oid)
-	if !exists {
-		return fmt.Errorf("cannot ensure metadata for unknown volume %v", oid)
-	}
-	ve := VolumeEntry{
-		OID:      oid,
-		MaxSize:  vol.info.MaxSize,
-		Schema:   vol.info.Schema,
-		HashAlgo: vol.info.HashAlgo,
-		Salted:   vol.info.Salted,
-		Backend:  vol.info.Backend,
-		Deps:     nil,
-	}
-	return s.env.MDS.Put(ctx, oid, ve)
-}
-
-type volume struct {
-	info    blobcache.VolumeInfo
-	backend backend.Volume
-}
-
-type queue struct {
-	info    blobcache.QueueInfo
-	backend backend.Queue
-}
-
-type transaction struct {
-	backend backend.Tx
-	volume  *volume
-}
-
-// resolveVol first checks that the handle is valid.
-// then if it is it will check the volumes map with a read lock.
-// If there is no entry for the volume then the read-lock is temporarily
-// released so that the volume can be mounted if it exists.
-func (s *Service[LK, LV, LQ]) resolveVol(ctx context.Context, x blobcache.Handle) (volume, blobcache.ActionSet, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	oid, rights := s.handles.Resolve(x)
-	if rights == 0 {
-		return volume{}, 0, blobcache.ErrInvalidHandle{Handle: x}
-	}
-	// If it is the root volume, then make up the volume struct on the spot.
-	if oid == (blobcache.OID{}) {
-		rootVol, _ := s.volByOID(oid)
-		return rootVol, rights, nil
-	}
-	vol, exists := s.volumes[oid]
-	if !exists {
-		s.mu.RUnlock()
-		err := s.mountVolume(ctx, x.OID)
-		s.mu.RLock()
-		if err != nil {
-			return volume{}, 0, err
-		}
-		return volume{}, 0, fmt.Errorf("handle does not refer to volume, OID=%v ", x.OID)
-	}
-	return vol, rights, nil
-}
-
-// resolveTx looks up the transaction handle from memory.
-// If the handle is valid it will load a new transaction.
-func (s *Service[LK, LV, LQ]) resolveTx(txh blobcache.Handle, touch bool, requires blobcache.ActionSet) (transaction, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	oid, rights := s.handles.Resolve(txh)
-	if rights == 0 {
-		return transaction{}, blobcache.ErrInvalidHandle{Handle: txh}
-	}
-	// transactions are not stored in the database, so we only have to check the handles map.
-	tx, exists := s.txns[oid]
-	if !exists {
-		return transaction{}, blobcache.ErrInvalidHandle{Handle: txh}
-	}
-	if rights&requires < requires {
-		return transaction{}, blobcache.ErrPermission{
-			Handle:   txh,
-			Rights:   rights,
-			Requires: requires,
-		}
-	}
-	if touch {
-		s.handles.KeepAlive(txh, time.Now().Add(DefaultTxTTL))
-	}
-	return tx, nil
 }
 
 // Endpoint blocks waiting for a node to be created (happens when Serve is running).
@@ -465,65 +275,24 @@ func (s *Service[LK, LV, LQ]) Endpoint(ctx context.Context) (blobcache.Endpoint,
 }
 
 func (s *Service[LK, LV, LQ]) Drop(ctx context.Context, h blobcache.Handle) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Drop"), zap.Stringer("oid", h.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Drop"), zap.Stringer("oid", h.OID))
-	s.mu.Lock()
-	s.handles.Drop(h)
-	s.mu.Unlock()
-	return nil
+	return s.core.Drop(ctx, h)
 }
 
 func (s *Service[LK, LV, LQ]) KeepAlive(ctx context.Context, hs []blobcache.Handle) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "KeepAlive"))
-	defer logctx.Debug(ctx, "done", zap.String("method", "KeepAlive"))
-	now := time.Now()
-	volExpire := now.Add(DefaultVolumeTTL)
-	txExpire := now.Add(DefaultTxTTL)
+	return s.core.KeepAlive(ctx, hs)
+}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, h := range hs {
-		_, exists := s.handles.Inspect(h)
-		if !exists {
-			continue
-		}
-		var expiresAt time.Time
-		if _, exists := s.volumes[h.OID]; exists {
-			expiresAt = volExpire
-		}
-		if _, exists := s.txns[h.OID]; exists {
-			expiresAt = txExpire
-		}
-		s.handles.KeepAlive(h, expiresAt)
-	}
-	return nil
+func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
+	return s.core.InspectHandle(ctx, h)
 }
 
 func (s *Service[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, to blobcache.NodeID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
-	oid, originalRights := s.handles.Resolve(h)
-	if originalRights == 0 {
-		return nil, blobcache.ErrInvalidHandle{Handle: h}
+	logctx.Info(ctx, "begin", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
+	defer logctx.Info(ctx, "done", zap.String("method", "Share"), zap.Stringer("oid", h.OID))
+	out, err := s.core.Share(h, mask)
+	if err != nil {
+		return nil, err
 	}
-	rights := originalRights.Share() & mask
-	if rights == 0 {
-		return nil, blobcache.ErrPermission{
-			Handle:   h,
-			Rights:   originalRights,
-			Requires: blobcache.Action_SHARE_ACK,
-		}
-	}
-	now := time.Now()
-	expiresAt := now.Add(DefaultVolumeTTL)
-	s.mu.RLock()
-	if _, exists := s.txns[oid]; exists {
-		expiresAt = now.Add(DefaultTxTTL)
-	} else if _, exists := s.queues[oid]; exists {
-		expiresAt = now.Add(DefaultQueueTTL)
-	}
-	s.mu.RUnlock()
-	out := s.handles.Create(oid, rights, now, expiresAt)
 	key := derivePeerSecret(s.tmpSecret, to)
 	ciph, err := aes.NewCipher(key[:])
 	if err != nil {
@@ -531,21 +300,6 @@ func (s *Service[LK, LV, LQ]) ShareOut(ctx context.Context, h blobcache.Handle, 
 	}
 	ciph.Encrypt(out.Secret[:], out.Secret[:])
 	return &out, nil
-}
-
-func (s *Service[LK, LV, LQ]) InspectHandle(ctx context.Context, h blobcache.Handle) (*blobcache.HandleInfo, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "InspectHandle"), zap.Stringer("oid", h.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "InspectHandle"), zap.Stringer("oid", h.OID))
-	hstate, exists := s.handles.Inspect(h)
-	if !exists {
-		return nil, blobcache.ErrInvalidHandle{Handle: h}
-	}
-	return &blobcache.HandleInfo{
-		OID:       h.OID,
-		Rights:    hstate.rights,
-		CreatedAt: tai64.Now().TAI64(), // TODO: store creation time.
-		ExpiresAt: tai64.FromGoTime(hstate.expiresAt).TAI64(),
-	}, nil
 }
 
 func (s *Service[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Handle, error) {
@@ -559,79 +313,26 @@ func (s *Service[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.NodeID
 	if err != nil {
 		return blobcache.Handle{}, err
 	}
-	createdAt := time.Now()
 
+	var ao bccore.AnyObject
+	var ttl time.Duration
 	switch {
 	case adopted.Volume != nil:
-		localOID := blobcache.RandomOID()
-		if !s.addVolume(localOID, adopted.Volume) {
-			return blobcache.Handle{}, fmt.Errorf("volume already exists")
-		}
-		expiresAt := createdAt.Add(DefaultVolumeTTL)
-		localHandle := s.handles.Create(localOID, info.Handle.Rights, createdAt, expiresAt)
-		return localHandle, nil
+		ao.Volume = adopted.Volume
+		ttl = DefaultVolumeTTL
 	case adopted.Queue != nil:
-		localOID := blobcache.RandomOID()
-		remoteOID := info.Queue.ID
-		if remoteOID == (blobcache.OID{}) {
-			remoteOID = h.OID
-		}
-		if !s.addQueue(localOID, adopted.Queue, info.Queue.Config, blobcache.QueueBackend[blobcache.OID]{
-			Remote: &blobcache.QueueBackend_Remote{
-				Endpoint: ep,
-				OID:      remoteOID,
-			},
-		}) {
-			return blobcache.Handle{}, fmt.Errorf("queue already exists")
-		}
-		expiresAt := createdAt.Add(DefaultQueueTTL)
-		localHandle := s.handles.Create(localOID, info.Handle.Rights, createdAt, expiresAt)
-		return localHandle, nil
+		ao.Queue = adopted.Queue
+		ttl = DefaultQueueTTL
 	default:
 		return blobcache.Handle{}, fmt.Errorf("cannot adopt unsupported object type")
 	}
+	createdAt := time.Now()
+	oid := blobcache.RandomOID()
+	return s.core.Create(ctx, oid, ao, blobcache.Action_ALL, createdAt, ttl)
 }
 
 func (s *Service[LK, LV, LQ]) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "Inspect"), zap.Stringer("oid", h.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Inspect"), zap.Stringer("oid", h.OID))
-	hi, err := s.InspectHandle(ctx, h)
-	if err != nil {
-		return blobcache.Info{}, err
-	}
-	ret := blobcache.Info{Handle: *hi}
-
-	s.mu.RLock()
-	_, isTx := s.txns[h.OID]
-	_, isQueue := s.queues[h.OID]
-	_, isVol := s.volumes[h.OID]
-	s.mu.RUnlock()
-
-	if h.OID == (blobcache.OID{}) || isVol {
-		vi, err := s.InspectVolume(ctx, h)
-		if err != nil {
-			return blobcache.Info{}, err
-		}
-		ret.Volume = vi
-		return ret, nil
-	}
-	if isTx {
-		tx, err := s.InspectTx(ctx, h)
-		if err != nil {
-			return blobcache.Info{}, err
-		}
-		ret.Tx = tx
-		return ret, nil
-	}
-	if isQueue {
-		qi, err := s.InspectQueue(ctx, h)
-		if err != nil {
-			return blobcache.Info{}, err
-		}
-		ret.Queue = &qi
-		return ret, nil
-	}
-	return blobcache.Info{}, blobcache.ErrInvalidHandle{Handle: h}
+	return s.core.Inspect(ctx, h)
 }
 
 func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host blobcache.NodeID, h blobcache.Handle) (blobcache.Endpoint, blobcache.Info, error) {
@@ -665,70 +366,13 @@ func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host 
 func (s *Service[LK, LV, LQ]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	logctx.Info(ctx, "begin", zap.String("method", "OpenFiat"), zap.Stringer("oid", x))
 	defer logctx.Info(ctx, "done", zap.String("method", "OpenFiat"), zap.Stringer("oid", x))
-	if x != (blobcache.OID{}) {
-		if _, isQueue := s.queueByOID(x); !isQueue {
-			if err := s.mountVolume(ctx, x); err != nil {
-				return nil, err
-			}
-		}
-	}
 	createdAt := time.Now()
-	expiresAt := createdAt.Add(DefaultVolumeTTL)
-	h := s.handles.Create(x, mask, createdAt, expiresAt)
+	h := s.core.Mint(x, mask, createdAt, DefaultVolumeTTL)
 	return &h, nil
 }
 
 func (s *Service[LK, LV, LQ]) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	logctx.Info(ctx, "begin", zap.String("method", "OpenFrom"), zap.Stringer("oid", base.OID))
-	defer logctx.Info(ctx, "done", zap.String("method", "OpenFrom"), zap.Stringer("oid", base.OID))
-	baseVol, _, err := s.resolveVol(ctx, base)
-	if err != nil {
-		return nil, err
-	}
-
-	switch baseVol := baseVol.backend.(type) {
-	case *remotebe.Volume:
-		rights, subvol, err := s.backends.remote.OpenFrom(ctx, baseVol, ltok, mask)
-		if err != nil {
-			return nil, err
-		}
-		// create a handle first to prevent expiration
-		localOID := blobcache.RandomOID()
-		createdAt := time.Now()
-		expiresAt := createdAt.Add(DefaultVolumeTTL)
-		h := s.handles.Create(localOID, rights, createdAt, expiresAt)
-		// add the volume
-		s.addVolume(localOID, subvol)
-		return &h, nil
-
-	default:
-		rights, err := baseVol.AccessSubVolume(ctx, ltok)
-		if err != nil {
-			return nil, err
-		}
-		if rights == 0 {
-			return nil, blobcache.ErrNoLink{Base: base.OID, Target: ltok.Target}
-		}
-
-		volInfo, err := s.inspectVolume(ctx, ltok.Target)
-		if err != nil {
-			return nil, err
-		}
-		if volInfo == nil {
-			return nil, fmt.Errorf("volume=%v has link to subvolume=%v, but that subvolume was not found", base.OID, ltok.Target)
-		}
-
-		// create a handle first to prevent expiration
-		rights = rights & mask
-		localOID := ltok.Target
-		createdAt := time.Now()
-		expiresAt := createdAt.Add(DefaultVolumeTTL)
-		h := s.handles.Create(localOID, rights, createdAt, expiresAt)
-		if err := s.mountVolume(ctx, ltok.Target); err != nil {
-			return nil, err
-		}
-		return &h, nil
-	}
+	return s.core.OpenFrom(ctx, base, ltok, mask)
 }
 
 func (s *Service[LK, LV, LQ]) grabNode(ctx context.Context) (*bcnet.Node, error) {
@@ -804,13 +448,15 @@ func (s *Service[LK, LV, LQ]) CreateVolume(ctx context.Context, host *blobcache.
 	if err := s.env.MDS.Put(ctx, oid, ve); err != nil {
 		return nil, err
 	}
-	if err := s.mountVolume(ctx, info.ID); err != nil {
+	createdAt := time.Now()
+	vol, err := s.makeVolume(ctx, info.ID, info.Backend)
+	if err != nil {
 		return nil, err
 	}
-	// create a handle
-	createdAt := time.Now()
-	expiresAt := createdAt.Add(DefaultVolumeTTL)
-	handle := s.handles.Create(info.ID, blobcache.Action_ALL, createdAt, expiresAt)
+	handle, err := s.core.Create(ctx, info.ID, bccore.AnyObject{Volume: vol}, blobcache.Action_ALL, createdAt, DefaultVolumeTTL)
+	if err != nil {
+		return nil, err
+	}
 	return &handle, nil
 }
 
@@ -833,445 +479,79 @@ func (s *Service[LK, LV, LQ]) createRemoteVolume(ctx context.Context, host blobc
 	// now we have a handle to the remote volume.
 	// The handle is only valid on the remote node.
 	id := blobcache.RandomOID()
-	s.addVolume(id, vol)
-	// create a local handle
-	localHandle := s.handles.Create(id, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL))
+	localHandle, err := s.core.Create(ctx, id, bccore.AnyObject{Volume: vol}, blobcache.Action_ALL, time.Now(), DefaultVolumeTTL)
+	if err != nil {
+		return nil, err
+	}
 	return &localHandle, nil
 }
 
-func (s *Service[LK, LV, LQ]) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "CloneVolume"), zap.Stringer("oid", volh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "CloneVolume"), zap.Stringer("oid", volh.OID))
-	vol, _, err := s.resolveVol(ctx, volh)
-	if err != nil {
-		return nil, err
-	}
-	if vol.info.Backend.Local == nil {
-		return nil, fmt.Errorf("only local volumes can be cloned")
-	}
-
-	vinfo, err := s.inspectVolume(ctx, vol.info.ID)
-	if err != nil {
-		return nil, err
-	}
-	if vinfo == nil {
-		return nil, fmt.Errorf("CloneVolume: volume not found")
-	}
-	vinfo.ID = blobcache.RandomOID()
-	ve := VolumeEntry{}
-	if err := s.env.MDS.Put(ctx, vinfo.ID, ve); err != nil {
-		return nil, err
-	}
-
-	h := s.handles.Create(vol.info.ID, blobcache.Action_ALL, time.Now(), time.Now().Add(DefaultVolumeTTL))
-	return &h, nil
-}
-
 func (s *Service[LK, LV, LQ]) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "InspectVolume"), zap.Stringer("oid", h.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "InspectVolume"), zap.Stringer("oid", h.OID))
-	vol, _, err := s.resolveVol(ctx, h)
-	if err != nil {
-		return nil, err
-	}
-	return &vol.info, nil
+	return s.core.InspectVolume(ctx, h)
 }
 
 func (s *Service[LK, LV, LQ]) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
-	if err := txspec.Validate(); err != nil {
-		return nil, err
-	}
-	vol, rights, err := s.resolveVol(ctx, volh)
-	if err != nil {
-		return nil, err
-	}
-	if !rights.Has(blobcache.Action_VOLUME_BEGIN_TX) {
-		return nil, blobcache.ErrPermission{
-			Handle:   volh,
-			Rights:   rights,
-			Requires: blobcache.Action_VOLUME_BEGIN_TX,
-		}
-	}
-	if txspec.GCBlobs {
-		gcBlobRights := blobcache.ActionSet(blobcache.Action_VOLUME_TX_VISIT | blobcache.Action_VOLUME_TX_IS_VISITED)
-		if rights&gcBlobRights == 0 {
-			return nil, blobcache.ErrPermission{
-				Handle:   volh,
-				Rights:   rights,
-				Requires: gcBlobRights,
-			}
-		}
-	}
-	if txspec.Modify {
-		mutatingRights := blobcache.ActionSet(blobcache.Action_VOLUME_TX_SAVE |
-			blobcache.Action_VOLUME_TX_POST |
-			blobcache.Action_VOLUME_TX_DELETE |
-			blobcache.Action_VOLUME_TX_COPY_TO |
-			blobcache.Action_VOLUME_TX_LINK_FROM |
-			blobcache.Action_VOLUME_TX_UNLINK_FROM |
-			blobcache.Action_VOLUME_TX_VISIT |
-			blobcache.Action_VOLUME_TX_VISIT_LINKS)
-		if rights&mutatingRights == 0 {
-			return nil, blobcache.ErrPermission{
-				Handle:   volh,
-				Rights:   rights,
-				Requires: mutatingRights,
-			}
-		}
-	}
-	tx, err := vol.backend.BeginTx(ctx, txspec)
-	if err != nil {
-		return nil, err
-	}
-
-	txoid := blobcache.RandomOID()
-	s.mu.Lock()
-	if s.txns == nil {
-		s.txns = make(map[blobcache.OID]transaction)
-	}
-	s.txns[txoid] = transaction{
-		backend: tx,
-		volume:  &vol,
-	}
-	s.mu.Unlock()
-	createdAt := time.Now()
-	expiresAt := createdAt.Add(DefaultTxTTL)
-	txRights := blobcache.Action_ACK | blobcache.Action_TX_INSPECT
-	volTxRightsMask := blobcache.Action_VOLUME_TX_INSPECT |
-		blobcache.Action_VOLUME_TX_LOAD |
-		blobcache.Action_VOLUME_TX_SAVE |
-		blobcache.Action_VOLUME_TX_POST |
-		blobcache.Action_VOLUME_TX_GET |
-		blobcache.Action_VOLUME_TX_EXISTS |
-		blobcache.Action_VOLUME_TX_DELETE |
-		blobcache.Action_VOLUME_TX_COPY_FROM |
-		blobcache.Action_VOLUME_TX_COPY_TO |
-		blobcache.Action_VOLUME_TX_LINK_FROM |
-		blobcache.Action_VOLUME_TX_UNLINK_FROM |
-		blobcache.Action_VOLUME_TX_VISIT |
-		blobcache.Action_VOLUME_TX_IS_VISITED |
-		blobcache.Action_VOLUME_TX_VISIT_LINKS
-	txRights |= (rights & volTxRightsMask) >> 8
-	txRights |= (rights & blobcache.SharedAction(volTxRightsMask)) >> 8
-	h := s.handles.Create(txoid, txRights, createdAt, expiresAt)
-	return &h, nil
+	return s.core.BeginTx(ctx, volh, txspec)
 }
 
 func (s *Service[LK, LV, LQ]) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobcache.TxInfo, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "InspectTx"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "InspectTx"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, false, blobcache.Action_TX_INSPECT)
-	if err != nil {
-		return nil, err
-	}
-	vol := txn.volume
-	vp := vol.backend.GetParams()
-	return &blobcache.TxInfo{
-		ID:     txh.OID,
-		Volume: vol.info.ID,
-
-		MaxSize:  vp.MaxSize,
-		HashAlgo: vp.HashAlgo,
-		Params:   txn.backend.Params(),
-	}, nil
+	return s.core.InspectTx(ctx, txh)
 }
 
 func (s *Service[LK, LV, LQ]) Save(ctx context.Context, txh blobcache.Handle, root []byte) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Save"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Save"), zap.Stringer("oid", txh.OID))
-	tx, err := s.resolveTx(txh, true, blobcache.Action_TX_SAVE)
-	if err != nil {
-		return err
-	}
-	if p := tx.backend.Params(); !p.Modify {
-		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "SAVE"}
-	}
-	// validate against the schema.
-	var prevRoot []byte
-	if err := tx.backend.Load(ctx, &prevRoot); err != nil {
-		return err
-	}
-	src := backend.NewUnsaltedStore(tx.backend)
-	sch, err := s.env.MkSchema(tx.volume.info.Schema)
-	if err != nil {
-		return err
-	}
-	change := schema.Change{
-		Prev: schema.Value{
-			Cell:  prevRoot,
-			Store: src, // TODO: Need to open read-only transaction for the previous version of the volume.
-		},
-		Next: schema.Value{
-			Cell:  root,
-			Store: src,
-		},
-	}
-	if err := sch.ValidateChange(ctx, change); err != nil {
-		return err
-	}
-	return setErrTxOID(tx.backend.Save(ctx, root), txh.OID)
+	return s.core.Save(ctx, txh, root)
 }
 
 func (s *Service[LK, LV, LQ]) Commit(ctx context.Context, txh blobcache.Handle) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Commit"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Commit"), zap.Stringer("oid", txh.OID))
-	tx, err := s.resolveTx(txh, true, 0) // anyone can commit the transaction if they opened it.
-	if err != nil {
-		return err
-	}
-	if p := tx.backend.Params(); !p.Modify {
-		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "COMMIT"}
-	}
-	if err := tx.backend.Commit(ctx); err != nil {
-		return setErrTxOID(err, txh.OID)
-	}
-	s.mu.Lock()
-	s.handles.Drop(txh)
-	s.mu.Unlock()
-
-	return nil
+	return s.core.Commit(ctx, txh)
 }
 
 func (s *Service[LK, LV, LQ]) Abort(ctx context.Context, txh blobcache.Handle) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Abort"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Abort"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, false, 0) // anyone can abort the transaction if they opened it.
-	if err != nil {
-		return err
-	}
-	if err := txn.backend.Abort(ctx); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.handles.Drop(txh)
-	return nil
+	return s.core.Abort(ctx, txh)
 }
 
 func (s *Service[LK, LV, LQ]) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Load"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Load"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_LOAD)
-	if err != nil {
-		return err
-	}
-	return setErrTxOID(txn.backend.Load(ctx, dst), txh.OID)
+	return s.core.Load(ctx, txh, dst)
 }
 
 func (s *Service[LK, LV, LQ]) Post(ctx context.Context, txh blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "Post"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Post"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_POST)
-	if err != nil {
-		return blobcache.CID{}, err
-	}
-
-	if p := txn.backend.Params(); !p.Modify {
-		return blobcache.CID{}, blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "POST"}
-	}
-	cid, err := txn.backend.Post(ctx, data, opts)
-	if err != nil {
-		return blobcache.CID{}, setErrTxOID(err, txh.OID)
-	}
-	return cid, nil
+	return s.core.Post(ctx, txh, data, opts)
 }
 
 func (s *Service[LV, LK, LQ]) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Exists"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Exists"), zap.Stringer("oid", txh.OID))
-	if len(cids) != len(dst) {
-		return fmt.Errorf("cids and dst must have the same length")
-	}
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_EXISTS)
-	if err != nil {
-		return err
-	}
-	return setErrTxOID(txn.backend.Exists(ctx, cids, dst), txh.OID)
+	return s.core.Exists(ctx, txh, cids, dst)
 }
 
 func (s *Service[LV, LK, LQ]) Get(ctx context.Context, txh blobcache.Handle, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "Get"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Get"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_GET)
-	if err != nil {
-		return 0, err
-	}
-	n, err := txn.backend.Get(ctx, cid, buf, opts)
-	if err != nil {
-		return 0, setErrTxOID(err, txh.OID)
-	}
-	if !opts.SkipVerify {
-		cid2 := txn.backend.HashAlgo().KeyedHash(opts.Salt, buf[:n])
-		if cid2 != cid {
-			return -1, blobcache.ErrBadData{
-				Salt:     opts.Salt,
-				Expected: cid,
-				Actual:   cid2,
-				Len:      n,
-			}
-		}
-	}
-	return n, nil
+	return s.core.Get(ctx, txh, cid, buf, opts)
 }
 
 func (s *Service[LV, LK, LQ]) Delete(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Delete"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Delete"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_DELETE)
-	if err != nil {
-		return err
-	}
-	if p := txn.backend.Params(); !p.Modify {
-		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "DELETE"}
-	}
-	return setErrTxOID(txn.backend.Delete(ctx, cids), txh.OID)
+	return s.core.Delete(ctx, txh, cids)
 }
 
 func (s *Service[LK, LV, LQ]) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out []bool) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Copy"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Copy"), zap.Stringer("oid", txh.OID))
-	if len(cids) != len(out) {
-		return fmt.Errorf("cids and out must have the same length")
-	}
-	dstTx, err := s.resolveTx(txh, true, blobcache.Action_TX_COPY_TO)
-	if err != nil {
-		return err
-	}
-	if p := dstTx.backend.Params(); !p.Modify {
-		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "COPY"}
-	}
-
-	type srcTxn struct {
-		oid blobcache.OID
-		tx  transaction
-	}
-	resolvedSrcs := make([]srcTxn, len(srcTxns))
-	for i, srcH := range srcTxns {
-		src, err := s.resolveTx(srcH, true, blobcache.Action_TX_COPY_FROM)
-		if err != nil {
-			return err
-		}
-		resolvedSrcs[i] = srcTxn{oid: srcH.OID, tx: src}
-	}
-
-	for i := range cids {
-		out[i] = false
-	}
-
-	var buf []byte
-	var exists [1]bool
-	for i, cid := range cids {
-		if len(resolvedSrcs) == 0 {
-			continue
-		}
-		start := int(cid[0]) % len(resolvedSrcs)
-		for j := range resolvedSrcs {
-			src := resolvedSrcs[(start+j)%len(resolvedSrcs)]
-			exists[0] = false
-			if err := src.tx.backend.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
-				return fmt.Errorf("copy from tx %v: %w", src.oid, err)
-			}
-			if !exists[0] {
-				continue
-			}
-			srcMax := src.tx.backend.MaxSize()
-			if cap(buf) < srcMax {
-				buf = make([]byte, srcMax)
-			}
-			n, err := src.tx.backend.Get(ctx, cid, buf[:srcMax], blobcache.GetOpts{})
-			if err != nil {
-				if blobcache.IsErrNotFound(err) {
-					continue
-				}
-				return fmt.Errorf("copy from tx %v: %w", src.oid, err)
-			}
-			data := buf[:n]
-			if dstTx.backend.HashAlgo().Hash(data) != cid {
-				continue
-			}
-			cid2, err := dstTx.backend.Post(ctx, data, blobcache.PostOpts{})
-			if err != nil {
-				var eTooLarge blobcache.ErrTooLarge
-				if errors.As(err, &eTooLarge) {
-					continue
-				}
-				return setErrTxOID(err, txh.OID)
-			}
-			if cid2 != cid {
-				continue
-			}
-			out[i] = true
-			break
-		}
-	}
-	return nil
+	return s.core.Copy(ctx, txh, srcTxns, cids, out)
 }
 
 func (s *Service[LK, LV, LQ]) Visit(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Visit"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Visit"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_VISIT)
-	if err != nil {
-		return err
-	}
-	return setErrTxOID(txn.backend.Visit(ctx, cids), txh.OID)
+	return s.core.Visit(ctx, txh, cids)
 }
 
 func (s *Service[LK, LV, LQ]) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "IsVisited"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "IsVisited"), zap.Stringer("oid", txh.OID))
-	if len(cids) != len(dst) {
-		return fmt.Errorf("cids and out must have the same length")
-	}
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_IS_VISITED)
-	if err != nil {
-		return err
-	}
-	return setErrTxOID(txn.backend.IsVisited(ctx, cids, dst), txh.OID)
+	return s.core.IsVisited(ctx, txh, cids, dst)
 }
 
 func (s *Service[LK, LV, LQ]) Link(ctx context.Context, txh blobcache.Handle, target blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "Link"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Link"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_LINK_FROM)
-	if err != nil {
-		return nil, err
-	}
-	volTo, rights, err := s.resolveVol(ctx, target)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.ensureVolumeMetadata(ctx, volTo.info.ID); err != nil {
-		return nil, err
-	}
-	linkRights := rights.Share() & mask
-	ltok, err := txn.backend.Link(ctx, volTo.info.ID, linkRights, volTo.backend)
-	if err != nil {
-		return nil, setErrTxOID(err, txh.OID)
-	}
-	return ltok, nil
+	return s.core.Link(ctx, txh, target, mask)
 }
 
 func (s *Service[LK, LV, LQ]) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkTokenID) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Unlink"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Unlink"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_UNLINK_FROM)
-	if err != nil {
-		return err
-	}
-	return setErrTxOID(txn.backend.Unlink(ctx, targets), txh.OID)
+	return s.core.Unlink(ctx, txh, targets)
 }
 
 func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkTokenID) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "VisitLinks"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "VisitLinks"), zap.Stringer("oid", txh.OID))
-	txn, err := s.resolveTx(txh, true, blobcache.Action_TX_VISIT_LINKS)
-	if err != nil {
-		return err
-	}
-	return setErrTxOID(txn.backend.VisitLinks(ctx, targets), txh.OID)
+	return s.core.VisitLinks(ctx, txh, targets)
 }
 
 func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
@@ -1294,151 +574,51 @@ func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.E
 			return nil, err
 		}
 	case qspec.Remote != nil:
-		// If the OID refers to a queue we already have locally, reuse its backend.
-		if existing, ok := s.queueByOID(qspec.Remote.OID); ok {
-			queue = existing.backend
-		} else {
-			queue, err = s.backends.remote.QueueUp(ctx, qspec.Remote)
-			if err != nil {
-				return nil, err
-			}
+		queue, err = s.backends.remote.QueueUp(ctx, qspec.Remote)
+		if err != nil {
+			return nil, err
 		}
 	default:
 		panic(qspec)
 	}
-	oid := blobcache.RandomOID()
-	qcfg := queue.Config()
-	qspec2 := blobcache.QueueBackendToOID(qspec)
-	if !s.addQueue(oid, queue, qcfg, qspec2) {
-		panic("random OID happened twice")
-	}
 	createdAt := time.Now()
-	expiresAt := createdAt.Add(DefaultQueueTTL)
-	handle := s.handles.Create(oid, blobcache.Action_ALL, createdAt, expiresAt)
+	oid := blobcache.RandomOID()
+	handle, err := s.core.Create(ctx, oid, bccore.AnyObject{Queue: queue}, blobcache.Action_ALL, createdAt, DefaultQueueTTL)
+	if err != nil {
+		return nil, err
+	}
 	return &handle, nil
 }
 
 // createRemoteQueue calls CreateQueue on a remote node
 // it then creates a local proxy queue with a new random OID
 func (s *Service[LK, LV, LQ]) createRemoteQueue(ctx context.Context, host blobcache.Endpoint, qspec blobcache.QueueSpec) (*blobcache.Handle, error) {
-	q, info, err := s.backends.remote.CreateQueue(ctx, host, qspec)
+	q, _, err := s.backends.remote.CreateQueue(ctx, host, qspec)
 	if err != nil {
 		return nil, err
 	}
 	oid := blobcache.RandomOID()
-	if !s.addQueue(oid, q, info.Config, blobcache.QueueBackend[blobcache.OID]{
-		Remote: &blobcache.QueueBackend_Remote{
-			Endpoint: host,
-			OID:      info.ID,
-		},
-	}) {
-		return nil, fmt.Errorf("queue already exists")
+	handle, err := s.core.Create(ctx, oid, bccore.AnyObject{Queue: q}, blobcache.Action_ALL, time.Now(), DefaultQueueTTL)
+	if err != nil {
+		return nil, err
 	}
-	createdAt := time.Now()
-	expiresAt := createdAt.Add(DefaultQueueTTL)
-	handle := s.handles.Create(oid, blobcache.Action_ALL, createdAt, expiresAt)
 	return &handle, nil
 }
 
 func (s *Service[LK, LV, LQ]) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "InspectQueue"), zap.Stringer("oid", qh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "InspectQueue"), zap.Stringer("oid", qh.OID))
-	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSPECT)
-	if err != nil {
-		return blobcache.QueueInfo{}, err
-	}
-	return q.info, nil
+	return s.core.InspectQueue(ctx, qh)
 }
 
 func (s *Service[LK, LV, LQ]) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "Dequeue"), zap.Stringer("oid", qh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Dequeue"), zap.Stringer("oid", qh.OID))
-	if err := opts.Validate(); err != nil {
-		return 0, err
-	}
-	if len(buf) == 0 {
-		return 0, fmt.Errorf("dequeue buffer must be non-empty")
-	}
-	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_DEQUEUE)
-	if err != nil {
-		return 0, err
-	}
-	return q.backend.Dequeue(ctx, buf, opts)
+	return s.core.Dequeue(ctx, qh, buf, opts)
 }
 
 func (s *Service[LK, LV, LQ]) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "Enqueue"), zap.Stringer("oid", qh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Enqueue"), zap.Stringer("oid", qh.OID))
-	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_ENQUEUE)
-	if err != nil {
-		return nil, err
-	}
-	maxBytes := q.info.Config.MaxBytesPerMessage
-	maxHandles := q.info.Config.MaxHandlesPerMessage
-	for i, msg := range msgs {
-		if uint32(len(msg.Bytes)) > maxBytes {
-			return nil, fmt.Errorf("message %d exceeds max bytes per message: %d", i, maxBytes)
-		}
-		if uint32(len(msg.Handles)) > maxHandles {
-			return nil, fmt.Errorf("message %d exceeds max handles per message: %d", i, maxHandles)
-		}
-	}
-	n, err := q.backend.Enqueue(ctx, msgs)
-	if err != nil {
-		return nil, err
-	}
-	return &blobcache.InsertResp{Success: uint32(n)}, nil
+	return s.core.Enqueue(ctx, qh, msgs)
 }
 
 func (s *Service[LK, LV, LQ]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "SubToVolume"), zap.Stringer("oid", qh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "SubToVolume"), zap.Stringer("oid", qh.OID))
-	q, err := s.resolveQueue(ctx, qh, blobcache.Action_QUEUE_SUB_VOLUME)
-	if err != nil {
-		return err
-	}
-	vol, rights, err := s.resolveVol(ctx, volh)
-	if err != nil {
-		return err
-	}
-	if !rights.Has(blobcache.Action_VOLUME_SUBSCRIBE) {
-		return blobcache.ErrPermission{
-			Handle:   volh,
-			Rights:   rights,
-			Requires: blobcache.Action_VOLUME_SUBSCRIBE,
-		}
-	}
-	switch rv := vol.backend.(type) {
-	case *remotebe.Volume:
-		return s.backends.remote.SubToVol(ctx, rv, q.backend, spec)
-	default:
-		lv, ok := vol.backend.(LV)
-		if !ok {
-			return fmt.Errorf("SubToVolume not supported for volume type:%T", vol.backend)
-		}
-		return s.env.Local.SubToVol(ctx, lv, q.backend, spec)
-	}
-}
-
-func (s *Service[LK, LV, LQ]) resolveQueue(ctx context.Context, qh blobcache.Handle, requires blobcache.ActionSet) (queue, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	oid, rights := s.handles.Resolve(qh)
-	if rights == 0 {
-		return queue{}, blobcache.ErrInvalidHandle{Handle: qh}
-	}
-	if rights&requires < requires {
-		return queue{}, blobcache.ErrPermission{
-			Handle:   qh,
-			Rights:   rights,
-			Requires: requires,
-		}
-	}
-	q, exists := s.queues[oid]
-	if !exists {
-		return queue{}, blobcache.ErrInvalidHandle{Handle: qh}
-	}
-	return q, nil
+	return s.core.SubToVolume(ctx, qh, volh, spec)
 }
 
 // makeVolume constructs an in-memory volume object from a backend.
@@ -1490,11 +670,11 @@ func (s *Service[LK, LV, LQ]) makeGit(ctx context.Context, backend blobcache.Vol
 }
 
 func (s *Service[LK, LV, LQ]) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*vaultvol.Vault, error) {
-	volstate, exists := s.volByOID(backend.X)
-	if !exists {
+	volInfo, err := s.core.InspectVolume(ctx, blobcache.Handle{OID: backend.X})
+	if err != nil {
 		return nil, fmt.Errorf("inner volume not found: %v", backend.X)
 	}
-	inner, err := s.makeVolume(ctx, backend.X, volstate.info.Backend)
+	inner, err := s.makeVolume(ctx, backend.X, volInfo.Backend)
 	if err != nil {
 		return nil, err
 	}
@@ -1525,25 +705,12 @@ func (s *Service[LK, LV, LQ]) findVolumeParams(ctx context.Context, vspec blobca
 		return vol.GetParams(), nil
 
 	case vspec.Vault != nil:
-		innerVol, _, err := s.resolveVol(ctx, vspec.Vault.X)
+		innerVol, err := s.core.InspectVolume(ctx, vspec.Vault.X)
 		if err != nil {
 			return blobcache.VolumeConfig{}, err
 		}
-		return innerVol.info.VolumeConfig, nil
+		return innerVol.VolumeConfig, nil
 	default:
 		panic(vspec)
-	}
-}
-
-func setErrTxOID(err error, oid blobcache.OID) error {
-	switch e := err.(type) {
-	case blobcache.ErrTxDone:
-		e.ID = oid
-		return e
-	case blobcache.ErrTxReadOnly:
-		e.Tx = oid
-		return e
-	default:
-		return err
 	}
 }
