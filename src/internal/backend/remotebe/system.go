@@ -28,6 +28,8 @@ type System struct {
 }
 
 type ShareInResult struct {
+	Info blobcache.Info
+
 	Volume *Volume
 	Queue  *Queue
 }

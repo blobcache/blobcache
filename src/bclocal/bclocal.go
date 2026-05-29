@@ -286,10 +286,6 @@ func (s *Service) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vs
 	return s.sys.CreateVolume(ctx, host, vspec)
 }
 
-func (s *Service) CloneVolume(ctx context.Context, caller *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	return s.sys.CloneVolume(ctx, caller, volh)
-}
-
 func (s *Service) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
 	return s.sys.InspectVolume(ctx, h)
 }

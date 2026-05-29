@@ -35,6 +35,15 @@ func (q *Queue) Config() blobcache.QueueConfig {
 	return q.cfg
 }
 
+func (q *Queue) Backend() blobcache.QueueBackend[blobcache.OID] {
+	return blobcache.QueueBackend[blobcache.OID]{
+		Remote: &blobcache.QueueBackend_Remote{
+			Endpoint: q.ep,
+			OID:      q.h.OID,
+		},
+	}
+}
+
 func (q *Queue) Enqueue(ctx context.Context, msgs []blobcache.Message) (int, error) {
 	resp, err := bcp.Enqueue(ctx, q.n, q.ep, q.h, msgs)
 	if err != nil {

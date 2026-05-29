@@ -327,6 +327,18 @@ type Service interface {
 	// the same way on any Node.
 	OpenFiat(ctx context.Context, x OID, mask ActionSet) (*Handle, error)
 
+	// CreateVolume creates a new volume.
+	// CreateVolume always creates a Volume on the local Node.
+	// CreateVolume returns a handle to the Volume.  If no other references to the Volume
+	// have been created by the time the handle expires, the Volume will be deleted.
+	// Leave caller nil to skip Authorization checks.
+	// Host describes where the Volume should be created.
+	// If the Host is nil, the Volume will be created on the local Node.
+	CreateVolume(ctx context.Context, host *Endpoint, vspec VolumeSpec) (*Handle, error)
+
+	// CreateQueue creates a new queue and returns a handle to it.
+	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)
+
 	HandleAPI
 	VolumeAPI
 	TxAPI

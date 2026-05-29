@@ -93,8 +93,6 @@ const (
 )
 
 type QueueAPI interface {
-	// CreateQueue creates a new queue and returns a handle to it.
-	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)
 	// InspectQueue returns information about a queue.
 	InspectQueue(ctx context.Context, qh Handle) (QueueInfo, error)
 	// Dequeue reads from the queue.

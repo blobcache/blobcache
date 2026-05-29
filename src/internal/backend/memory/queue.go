@@ -33,6 +33,17 @@ func (q *Queue) Config() blobcache.QueueConfig {
 	}
 }
 
+func (q *Queue) Backend() blobcache.QueueBackend[blobcache.OID] {
+	return blobcache.QueueBackend[blobcache.OID]{
+		Memory: &blobcache.QueueBackend_Memory{
+			MaxDepth:             q.maxDepth,
+			MaxBytesPerMessage:   MaxMaxBytesPer,
+			MaxHandlesPerMessage: MaxMaxHandlesPer,
+			EvictOldest:          q.evictOldest,
+		},
+	}
+}
+
 func (q *Queue) QueueDown(ctx context.Context) error {
 	return nil
 }

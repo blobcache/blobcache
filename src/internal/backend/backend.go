@@ -21,6 +21,8 @@ type Queue interface {
 	QueueDown(ctx context.Context) error
 	// Config returns the QueueConfig for this queue.
 	Config() blobcache.QueueConfig
+	// Backend returns the QueueSpec for this queue.
+	Backend() blobcache.QueueBackend[blobcache.OID]
 }
 
 type VolumeSystem[Params any, V Volume] interface {
