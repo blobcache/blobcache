@@ -103,9 +103,9 @@ func New[LK any, LV LocalVolume[LK], LQ LocalQueue](env Env[LK, LV, LQ], cfg Con
 		Root: env.Root,
 		Up:   s.up,
 		OnLink: func(ctx context.Context, info blobcache.Info, ao bccore.AnyObject) error {
-			if ao.Volume == nil {
-				return fmt.Errorf("can only persist Volumes")
-			}
+			_ = ctx
+			_ = info
+			_ = ao
 			// TODO: need to call ensureVolumeMetadata
 			return nil
 		},
@@ -237,6 +237,9 @@ func (s *Service[LK, LV, LQ]) up(ctx context.Context, oid blobcache.OID) (bccore
 	if err != nil {
 		return bccore.AnyObject{}, err
 	}
+	if vinfo == nil {
+		return bccore.AnyObject{}, fmt.Errorf("non-volume object %v cannot be loaded", oid)
+	}
 	vol, err := s.makeVolume(ctx, oid, vinfo.Backend)
 	if err != nil {
 		return bccore.AnyObject{}, err
@@ -366,12 +369,54 @@ func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host 
 func (s *Service[LK, LV, LQ]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	logctx.Info(ctx, "begin", zap.String("method", "OpenFiat"), zap.Stringer("oid", x))
 	defer logctx.Info(ctx, "done", zap.String("method", "OpenFiat"), zap.Stringer("oid", x))
+	if x == (blobcache.OID{}) {
+		createdAt := time.Now()
+		h := s.core.Mint(x, mask, createdAt, DefaultVolumeTTL)
+		return &h, nil
+	}
+	vinfo, err := s.inspectVolume(ctx, x)
+	if err != nil {
+		return nil, err
+	}
+	if vinfo != nil {
+		createdAt := time.Now()
+		h := s.core.Mint(x, mask, createdAt, DefaultVolumeTTL)
+		return &h, nil
+	}
 	createdAt := time.Now()
-	h := s.core.Mint(x, mask, createdAt, DefaultVolumeTTL)
+	h := s.core.Mint(x, mask, createdAt, DefaultQueueTTL)
 	return &h, nil
 }
 
 func (s *Service[LK, LV, LQ]) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
+	info, err := s.core.Inspect(ctx, base)
+	if err != nil {
+		return nil, err
+	}
+	if info.Volume != nil {
+		var baseVol *remotebe.Volume
+		switch {
+		case info.Volume.Backend.Remote != nil:
+			baseVol, err = s.backends.remote.VolumeUp(ctx, *info.Volume.Backend.Remote)
+		case info.Volume.Backend.Peer != nil:
+			baseVol, err = s.backends.peer.VolumeUp(ctx, *info.Volume.Backend.Peer)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if baseVol != nil {
+			rights, subvol, err := s.backends.remote.OpenFrom(ctx, baseVol, ltok, mask)
+			if err != nil {
+				return nil, err
+			}
+			createdAt := time.Now()
+			h, err := s.core.Create(ctx, blobcache.RandomOID(), bccore.AnyObject{Volume: subvol}, rights, createdAt, DefaultVolumeTTL)
+			if err != nil {
+				return nil, err
+			}
+			return &h, nil
+		}
+	}
 	return s.core.OpenFrom(ctx, base, ltok, mask)
 }
 
@@ -597,7 +642,7 @@ func (s *Service[LK, LV, LQ]) createRemoteQueue(ctx context.Context, host blobca
 	if err != nil {
 		return nil, err
 	}
-	oid := blobcache.RandomOID()
+	oid := q.Backend().Remote.OID
 	handle, err := s.core.Create(ctx, oid, bccore.AnyObject{Queue: q}, blobcache.Action_ALL, time.Now(), DefaultQueueTTL)
 	if err != nil {
 		return nil, err
@@ -670,8 +715,11 @@ func (s *Service[LK, LV, LQ]) makeGit(ctx context.Context, backend blobcache.Vol
 }
 
 func (s *Service[LK, LV, LQ]) makeVault(ctx context.Context, backend blobcache.VolumeBackend_Vault[blobcache.OID]) (*vaultvol.Vault, error) {
-	volInfo, err := s.core.InspectVolume(ctx, blobcache.Handle{OID: backend.X})
+	volInfo, err := s.inspectVolume(ctx, backend.X)
 	if err != nil {
+		return nil, err
+	}
+	if volInfo == nil {
 		return nil, fmt.Errorf("inner volume not found: %v", backend.X)
 	}
 	inner, err := s.makeVolume(ctx, backend.X, volInfo.Backend)

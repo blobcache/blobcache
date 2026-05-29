@@ -83,12 +83,9 @@ func Inspect(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.H
 	return resp.Info, nil
 }
 
-func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
+func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.Info, error) {
 	var resp OpenFiatResp
 	if err := doAsk(ctx, tp, ep, MT_OPEN_FIAT, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
-		return nil, nil, err
-	}
-	if err := resp.Info.HashAlgo.Validate(); err != nil {
 		return nil, nil, err
 	}
 	return &resp.Handle, &resp.Info, nil

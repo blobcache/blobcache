@@ -340,26 +340,18 @@ func (sys *System) InspectHandle(_ context.Context, h blobcache.Handle) (*blobca
 }
 
 func (sys *System) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.Info, error) {
-	sys.mu.RLock()
-	defer sys.mu.RUnlock()
 	hi, err := sys.InspectHandle(ctx, h)
 	if err != nil {
 		return blobcache.Info{}, err
 	}
 	ret := blobcache.Info{Handle: *hi}
 
+	sys.mu.RLock()
 	_, isTx := sys.txns[h.OID]
 	_, isQueue := sys.queues[h.OID]
 	_, isVol := sys.volumes[h.OID]
+	sys.mu.RUnlock()
 
-	if h.OID == (blobcache.OID{}) || isVol {
-		vi, err := sys.InspectVolume(ctx, h)
-		if err != nil {
-			return blobcache.Info{}, err
-		}
-		ret.Volume = vi
-		return ret, nil
-	}
 	if isTx {
 		tx, err := sys.InspectTx(ctx, h)
 		if err != nil {
@@ -374,6 +366,14 @@ func (sys *System) Inspect(ctx context.Context, h blobcache.Handle) (blobcache.I
 			return blobcache.Info{}, err
 		}
 		ret.Queue = &q
+		return ret, nil
+	}
+	if h.OID == (blobcache.OID{}) || isVol {
+		vi, err := sys.InspectVolume(ctx, h)
+		if err != nil {
+			return blobcache.Info{}, err
+		}
+		ret.Volume = vi
 		return ret, nil
 	}
 	return blobcache.Info{}, fmt.Errorf("handle refers to unknown object type: %v", h.OID)

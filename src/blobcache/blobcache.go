@@ -315,6 +315,64 @@ type Info struct {
 	Queue  *QueueInfo  `json:"queue,omitempty"`
 }
 
+func (info *Info) Marshal(out []byte) []byte {
+	out = info.Handle.Marshal(out)
+	switch {
+	case info.Volume != nil:
+		out = append(out, 1)
+		return info.Volume.Marshal(out)
+	case info.Tx != nil:
+		out = append(out, 2)
+		return info.Tx.Marshal(out)
+	case info.Queue != nil:
+		out = append(out, 3)
+		return info.Queue.Marshal(out)
+	}
+	return out
+}
+
+func (info *Info) Unmarshal(data []byte) error {
+	hdata, data, err := sbe.ReadN(data, HandleInfoSize)
+	if err != nil {
+		return err
+	}
+	if err := info.Handle.Unmarshal(hdata); err != nil {
+		return err
+	}
+	var tc uint8
+	if len(data) < 1 {
+		return fmt.Errorf("could not parse type of Info")
+	}
+	tc = data[0]
+	data = data[1:]
+	switch tc {
+	case 1:
+		info.Volume = &VolumeInfo{}
+		info.Tx = nil
+		info.Queue = nil
+		if err := info.Volume.Unmarshal(data); err != nil {
+			return err
+		}
+	case 2:
+		info.Volume = nil
+		info.Tx = &TxInfo{}
+		info.Queue = nil
+		if err := info.Tx.Unmarshal(data); err != nil {
+			return err
+		}
+	case 3:
+		info.Volume = nil
+		info.Tx = nil
+		info.Queue = &QueueInfo{}
+		if err := info.Queue.Unmarshal(data); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("Info for unknown type %v", tc)
+	}
+	return nil
+}
+
 type Service interface {
 	// Endpoint returns the endpoint of the service.
 	// If the endpoint is the zero value, the service is not listening for peers.

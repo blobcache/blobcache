@@ -98,11 +98,11 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 			if err != nil {
 				return nil, err
 			}
-			info, err := svc.InspectVolume(ctx, *h)
+			info, err := svc.Inspect(ctx, *h)
 			if err != nil {
 				return nil, err
 			}
-			return &OpenFiatResp{Handle: *h, Info: *info}, nil
+			return &OpenFiatResp{Handle: *h, Info: info}, nil
 		})
 	case MT_OPEN_FROM:
 		handleAsk(req, resp, &OpenFromReq{}, func(req *OpenFromReq) (*OpenFromResp, error) {

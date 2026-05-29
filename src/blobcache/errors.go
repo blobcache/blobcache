@@ -136,3 +136,12 @@ type ErrPermission struct {
 func (e ErrPermission) Error() string {
 	return fmt.Sprintf("permission denied: handle=%v, rights=%v, requires=%v", e.Handle, e.Rights, e.Requires)
 }
+
+// ErrObjectNotFound indicates the object could not be found.
+type ErrObjectNotFound struct {
+	FQOID FQOID
+}
+
+func (e *ErrObjectNotFound) Error() string {
+	return fmt.Sprintf("object %v not found on node %v", e.FQOID.OID, e.FQOID.Node)
+}
