@@ -41,7 +41,8 @@ type transaction struct {
 
 // System manages objects and handles to those objects
 type System struct {
-	p Params
+	p    Params
+	root volume
 
 	// mu guards the volumes, queues, and txns.
 	// pure handle operations like Drop, KeepAlive, Inspect, etc. do not require this lock.
@@ -61,6 +62,8 @@ type AnyObject struct {
 }
 
 type Params struct {
+	// Root is the root Volume, which will be given the 0 ID
+	Root Volume
 	// Up is called to bring up a Volume or Queue
 	Up func(ctx context.Context, oid blobcache.OID) (AnyObject, error)
 	// OnLink is called before the object is linked to.
@@ -73,7 +76,16 @@ type Params struct {
 }
 
 func New(p Params) System {
-	return System{p: p}
+	return System{
+		p: p,
+		root: volume{
+			info: blobcache.VolumeInfo{
+				VolumeConfig: p.Root.GetParams(),
+				Backend:      p.Root.GetBackend(),
+			},
+			backend: p.Root,
+		},
+	}
 }
 
 // IsUp returns true if x has at least one active handle pointing at it, and it's state is loaded in memory.
@@ -128,6 +140,9 @@ func (s *System) Cleanup(ctx context.Context, now time.Time, onDown func(blobcac
 }
 
 func (sys *System) Create(ctx context.Context, oid blobcache.OID, x AnyObject, rights blobcache.ActionSet, createdAt time.Time, ttl time.Duration) (blobcache.Handle, error) {
+	if oid == (blobcache.OID{}) {
+		return blobcache.Handle{}, fmt.Errorf("cannot create new object with root OID")
+	}
 	switch {
 	case x.Volume != nil:
 		if !sys.addVolume(oid, x.Volume) {
@@ -158,6 +173,7 @@ func (sys *System) Create(ctx context.Context, oid blobcache.OID, x AnyObject, r
 }
 
 func (sys *System) Mint(x blobcache.OID, rights blobcache.ActionSet, createdAt time.Time, ttl time.Duration) blobcache.Handle {
+	// TODO: need to check that the object exists
 	return sys.handles.Create(x, rights, createdAt, createdAt.Add(ttl))
 }
 
@@ -167,6 +183,9 @@ func (sys *System) resolveVol(_ context.Context, x blobcache.Handle) (volume, bl
 	oid, rights := sys.handles.Resolve(x)
 	if rights == 0 {
 		return volume{}, 0, blobcache.ErrInvalidHandle{Handle: x}
+	}
+	if oid == (blobcache.OID{}) {
+		return sys.root, rights, nil
 	}
 	vol, exists := sys.volumes[oid]
 	if !exists {
