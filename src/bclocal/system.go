@@ -2,8 +2,6 @@ package bclocal
 
 import (
 	"context"
-	"sync"
-	"time"
 
 	"blobcache.io/blobcache/src/bclocal/internal/localvol"
 	"blobcache.io/blobcache/src/blobcache"
@@ -16,16 +14,12 @@ var _ backend.System[localvol.Params, backend.Volume, blobcache.QueueBackend_Mem
 type system struct {
 	vols   *localvol.System
 	queues *memory.System
-
-	mu   sync.RWMutex
-	subs map[backend.Volume]map[backend.Queue]blobcache.VolSubSpec
 }
 
 func newSystem(vols *localvol.System, queues *memory.System) *system {
 	return &system{
 		vols:   vols,
 		queues: queues,
-		subs:   make(map[backend.Volume]map[backend.Queue]blobcache.VolSubSpec),
 	}
 }
 
@@ -44,72 +38,8 @@ func (s *system) CreateQueue(ctx context.Context, spec blobcache.QueueBackend_Me
 	return s.queues.CreateQueue(ctx, spec)
 }
 
-func (s *system) SubToVol(ctx context.Context, vol backend.Volume, q backend.Queue, spec blobcache.VolSubSpec) error {
-	volKey := s.normalizeVolume(vol)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	subs := s.subs[volKey]
-	if subs == nil {
-		subs = make(map[backend.Queue]blobcache.VolSubSpec)
-		s.subs[volKey] = subs
-	}
-	subs[q] = spec
-	return nil
-}
-
 func (s *system) VolumeDestroy(ctx context.Context, vol backend.Volume) error {
 	return s.vols.VolumeDestroy(ctx, vol.(*localvol.Volume))
-}
-
-func (s *system) notifyVol(ctx context.Context, vol backend.Volume) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-
-	volKey := s.normalizeVolume(vol)
-	s.mu.RLock()
-	subs := s.subs[volKey]
-	if len(subs) == 0 {
-		s.mu.RUnlock()
-		return nil
-	}
-	type item struct {
-		q    backend.Queue
-		spec blobcache.VolSubSpec
-	}
-	items := make([]item, 0, len(subs))
-	for q, spec := range subs {
-		items = append(items, item{q: q, spec: spec})
-	}
-	s.mu.RUnlock()
-
-	var firstErr error
-	for _, it := range items {
-		_ = it.spec
-		if _, err := it.q.Enqueue(ctx, []blobcache.Message{{}}); err != nil && firstErr == nil {
-			firstErr = err
-		}
-		if ctx.Err() != nil {
-			return firstErr
-		}
-	}
-	return firstErr
-}
-
-func (s *system) removeVolume(vol backend.Volume) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.subs, s.normalizeVolume(vol))
-}
-
-func (s *system) removeQueue(q backend.Queue) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for vol, subs := range s.subs {
-		delete(subs, q)
-		if len(subs) == 0 {
-			delete(s.subs, vol)
-		}
-	}
 }
 
 func (s *system) normalizeVolume(vol backend.Volume) backend.Volume {
@@ -181,7 +111,6 @@ func (t *txWrap) Commit(ctx context.Context) error {
 	if err := t.inner.Commit(ctx); err != nil {
 		return err
 	}
-	_ = t.sys.notifyVol(ctx, t.vol)
 	return nil
 }
 

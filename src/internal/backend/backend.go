@@ -39,8 +39,6 @@ type VolumeSystem[Params any, V Volume] interface {
 type System[VP any, V Volume, QP any, Q Queue] interface {
 	VolumeSystem[VP, V]
 	QueueSystem[QP, Q]
-
-	SubToVol(ctx context.Context, vol V, q Queue, spec blobcache.VolSubSpec) error
 }
 
 type LinkSet = map[[32]byte]blobcache.OID
