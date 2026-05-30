@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	DefaultTxTTL    = 1 * time.Minute
-	DefaultQueueTTL = 2 * time.Minute
+	DefaultVolumeTTL = 5 * time.Minute
+	DefaultTxTTL     = 1 * time.Minute
+	DefaultQueueTTL  = 2 * time.Minute
 )
 
 type (
@@ -338,8 +339,21 @@ func (sys *System) KeepAlive(_ context.Context, hs []blobcache.Handle) error {
 		if _, rights := sys.handles.Resolve(h); rights == 0 {
 			return blobcache.ErrInvalidHandle{Handle: h}
 		}
-		panic("todo, need to check what kind of object it is to get timeout")
-		sys.handles.KeepAlive(h, time.Now().Add(DefaultTxTTL))
+
+		var ttl time.Duration
+		sys.mu.RLock()
+		if _, ok := sys.volumes[h.OID]; ok {
+			ttl = DefaultVolumeTTL
+		}
+		if _, ok := sys.txns[h.OID]; ok {
+			ttl = DefaultTxTTL
+		}
+		if _, ok := sys.queues[h.OID]; ok {
+			ttl = DefaultQueueTTL
+		}
+		sys.mu.RUnlock()
+
+		sys.handles.KeepAlive(h, time.Now().Add(ttl))
 	}
 	return nil
 }
