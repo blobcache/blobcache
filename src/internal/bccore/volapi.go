@@ -15,7 +15,7 @@ var _ blobcache.VolumeAPI = &System{}
 func (sys *System) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "InspectVolume"), zap.Stringer("oid", h.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "InspectVolume"), zap.Stringer("oid", h.OID))
-	vol, _, err := sys.resolveVol(ctx, h)
+	vol, _, err := sys.resolveVol(h)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +26,7 @@ func (sys *System) InspectVolume(ctx context.Context, h blobcache.Handle) (*blob
 func (sys *System) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	logctx.Info(ctx, "begin", zap.String("method", "OpenFrom"), zap.Stringer("oid", base.OID))
 	defer logctx.Info(ctx, "done", zap.String("method", "OpenFrom"), zap.Stringer("oid", base.OID))
-	baseVol, _, err := sys.resolveVol(ctx, base)
+	baseVol, _, err := sys.resolveVol(base)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (sys *System) BeginTx(ctx context.Context, volh blobcache.Handle, txspec bl
 	if err := txspec.Validate(); err != nil {
 		return nil, err
 	}
-	vol, rights, err := sys.resolveVol(ctx, volh)
+	vol, rights, err := sys.resolveVol(volh)
 	if err != nil {
 		return nil, err
 	}

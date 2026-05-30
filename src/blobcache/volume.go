@@ -397,6 +397,7 @@ type VolumeConfig struct {
 	HashAlgo HashAlgo   `json:"hash_algo"`
 	MaxSize  int64      `json:"max_size"`
 	Salted   bool       `json:"salted"`
+	Deps     []OID      `json:"deps"`
 }
 
 func (v *VolumeConfig) Validate() error {
@@ -431,6 +432,15 @@ func VolumeBackend_LocalFromConfig(x VolumeConfig) *VolumeBackend_Local {
 		HashAlgo: x.HashAlgo,
 		MaxSize:  x.MaxSize,
 		Salted:   x.Salted,
+	}
+}
+
+func (v *VolumeBackend_Local) Config() VolumeConfig {
+	return VolumeConfig{
+		Schema:   v.Schema,
+		HashAlgo: v.HashAlgo,
+		MaxSize:  v.MaxSize,
+		Salted:   v.Salted,
 	}
 }
 

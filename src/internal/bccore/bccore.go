@@ -1,3 +1,4 @@
+// Package bccore implements handles and object lifecycles.
 package bccore
 
 import (
@@ -32,6 +33,7 @@ type volume struct {
 type queue struct {
 	info    blobcache.QueueInfo
 	backend backend.Queue
+	subs    map[*sub]struct{}
 }
 
 type transaction struct {
@@ -54,6 +56,7 @@ type System struct {
 
 	handles handleSystem
 	setup   singleflight.Group[blobcache.OID, AnyObject]
+	hub     hub
 }
 
 type AnyObject struct {
@@ -69,10 +72,9 @@ type Params struct {
 	// OnLink is called before the object is linked to.
 	// The object must be persisted so that it can be loaded later
 	OnLink func(ctx context.Context, info blobcache.Info, ao AnyObject) error
-
-	// SubToVolume subscribes a queue to a volume.
-	SubToVolume func(ctx context.Context, vol Volume, q Queue, spec blobcache.VolSubSpec) error
-	OnSave      func(ctx context.Context, vol Volume, tx Tx, root []byte) error
+	// OnSave, if not nil, is called on Save.
+	// This is where schema checks can be performed.
+	OnSave func(ctx context.Context, vol Volume, tx Tx, root []byte) error
 }
 
 func New(p Params) System {
@@ -177,7 +179,23 @@ func (sys *System) Mint(x blobcache.OID, rights blobcache.ActionSet, createdAt t
 	return sys.handles.Create(x, rights, createdAt, createdAt.Add(ttl))
 }
 
-func (sys *System) resolveVol(_ context.Context, x blobcache.Handle) (volume, blobcache.ActionSet, error) {
+func (sys *System) ResolveVol(qh blobcache.Handle) (Volume, error) {
+	q, _, err := sys.resolveVol(qh)
+	if err != nil {
+		return nil, err
+	}
+	return q.backend, nil
+}
+
+func (sys *System) ResolveQueue(qh blobcache.Handle) (Queue, error) {
+	q, _, err := sys.resolveQueue(qh, 0)
+	if err != nil {
+		return nil, err
+	}
+	return q.backend, nil
+}
+
+func (sys *System) resolveVol(x blobcache.Handle) (volume, blobcache.ActionSet, error) {
 	sys.mu.RLock()
 	defer sys.mu.RUnlock()
 	oid, rights := sys.handles.Resolve(x)
@@ -261,19 +279,20 @@ func (sys *System) addQueue(oid blobcache.OID, q backend.Queue) bool {
 			Backend: q.Backend(),
 		},
 		backend: q,
+		subs:    make(map[*sub]struct{}),
 	}
 	return true
 }
 
-func (sys *System) resolveQueue(_ context.Context, qh blobcache.Handle, requires blobcache.ActionSet) (queue, error) {
+func (sys *System) resolveQueue(qh blobcache.Handle, requires blobcache.ActionSet) (queue, blobcache.ActionSet, error) {
 	sys.mu.RLock()
 	defer sys.mu.RUnlock()
 	oid, rights := sys.handles.Resolve(qh)
 	if rights == 0 {
-		return queue{}, blobcache.ErrInvalidHandle{Handle: qh}
+		return queue{}, 0, blobcache.ErrInvalidHandle{Handle: qh}
 	}
 	if rights&requires < requires {
-		return queue{}, blobcache.ErrPermission{
+		return queue{}, 0, blobcache.ErrPermission{
 			Handle:   qh,
 			Rights:   rights,
 			Requires: requires,
@@ -281,9 +300,9 @@ func (sys *System) resolveQueue(_ context.Context, qh blobcache.Handle, requires
 	}
 	q, exists := sys.queues[oid]
 	if !exists {
-		return queue{}, blobcache.ErrInvalidHandle{Handle: qh}
+		return queue{}, 0, blobcache.ErrInvalidHandle{Handle: qh}
 	}
-	return q, nil
+	return q, rights, nil
 }
 
 // Share creates a new handle from x and applies mask.

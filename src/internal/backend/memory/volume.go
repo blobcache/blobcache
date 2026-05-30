@@ -38,7 +38,7 @@ func (vol *Volume) GetParams() blobcache.VolumeConfig {
 
 func (vol *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
 	return blobcache.VolumeBackend[blobcache.OID]{
-		Local: (*blobcache.VolumeBackend_Local)(&vol.cfg),
+		Local: blobcache.VolumeBackend_LocalFromConfig(vol.cfg),
 	}
 }
 

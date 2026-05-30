@@ -100,27 +100,9 @@ func New[LK any, LV LocalVolume[LK], LQ LocalQueue](env Env[LK, LV, LQ], cfg Con
 	})
 	s.queueSys.memory = &memory.System{}
 	s.core = bccore.New(bccore.Params{
-		Root: env.Root,
-		Up:   s.up,
-		OnLink: func(ctx context.Context, info blobcache.Info, ao bccore.AnyObject) error {
-			_ = ctx
-			_ = info
-			_ = ao
-			// TODO: need to call ensureVolumeMetadata
-			return nil
-		},
-		SubToVolume: func(ctx context.Context, vol bccore.Volume, q bccore.Queue, spec blobcache.VolSubSpec) error {
-			switch rv := vol.(type) {
-			case *remotebe.Volume:
-				return s.backends.remote.SubToVol(ctx, rv, q, spec)
-			default:
-				lv, ok := vol.(LV)
-				if !ok {
-					return fmt.Errorf("SubToVolume not supported for volume type:%T", vol)
-				}
-				return s.env.Local.SubToVol(ctx, lv, q, spec)
-			}
-		},
+		Root:   env.Root,
+		Up:     s.up,
+		OnLink: s.onLink,
 		OnSave: func(ctx context.Context, vol bccore.Volume, tx bccore.Tx, root []byte) error {
 			// validate against the schema.
 			var prevRoot []byte
@@ -247,20 +229,35 @@ func (s *Service[LK, LV, LQ]) up(ctx context.Context, oid blobcache.OID) (bccore
 	return bccore.AnyObject{Volume: vol}, nil
 }
 
+func (s *Service[LK, LV, LQ]) onLink(ctx context.Context, info blobcache.Info, ao bccore.AnyObject) error {
+	switch {
+	case ao.Volume != nil:
+		return s.env.MDS.Put(ctx, info.Volume.ID, AnyInfo{
+			Volume: info.Volume,
+		})
+	case ao.Queue != nil:
+		return s.env.MDS.Put(ctx, info.Queue.ID, AnyInfo{
+			Queue: info.Queue,
+		})
+	default:
+		return fmt.Errorf("cannot persist %v", ao)
+	}
+}
+
 func (s *Service[LK, LV, LQ]) inspectVolume(ctx context.Context, volID blobcache.OID) (*blobcache.VolumeInfo, error) {
-	var ve VolumeEntry
-	found, err := s.env.MDS.Get(ctx, volID, &ve)
+	var ainfo AnyInfo
+	found, err := s.env.MDS.Get(ctx, volID, &ainfo)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
 		return nil, nil
 	}
-	return ve.Info(), nil
+	return ainfo.Volume, nil
 }
 
 // Endpoint blocks waiting for a node to be created (happens when Serve is running).
-// And then returns the Endpoint for that Node.
+// And then returns the Endpoint
 func (s *Service[LK, LV, LQ]) Endpoint(ctx context.Context) (blobcache.Endpoint, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "Endpoint"))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Endpoint"))
@@ -479,18 +476,7 @@ func (s *Service[LK, LV, LQ]) CreateVolume(ctx context.Context, host *blobcache.
 		Backend:      blobcache.VolumeBackendToOID(vspec),
 	}
 
-	ve := VolumeEntry{
-		OID: oid,
-
-		MaxSize:  vp.MaxSize,
-		HashAlgo: vp.HashAlgo,
-		Salted:   vp.Salted,
-		Schema:   vp.Schema,
-		Backend:  info.Backend,
-
-		Deps: nil,
-	}
-	if err := s.env.MDS.Put(ctx, oid, ve); err != nil {
+	if err := s.env.MDS.Put(ctx, oid, AnyInfo{Volume: &info}); err != nil {
 		return nil, err
 	}
 	createdAt := time.Now()
@@ -663,7 +649,26 @@ func (s *Service[LK, LV, LQ]) Enqueue(ctx context.Context, qh blobcache.Handle, 
 }
 
 func (s *Service[LK, LV, LQ]) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
-	return s.core.SubToVolume(ctx, qh, volh, spec)
+	logctx.Debug(ctx, "begin", zap.String("method", "SubToVolume"), zap.Stringer("oid", qh.OID))
+	defer logctx.Debug(ctx, "done", zap.String("method", "SubToVolume"), zap.Stringer("oid", qh.OID))
+	q, err := s.core.ResolveQueue(qh)
+	if err != nil {
+		return err
+	}
+	vol, err := s.core.ResolveVol(volh)
+	if err != nil {
+		return err
+	}
+	switch vol := vol.(type) {
+	case *remotebe.Volume:
+		return s.backends.remote.SubToVol(ctx, vol, q, spec)
+	default:
+		_, ok := vol.(LV)
+		if !ok {
+			return fmt.Errorf("subscribe to volume not supported on volume=%T and queue=%T", vol, q)
+		}
+		return s.core.SubToVolume(ctx, qh, volh)
+	}
 }
 
 // makeVolume constructs an in-memory volume object from a backend.
@@ -696,8 +701,8 @@ func (s *Service[LK, LV, LQ]) makeVolume(ctx context.Context, oid blobcache.OID,
 }
 
 func (s *Service[LK, LV, LQ]) makeLocal(ctx context.Context, oid blobcache.OID, lk LK) (backend.Volume, error) {
-	var ve VolumeEntry
-	found, err := s.env.MDS.Get(ctx, oid, &ve)
+	var ainfo AnyInfo
+	found, err := s.env.MDS.Get(ctx, oid, &ainfo)
 	if err != nil {
 		return nil, err
 	}
@@ -706,7 +711,7 @@ func (s *Service[LK, LV, LQ]) makeLocal(ctx context.Context, oid blobcache.OID, 
 	}
 	return s.backends.local.VolumeUp(ctx, LVParams[LK]{
 		Key:    lk,
-		Params: blobcache.VolumeConfig(*ve.Info().Backend.Local),
+		Params: ainfo.Volume.VolumeConfig,
 	})
 }
 

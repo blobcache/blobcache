@@ -46,6 +46,7 @@ func (sys *System) Commit(ctx context.Context, txh blobcache.Handle) error {
 	sys.mu.Lock()
 	sys.handles.Drop(txh)
 	sys.mu.Unlock()
+	sys.hub.Publish(ctx, tx.volume.info.ID, tx.volume)
 	return nil
 }
 
@@ -271,7 +272,7 @@ func (sys *System) Link(ctx context.Context, txh blobcache.Handle, target blobca
 	if err != nil {
 		return nil, err
 	}
-	volTo, rights, err := sys.resolveVol(ctx, target)
+	volTo, rights, err := sys.resolveVol(target)
 	if err != nil {
 		return nil, err
 	}

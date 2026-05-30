@@ -401,6 +401,7 @@ type Service interface {
 	VolumeAPI
 	TxAPI
 	QueueAPI
+	SubcriptionAPI
 }
 
 // CheckBlob checks that the data matches the expected CID.

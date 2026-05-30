@@ -33,7 +33,10 @@ func (s *mdStore) Delete(ctx context.Context, oid blobcache.OID) error {
 }
 
 // Get implements bcsys.MetadataStore.
-func (s *mdStore) Get(ctx context.Context, oid blobcache.OID, dst *bcsys.VolumeEntry) (bool, error) {
+func (s *mdStore) Get(ctx context.Context, oid blobcache.OID, dst *bcsys.AnyInfo) (bool, error) {
+	dst.Volume = &blobcache.VolumeInfo{}
+	dst.Queue = nil
+
 	snp := s.db.NewSnapshot()
 	defer snp.Close()
 	ve, err := getVolume(snp, oid)
@@ -43,39 +46,47 @@ func (s *mdStore) Get(ctx context.Context, oid blobcache.OID, dst *bcsys.VolumeE
 	if ve == nil {
 		return false, nil
 	}
-	if err := json.Unmarshal(ve.Backend, &dst.Backend); err != nil {
+	if err := json.Unmarshal(ve.Backend, &dst.Volume.Backend); err != nil {
 		return false, err
 	}
-	dst.OID = oid
-	dst.Schema = ve.Schema
-	dst.HashAlgo = blobcache.HashAlgo(ve.HashAlgo)
-	dst.MaxSize = ve.MaxSize
-	dst.Salted = ve.Salted
+	dst.Volume.ID = oid
+	dst.Volume.Schema = ve.Schema
+	dst.Volume.HashAlgo = blobcache.HashAlgo(ve.HashAlgo)
+	dst.Volume.MaxSize = ve.MaxSize
+	dst.Volume.Salted = ve.Salted
 	return true, nil
 }
 
 // Put implements bcsys.MetadataStore.
-func (s *mdStore) Put(ctx context.Context, oid blobcache.OID, ve bcsys.VolumeEntry) error {
+func (s *mdStore) Put(ctx context.Context, oid blobcache.OID, ainfo bcsys.AnyInfo) error {
+	volInfo := ainfo.Volume
+	if volInfo == nil {
+		if ainfo.Queue != nil {
+			// Local queues are in-memory only; there is no queue metadata table.
+			return nil
+		}
+		return fmt.Errorf("cannot persist empty metadata")
+	}
 	w := s.db.NewBatch()
 	defer w.Close()
 
-	backendJSON, err := json.Marshal(ve.Backend)
+	backendJSON, err := json.Marshal(ainfo.Volume.Backend)
 	if err != nil {
 		return err
 	}
 	ve2 := volumeEntry{
 		OID: oid,
 
-		Schema:   ve.Schema,
-		HashAlgo: string(ve.HashAlgo),
-		MaxSize:  ve.MaxSize,
+		Schema:   volInfo.Schema,
+		HashAlgo: string(volInfo.HashAlgo),
+		MaxSize:  volInfo.MaxSize,
 		Backend:  backendJSON,
-		Salted:   ve.Salted,
+		Salted:   volInfo.Salted,
 	}
 	if err := w.Set(ve2.Key(nil), ve2.Value(nil), nil); err != nil {
 		return err
 	}
-	for range ve.Deps {
+	for range volInfo.Deps {
 		// TODO: set Volume deps in the database
 	}
 	return w.Commit(nil)

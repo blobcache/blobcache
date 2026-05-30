@@ -15,7 +15,7 @@ var _ blobcache.QueueAPI = &System{}
 func (sys *System) InspectQueue(ctx context.Context, qh blobcache.Handle) (blobcache.QueueInfo, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "InspectQueue"), zap.Stringer("oid", qh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "InspectQueue"), zap.Stringer("oid", qh.OID))
-	q, err := sys.resolveQueue(ctx, qh, blobcache.Action_QUEUE_INSPECT)
+	q, _, err := sys.resolveQueue(qh, blobcache.Action_QUEUE_INSPECT)
 	if err != nil {
 		return blobcache.QueueInfo{}, err
 	}
@@ -32,7 +32,7 @@ func (sys *System) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobc
 	if len(buf) == 0 {
 		return 0, fmt.Errorf("dequeue buffer must be non-empty")
 	}
-	q, err := sys.resolveQueue(ctx, qh, blobcache.Action_QUEUE_DEQUEUE)
+	q, _, err := sys.resolveQueue(qh, blobcache.Action_QUEUE_DEQUEUE)
 	if err != nil {
 		return 0, err
 	}
@@ -43,7 +43,7 @@ func (sys *System) Dequeue(ctx context.Context, qh blobcache.Handle, buf []blobc
 func (sys *System) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blobcache.Message) (*blobcache.InsertResp, error) {
 	logctx.Debug(ctx, "begin", zap.String("method", "Enqueue"), zap.Stringer("oid", qh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Enqueue"), zap.Stringer("oid", qh.OID))
-	q, err := sys.resolveQueue(ctx, qh, blobcache.Action_QUEUE_ENQUEUE)
+	q, _, err := sys.resolveQueue(qh, blobcache.Action_QUEUE_ENQUEUE)
 	if err != nil {
 		return nil, err
 	}
@@ -62,31 +62,6 @@ func (sys *System) Enqueue(ctx context.Context, qh blobcache.Handle, msgs []blob
 		return nil, err
 	}
 	return &blobcache.InsertResp{Success: uint32(n)}, nil
-}
-
-// SubToVolume implements blobcache.QueueAPI.SubToVolume
-func (sys *System) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "SubToVolume"), zap.Stringer("oid", qh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "SubToVolume"), zap.Stringer("oid", qh.OID))
-	q, err := sys.resolveQueue(ctx, qh, blobcache.Action_QUEUE_SUB_VOLUME)
-	if err != nil {
-		return err
-	}
-	vol, rights, err := sys.resolveVol(ctx, volh)
-	if err != nil {
-		return err
-	}
-	if !rights.Has(blobcache.Action_VOLUME_SUBSCRIBE) {
-		return blobcache.ErrPermission{
-			Handle:   volh,
-			Rights:   rights,
-			Requires: blobcache.Action_VOLUME_SUBSCRIBE,
-		}
-	}
-	if sys.p.SubToVolume == nil {
-		return fmt.Errorf("SubToVolume not supported")
-	}
-	return sys.p.SubToVolume(ctx, vol.backend, q.backend, spec)
 }
 
 var _ blobcache.QueueAPI = &System{}
