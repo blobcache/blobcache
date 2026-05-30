@@ -14,7 +14,7 @@ import (
 // this is not the correct thing for a Node to do in the general case,
 // Nodes should forward subscriptions to remote Volumes and Queues when both
 // are on the same Node.
-func (sys *System) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle) error {
+func (sys *System) SubToVolume(ctx context.Context, qh blobcache.Handle, volh blobcache.Handle, spec blobcache.VolSubSpec) error {
 	_, rights, err := sys.resolveVol(volh)
 	if err != nil {
 		return err
@@ -44,8 +44,7 @@ type hub struct {
 	// mu guards pubs
 	mu sync.RWMutex
 	// pubs is the set of publishers
-	pubs    map[blobcache.OID]map[*sub]struct{}
-	lastPub uint64
+	pubs map[blobcache.OID]map[*sub]struct{}
 }
 
 type sub struct {

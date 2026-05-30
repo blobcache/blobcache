@@ -667,7 +667,7 @@ func (s *Service[LK, LV, LQ]) SubToVolume(ctx context.Context, qh blobcache.Hand
 		if !ok {
 			return fmt.Errorf("subscribe to volume not supported on volume=%T and queue=%T", vol, q)
 		}
-		return s.core.SubToVolume(ctx, qh, volh)
+		return s.core.SubToVolume(ctx, qh, volh, spec)
 	}
 }
 
