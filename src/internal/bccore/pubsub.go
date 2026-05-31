@@ -77,13 +77,13 @@ func (h *hub) Subscribe(k blobcache.OID, fn func(ctx context.Context, k blobcach
 	return s
 }
 
-func (h *hub) Unsubscribe(k blobcache.OID, s *sub) {
+func (h *hub) Unsubscribe(s *sub) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.pubs[s.k] != nil {
-		delete(h.pubs[k], s)
-		if len(h.pubs[k]) == 0 {
-			delete(h.pubs, k)
+		delete(h.pubs[s.k], s)
+		if len(h.pubs[s.k]) == 0 {
+			delete(h.pubs, s.k)
 		}
 	}
 }

@@ -135,6 +135,9 @@ func (s *System) Cleanup(ctx context.Context, now time.Time, onDown func(blobcac
 		if !s.handles.isAlive(oid) {
 			q := s.queues[oid]
 			delete(s.queues, oid)
+			for sub := range q.subs {
+				s.hub.Unsubscribe(sub)
+			}
 			_ = q.backend.Down(ctx)
 		}
 	}
