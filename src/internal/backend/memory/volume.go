@@ -43,7 +43,6 @@ func (vol *Volume) GetBackend() blobcache.VolumeBackend[blobcache.OID] {
 }
 
 func (vol *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.Tx, error) {
-	_ = ctx
 	if spec.Modify {
 		vol.txMu.Lock()
 	} else {
@@ -58,7 +57,6 @@ func (vol *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backen
 }
 
 func (vol *Volume) Down(ctx context.Context) error {
-	_ = ctx
 	return nil
 }
 
@@ -83,14 +81,15 @@ type Tx struct {
 	p   blobcache.TxParams
 	vol *Volume
 
-	doneMu sync.RWMutex
-	isDone bool
-	cellMu sync.Mutex
-	cell   []byte
-	blobMu sync.RWMutex
-	blobs  map[blobcache.CID][]byte
-	linkMu sync.RWMutex
-	links  map[blobcache.LinkTokenID]blobcache.LinkToken
+	doneMu     sync.RWMutex
+	isDone     bool
+	cellMu     sync.Mutex
+	cell       []byte
+	blobMu     sync.RWMutex
+	blobs      map[blobcache.CID][]byte
+	blobVisits map[blobcache.CID]struct{}
+	linkMu     sync.RWMutex
+	links      map[blobcache.LinkTokenID]blobcache.LinkToken
 }
 
 func (tx *Tx) setDone() {
@@ -146,7 +145,6 @@ func (tx *Tx) Commit(ctx context.Context) error {
 }
 
 func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
-	_ = ctx
 	tx.doneMu.RLock()
 	defer tx.doneMu.RUnlock()
 	tx.cellMu.Lock()
@@ -163,7 +161,6 @@ func (tx *Tx) Params() blobcache.TxParams {
 }
 
 func (tx *Tx) Save(ctx context.Context, src []byte) error {
-	_ = ctx
 	tx.doneMu.Lock()
 	defer tx.doneMu.Unlock()
 	if tx.isDone {
@@ -174,7 +171,6 @@ func (tx *Tx) Save(ctx context.Context, src []byte) error {
 }
 
 func (tx *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {
-	_ = ctx
 	tx.doneMu.Lock()
 	defer tx.doneMu.Unlock()
 	if tx.isDone {
@@ -199,9 +195,7 @@ func (tx *Tx) Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (b
 	return cid, nil
 }
 
-func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	_ = ctx
-	_ = opts
+func (tx *Tx) Get(_ context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
 	tx.doneMu.RLock()
 	defer tx.doneMu.RUnlock()
 	if tx.isDone {
@@ -225,8 +219,7 @@ func (tx *Tx) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobc
 	return copyBlob(buf, cid, data)
 }
 
-func (tx *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
-	_ = ctx
+func (tx *Tx) Delete(_ context.Context, cids []blobcache.CID) error {
 	tx.doneMu.Lock()
 	defer tx.doneMu.Unlock()
 	if tx.isDone {
@@ -243,8 +236,7 @@ func (tx *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return nil
 }
 
-func (tx *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	_ = ctx
+func (tx *Tx) Exists(_ context.Context, cids []blobcache.CID, dst []bool) error {
 	tx.doneMu.RLock()
 	defer tx.doneMu.RUnlock()
 	if tx.isDone {
@@ -262,17 +254,29 @@ func (tx *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) erro
 	return nil
 }
 
-func (tx *Tx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	_ = ctx
-	for i := range cids {
-		dst[i] = false
+func (tx *Tx) IsVisited(_ context.Context, cids []blobcache.CID, dst []bool) error {
+	tx.doneMu.RLock()
+	defer tx.doneMu.RUnlock()
+	tx.blobMu.Lock()
+	defer tx.blobMu.Unlock()
+	for i, cid := range cids {
+		_, exists := tx.blobVisits[cid]
+		dst[i] = exists
 	}
 	return nil
 }
 
 func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
-	_ = ctx
-	_ = cids
+	tx.doneMu.RLock()
+	defer tx.doneMu.RUnlock()
+	tx.blobMu.Lock()
+	defer tx.blobMu.Unlock()
+	if tx.blobVisits == nil {
+		tx.blobVisits = make(map[blobcache.CID]struct{})
+	}
+	for _, cid := range cids {
+		tx.blobVisits[cid] = struct{}{}
+	}
 	return nil
 }
 
@@ -288,42 +292,15 @@ func (tx *Tx) HashAlgo() blobcache.HashAlgo {
 }
 
 func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol backend.Volume) (*blobcache.LinkToken, error) {
-	_ = ctx
-	_ = subvol
-	tx.doneMu.Lock()
-	defer tx.doneMu.Unlock()
-	if tx.isDone {
-		return nil, blobcache.ErrTxDone{}
-	}
-	ltok := &blobcache.LinkToken{Target: svoid, Rights: rights}
-	ltid := ltok.GetID(tx.HashAlgo())
-	if tx.links == nil {
-		tx.links = make(map[blobcache.LinkTokenID]blobcache.LinkToken)
-	}
-	tx.links[ltid] = *ltok
-	return ltok, nil
+	return nil, fmt.Errorf("linking not implemented for memory volumes")
 }
 
 func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
-	_ = ctx
-	tx.doneMu.Lock()
-	defer tx.doneMu.Unlock()
-	if tx.isDone {
-		return blobcache.ErrTxDone{}
-	}
-	if tx.links == nil {
-		tx.links = make(map[blobcache.LinkTokenID]blobcache.LinkToken)
-	}
-	for _, target := range targets {
-		tx.links[target] = blobcache.LinkToken{}
-	}
-	return nil
+	return fmt.Errorf("linking not implemented for memory volumes")
 }
 
 func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
-	_ = ctx
-	_ = targets
-	return nil
+	return fmt.Errorf("linking not implemented for memory volumes")
 }
 
 func copyBlob(buf []byte, cid blobcache.CID, data []byte) (int, error) {
