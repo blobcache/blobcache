@@ -103,6 +103,8 @@ type HandleInfo struct {
 	ExpiresAt tai64.TAI64 `json:"expires_at"`
 }
 
+const HandleInfoSize = OIDSize + ActionSetSize + 2*tai64.TAI64Size
+
 func (hi HandleInfo) Marshal(out []byte) []byte {
 	ret := out
 	ret = append(ret, hi.OID[:]...)
@@ -132,6 +134,9 @@ func (hi *HandleInfo) Unmarshal(data []byte) error {
 	hi.ExpiresAt = expiresAt
 	return nil
 }
+
+// ActionSetSize is the size of an ActionSet in bytes
+const ActionSetSize = 8
 
 // ActionSet is a bitmask of the actions that can be performed using a handle.
 type ActionSet uint64

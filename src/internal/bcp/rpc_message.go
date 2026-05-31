@@ -240,7 +240,7 @@ func (oa *OpenFiatReq) Unmarshal(data []byte) error {
 
 type OpenFiatResp struct {
 	Handle blobcache.Handle
-	Info   blobcache.VolumeInfo
+	Info   blobcache.Info
 }
 
 func (oa OpenFiatResp) Marshal(out []byte) []byte {

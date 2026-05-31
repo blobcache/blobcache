@@ -36,7 +36,7 @@ func (v *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backend.
 	panic("unimplemented")
 }
 
-func (v *Volume) VolumeDown(ctx context.Context) error {
+func (v *Volume) Down(ctx context.Context) error {
 	return nil
 }
 

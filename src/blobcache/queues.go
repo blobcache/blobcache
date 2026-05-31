@@ -93,8 +93,6 @@ const (
 )
 
 type QueueAPI interface {
-	// CreateQueue creates a new queue and returns a handle to it.
-	CreateQueue(ctx context.Context, host *Endpoint, qspec QueueSpec) (*Handle, error)
 	// InspectQueue returns information about a queue.
 	InspectQueue(ctx context.Context, qh Handle) (QueueInfo, error)
 	// Dequeue reads from the queue.
@@ -102,7 +100,9 @@ type QueueAPI interface {
 	Dequeue(ctx context.Context, q Handle, buf []Message, opts DequeueOpts) (int, error)
 	// Insert adds the messages to the end of the queue.
 	Enqueue(ctx context.Context, q Handle, msgs []Message) (*InsertResp, error)
+}
 
+type SubcriptionAPI interface {
 	// SubToVolume causes all changes to a Volume's cell to be
 	// writen as message to the queue.
 	SubToVolume(ctx context.Context, q Handle, vol Handle, spec VolSubSpec) error

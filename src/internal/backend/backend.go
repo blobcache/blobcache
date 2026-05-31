@@ -17,10 +17,12 @@ type Queue interface {
 	Enqueue(ctx context.Context, msgs []blobcache.Message) (int, error)
 	// Dequeue removes messages from the Queue.
 	Dequeue(ctx context.Context, buf []blobcache.Message, opts blobcache.DequeueOpts) (int, error)
-	// QueueDown is called when the queue has no remaining handles
-	QueueDown(ctx context.Context) error
+	// Down is called when the queue has no remaining handles
+	Down(ctx context.Context) error
 	// Config returns the QueueConfig for this queue.
 	Config() blobcache.QueueConfig
+	// Backend returns the QueueSpec for this queue.
+	Backend() blobcache.QueueBackend[blobcache.OID]
 }
 
 type VolumeSystem[Params any, V Volume] interface {
@@ -37,8 +39,6 @@ type VolumeSystem[Params any, V Volume] interface {
 type System[VP any, V Volume, QP any, Q Queue] interface {
 	VolumeSystem[VP, V]
 	QueueSystem[QP, Q]
-
-	SubToVol(ctx context.Context, vol V, q Queue, spec blobcache.VolSubSpec) error
 }
 
 type LinkSet = map[[32]byte]blobcache.OID
@@ -51,8 +51,8 @@ type Volume interface {
 
 	BeginTx(ctx context.Context, spec blobcache.TxParams) (Tx, error)
 
-	// VolumeDown is called when the Volume has no remaining handles.
-	VolumeDown(ctx context.Context) error
+	// Down is called when the Volume has no remaining handles.
+	Down(ctx context.Context) error
 
 	// AccessSubVolume returns the rights granted to access a subvolume.
 	// Returns 0 if there is no link to the target.

@@ -96,7 +96,7 @@ func MigrateLinkTokenHashes(ctx context.Context, sys *Service, nss map[string]bc
 			return fmt.Errorf("volume %s: %w", oid, err)
 		}
 
-		cfg := blobcache.VolumeConfig(*volBackend.Local)
+		cfg := volBackend.Local.Config()
 		stats, err := migrateOneNamespaceVolume(ctx, sys, lvid, cfg, ns)
 		if err != nil {
 			return fmt.Errorf("volume %s: %w", oid, err)

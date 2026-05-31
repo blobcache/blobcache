@@ -57,14 +57,6 @@ const (
 )
 
 type VolumeAPI interface {
-	// CreateVolume creates a new volume.
-	// CreateVolume always creates a Volume on the local Node.
-	// CreateVolume returns a handle to the Volume.  If no other references to the Volume
-	// have been created by the time the handle expires, the Volume will be deleted.
-	// Leave caller nil to skip Authorization checks.
-	// Host describes where the Volume should be created.
-	// If the Host is nil, the Volume will be created on the local Node.
-	CreateVolume(ctx context.Context, host *Endpoint, vspec VolumeSpec) (*Handle, error)
 	// InspectVolume returns info about a Volume.
 	InspectVolume(ctx context.Context, h Handle) (*VolumeInfo, error)
 	// OpenFrom returns a handle to an object by it's ID.
@@ -405,6 +397,7 @@ type VolumeConfig struct {
 	HashAlgo HashAlgo   `json:"hash_algo"`
 	MaxSize  int64      `json:"max_size"`
 	Salted   bool       `json:"salted"`
+	Deps     []OID      `json:"deps"`
 }
 
 func (v *VolumeConfig) Validate() error {
@@ -439,6 +432,15 @@ func VolumeBackend_LocalFromConfig(x VolumeConfig) *VolumeBackend_Local {
 		HashAlgo: x.HashAlgo,
 		MaxSize:  x.MaxSize,
 		Salted:   x.Salted,
+	}
+}
+
+func (v *VolumeBackend_Local) Config() VolumeConfig {
+	return VolumeConfig{
+		Schema:   v.Schema,
+		HashAlgo: v.HashAlgo,
+		MaxSize:  v.MaxSize,
+		Salted:   v.Salted,
 	}
 }
 

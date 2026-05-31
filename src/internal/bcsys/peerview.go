@@ -114,16 +114,6 @@ func (pv *peerView[LK, LV, LQ]) BeginTx(ctx context.Context, volh blobcache.Hand
 	return &h2, nil
 }
 
-func (pv *peerView[LK, LV, LQ]) CloneVolume(ctx context.Context, _ *blobcache.NodeID, volh blobcache.Handle) (*blobcache.Handle, error) {
-	// Ignore the caller parameter provided by upstream; this view is already bound to pv.peer.
-	h, err := pv.svc.CloneVolume(ctx, &pv.peer, pv.incoming(volh))
-	if err != nil {
-		return nil, err
-	}
-	h2 := pv.outgoing(*h)
-	return &h2, nil
-}
-
 func (pv *peerView[LK, LV, LQ]) InspectTx(ctx context.Context, tx blobcache.Handle) (*blobcache.TxInfo, error) {
 	return pv.svc.InspectTx(ctx, pv.incoming(tx))
 }

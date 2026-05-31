@@ -35,8 +35,13 @@ func (ve VolumeEntry) Config() blobcache.VolumeConfig {
 	}
 }
 
+type AnyInfo struct {
+	Volume *blobcache.VolumeInfo
+	Queue  *blobcache.QueueInfo
+}
+
 type MetadataStore interface {
-	Put(ctx context.Context, oid blobcache.OID, entry VolumeEntry) error
+	Put(ctx context.Context, oid blobcache.OID, info AnyInfo) error
 	Delete(ctx context.Context, oid blobcache.OID) error
-	Get(ctx context.Context, oid blobcache.OID, dst *VolumeEntry) (bool, error)
+	Get(ctx context.Context, oid blobcache.OID, dst *AnyInfo) (bool, error)
 }
