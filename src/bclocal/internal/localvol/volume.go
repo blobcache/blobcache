@@ -40,7 +40,7 @@ func (v *Volume) BeginTx(ctx context.Context, tp blobcache.TxParams) (backend.Tx
 	return v.sys.beginTx(ctx, v, tp)
 }
 
-func (v *Volume) VolumeDown(ctx context.Context) error {
+func (v *Volume) Down(ctx context.Context) error {
 	return nil
 }
 

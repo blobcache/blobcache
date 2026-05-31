@@ -60,9 +60,8 @@ type System struct {
 	hub     hub
 }
 
-type AnyObject struct {
-	Volume Volume
-	Queue  Queue
+type AnyObject interface {
+	Down(ctx context.Context) error
 }
 
 type Params struct {
@@ -126,7 +125,7 @@ func (s *System) Cleanup(ctx context.Context, now time.Time, onDown func(blobcac
 			vol := s.volumes[oid]
 			delete(s.volumes, oid)
 			ret = append(ret, oid)
-			_ = vol.backend.VolumeDown(ctx)
+			_ = vol.backend.Down(ctx)
 		}
 	}
 
@@ -136,7 +135,7 @@ func (s *System) Cleanup(ctx context.Context, now time.Time, onDown func(blobcac
 		if !s.handles.isAlive(oid) {
 			q := s.queues[oid]
 			delete(s.queues, oid)
-			_ = q.backend.QueueDown(ctx)
+			_ = q.backend.Down(ctx)
 		}
 	}
 	return nil
@@ -146,13 +145,13 @@ func (sys *System) Create(ctx context.Context, oid blobcache.OID, x AnyObject, r
 	if oid == (blobcache.OID{}) {
 		return blobcache.Handle{}, fmt.Errorf("cannot create new object with root OID")
 	}
-	switch {
-	case x.Volume != nil:
-		if !sys.addVolume(oid, x.Volume) {
+	switch x := x.(type) {
+	case Volume:
+		if !sys.addVolume(oid, x) {
 			return blobcache.Handle{}, fmt.Errorf("volume already exists")
 		}
-	case x.Queue != nil:
-		if !sys.addQueue(oid, x.Queue) {
+	case Queue:
+		if !sys.addQueue(oid, x) {
 			return blobcache.Handle{}, fmt.Errorf("queue already exists")
 		}
 	default:

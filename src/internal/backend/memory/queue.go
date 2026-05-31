@@ -44,7 +44,7 @@ func (q *Queue) Backend() blobcache.QueueBackend[blobcache.OID] {
 	}
 }
 
-func (q *Queue) QueueDown(ctx context.Context) error {
+func (q *Queue) Down(ctx context.Context) error {
 	return nil
 }
 

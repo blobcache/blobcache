@@ -57,7 +57,7 @@ func (vol *Volume) BeginTx(ctx context.Context, spec blobcache.TxParams) (backen
 	return tx, nil
 }
 
-func (vol *Volume) VolumeDown(ctx context.Context) error {
+func (vol *Volume) Down(ctx context.Context) error {
 	_ = ctx
 	return nil
 }

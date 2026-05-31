@@ -89,8 +89,8 @@ func (v *volume) AccessSubVolume(ctx context.Context, target blobcache.LinkToken
 	return v.inner.AccessSubVolume(ctx, target)
 }
 
-func (v *volume) VolumeDown(ctx context.Context) error {
-	return v.inner.VolumeDown(ctx)
+func (v *volume) Down(ctx context.Context) error {
+	return v.inner.Down(ctx)
 }
 
 func (v *volume) Inner() *localvol.Volume {

@@ -276,7 +276,7 @@ func (sys *System) Link(ctx context.Context, txh blobcache.Handle, target blobca
 	if err != nil {
 		return nil, err
 	}
-	if err := sys.p.OnLink(ctx, blobcache.Info{Volume: &volTo.info}, AnyObject{Volume: volTo.backend}); err != nil {
+	if err := sys.p.OnLink(ctx, blobcache.Info{Volume: &volTo.info}, volTo.backend); err != nil {
 		return nil, err
 	}
 	linkRights := rights.Share() & mask

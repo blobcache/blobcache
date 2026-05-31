@@ -56,6 +56,6 @@ func (q *Queue) Dequeue(ctx context.Context, buf []blobcache.Message, opts blobc
 	return bcp.Dequeue(ctx, q.n, q.ep, q.h, buf, opts)
 }
 
-func (q *Queue) QueueDown(ctx context.Context) error {
+func (q *Queue) Down(ctx context.Context) error {
 	return nil
 }

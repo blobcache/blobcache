@@ -217,25 +217,25 @@ func (s *Service[LK, LV, LQ]) up(ctx context.Context, oid blobcache.OID) (bccore
 	}
 	vinfo, err := s.inspectVolume(ctx, oid)
 	if err != nil {
-		return bccore.AnyObject{}, err
+		return nil, err
 	}
 	if vinfo == nil {
-		return bccore.AnyObject{}, fmt.Errorf("non-volume object %v cannot be loaded", oid)
+		return nil, fmt.Errorf("non-volume object %v cannot be loaded", oid)
 	}
 	vol, err := s.makeVolume(ctx, oid, vinfo.Backend)
 	if err != nil {
-		return bccore.AnyObject{}, err
+		return nil, err
 	}
-	return bccore.AnyObject{Volume: vol}, nil
+	return vol, nil
 }
 
 func (s *Service[LK, LV, LQ]) onLink(ctx context.Context, info blobcache.Info, ao bccore.AnyObject) error {
-	switch {
-	case ao.Volume != nil:
+	switch ao := ao.(type) {
+	case bccore.Volume:
 		return s.env.MDS.Put(ctx, info.Volume.ID, AnyInfo{
 			Volume: info.Volume,
 		})
-	case ao.Queue != nil:
+	case bccore.Queue:
 		return s.env.MDS.Put(ctx, info.Queue.ID, AnyInfo{
 			Queue: info.Queue,
 		})
@@ -318,10 +318,10 @@ func (s *Service[LK, LV, LQ]) ShareIn(ctx context.Context, host blobcache.NodeID
 	var ttl time.Duration
 	switch {
 	case adopted.Volume != nil:
-		ao.Volume = adopted.Volume
+		ao = adopted.Volume
 		ttl = DefaultVolumeTTL
 	case adopted.Queue != nil:
-		ao.Queue = adopted.Queue
+		ao = adopted.Queue
 		ttl = DefaultQueueTTL
 	default:
 		return blobcache.Handle{}, fmt.Errorf("cannot adopt unsupported object type")
@@ -407,7 +407,7 @@ func (s *Service[LK, LV, LQ]) OpenFrom(ctx context.Context, base blobcache.Handl
 				return nil, err
 			}
 			createdAt := time.Now()
-			h, err := s.core.Create(ctx, blobcache.RandomOID(), bccore.AnyObject{Volume: subvol}, rights, createdAt, DefaultVolumeTTL)
+			h, err := s.core.Create(ctx, blobcache.RandomOID(), subvol, rights, createdAt, DefaultVolumeTTL)
 			if err != nil {
 				return nil, err
 			}
@@ -484,7 +484,7 @@ func (s *Service[LK, LV, LQ]) CreateVolume(ctx context.Context, host *blobcache.
 	if err != nil {
 		return nil, err
 	}
-	handle, err := s.core.Create(ctx, info.ID, bccore.AnyObject{Volume: vol}, blobcache.Action_ALL, createdAt, DefaultVolumeTTL)
+	handle, err := s.core.Create(ctx, info.ID, vol, blobcache.Action_ALL, createdAt, DefaultVolumeTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +510,7 @@ func (s *Service[LK, LV, LQ]) createRemoteVolume(ctx context.Context, host blobc
 	// now we have a handle to the remote volume.
 	// The handle is only valid on the remote node.
 	id := blobcache.RandomOID()
-	localHandle, err := s.core.Create(ctx, id, bccore.AnyObject{Volume: vol}, blobcache.Action_ALL, time.Now(), DefaultVolumeTTL)
+	localHandle, err := s.core.Create(ctx, id, vol, blobcache.Action_ALL, time.Now(), DefaultVolumeTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -614,7 +614,7 @@ func (s *Service[LK, LV, LQ]) CreateQueue(ctx context.Context, host *blobcache.E
 	}
 	createdAt := time.Now()
 	oid := blobcache.RandomOID()
-	handle, err := s.core.Create(ctx, oid, bccore.AnyObject{Queue: queue}, blobcache.Action_ALL, createdAt, DefaultQueueTTL)
+	handle, err := s.core.Create(ctx, oid, queue, blobcache.Action_ALL, createdAt, DefaultQueueTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -629,7 +629,7 @@ func (s *Service[LK, LV, LQ]) createRemoteQueue(ctx context.Context, host blobca
 		return nil, err
 	}
 	oid := q.Backend().Remote.OID
-	handle, err := s.core.Create(ctx, oid, bccore.AnyObject{Queue: q}, blobcache.Action_ALL, time.Now(), DefaultQueueTTL)
+	handle, err := s.core.Create(ctx, oid, q, blobcache.Action_ALL, time.Now(), DefaultQueueTTL)
 	if err != nil {
 		return nil, err
 	}

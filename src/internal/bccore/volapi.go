@@ -39,23 +39,23 @@ func (sys *System) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blo
 	}
 
 	_, err, _ = sys.setup.Do(ltok.Target, func() (AnyObject, error) {
-		ures, err := sys.p.Up(ctx, ltok.Target)
+		obj, err := sys.p.Up(ctx, ltok.Target)
 		if err != nil {
-			return AnyObject{}, err
+			return nil, err
 		}
-		switch {
-		case ures.Volume != nil:
-			if added := sys.addVolume(ltok.Target, ures.Volume); !added {
-				return AnyObject{}, ures.Volume.VolumeDown(ctx)
+		switch obj := obj.(type) {
+		case Volume:
+			if added := sys.addVolume(ltok.Target, obj); !added {
+				return nil, obj.Down(ctx)
 			}
-		case ures.Queue != nil:
-			if added := sys.addQueue(ltok.Target, ures.Queue); !added {
-				return AnyObject{}, ures.Queue.QueueDown(ctx)
+		case Queue:
+			if added := sys.addQueue(ltok.Target, obj); !added {
+				return nil, obj.Down(ctx)
 			}
 		default:
-			return AnyObject{}, fmt.Errorf("volume=%v has link to subvolume=%v, but that subvolume was not found", base.OID, ltok.Target)
+			return nil, fmt.Errorf("volume=%v has link to subvolume=%v, but that subvolume was not found", base.OID, ltok.Target)
 		}
-		return ures, nil
+		return obj, nil
 	})
 	if err != nil {
 		return nil, err
