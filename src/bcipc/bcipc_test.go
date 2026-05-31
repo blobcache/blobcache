@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"blobcache.io/blobcache/src/bclocal"
+	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
-	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/internal/testutil"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"

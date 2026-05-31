@@ -12,8 +12,8 @@ import (
 	"net/netip"
 	"sync"
 
+	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/bcp"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/quic-go/quic-go"
 	"go.brendoncarroll.net/exp/singleflight"

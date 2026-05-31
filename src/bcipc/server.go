@@ -4,8 +4,8 @@ import (
 	"context"
 	"net"
 
+	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/bcp"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"

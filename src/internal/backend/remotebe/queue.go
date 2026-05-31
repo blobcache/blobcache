@@ -3,9 +3,9 @@ package remotebe
 import (
 	"context"
 
+	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
-	"blobcache.io/blobcache/src/internal/bcp"
 )
 
 var _ backend.Queue = (*Queue)(nil)
