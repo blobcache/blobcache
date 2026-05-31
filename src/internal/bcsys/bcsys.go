@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
 	consensusvol "blobcache.io/blobcache/src/internal/backend/consensusbe"
@@ -20,7 +21,6 @@ import (
 	"blobcache.io/blobcache/src/internal/backend/vaultvol"
 	"blobcache.io/blobcache/src/internal/bccore"
 	"blobcache.io/blobcache/src/internal/bcnet"
-	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"go.brendoncarroll.net/stdctx/logctx"

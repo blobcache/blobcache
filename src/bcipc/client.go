@@ -8,8 +8,8 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
+	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/bcp"
 	"blobcache.io/blobcache/src/internal/pools"
 )
 

@@ -6,10 +6,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
 	"blobcache.io/blobcache/src/internal/bcnet"
-	"blobcache.io/blobcache/src/internal/bcp"
 	"go.brendoncarroll.net/exp/singleflight"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.uber.org/zap"
