@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"blobcache.io/blobcache/src/bccore"
 	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
@@ -19,7 +20,6 @@ import (
 	"blobcache.io/blobcache/src/internal/backend/memory"
 	"blobcache.io/blobcache/src/internal/backend/remotebe"
 	"blobcache.io/blobcache/src/internal/backend/vaultvol"
-	"blobcache.io/blobcache/src/internal/bccore"
 	"blobcache.io/blobcache/src/internal/bcnet"
 	"blobcache.io/blobcache/src/schema"
 	"github.com/cloudflare/circl/sign/ed25519"
