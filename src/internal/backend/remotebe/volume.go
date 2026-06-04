@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"blobcache.io/blobcache/src/bccore"
 	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
@@ -234,7 +235,7 @@ func (tx *Tx) Visit(ctx context.Context, cids []blobcache.CID) error {
 	return bcp.Visit(ctx, tx.vol.n, tx.vol.ep, tx.h, cids)
 }
 
-func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
+func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol bccore.AnyObject) (*blobcache.LinkToken, error) {
 	if !tx.params.Modify {
 		return nil, blobcache.ErrTxReadOnly{}
 	}

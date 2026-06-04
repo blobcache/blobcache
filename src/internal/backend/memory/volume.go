@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"blobcache.io/blobcache/src/bccore"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
 )
@@ -291,7 +292,7 @@ func (tx *Tx) HashAlgo() blobcache.HashAlgo {
 	return tx.vol.cfg.HashAlgo
 }
 
-func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol backend.Volume) (*blobcache.LinkToken, error) {
+func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, child bccore.AnyObject) (*blobcache.LinkToken, error) {
 	return nil, fmt.Errorf("linking not implemented for memory volumes")
 }
 

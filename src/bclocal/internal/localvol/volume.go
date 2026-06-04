@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"blobcache.io/blobcache/src/bccore"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
@@ -276,7 +277,7 @@ func (txn *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst
 	return txn.localSys.isVisited(txn.vol.lvid, txn.mvid, cids, dst)
 }
 
-func (txn *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
+func (txn *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol bccore.AnyObject) (*blobcache.LinkToken, error) {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	if txn.finished {

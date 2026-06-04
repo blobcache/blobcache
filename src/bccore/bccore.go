@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/internal/backend"
 	"go.brendoncarroll.net/exp/singleflight"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.brendoncarroll.net/tai64"
@@ -20,25 +19,19 @@ const (
 	DefaultQueueTTL  = 2 * time.Minute
 )
 
-type (
-	Queue  backend.Queue
-	Volume backend.Volume
-	Tx     backend.Tx
-)
-
 type volume struct {
 	info    blobcache.VolumeInfo
-	backend backend.Volume
+	backend Volume
 }
 
 type queue struct {
 	info    blobcache.QueueInfo
-	backend backend.Queue
+	backend Queue
 	subs    map[*sub]struct{}
 }
 
 type transaction struct {
-	backend backend.Tx
+	backend Tx
 	volume  *volume
 }
 
@@ -240,7 +233,7 @@ func (sys *System) resolveTx(txh blobcache.Handle, touch bool, requires blobcach
 	return tx, nil
 }
 
-func (sys *System) addVolume(oid blobcache.OID, vol backend.Volume) bool {
+func (sys *System) addVolume(oid blobcache.OID, vol Volume) bool {
 	if oid == (blobcache.OID{}) {
 		return false
 	}
@@ -263,7 +256,7 @@ func (sys *System) addVolume(oid blobcache.OID, vol backend.Volume) bool {
 	return true
 }
 
-func (sys *System) addQueue(oid blobcache.OID, q backend.Queue) bool {
+func (sys *System) addQueue(oid blobcache.OID, q Queue) bool {
 	if oid == (blobcache.OID{}) {
 		return false
 	}

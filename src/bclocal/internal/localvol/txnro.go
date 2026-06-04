@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"blobcache.io/blobcache/src/bccore"
 	"blobcache.io/blobcache/src/bclocal/internal/dbtab"
 	"blobcache.io/blobcache/src/bclocal/internal/pdb"
 	"blobcache.io/blobcache/src/blobcache"
@@ -127,7 +128,7 @@ func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []boo
 	return nil
 }
 
-func (v *localTxnRO) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol backend.Volume) (*blobcache.LinkToken, error) {
+func (v *localTxnRO) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, targetVol bccore.AnyObject) (*blobcache.LinkToken, error) {
 	return nil, blobcache.ErrTxReadOnly{Op: "AllowLink"}
 }
 

@@ -1,9 +1,10 @@
-package bccore
+package bccore_test
 
 import (
 	"testing"
 	"time"
 
+	"blobcache.io/blobcache/src/bccore"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend/memory"
 	"blobcache.io/blobcache/src/internal/testutil"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestRootHandles(t *testing.T) {
-	s := New(Params{Root: memory.NewVolume(1000)})
+	s := bccore.New(bccore.Params{Root: memory.NewVolume(1000)})
 
 	var hs []blobcache.Handle
 	now := time.Now()

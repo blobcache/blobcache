@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/crypto/chacha20poly1305"
 
+	"blobcache.io/blobcache/src/bccore"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
 	"blobcache.io/blobcache/src/internal/bccrypto"
@@ -389,7 +390,7 @@ func (v *Tx) Hash(data []byte) blobcache.CID {
 	return v.HashAlgo().Hash(data)
 }
 
-func (v *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol backend.Volume) (*blobcache.LinkToken, error) {
+func (v *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.ActionSet, subvol bccore.AnyObject) (*blobcache.LinkToken, error) {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return nil, err
