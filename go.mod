@@ -3,7 +3,7 @@ module blobcache.io/blobcache
 go 1.26.0
 
 require (
-	blobcache.io/glfs v0.0.0-20260313021227-407298e99fa7
+	blobcache.io/glfs v0.0.0-20260606153950-599b6585abc8
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.2
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.0
