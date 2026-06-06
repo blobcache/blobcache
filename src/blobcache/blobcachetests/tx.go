@@ -97,6 +97,27 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		Delete(t, s, txh, hf(data1))
 		require.False(t, Exists(t, s, txh, hf(data1)))
 	})
+	t.Run("ExistsDoesNotUnsetBits", func(t *testing.T) {
+		ctx := testutil.Context(t)
+		s, volh := mk(t)
+		txh := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
+
+		cids := []blobcache.CID{
+			Post(t, s, txh, []byte("blob 1"), blobcache.PostOpts{}),
+			Post(t, s, txh, []byte("blob 2"), blobcache.PostOpts{}),
+			Post(t, s, txh, []byte("blob 3"), blobcache.PostOpts{}),
+		}
+		cids = append(cids, blobcache.CID{})
+
+		var bm blobcache.BitMap
+		bm.Set(len(cids) - 1) // set the zero CID to true
+
+		require.NoError(t, s.Exists(ctx, txh, cids, &bm))
+		// check that all bits are set
+		for i := range cids {
+			require.True(t, bm.IsSet(i))
+		}
+	})
 	t.Run("1WriterNReaders", func(t *testing.T) {
 		s, volh := mk(t)
 
