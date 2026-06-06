@@ -440,7 +440,7 @@ func (s *System) deleteBlob(volID ID, mvid pdb.MVTag, cids []blobcache.CID) erro
 	})
 }
 
-func (s *System) blobExists(volID ID, mvid pdb.MVTag, cids []blobcache.CID, dst []bool) error {
+func (s *System) blobExists(volID ID, mvid pdb.MVTag, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	sn := s.db.NewSnapshot()
 	defer sn.Close()
 	active := make(pdb.MVSet)
@@ -460,7 +460,9 @@ func (s *System) blobExists(volID ID, mvid pdb.MVTag, cids []blobcache.CID, dst 
 		if err != nil {
 			return err
 		}
-		dst[i] = exists
+		if exists {
+			dst.Set(i)
+		}
 	}
 	return nil
 }
@@ -504,7 +506,7 @@ func (s *System) visit(volID ID, mvid pdb.MVTag, cids []blobcache.CID) error {
 	})
 }
 
-func (s *System) isVisited(volID ID, mvid pdb.MVTag, cids []blobcache.CID, dst []bool) error {
+func (s *System) isVisited(volID ID, mvid pdb.MVTag, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return s.doRW(func(ba *pebble.Batch, excluding func(pdb.MVTag) bool) error {
 		for i, cid := range cids {
 			// we only have to check for a specific version.
@@ -521,7 +523,9 @@ func (s *System) isVisited(volID ID, mvid pdb.MVTag, cids []blobcache.CID, dst [
 			if err != nil {
 				return err
 			}
-			dst[i] = isVisit
+			if isVisit {
+				dst.Set(i)
+			}
 		}
 		return nil
 	})

@@ -296,27 +296,47 @@ func (s *Service) Get(ctx context.Context, h blobcache.Handle, cid blobcache.CID
 	return n, nil
 }
 
-func (s *Service) Exists(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (s *Service) Exists(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	args := []string{"tx", "exists", h.String()}
 	for _, cid := range cids {
+		if cid.IsZero() {
+			continue
+		}
 		args = append(args, cid.String())
+	}
+	if len(args) == 2 {
+		return nil
 	}
 	var out bytes.Buffer
 	if err := s.run(args, nil, &out); err != nil {
 		return err
 	}
+	// parse output
 	lines := bytes.Split(bytes.TrimSpace(out.Bytes()), []byte{'\n'})
-	idx := 0
+	existsm := make(map[blobcache.CID]struct{})
 	for _, ln := range lines {
 		if len(ln) == 0 {
 			continue
 		}
 		if bytes.HasSuffix(ln, []byte(" YES")) {
-			dst[idx] = true
-			idx++
+			cid, err := blobcache.ParseCID(string(bytes.TrimSuffix(ln, []byte(" YES"))))
+			if err != nil {
+				return err
+			}
+			existsm[cid] = struct{}{}
 		} else if bytes.HasSuffix(ln, []byte(" NO")) {
-			dst[idx] = false
-			idx++
+			cid, err := blobcache.ParseCID(string(bytes.TrimSuffix(ln, []byte(" NO"))))
+			if err != nil {
+				return err
+			}
+			_ = cid
+		}
+	}
+
+	// set the bits in dst
+	for i, cid := range cids {
+		if _, exists := existsm[cid]; exists {
+			dst.Set(i)
 		}
 	}
 	return nil
@@ -346,27 +366,44 @@ func (s *Service) Visit(ctx context.Context, h blobcache.Handle, cids []blobcach
 	return s.run(args, nil, nil)
 }
 
-func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, yesVisited []bool) error {
+func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	args := []string{"tx", "is-visited", h.String()}
+	// prepare input
+	in := make([]byte, 0, len(cids)*(blobcache.CIDSize+1))
 	for _, cid := range cids {
-		args = append(args, cid.String())
+		in = append(in, cid.String()...)
+		in = append(in, '\n')
 	}
 	var out bytes.Buffer
-	if err := s.run(args, nil, &out); err != nil {
+	if err := s.run(args, in, &out); err != nil {
 		return err
 	}
+	// parse output
 	lines := bytes.Split(bytes.TrimSpace(out.Bytes()), []byte{'\n'})
-	idx := 0
+	visitm := make(map[blobcache.CID]struct{})
 	for _, ln := range lines {
 		if len(ln) == 0 {
 			continue
 		}
 		if bytes.HasSuffix(ln, []byte(" YES")) {
-			yesVisited[idx] = true
-			idx++
+			cid, err := blobcache.ParseCID(string(bytes.TrimSuffix(ln, []byte(" YES"))))
+			if err != nil {
+				return err
+			}
+			visitm[cid] = struct{}{}
 		} else if bytes.HasSuffix(ln, []byte(" NO")) {
-			yesVisited[idx] = false
-			idx++
+			cid, err := blobcache.ParseCID(string(bytes.TrimSuffix(ln, []byte(" NO"))))
+			if err != nil {
+				return err
+			}
+			_ = cid
+		}
+	}
+
+	// set the bits in dst
+	for i, cid := range cids {
+		if _, exists := visitm[cid]; exists {
+			dst.Set(i)
 		}
 	}
 	return nil

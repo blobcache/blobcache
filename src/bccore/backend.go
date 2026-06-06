@@ -33,8 +33,9 @@ type Tx interface {
 	Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error)
 	Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error)
 	Delete(ctx context.Context, cids []blobcache.CID) error
-	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
-	IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error
+	Exists(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error
+
+	IsVisited(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error
 	Visit(ctx context.Context, cids []blobcache.CID) error
 
 	MaxSize() int

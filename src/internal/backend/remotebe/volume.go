@@ -212,7 +212,7 @@ func (tx *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return bcp.Delete(ctx, tx.vol.n, tx.vol.ep, tx.h, cids)
 }
 
-func (tx *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (tx *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return bcp.Exists(ctx, tx.vol.n, tx.vol.ep, tx.h, cids, dst)
 }
 
@@ -224,10 +224,7 @@ func (tx *Tx) HashAlgo() blobcache.HashAlgo {
 	return tx.info.HashAlgo
 }
 
-func (tx *Tx) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	if len(cids) != len(dst) {
-		return fmt.Errorf("cids and dst must have the same length")
-	}
+func (tx *Tx) IsVisited(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return bcp.IsVisited(ctx, tx.vol.n, tx.vol.ep, tx.h, cids, dst)
 }
 

@@ -99,10 +99,10 @@ func (v *localTxnRO) Post(ctx context.Context, data []byte, opts blobcache.PostO
 }
 
 func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error) {
-	var exists [1]bool
-	if err := v.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
+	var exists blobcache.BitMap
+	if err := v.Exists(ctx, []blobcache.CID{cid}, &exists); err != nil {
 		return 0, err
-	} else if !exists[0] {
+	} else if !exists.IsSet(0) {
 		return 0, blobcache.ErrNotFound{CID: cid}
 	}
 	unlock, err := v.checkClosed()
@@ -113,7 +113,7 @@ func (v *localTxnRO) Get(ctx context.Context, cid blobcache.CID, buf []byte, opt
 	return v.sys.readBlobData(cid, buf)
 }
 
-func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	activeTxns, err := v.getExcluded()
 	if err != nil {
 		return err
@@ -123,7 +123,9 @@ func (v *localTxnRO) Exists(ctx context.Context, cids []blobcache.CID, dst []boo
 		if err != nil {
 			return err
 		}
-		dst[i] = exists
+		if exists {
+			dst.Set(i)
+		}
 	}
 	return nil
 }
@@ -160,7 +162,7 @@ func (v *localTxnRO) Visit(ctx context.Context, cids []blobcache.CID) error {
 	return blobcache.ErrTxReadOnly{Op: "Visit"}
 }
 
-func (v *localTxnRO) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (v *localTxnRO) IsVisited(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return blobcache.ErrTxReadOnly{Op: "IsVisited"}
 }
 

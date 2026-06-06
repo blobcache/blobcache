@@ -1,8 +1,10 @@
 package blobcachecmd
 
 import (
+	"bufio"
 	"fmt"
 	"io"
+	"strings"
 
 	"blobcache.io/blobcache/src/bclocal"
 	"blobcache.io/blobcache/src/blobcache"
@@ -224,9 +226,13 @@ var txExistsCmd = star.Command{
 			return err
 		}
 		cids := cidsParam.Load(c)
+		var existsBM blobcache.BitMap
 		exists := make([]bool, len(cids))
-		if err := svc.Exists(c.Context, txHParam.Load(c), cids, exists); err != nil {
+		if err := svc.Exists(c.Context, txHParam.Load(c), cids, &existsBM); err != nil {
 			return err
+		}
+		for i := range cids {
+			exists[i] = existsBM.IsSet(i)
 		}
 		c.Printf(checkmark + " EXISTS OK\n")
 		for i, cid := range cids {
@@ -278,22 +284,37 @@ var txVisitCmd = star.Command{
 
 var txIsVisitedCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "checks if a blob has been visited in the transaction",
+		Short: "checks if blobs from stdin have been visited in the transaction",
 	},
-	Pos: []star.Positional{txHParam, cidsParam},
+	Pos: []star.Positional{txHParam},
 	F: func(c star.Context) error {
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		cids := cidsParam.Load(c)
-		visited := make([]bool, len(cids))
-		if err := svc.IsVisited(c.Context, txHParam.Load(c), cids, visited); err != nil {
+		var cids []blobcache.CID
+		sc := bufio.NewScanner(c.StdIn)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" {
+				continue
+			}
+			cid, err := blobcache.ParseCID(line)
+			if err != nil {
+				return err
+			}
+			cids = append(cids, cid)
+		}
+		if err := sc.Err(); err != nil {
+			return err
+		}
+		var visited blobcache.BitMap
+		if err := svc.IsVisited(c.Context, txHParam.Load(c), cids, &visited); err != nil {
 			return err
 		}
 		printOK(c, "IS VISITED")
-		for i, cid := range cidsParam.Load(c) {
-			if visited[i] {
+		for i, cid := range cids {
+			if visited.IsSet(i) {
 				c.Printf("%s YES\n", cid.String())
 			} else {
 				c.Printf("%s NO\n", cid.String())

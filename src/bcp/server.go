@@ -194,8 +194,8 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		})
 	case MT_TX_EXISTS:
 		handleAsk(req, resp, &ExistsReq{}, func(req *ExistsReq) (*ExistsResp, error) {
-			exists := make([]bool, len(req.CIDs))
-			if err := svc.Exists(ctx, req.Tx, req.CIDs, exists); err != nil {
+			var exists blobcache.BitMap
+			if err := svc.Exists(ctx, req.Tx, req.CIDs, &exists); err != nil {
 				return nil, err
 			}
 			return &ExistsResp{Exists: exists}, nil
@@ -332,8 +332,8 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		})
 	case MT_TX_IS_VISITED:
 		handleAsk(req, resp, &IsVisitedReq{}, func(req *IsVisitedReq) (*IsVisitedResp, error) {
-			visited := make([]bool, len(req.CIDs))
-			if err := svc.IsVisited(ctx, req.Tx, req.CIDs, visited); err != nil {
+			var visited blobcache.BitMap
+			if err := svc.IsVisited(ctx, req.Tx, req.CIDs, &visited); err != nil {
 				return nil, err
 			}
 			return &IsVisitedResp{Visited: visited}, nil

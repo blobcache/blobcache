@@ -100,7 +100,14 @@ func (tx *Tx) Post(ctx context.Context, data []byte) (CID, error) {
 }
 
 func (tx *Tx) Exists(ctx context.Context, cids []CID, exists []bool) error {
-	return tx.s.Exists(ctx, tx.h, cids, exists)
+	var bm blobcache.BitMap
+	if err := tx.s.Exists(ctx, tx.h, cids, &bm); err != nil {
+		return err
+	}
+	for i := range cids {
+		exists[i] = bm.IsSet(i)
+	}
+	return nil
 }
 
 func (tx *Tx) Delete(ctx context.Context, cids []CID) error {
@@ -141,7 +148,14 @@ func (tx *Tx) Visit(ctx context.Context, cids []CID) error {
 }
 
 func (tx *Tx) IsVisited(ctx context.Context, cids []CID, yesVisited []bool) error {
-	return tx.s.IsVisited(ctx, tx.h, cids, yesVisited)
+	var bm blobcache.BitMap
+	if err := tx.s.IsVisited(ctx, tx.h, cids, &bm); err != nil {
+		return err
+	}
+	for i := range cids {
+		yesVisited[i] = bm.IsSet(i)
+	}
+	return nil
 }
 
 func (tx *Tx) Copy(ctx context.Context, srcs []*Tx, cids []CID, success []bool) error {
@@ -318,11 +332,11 @@ func ModifyTx(ctx context.Context, svc blobcache.Service, volh blobcache.Handle,
 
 // ExistsSingle is a convenience function for checking if a single CID exists using the slice based API.
 func ExistsSingle(ctx context.Context, s interface {
-	Exists(ctx context.Context, txh Handle, cids []CID, dst []bool) error
+	Exists(ctx context.Context, txh Handle, cids []CID, dst *blobcache.BitMap) error
 }, txh Handle, cid CID) (bool, error) {
-	var dst [1]bool
-	if err := s.Exists(ctx, txh, []CID{cid}, dst[:]); err != nil {
+	var dst blobcache.BitMap
+	if err := s.Exists(ctx, txh, []CID{cid}, &dst); err != nil {
 		return false, err
 	}
-	return dst[0], nil
+	return dst.IsSet(0), nil
 }

@@ -142,7 +142,7 @@ func (pv *peerView[LK, LV, LQ]) Get(ctx context.Context, tx blobcache.Handle, ci
 	return pv.svc.Get(ctx, pv.incoming(tx), cid, buf, opts)
 }
 
-func (pv *peerView[LK, LV, LQ]) Exists(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (pv *peerView[LK, LV, LQ]) Exists(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return pv.svc.Exists(ctx, pv.incoming(tx), cids, dst)
 }
 
@@ -159,7 +159,8 @@ func (pv *peerView[LK, LV, LQ]) Visit(ctx context.Context, tx blobcache.Handle, 
 	return pv.svc.Visit(ctx, pv.incoming(tx), cids)
 }
 
-func (pv *peerView[LK, LV, LQ]) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, yesVisited []bool) error {
+
+func (pv *peerView[LK, LV, LQ]) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, yesVisited *blobcache.BitMap) error {
 	return pv.svc.IsVisited(ctx, pv.incoming(tx), cids, yesVisited)
 }
 

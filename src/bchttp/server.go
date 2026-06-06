@@ -255,9 +255,13 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		})
 	case "Exists":
 		handleRequest(w, r, func(ctx context.Context, req ExistsReq) (*ExistsResp, error) {
-			exists := make([]bool, len(req.CIDs))
-			if err := s.Service.Exists(ctx, h, req.CIDs, exists); err != nil {
+			var existsBM blobcache.BitMap
+			if err := s.Service.Exists(ctx, h, req.CIDs, &existsBM); err != nil {
 				return nil, err
+			}
+			exists := make([]bool, len(req.CIDs))
+			for i := range req.CIDs {
+				exists[i] = existsBM.IsSet(i)
 			}
 			return &ExistsResp{Exists: exists}, nil
 		})
@@ -270,9 +274,13 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		})
 	case "IsVisited":
 		handleRequest(w, r, func(ctx context.Context, req IsVisitedReq) (*IsVisitedResp, error) {
-			visited := make([]bool, len(req.CIDs))
-			if err := s.Service.IsVisited(ctx, h, req.CIDs, visited); err != nil {
+			var visitedBM blobcache.BitMap
+			if err := s.Service.IsVisited(ctx, h, req.CIDs, &visitedBM); err != nil {
 				return nil, err
+			}
+			visited := make([]bool, len(req.CIDs))
+			for i := range req.CIDs {
+				visited[i] = visitedBM.IsSet(i)
 			}
 			return &IsVisitedResp{Visited: visited}, nil
 		})

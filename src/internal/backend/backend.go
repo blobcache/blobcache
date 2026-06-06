@@ -66,8 +66,12 @@ func (v UnsaltedStore) Delete(ctx context.Context, cids []blobcache.CID) error {
 }
 
 func (v UnsaltedStore) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	if err := v.inner.Exists(ctx, cids, dst[:]); err != nil {
+	var bm blobcache.BitMap
+	if err := v.inner.Exists(ctx, cids, &bm); err != nil {
 		return err
+	}
+	for i := range cids {
+		dst[i] = bm.IsSet(i)
 	}
 	return nil
 }
