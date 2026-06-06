@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/schemareg"
 	"blobcache.io/blobcache/src/schema"
@@ -97,11 +98,11 @@ func (sch *Schema) ValidateChange(ctx context.Context, change schema.Change) err
 	}
 	var prevCID blobcache.CID
 	for i, cid := range root {
-		var exists [1]bool
-		if err := change.Next.Store.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
+		exists, err := bcsdk.ExistsUnit(ctx, change.Next.Store, cid)
+		if err != nil {
 			return err
 		}
-		if !exists[0] {
+		if !exists {
 			return fmt.Errorf("hydra: head %d does not exist", i)
 		}
 		if prevCID.Compare(cid) >= 0 {

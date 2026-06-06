@@ -10,6 +10,7 @@ import (
 	"capnproto.org/go/capnp/v3"
 	"github.com/pkg/errors"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	"blobcache.io/blobcache/src/schema"
 )
@@ -286,7 +287,7 @@ func checkEntries(ctx context.Context, s schema.RO, x Index, ents triescnp.Entry
 			if err != nil {
 				return err
 			}
-			exists, err := schema.ExistsUnit(ctx, s, ref.CID)
+			exists, err := bcsdk.ExistsUnit(ctx, s, ref.CID)
 			if err != nil {
 				return err
 			}

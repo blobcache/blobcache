@@ -65,15 +65,8 @@ func (v UnsaltedStore) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return v.inner.Delete(ctx, cids)
 }
 
-func (v UnsaltedStore) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	var bm blobcache.BitMap
-	if err := v.inner.Exists(ctx, cids, &bm); err != nil {
-		return err
-	}
-	for i := range cids {
-		dst[i] = bm.IsSet(i)
-	}
-	return nil
+func (v UnsaltedStore) Exists(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
+	return v.inner.Exists(ctx, cids, dst)
 }
 
 func (v UnsaltedStore) MaxSize() int {

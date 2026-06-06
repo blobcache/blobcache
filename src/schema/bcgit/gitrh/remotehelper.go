@@ -222,11 +222,12 @@ func (s *Store) Hash(x []byte) blobcache.CID {
 	return sha256.Sum256(x)
 }
 
-func (s *Store) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (s *Store) Exists(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	for i, cid := range cids {
-		var err error
-		if dst[i], err = objectExists(cid); err != nil {
+		if exists, err := objectExists(cid); err != nil {
 			return err
+		} else if exists {
+			dst.Set(i)
 		}
 	}
 	return nil

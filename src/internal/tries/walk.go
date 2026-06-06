@@ -3,6 +3,7 @@ package tries
 import (
 	"context"
 
+	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/tries/triescnp"
 	"blobcache.io/blobcache/src/schema"
@@ -67,12 +68,11 @@ func (mach *Machine) Walk(ctx context.Context, s schema.RO, root Root, w Walker)
 func (o *Machine) Sync(ctx context.Context, dst schema.WO, src schema.RO, root Root, fn func(Entry) error) error {
 	return o.Walk(ctx, src, root, Walker{
 		ShouldWalk: func(root Root) bool {
-			var exists [1]bool
-			err := dst.Exists(ctx, []blobcache.CID{root.Ref.CID}, exists[:])
+			exists, err := bcsdk.ExistsUnit(ctx, dst, root.Ref.CID)
 			if err != nil {
 				return false
 			}
-			return !exists[0]
+			return !exists
 		},
 		EntryFn: fn,
 		NodeFn: func(root Root) error {

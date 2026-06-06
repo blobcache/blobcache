@@ -46,18 +46,6 @@ func (None) ValidateChange(ctx context.Context, change Change) error {
 	return nil
 }
 
-type Exists interface {
-	Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
-}
-
-func ExistsUnit(ctx context.Context, s Exists, cid blobcache.CID) (bool, error) {
-	var dst [1]bool
-	if err := s.Exists(ctx, []blobcache.CID{cid}, dst[:]); err != nil {
-		return false, err
-	}
-	return dst[0], nil
-}
-
 // CopyBlob copies a blob from src to dst.
 // TODO: check if src and dst are bcsdk.Tx and do an optimized copy.
 func CopyBlob(ctx context.Context, src RO, dst WO, cid bcsdk.CID) error {

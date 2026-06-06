@@ -12,7 +12,6 @@ import (
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
-	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/bcgit/gitrh"
 	"go.brendoncarroll.net/exp/streams"
 )
@@ -65,7 +64,7 @@ func OpenRemoteHelper(ctx context.Context, bc blobcache.Service, u blobcache.URL
 
 // SyncGit copies the transitive closure of the git object `id` from src to dst.
 func SyncGit(ctx context.Context, src bcsdk.RO, dst bcsdk.WO, id blobcache.CID) error {
-	if ok, err := schema.ExistsUnit(ctx, dst, id); err != nil {
+	if ok, err := bcsdk.ExistsUnit(ctx, dst, id); err != nil {
 		return err
 	} else if ok {
 		return nil

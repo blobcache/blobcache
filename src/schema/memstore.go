@@ -2,7 +2,6 @@ package schema
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -55,15 +54,13 @@ func (ms *MemStore) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int
 	return copy(buf, data), nil
 }
 
-func (ms *MemStore) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	if len(cids) != len(dst) {
-		return fmt.Errorf("cids and dst must have the same length")
-	}
+func (ms *MemStore) Exists(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	for i, cid := range cids {
-		_, exists := ms.blobs[cid]
-		dst[i] = exists
+		if _, exists := ms.blobs[cid]; exists {
+			dst.Set(i)
+		}
 	}
 	return nil
 }

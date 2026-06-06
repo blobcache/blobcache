@@ -80,9 +80,10 @@ func GetBytes(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobc
 
 func Exists(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID) bool {
 	ctx := testutil.Context(t)
-	yes, err := bcsdk.ExistsSingle(ctx, s, txh, cid)
+	var exists blobcache.BitMap
+	err := s.Exists(ctx, txh, []blobcache.CID{cid}, &exists)
 	require.NoError(t, err)
-	return yes
+	return exists.IsSet(0)
 }
 
 func Delete(t testing.TB, s blobcache.Service, txh blobcache.Handle, cid blobcache.CID) {
