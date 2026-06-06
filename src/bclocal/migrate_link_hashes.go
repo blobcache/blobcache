@@ -243,7 +243,14 @@ func (s nsStore) Get(ctx context.Context, cid blobcache.CID, buf []byte) (int, e
 }
 
 func (s nsStore) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
-	return s.tx.Exists(ctx, cids, dst)
+	var bm blobcache.BitMap
+	if err := s.tx.Exists(ctx, cids, &bm); err != nil {
+		return err
+	}
+	for i := range cids {
+		dst[i] = bm.IsSet(i)
+	}
+	return nil
 }
 
 func (s nsStore) Hash(data []byte) blobcache.CID {

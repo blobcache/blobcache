@@ -229,12 +229,12 @@ func Get(ctx context.Context, tp Asker, ep blobcache.Endpoint, txh blobcache.Han
 	return len(respMsg.Body()), nil
 }
 
-func Exists(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func Exists(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	var resp ExistsResp
 	if err := doAsk(ctx, tp, ep, MT_TX_EXISTS, ExistsReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
-	copy(dst, resp.Exists)
+	dst.OR(resp.Exists)
 	return nil
 }
 
@@ -263,15 +263,12 @@ func Visit(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Ha
 	return nil
 }
 
-func IsVisited(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
-	if len(cids) != len(dst) {
-		return fmt.Errorf("cids and dst must have the same length")
-	}
+func IsVisited(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	var resp IsVisitedResp
 	if err := doAsk(ctx, tp, ep, MT_TX_IS_VISITED, IsVisitedReq{Tx: tx, CIDs: cids}, &resp); err != nil {
 		return err
 	}
-	copy(dst, resp.Visited)
+	dst.OR(resp.Visited)
 	return nil
 }
 

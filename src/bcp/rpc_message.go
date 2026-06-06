@@ -589,33 +589,16 @@ func (er *ExistsReq) Unmarshal(data []byte) error {
 }
 
 type ExistsResp struct {
-	Exists []bool
+	Exists blobcache.BitMap
 }
 
 func (er ExistsResp) Marshal(out []byte) []byte {
-	for i := range er.Exists {
-		if i%8 == 0 {
-			out = append(out, 0)
-		}
-		if er.Exists[i] {
-			out[len(out)-1] |= 1 << (i % 8)
-		}
-	}
+	out = er.Exists.Marshal(out)
 	return out
 }
 
 func (er *ExistsResp) Unmarshal(data []byte) error {
-	er.Exists = er.Exists[:0]
-	for i := range data {
-		for j := 0; j < 8; j++ {
-			if (data[i] & (1 << j)) != 0 {
-				er.Exists = append(er.Exists, true)
-			} else {
-				er.Exists = append(er.Exists, false)
-			}
-		}
-	}
-	return nil
+	return er.Exists.Unmarshal(data)
 }
 
 type DeleteReq struct {
@@ -1035,31 +1018,15 @@ func (ir *IsVisitedReq) Unmarshal(data []byte) error {
 }
 
 type IsVisitedResp struct {
-	Visited []bool
+	Visited blobcache.BitMap
 }
 
 func (ir IsVisitedResp) Marshal(out []byte) []byte {
-	for i := range ir.Visited {
-		if i%8 == 0 {
-			out = append(out, 0)
-		}
-		if ir.Visited[i] {
-			out[len(out)-1] |= 1 << (i % 8)
-		}
-	}
-	return out
+	return ir.Visited.Marshal(out)
 }
 
 func (ir *IsVisitedResp) Unmarshal(data []byte) error {
-	ir.Visited = make([]bool, len(data)*8)
-	for i := range data {
-		for j := 0; j < 8; j++ {
-			if (data[i] & (1 << j)) != 0 {
-				ir.Visited[i*8+j] = true
-			}
-		}
-	}
-	return nil
+	return ir.Visited.Unmarshal(data)
 }
 
 type CreateVolumeReq struct {

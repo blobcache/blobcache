@@ -111,12 +111,9 @@ func (sys *System) Post(ctx context.Context, txh blobcache.Handle, data []byte, 
 	return cid, nil
 }
 
-func (sys *System) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (sys *System) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "Exists"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Exists"), zap.Stringer("oid", txh.OID))
-	if len(cids) != len(dst) {
-		return fmt.Errorf("cids and dst must have the same length")
-	}
 	txn, err := sys.resolveTx(txh, true, blobcache.Action_TX_EXISTS)
 	if err != nil {
 		return err
@@ -194,7 +191,7 @@ func (sys *System) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blo
 	}
 
 	var buf []byte
-	var exists [1]bool
+	var exists blobcache.BitMap
 	for i, cid := range cids {
 		if len(resolvedSrcs) == 0 {
 			continue
@@ -202,11 +199,11 @@ func (sys *System) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blo
 		start := int(cid[0]) % len(resolvedSrcs)
 		for j := range resolvedSrcs {
 			src := resolvedSrcs[(start+j)%len(resolvedSrcs)]
-			exists[0] = false
-			if err := src.tx.backend.Exists(ctx, []blobcache.CID{cid}, exists[:]); err != nil {
+			exists = exists[:0]
+			if err := src.tx.backend.Exists(ctx, []blobcache.CID{cid}, &exists); err != nil {
 				return fmt.Errorf("copy from tx %v: %w", src.oid, err)
 			}
-			if !exists[0] {
+			if !exists.IsSet(0) {
 				continue
 			}
 			srcMax := src.tx.backend.MaxSize()
@@ -252,12 +249,9 @@ func (sys *System) Visit(ctx context.Context, txh blobcache.Handle, cids []blobc
 	return setErrTxOID(txn.backend.Visit(ctx, cids), txh.OID)
 }
 
-func (sys *System) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (sys *System) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "IsVisited"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "IsVisited"), zap.Stringer("oid", txh.OID))
-	if len(cids) != len(dst) {
-		return fmt.Errorf("cids and out must have the same length")
-	}
 	txn, err := sys.resolveTx(txh, true, blobcache.Action_TX_IS_VISITED)
 	if err != nil {
 		return err

@@ -149,10 +149,7 @@ func (c *Client) Post(ctx context.Context, tx blobcache.Handle, data []byte, opt
 }
 
 // Exists checks if a CID exists in the volume
-func (c *Client) Exists(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
-	if len(cids) != len(dst) {
-		return fmt.Errorf("cids and dst must have the same length")
-	}
+func (c *Client) Exists(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return bcp.Exists(ctx, &c.tp, blobcache.Endpoint{}, tx, cids, dst)
 }
 
@@ -181,7 +178,7 @@ func (c *Client) Visit(ctx context.Context, tx blobcache.Handle, cids []blobcach
 	return bcp.Visit(ctx, &c.tp, blobcache.Endpoint{}, tx, cids)
 }
 
-func (c *Client) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (c *Client) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return bcp.IsVisited(ctx, &c.tp, blobcache.Endpoint{}, tx, cids, dst)
 }
 

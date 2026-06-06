@@ -322,7 +322,7 @@ func (v *Tx) Delete(ctx context.Context, cids []blobcache.CID) error {
 	return nil
 }
 
-func (v *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (v *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return err
@@ -335,7 +335,7 @@ func (v *Tx) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error
 	return v.inner.Exists(ctx, ctcids, dst)
 }
 
-func (v *Tx) IsVisited(ctx context.Context, ptcids []blobcache.CID, dst []bool) error {
+func (v *Tx) IsVisited(ctx context.Context, ptcids []blobcache.CID, dst *blobcache.BitMap) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return err

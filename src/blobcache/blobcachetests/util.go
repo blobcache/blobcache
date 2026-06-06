@@ -156,8 +156,12 @@ func Endpoint(t testing.TB, s blobcache.Service) blobcache.Endpoint {
 
 func IsVisited(t testing.TB, s blobcache.Service, txh blobcache.Handle, cids []blobcache.CID) []bool {
 	ctx := testutil.Context(t)
+	var bm blobcache.BitMap
 	visited := make([]bool, len(cids))
-	require.NoError(t, s.IsVisited(ctx, txh, cids, visited))
+	require.NoError(t, s.IsVisited(ctx, txh, cids, &bm))
+	for i := range cids {
+		visited[i] = bm.IsSet(i)
+	}
 	return visited
 }
 

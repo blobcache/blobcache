@@ -296,7 +296,7 @@ func (s *Service) Get(ctx context.Context, h blobcache.Handle, cid blobcache.CID
 	return n, nil
 }
 
-func (s *Service) Exists(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (s *Service) Exists(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	args := []string{"tx", "exists", h.String()}
 	for _, cid := range cids {
 		args = append(args, cid.String())
@@ -312,10 +312,9 @@ func (s *Service) Exists(ctx context.Context, h blobcache.Handle, cids []blobcac
 			continue
 		}
 		if bytes.HasSuffix(ln, []byte(" YES")) {
-			dst[idx] = true
+			dst.Set(idx)
 			idx++
 		} else if bytes.HasSuffix(ln, []byte(" NO")) {
-			dst[idx] = false
 			idx++
 		}
 	}
@@ -346,7 +345,7 @@ func (s *Service) Visit(ctx context.Context, h blobcache.Handle, cids []blobcach
 	return s.run(args, nil, nil)
 }
 
-func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, yesVisited []bool) error {
+func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blobcache.CID, yesVisited *blobcache.BitMap) error {
 	args := []string{"tx", "is-visited", h.String()}
 	for _, cid := range cids {
 		args = append(args, cid.String())
@@ -362,10 +361,9 @@ func (s *Service) IsVisited(ctx context.Context, h blobcache.Handle, cids []blob
 			continue
 		}
 		if bytes.HasSuffix(ln, []byte(" YES")) {
-			yesVisited[idx] = true
+			yesVisited.Set(idx)
 			idx++
 		} else if bytes.HasSuffix(ln, []byte(" NO")) {
-			yesVisited[idx] = false
 			idx++
 		}
 	}

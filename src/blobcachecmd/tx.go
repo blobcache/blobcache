@@ -224,9 +224,13 @@ var txExistsCmd = star.Command{
 			return err
 		}
 		cids := cidsParam.Load(c)
+		var existsBM blobcache.BitMap
 		exists := make([]bool, len(cids))
-		if err := svc.Exists(c.Context, txHParam.Load(c), cids, exists); err != nil {
+		if err := svc.Exists(c.Context, txHParam.Load(c), cids, &existsBM); err != nil {
 			return err
+		}
+		for i := range cids {
+			exists[i] = existsBM.IsSet(i)
 		}
 		c.Printf(checkmark + " EXISTS OK\n")
 		for i, cid := range cids {
@@ -287,9 +291,13 @@ var txIsVisitedCmd = star.Command{
 			return err
 		}
 		cids := cidsParam.Load(c)
+		var visitedBM blobcache.BitMap
 		visited := make([]bool, len(cids))
-		if err := svc.IsVisited(c.Context, txHParam.Load(c), cids, visited); err != nil {
+		if err := svc.IsVisited(c.Context, txHParam.Load(c), cids, &visitedBM); err != nil {
 			return err
+		}
+		for i := range cids {
+			visited[i] = visitedBM.IsSet(i)
 		}
 		printOK(c, "IS VISITED")
 		for i, cid := range cidsParam.Load(c) {

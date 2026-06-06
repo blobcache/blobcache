@@ -237,7 +237,7 @@ func (tx *Tx) Delete(_ context.Context, cids []blobcache.CID) error {
 	return nil
 }
 
-func (tx *Tx) Exists(_ context.Context, cids []blobcache.CID, dst []bool) error {
+func (tx *Tx) Exists(_ context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	tx.doneMu.RLock()
 	defer tx.doneMu.RUnlock()
 	if tx.isDone {
@@ -250,19 +250,23 @@ func (tx *Tx) Exists(_ context.Context, cids []blobcache.CID, dst []bool) error 
 	for i, cid := range cids {
 		data, shadowed := tx.blobs[cid]
 		_, base := tx.vol.blobs[cid]
-		dst[i] = (shadowed && data != nil) || (!shadowed && base)
+		if (shadowed && data != nil) || (!shadowed && base) {
+			dst.Set(i)
+		}
 	}
 	return nil
 }
 
-func (tx *Tx) IsVisited(_ context.Context, cids []blobcache.CID, dst []bool) error {
+func (tx *Tx) IsVisited(_ context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	tx.doneMu.RLock()
 	defer tx.doneMu.RUnlock()
 	tx.blobMu.Lock()
 	defer tx.blobMu.Unlock()
 	for i, cid := range cids {
 		_, exists := tx.blobVisits[cid]
-		dst[i] = exists
+		if exists {
+			dst.Set(i)
+		}
 	}
 	return nil
 }

@@ -318,7 +318,7 @@ func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte, o
 	return s.sys.Post(ctx, txh, data, opts)
 }
 
-func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (s *Service) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return s.sys.Exists(ctx, txh, cids, dst)
 }
 
@@ -338,7 +338,7 @@ func (s *Service) Visit(ctx context.Context, txh blobcache.Handle, cids []blobca
 	return s.sys.Visit(ctx, txh, cids)
 }
 
-func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (s *Service) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return s.sys.IsVisited(ctx, txh, cids, dst)
 }
 

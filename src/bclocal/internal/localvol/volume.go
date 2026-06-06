@@ -244,7 +244,7 @@ func (txn *localTxnMut) Get(ctx context.Context, cid blobcache.CID, buf []byte, 
 	return txn.localSys.getBlob(txn.vol.lvid, txn.mvid, cid, buf)
 }
 
-func (txn *localTxnMut) Exists(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (txn *localTxnMut) Exists(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err
@@ -265,7 +265,7 @@ func (txn *localTxnMut) Visit(ctx context.Context, cids []blobcache.CID) error {
 	return txn.localSys.visit(txn.vol.lvid, txn.mvid, cids)
 }
 
-func (txn *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst []bool) error {
+func (txn *localTxnMut) IsVisited(ctx context.Context, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err

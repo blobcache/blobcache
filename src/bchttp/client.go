@@ -210,13 +210,17 @@ func (c *Client) Post(ctx context.Context, tx blobcache.Handle, data []byte, opt
 	return cid, nil
 }
 
-func (c *Client) Exists(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (c *Client) Exists(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	req := ExistsReq{CIDs: cids}
 	var resp ExistsResp
 	if err := c.doJSON(ctx, "POST", c.mkTxURL(tx, "Exists"), &tx.Secret, req, &resp); err != nil {
 		return err
 	}
-	copy(dst, resp.Exists)
+	for i, ok := range resp.Exists {
+		if ok {
+			dst.Set(i)
+		}
+	}
 	return nil
 }
 
@@ -277,13 +281,17 @@ func (c *Client) Visit(ctx context.Context, tx blobcache.Handle, cids []blobcach
 	return c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Visit", tx.OID.String()), &tx.Secret, req, &resp)
 }
 
-func (c *Client) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, out []bool) error {
+func (c *Client) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, out *blobcache.BitMap) error {
 	req := IsVisitedReq{CIDs: cids}
 	var resp IsVisitedResp
 	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.IsVisited", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
 		return err
 	}
-	copy(out, resp.Visited)
+	for i, ok := range resp.Visited {
+		if ok {
+			out.Set(i)
+		}
+	}
 	return nil
 }
 

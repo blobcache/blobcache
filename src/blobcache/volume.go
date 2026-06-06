@@ -141,7 +141,9 @@ type TxAPI interface {
 	Get(ctx context.Context, tx Handle, cid CID, buf []byte, opts GetOpts) (int, error)
 	// Exists checks if several CID exists in the volume
 	// len(dst) must be equal to len(cids), or Exists will return an error.
-	Exists(ctx context.Context, tx Handle, cids []CID, dst []bool) error
+	// Exists only calls Set on the Bitmap, and never Unset.
+	// The caller should call Reset on the bitmap if they want the exact result.
+	Exists(ctx context.Context, tx Handle, cids []CID, dst *BitMap) error
 	// Delete deletes a CID from the volume
 	Delete(ctx context.Context, tx Handle, cids []CID) error
 	// Copy has the same effect as Post, but it does not require sending the data to Blobcache.
@@ -156,7 +158,9 @@ type TxAPI interface {
 	Visit(ctx context.Context, tx Handle, cids []CID) error
 	// IsVisited is only usable in a GC transaction.
 	// It checks if each CID has been visited.
-	IsVisited(ctx context.Context, tx Handle, cids []CID, yesVisited []bool) error
+	// IsVisited only calls Set on the bitmap, to get an exact result, ensure that
+	// Reset has been called.
+	IsVisited(ctx context.Context, tx Handle, cids []CID, yesVisited *BitMap) error
 
 	// Link adds a link to another volume.
 	// All Link operations take effect atomically on Commit

@@ -549,7 +549,7 @@ func (s *Service[LK, LV, LQ]) Post(ctx context.Context, txh blobcache.Handle, da
 	return s.core.Post(ctx, txh, data, opts)
 }
 
-func (s *Service[LV, LK, LQ]) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (s *Service[LV, LK, LQ]) Exists(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return s.core.Exists(ctx, txh, cids, dst)
 }
 
@@ -569,7 +569,7 @@ func (s *Service[LK, LV, LQ]) Visit(ctx context.Context, txh blobcache.Handle, c
 	return s.core.Visit(ctx, txh, cids)
 }
 
-func (s *Service[LK, LV, LQ]) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst []bool) error {
+func (s *Service[LK, LV, LQ]) IsVisited(ctx context.Context, txh blobcache.Handle, cids []blobcache.CID, dst *blobcache.BitMap) error {
 	return s.core.IsVisited(ctx, txh, cids, dst)
 }
 
