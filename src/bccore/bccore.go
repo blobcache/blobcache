@@ -153,21 +153,15 @@ func (sys *System) Create(ctx context.Context, oid blobcache.OID, x AnyObject, r
 	default:
 		return blobcache.Handle{}, fmt.Errorf("cannot create empty object")
 	}
+	return sys.Mint(oid, rights, createdAt, ttl), nil
+}
 
-	expireAt := createdAt.Add(ttl)
-	h := sys.handles.Create(oid, rights, createdAt, expireAt)
-	if sys.p.OnLink != nil {
-		info, err := sys.Inspect(ctx, h)
-		if err != nil {
-			sys.handles.Drop(h)
-			return blobcache.Handle{}, err
-		}
-		if err := sys.p.OnLink(ctx, info, x); err != nil {
-			sys.handles.Drop(h)
-			return blobcache.Handle{}, err
-		}
+// Fiat brings up the object if necessary and creates a new handle
+func (sys *System) Fiat(ctx context.Context, oid blobcache.OID, rights blobcache.ActionSet, createdAt time.Time, ttl time.Duration) (blobcache.Handle, error) {
+	if _, err := sys.ensure(ctx, oid); err != nil {
+		return blobcache.Handle{}, err
 	}
-	return h, nil
+	return sys.Mint(oid, rights, createdAt, ttl), nil
 }
 
 func (sys *System) Mint(x blobcache.OID, rights blobcache.ActionSet, createdAt time.Time, ttl time.Duration) blobcache.Handle {
@@ -189,6 +183,44 @@ func (sys *System) ResolveQueue(qh blobcache.Handle) (Queue, error) {
 		return nil, err
 	}
 	return q.backend, nil
+}
+
+// ensure brings up the object only if needed.
+func (sys *System) ensure(ctx context.Context, oid blobcache.OID) (AnyObject, error) {
+	ao, err, _ := sys.setup.Do(oid, func() (AnyObject, error) {
+		sys.mu.RLock()
+		vol, vexists := sys.volumes[oid]
+		q, qexists := sys.queues[oid]
+		sys.mu.RUnlock()
+		if vexists {
+			return vol.backend, nil
+		} else if qexists {
+			return q.backend, nil
+		}
+
+		obj, err := sys.p.Up(ctx, oid)
+		if err != nil {
+			return nil, err
+		}
+		switch obj := obj.(type) {
+		case Volume:
+			if added := sys.addVolume(oid, obj); !added {
+				return nil, obj.Down(ctx)
+			}
+		case Queue:
+			if added := sys.addQueue(oid, obj); !added {
+				return nil, obj.Down(ctx)
+			}
+		default:
+			obj.Down(ctx)
+			return nil, fmt.Errorf("unknown object %T", obj)
+		}
+		return obj, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ao, nil
 }
 
 func (sys *System) resolveVol(x blobcache.Handle) (volume, blobcache.ActionSet, error) {

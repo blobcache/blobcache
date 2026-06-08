@@ -37,30 +37,9 @@ func (sys *System) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blo
 	if rights == 0 {
 		return nil, blobcache.ErrNoLink{Base: base.OID, Target: ltok.Target}
 	}
-
-	_, err, _ = sys.setup.Do(ltok.Target, func() (AnyObject, error) {
-		obj, err := sys.p.Up(ctx, ltok.Target)
-		if err != nil {
-			return nil, err
-		}
-		switch obj := obj.(type) {
-		case Volume:
-			if added := sys.addVolume(ltok.Target, obj); !added {
-				return nil, obj.Down(ctx)
-			}
-		case Queue:
-			if added := sys.addQueue(ltok.Target, obj); !added {
-				return nil, obj.Down(ctx)
-			}
-		default:
-			return nil, fmt.Errorf("volume=%v has link to subvolume=%v, but that subvolume was not found", base.OID, ltok.Target)
-		}
-		return obj, nil
-	})
-	if err != nil {
-		return nil, err
+	if _, err := sys.ensure(ctx, ltok.Target); err != nil {
+		return nil, fmt.Errorf("volume=%v has link to subvolume=%v, but that subvolume could not be accessed %w", base.OID, ltok.Target, err)
 	}
-
 	rights = rights & mask
 	createdAt := time.Now()
 	expiresAt := createdAt.Add(DefaultTxTTL)

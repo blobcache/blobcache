@@ -366,22 +366,16 @@ func (s *Service[LK, LV, LQ]) inspectRemoteForShareIn(ctx context.Context, host 
 func (s *Service[LK, LV, LQ]) OpenFiat(ctx context.Context, x blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	logctx.Info(ctx, "begin", zap.String("method", "OpenFiat"), zap.Stringer("oid", x))
 	defer logctx.Info(ctx, "done", zap.String("method", "OpenFiat"), zap.Stringer("oid", x))
+	createdAt := time.Now()
+	ttl := DefaultVolumeTTL
 	if x == (blobcache.OID{}) {
-		createdAt := time.Now()
-		h := s.core.Mint(x, mask, createdAt, DefaultVolumeTTL)
+		h := s.core.Mint(x, mask, createdAt, ttl)
 		return &h, nil
 	}
-	vinfo, err := s.inspectVolume(ctx, x)
+	h, err := s.core.Fiat(ctx, x, mask, createdAt, ttl)
 	if err != nil {
 		return nil, err
 	}
-	if vinfo != nil {
-		createdAt := time.Now()
-		h := s.core.Mint(x, mask, createdAt, DefaultVolumeTTL)
-		return &h, nil
-	}
-	createdAt := time.Now()
-	h := s.core.Mint(x, mask, createdAt, DefaultQueueTTL)
 	return &h, nil
 }
 
