@@ -190,6 +190,9 @@ func (nsc *Client) OpenAt(ctx context.Context, nsh blobcache.Handle, name string
 }
 
 func (nsc *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
+	if err := CheckName(name); err != nil {
+		return nil, err
+	}
 	nsh, err := nsc.resolve(ctx, nsh)
 	if err != nil {
 		return nil, err
