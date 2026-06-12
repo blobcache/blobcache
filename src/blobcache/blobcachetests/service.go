@@ -41,7 +41,7 @@ func ServiceAPI(t *testing.T, mk func(t testing.TB) blobcache.Service) {
 		require.NoError(t, err)
 		require.NotNil(t, txh)
 		buf := []byte{1, 2, 3} // arbitrary data
-		err = s.Load(ctx, *txh, &buf)
+		err = s.Load(ctx, *txh, 0, &buf)
 		require.NoError(t, err)
 		require.Equal(t, 0, len(buf))
 	})

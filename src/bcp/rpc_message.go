@@ -496,19 +496,34 @@ func (ar *AbortResp) Unmarshal(data []byte) error {
 }
 
 type LoadReq struct {
-	Tx blobcache.Handle
+	Tx      blobcache.Handle
+	CellKey blobcache.CellKey
 }
 
 func (lr LoadReq) Marshal(out []byte) []byte {
 	out = lr.Tx.Marshal(out)
+	out = sbe.AppendUint32(out, uint32(lr.CellKey))
 	return out
 }
 
 func (lr *LoadReq) Unmarshal(data []byte) error {
-	if len(data) < blobcache.HandleSize {
-		return fmt.Errorf("cannot unmarshal LoadReq, too short: %d", len(data))
+	hdata, data, err := sbe.ReadN(data, blobcache.HandleSize)
+	if err != nil {
+		return err
 	}
-	return lr.Tx.Unmarshal(data)
+	if err := lr.Tx.Unmarshal(hdata); err != nil {
+		return err
+	}
+	if len(data) > 0 {
+		ck, _, err := sbe.ReadUint32(data)
+		if err != nil {
+			return err
+		}
+		lr.CellKey = blobcache.CellKey(ck)
+	} else {
+		lr.CellKey = 0
+	}
+	return nil
 }
 
 type LoadResp struct {
