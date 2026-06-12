@@ -310,8 +310,8 @@ func (s *Service) Abort(ctx context.Context, txh blobcache.Handle) error {
 	return s.sys.Abort(ctx, txh)
 }
 
-func (s *Service) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) error {
-	return s.sys.Load(ctx, txh, dst)
+func (s *Service) Load(ctx context.Context, txh blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
+	return s.sys.Load(ctx, txh, k, dst)
 }
 
 func (s *Service) Post(ctx context.Context, txh blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {

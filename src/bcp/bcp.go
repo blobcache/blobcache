@@ -138,9 +138,9 @@ func Abort(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Ha
 	return nil
 }
 
-func Load(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, dst *[]byte) error {
+func Load(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
 	var resp LoadResp
-	if err := doAsk(ctx, tp, ep, MT_TX_LOAD, LoadReq{Tx: tx}, &resp); err != nil {
+	if err := doAsk(ctx, tp, ep, MT_TX_LOAD, LoadReq{Tx: tx, CellKey: k}, &resp); err != nil {
 		return err
 	}
 	*dst = append((*dst)[:0], resp.Root...)

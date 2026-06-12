@@ -126,8 +126,8 @@ func (pv *peerView[LK, LV, LQ]) Abort(ctx context.Context, tx blobcache.Handle) 
 	return pv.svc.Abort(ctx, pv.incoming(tx))
 }
 
-func (pv *peerView[LK, LV, LQ]) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) error {
-	return pv.svc.Load(ctx, pv.incoming(tx), dst)
+func (pv *peerView[LK, LV, LQ]) Load(ctx context.Context, tx blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
+	return pv.svc.Load(ctx, pv.incoming(tx), k, dst)
 }
 
 func (pv *peerView[LK, LV, LQ]) Save(ctx context.Context, tx blobcache.Handle, src []byte) error {

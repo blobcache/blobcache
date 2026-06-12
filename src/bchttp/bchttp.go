@@ -130,7 +130,9 @@ type SaveReq struct {
 
 type SaveResp struct{}
 
-type LoadReq struct{}
+type LoadReq struct {
+	CellKey blobcache.CellKey `json:"cell_key"`
+}
 
 type LoadResp struct {
 	Root []byte `json:"root"`

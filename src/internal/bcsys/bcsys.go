@@ -535,8 +535,8 @@ func (s *Service[LK, LV, LQ]) Abort(ctx context.Context, txh blobcache.Handle) e
 	return s.core.Abort(ctx, txh)
 }
 
-func (s *Service[LK, LV, LQ]) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) error {
-	return s.core.Load(ctx, txh, dst)
+func (s *Service[LK, LV, LQ]) Load(ctx context.Context, txh blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
+	return s.core.Load(ctx, txh, k, dst)
 }
 
 func (s *Service[LK, LV, LQ]) Post(ctx context.Context, txh blobcache.Handle, data []byte, opts blobcache.PostOpts) (blobcache.CID, error) {

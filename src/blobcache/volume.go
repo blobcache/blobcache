@@ -123,6 +123,9 @@ const (
 	Action_TX_VISIT_LINKS
 )
 
+// CellKey identifies a cell within a transaction
+type CellKey uint32
+
 type TxAPI interface {
 	// InspectTx returns info about a transaction.
 	InspectTx(ctx context.Context, tx Handle) (*TxInfo, error)
@@ -131,7 +134,7 @@ type TxAPI interface {
 	// Abort aborts a transaction.
 	Abort(ctx context.Context, tx Handle) error
 	// Load loads the volume root into dst
-	Load(ctx context.Context, tx Handle, dst *[]byte) error
+	Load(ctx context.Context, tx Handle, k CellKey, dst *[]byte) error
 	// Save writes to the volume root.
 	// Like all operations in a transaction, Save will not be visible until Commit is called.
 	Save(ctx context.Context, tx Handle, src []byte) error
@@ -402,6 +405,14 @@ type VolumeConfig struct {
 	MaxSize  int64      `json:"max_size"`
 	Salted   bool       `json:"salted"`
 	Deps     []OID      `json:"deps"`
+	MaxCells uint32     `json:max_cells"`
+}
+
+func (v *VolumeConfig) GetMaxCells() uint32 {
+	if v.MaxCells == 0 {
+		return 1
+	}
+	return v.MaxCells
 }
 
 func (v *VolumeConfig) Validate() error {

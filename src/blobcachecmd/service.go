@@ -248,7 +248,11 @@ func (s *Service) Commit(ctx context.Context, h blobcache.Handle) error {
 	return s.run([]string{"tx", "commit", h.String()}, nil, nil)
 }
 
-func (s *Service) Load(ctx context.Context, h blobcache.Handle, dst *[]byte) error {
+func (s *Service) Load(ctx context.Context, h blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
+	if k > 0 {
+		*dst = (*dst)[:0]
+		return nil
+	}
 	var out bytes.Buffer
 	if err := s.run([]string{"tx", "load", h.String()}, nil, &out); err != nil {
 		return err
