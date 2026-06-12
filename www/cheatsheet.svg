@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="2800" viewBox="0 0 1440 2800" role="img" aria-labelledby="title desc">
+  <title id="title">Blobcache Cheatsheet</title>
+  <desc id="desc">Portrait Blobcache concepts cheatsheet with selectable text, black background, white type, pastel accents, and all-caps API methods.</desc>
+
+  <defs>
+    <style>
+      .bg { fill: #050507; }
+      .title { fill: #ffffff; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 56px; font-weight: 700; letter-spacing: 0.08em; }
+      .section-title { fill: #ffffff; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 31px; font-weight: 700; letter-spacing: 0.08em; }
+      .subsection-title { fill: #ffffff; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 24px; font-weight: 700; letter-spacing: 0.08em; }
+      .api-name { fill: #ffffff; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 22px; font-weight: 700; letter-spacing: 0.03em; }
+      .api-desc { fill: #d8deef; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 19px; font-weight: 500; }
+      .body { fill: #cad2ea; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 19px; font-weight: 500; }
+      .def-label { fill: #ffffff; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 18px; font-weight: 700; letter-spacing: 0.06em; }
+      .def-text { fill: #bfc8e3; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 16px; font-weight: 500; }
+      .arg { fill: #bcc3d8; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+      .arg-action { fill: #ff7d7d; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+      .type { fill: #e7ebf8; }
+      .type-handle { fill: #1f6f4a; }
+      .type-vol { fill: #4e7dff; }
+      .type-queue { fill: #ffaf63; }
+      .h-node { fill: #7edcff; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+      .h-handle { fill: #1f6f4a; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+      .h-vol { fill: #4e7dff; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+      .h-tx { fill: #bc8cff; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+      .h-queue { fill: #ffaf63; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+      .api-box { fill: none; stroke: #ffffff; stroke-width: 1.4px; opacity: 0.9; }
+      .section-box { fill: rgba(255, 255, 255, 0.02); stroke-width: 2.5px; }
+      .subsection-box { fill: rgba(255, 255, 255, 0.015); stroke-width: 2px; }
+      .label-bg { fill: #050507; }
+      .c1 { stroke: #79d8ff; }
+      .c3 { stroke: #3f65d8; }
+      .c4 { stroke: #ffaf63; }
+      .c5 { stroke: #b889ff; }
+      .c7 { stroke: #1f6f4a; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1440" height="2800" />
+
+  <text class="title" x="80" y="100">BLOBCACHE</text>
+
+  <g transform="translate(62, 160)">
+    <rect class="section-box c1" x="0" y="0" width="1316" height="840" rx="28" ry="28" />
+    <rect class="label-bg" x="38" y="-18" width="106" height="34" rx="9" ry="9" />
+    <text class="section-title" x="50" y="8">NODE</text>
+    <text class="body" x="36" y="56">An instance of Blobcache is called a Node.</text>
+    <text class="body" x="36" y="82">Nodes are responsible for a set of objects, and broker access using Handles.</text>
+
+    <text class="def-label" x="36" y="118">OID</text>
+    <foreignObject x="36" y="126" width="316" height="68">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Iosevka, 'Iosevka Term', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 16px; line-height: 1.35; color: #bfc8e3;">Object Identifiers (OIDs) uniquely identify an object on a Node.</div>
+    </foreignObject>
+
+    <text class="def-label" x="500" y="118">HANDLE</text>
+    <foreignObject x="500" y="126" width="316" height="68">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Iosevka, 'Iosevka Term', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 16px; line-height: 1.35; color: #bfc8e3;">Handles prove that the holder has permission to perform certain actions on an object.  The object and the actions that can be performed are part of the Handle.  Most operations in broadcast require a Handle.</div>
+    </foreignObject>
+
+    <text class="def-label" x="964" y="118">ACTION SETS</text>
+    <foreignObject x="964" y="126" width="316" height="68">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Iosevka, 'Iosevka Term', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 16px; line-height: 1.35; color: #bfc8e3;">ActionSets are bitmaps where a set bit means the operation is allowed.</div>
+    </foreignObject>
+
+    <rect class="api-box" x="24" y="214" width="198" height="36" rx="8" ry="8" />
+    <text class="api-name" x="36" y="240"><tspan>CREATE VOLUME</tspan><tspan class="h-node" x="260">host : NodeID</tspan><tspan> </tspan><tspan class="arg">spec : VolumeSpec</tspan><tspan> -&gt; </tspan><tspan class="type type-vol">Handle[Volume]</tspan></text>
+    <text class="api-desc" x="36" y="270">Create a volume on the selected host Node according to a Volume specification.</text>
+
+    <rect class="api-box" x="24" y="294" width="190" height="36" rx="8" ry="8" />
+    <text class="api-name" x="36" y="320"><tspan>CREATE QUEUE</tspan><tspan class="h-node" x="260">host : NodeID</tspan><tspan> </tspan><tspan class="arg">spec : QueueSpec</tspan><tspan> -&gt; </tspan><tspan class="type type-queue">Handle[Queue]</tspan></text>
+    <text class="api-desc" x="36" y="350">Create a queue on the selected host Node according to a Queue specification.</text>
+
+    <rect class="api-box" x="24" y="374" width="146" height="36" rx="8" ry="8" />
+    <text class="api-name" x="36" y="400"><tspan>OPEN FIAT</tspan><tspan class="arg" x="260">oid : OID</tspan><tspan> -&gt; </tspan><tspan class="type type-handle">Handle</tspan></text>
+    <text class="api-desc" x="36" y="430">Request a handle to an object directly.  The Node might say no.</text>
+
+    <g transform="translate(30, 486)">
+      <rect class="subsection-box c7" x="0" y="0" width="1256" height="312" rx="22" ry="22" />
+      <rect class="label-bg" x="34" y="-14" width="128" height="30" rx="8" ry="8" />
+      <text class="subsection-title" x="42" y="8">HANDLE</text>
+
+      <rect class="api-box" x="16" y="32" width="88" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="58"><tspan>DROP</tspan><tspan class="h-handle" x="190">h : Handle</tspan></text>
+      <text class="api-desc" x="28" y="86">Release a handle so the node can reclaim its resources.</text>
+
+      <rect class="api-box" x="16" y="96" width="162" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="122"><tspan>KEEP ALIVE</tspan><tspan class="h-handle" x="190">hs : Handles</tspan></text>
+      <text class="api-desc" x="28" y="150">Refresh multiple handles to prevent expiration.</text>
+
+      <rect class="api-box" x="16" y="160" width="130" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="186"><tspan>SHARE IN</tspan><tspan class="h-handle" x="190">h : Handle</tspan><tspan> </tspan><tspan class="h-node">accept_from : NodeID</tspan><tspan> </tspan><tspan class="arg-action">actions : ActionSet</tspan><tspan> -&gt; </tspan><tspan class="type type-handle">Handle</tspan></text>
+      <text class="api-desc" x="28" y="214">Accept a delegated handle from a peer Node.</text>
+
+      <rect class="api-box" x="16" y="224" width="146" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="250"><tspan>SHARE OUT</tspan><tspan class="h-handle" x="190">h : Handle</tspan><tspan> </tspan><tspan class="h-node">give_to : NodeID</tspan><tspan> </tspan><tspan class="arg-action">actions : ActionSet</tspan><tspan> -&gt; </tspan><tspan class="type type-handle">Handle</tspan></text>
+      <text class="api-desc" x="28" y="278">Prepare a delegated handle to send to peer Node.</text>
+    </g>
+  </g>
+
+  <g transform="translate(62, 1040)">
+    <rect class="section-box c3" x="0" y="0" width="1316" height="1200" rx="28" ry="28" />
+    <rect class="label-bg" x="38" y="-18" width="152" height="34" rx="9" ry="9" />
+    <text class="section-title" x="50" y="8">VOLUME</text>
+    <text class="body" x="36" y="56">Volumes hold data.</text>
+
+    <text class="def-label" x="36" y="118">CELLS</text>
+    <foreignObject x="36" y="126" width="396" height="88">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Iosevka, 'Iosevka Term', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 16px; line-height: 1.35; color: #bfc8e3;">Each Volume has a mutable cell, which holds the root of some data structure. The cell can be loaded with Load and written to with Save.</div>
+    </foreignObject>
+
+    <text class="def-label" x="460" y="118">STORE</text>
+    <foreignObject x="460" y="126" width="396" height="88">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Iosevka, 'Iosevka Term', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 16px; line-height: 1.35; color: #bfc8e3;">Each Volume has a content-addressed store. Posting data will yield a content identifier (CID). Getting by CID will yield the data back again.</div>
+    </foreignObject>
+
+    <text class="def-label" x="884" y="118">LINKS</text>
+    <foreignObject x="884" y="126" width="396" height="88">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Iosevka, 'Iosevka Term', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 16px; line-height: 1.35; color: #bfc8e3;">Volumes can hold Links to other objects. A Link is like a durable Handle. A Node will persist an object as long as one of its Volumes has a Link to it.</div>
+    </foreignObject>
+
+    <rect class="api-box" x="24" y="234" width="154" height="36" rx="8" ry="8" />
+    <text class="api-name" x="36" y="260"><tspan>OPEN FROM</tspan><tspan class="h-vol" x="260">vol : Handle[Volume]</tspan><tspan> </tspan><tspan class="arg">link_token : LinkToken</tspan><tspan> </tspan><tspan class="arg-action">mask : ActionSet</tspan><tspan> -&gt; </tspan><tspan class="type type-handle">Handle</tspan></text>
+    <text class="api-desc" x="36" y="290">Open linked objects through schema-managed links.</text>
+
+    <rect class="api-box" x="24" y="319" width="142" height="36" rx="8" ry="8" />
+    <text class="api-name" x="36" y="345"><tspan>BEGIN TX</tspan><tspan class="h-vol" x="260">vol : Handle[Volume]</tspan><tspan> </tspan><tspan class="arg">tx_params : TxParams</tspan><tspan> -&gt; </tspan><tspan class="type">Handle[Tx]</tspan></text>
+    <text class="api-desc" x="36" y="375">Open read-only or modifying transaction with optional GC flags.</text>
+
+    <g transform="translate(30, 486)">
+      <rect class="subsection-box c5" x="0" y="0" width="1256" height="660" rx="22" ry="22" />
+      <rect class="label-bg" x="34" y="-14" width="214" height="30" rx="8" ry="8" />
+      <text class="subsection-title" x="42" y="8">TRANSACTION</text>
+
+      <rect class="api-box" x="16" y="36" width="88" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="62"><tspan>LOAD</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan><tspan> -&gt; </tspan><tspan class="type">Data</tspan></text>
+      <text class="api-desc" x="28" y="88">Read a cell value.</text>
+
+      <rect class="api-box" x="16" y="96" width="88" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="122"><tspan>SAVE</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan><tspan> </tspan><tspan class="arg">data : Data</tspan></text>
+      <text class="api-desc" x="28" y="148">Set the cell value to new data in the transaction.</text>
+
+      <rect class="api-box" x="16" y="156" width="88" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="182"><tspan>POST</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan><tspan> </tspan><tspan class="arg">data : Data</tspan><tspan> -&gt; </tspan><tspan class="type">CID</tspan></text>
+      <text class="api-desc" x="28" y="208">Add data to the store and return its CID.</text>
+
+      <rect class="api-box" x="16" y="216" width="74" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="242"><tspan>GET</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan><tspan> </tspan><tspan class="arg">cid : CID</tspan><tspan> -&gt; </tspan><tspan class="type">Data</tspan></text>
+      <text class="api-desc" x="28" y="268">Fetch and verify data for a requested CID.</text>
+
+      <rect class="api-box" x="16" y="276" width="114" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="302"><tspan>EXISTS</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan><tspan> </tspan><tspan class="arg">cid_list : CIDs</tspan><tspan> -&gt; </tspan><tspan class="type">Bitmap</tspan></text>
+      <text class="api-desc" x="28" y="328">Check whether each CID exists in the store.</text>
+
+      <rect class="api-box" x="16" y="336" width="114" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="362"><tspan>DELETE</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan><tspan> </tspan><tspan class="arg">cid_list : CIDs</tspan></text>
+      <text class="api-desc" x="28" y="388">Remove matching CIDs from the transaction store.</text>
+
+      <rect class="api-box" x="16" y="396" width="88" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="422"><tspan>LINK</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan><tspan> </tspan><tspan class="h-handle">target : Handle</tspan><tspan> </tspan><tspan class="arg-action">mask : ActionSet</tspan><tspan> -&gt; </tspan><tspan class="type">LinkToken</tspan></text>
+      <text class="api-desc" x="28" y="448">Create a durable link to another object.</text>
+
+      <rect class="api-box" x="16" y="456" width="114" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="482"><tspan>UNLINK</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan><tspan> </tspan><tspan class="arg">links : LinkIDs</tspan></text>
+      <text class="api-desc" x="28" y="508">Remove durable links identified by LinkIDs.</text>
+
+      <rect class="api-box" x="16" y="516" width="114" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="542"><tspan>COMMIT</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan></text>
+      <text class="api-desc" x="28" y="568">Atomically apply pending transaction changes.</text>
+
+      <rect class="api-box" x="16" y="576" width="100" height="34" rx="7" ry="7" />
+      <text class="api-name" x="28" y="602"><tspan>ABORT</tspan><tspan class="h-tx" x="170">tx : Handle[Tx]</tspan></text>
+      <text class="api-desc" x="28" y="628">Cancel the transaction and discard pending changes.</text>
+    </g>
+  </g>
+
+  <g transform="translate(62, 2280)">
+    <rect class="section-box c4" x="0" y="0" width="1316" height="360" rx="28" ry="28" />
+    <rect class="label-bg" x="38" y="-18" width="124" height="34" rx="9" ry="9" />
+    <text class="section-title" x="50" y="8">QUEUE</text>
+    <text class="body" x="36" y="56">Queues carry messages and can subscribe to volume changes.</text>
+
+    <rect class="api-box" x="24" y="88" width="136" height="36" rx="8" ry="8" />
+    <text class="api-name" x="36" y="114"><tspan>ENQUEUE</tspan><tspan class="h-queue" x="260">q : Handle[Queue]</tspan><tspan> </tspan><tspan class="arg">messages : Messages</tspan></text>
+    <text class="api-desc" x="36" y="144">Append one or more messages to queue tail.</text>
+
+    <rect class="api-box" x="24" y="173" width="136" height="36" rx="8" ry="8" />
+    <text class="api-name" x="36" y="199"><tspan>DEQUEUE</tspan><tspan class="h-queue" x="260">q : Handle[Queue]</tspan><tspan> -&gt; </tspan><tspan class="type">Messages</tspan></text>
+    <text class="api-desc" x="36" y="229">Read messages from the queue in FIFO order.</text>
+
+    <rect class="api-box" x="24" y="258" width="200" height="36" rx="8" ry="8" />
+    <text class="api-name" x="36" y="284"><tspan>SUB TO VOLUME</tspan><tspan class="h-queue" x="260">q : Handle[Queue]</tspan><tspan> </tspan><tspan class="h-vol">vol : Handle[Volume]</tspan><tspan> </tspan><tspan class="arg">spec : SubscriptionSpec</tspan></text>
+    <text class="api-desc" x="36" y="314">Emit queue messages whenever the volume cell changes.</text>
+  </g>
+
+  <a href="https://blobcache.io/cheatsheet" target="_blank">
+    <text class="body" x="720" y="2760" text-anchor="middle">blobcache.io/cheatsheet</text>
+  </a>
+</svg>
