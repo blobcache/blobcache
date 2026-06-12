@@ -180,8 +180,8 @@ func (s *Service) Abort(ctx context.Context, tx blobcache.Handle) error {
 }
 
 // Load loads the volume root into dst
-func (s *Service) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) error {
-	return bcp.Load(ctx, s.node, s.ep, tx, dst)
+func (s *Service) Load(ctx context.Context, tx blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
+	return bcp.Load(ctx, s.node, s.ep, tx, k, dst)
 }
 
 // Save writes to the volume root.

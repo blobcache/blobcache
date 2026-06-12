@@ -119,7 +119,7 @@ func Modify(t testing.TB, s blobcache.Service, volh blobcache.Handle, f func(tx 
 func Load(t testing.TB, s blobcache.Service, txh blobcache.Handle) []byte {
 	ctx := testutil.Context(t)
 	buf := []byte{}
-	require.NoError(t, s.Load(ctx, txh, &buf))
+	require.NoError(t, s.Load(ctx, txh, 0, &buf))
 	if buf == nil {
 		buf = []byte{}
 	}

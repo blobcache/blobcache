@@ -179,7 +179,7 @@ func (tx *Tx) Abort(ctx context.Context) error {
 }
 
 func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
-	return bcp.Load(ctx, tx.vol.n, tx.vol.ep, tx.h, dst)
+	return bcp.Load(ctx, tx.vol.n, tx.vol.ep, tx.h, 0, dst)
 }
 
 func (tx *Tx) Save(ctx context.Context, src []byte) error {

@@ -134,8 +134,8 @@ func (c *Client) Abort(ctx context.Context, tx blobcache.Handle) error {
 }
 
 // Load loads the volume root into dst
-func (c *Client) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) error {
-	return bcp.Load(ctx, &c.tp, blobcache.Endpoint{}, tx, dst)
+func (c *Client) Load(ctx context.Context, tx blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
+	return bcp.Load(ctx, &c.tp, blobcache.Endpoint{}, tx, k, dst)
 }
 
 // Save writes to the volume root.

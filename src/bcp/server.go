@@ -180,7 +180,7 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 	case MT_TX_LOAD:
 		handleAsk(req, resp, &LoadReq{}, func(req *LoadReq) (*LoadResp, error) {
 			var root []byte
-			if err := svc.Load(ctx, req.Tx, &root); err != nil {
+			if err := svc.Load(ctx, req.Tx, req.CellKey, &root); err != nil {
 				return nil, err
 			}
 			return &LoadResp{Root: root}, nil

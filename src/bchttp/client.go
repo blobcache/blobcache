@@ -181,8 +181,8 @@ func (c *Client) Save(ctx context.Context, tx blobcache.Handle, root []byte) err
 	return c.doJSON(ctx, "POST", c.mkTxURL(tx, "Save"), &tx.Secret, req, &resp)
 }
 
-func (c *Client) Load(ctx context.Context, tx blobcache.Handle, dst *[]byte) error {
-	req := LoadReq{}
+func (c *Client) Load(ctx context.Context, tx blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
+	req := LoadReq{CellKey: k}
 	var resp LoadResp
 	if err := c.doJSON(ctx, "POST", c.mkTxURL(tx, "Load"), &tx.Secret, req, &resp); err != nil {
 		return err

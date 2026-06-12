@@ -66,9 +66,13 @@ func (sys *System) Abort(ctx context.Context, txh blobcache.Handle) error {
 	return nil
 }
 
-func (sys *System) Load(ctx context.Context, txh blobcache.Handle, dst *[]byte) error {
+func (sys *System) Load(ctx context.Context, txh blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "Load"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Load"), zap.Stringer("oid", txh.OID))
+	if k > 0 {
+		*dst = (*dst)[:0]
+		return nil
+	}
 	txn, err := sys.resolveTx(txh, true, blobcache.Action_TX_LOAD)
 	if err != nil {
 		return err

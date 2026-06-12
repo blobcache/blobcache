@@ -70,7 +70,7 @@ func (tx *Tx) Save(ctx context.Context, src []byte) error {
 }
 
 func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
-	return tx.s.Load(ctx, tx.h, dst)
+	return tx.s.Load(ctx, tx.h, 0, dst)
 }
 
 func (tx *Tx) Commit(ctx context.Context) error {
@@ -203,7 +203,7 @@ func (tx *TxSalt) HashAlgo() blobcache.HashAlgo {
 }
 
 func (tx *TxSalt) Load(ctx context.Context, dst *[]byte) error {
-	return tx.s.Load(ctx, tx.h, dst)
+	return tx.s.Load(ctx, tx.h, 0, dst)
 }
 
 func (tx *TxSalt) Save(ctx context.Context, src []byte) error {
