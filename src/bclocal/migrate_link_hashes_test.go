@@ -66,7 +66,7 @@ func TestMigrateLinkTokenHashes(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func rewriteLinkHashForVolume(t testing.TB, svc *Service, lvid localvol.ID, target blobcache.OID, fromHash, toHash blobcache.LinkTokenID) error {
+func rewriteLinkHashForVolume(t testing.TB, svc *Service, lvid localvol.ID, target blobcache.OID, fromHash, toHash blobcache.LinkID) error {
 	t.Helper()
 
 	deleteKeys, err := collectLinkKeys(svc.db, lvid, target, fromHash)
@@ -101,7 +101,7 @@ func rewriteLinkHashForVolume(t testing.TB, svc *Service, lvid localvol.ID, targ
 	return ba.Commit(nil)
 }
 
-func collectLinkKeys(db *pebble.DB, lvid localvol.ID, target blobcache.OID, h blobcache.LinkTokenID) ([][]byte, error) {
+func collectLinkKeys(db *pebble.DB, lvid localvol.ID, target blobcache.OID, h blobcache.LinkID) ([][]byte, error) {
 	sn := db.NewSnapshot()
 	defer sn.Close()
 

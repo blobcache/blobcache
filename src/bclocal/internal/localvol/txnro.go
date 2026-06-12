@@ -134,11 +134,11 @@ func (v *localTxnRO) Link(ctx context.Context, svoid blobcache.OID, rights blobc
 	return nil, blobcache.ErrTxReadOnly{Op: "AllowLink"}
 }
 
-func (v *localTxnRO) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (v *localTxnRO) Unlink(ctx context.Context, targets []blobcache.LinkID) error {
 	return blobcache.ErrTxReadOnly{Op: "Unlink"}
 }
 
-func (v *localTxnRO) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (v *localTxnRO) VisitLinks(ctx context.Context, targets []blobcache.LinkID) error {
 	return blobcache.ErrTxReadOnly{Op: "VisitLinks"}
 }
 

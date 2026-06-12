@@ -753,7 +753,7 @@ func (ar *LinkResp) Unmarshal(data []byte) error {
 
 type UnlinkReq struct {
 	Tx      blobcache.Handle
-	Targets []blobcache.LinkTokenID
+	Targets []blobcache.LinkID
 }
 
 func (ur UnlinkReq) Marshal(out []byte) []byte {
@@ -776,7 +776,7 @@ func (ur *UnlinkReq) Unmarshal(data []byte) error {
 	if err != nil {
 		return err
 	}
-	ur.Targets = make([]blobcache.LinkTokenID, numTargets)
+	ur.Targets = make([]blobcache.LinkID, numTargets)
 	for i := range ur.Targets {
 		if len(data) < blobcache.CIDSize {
 			return fmt.Errorf("cannot unmarshal UnlinkReq, too short: %d", len(data))
@@ -802,7 +802,7 @@ func (ur *UnlinkResp) Unmarshal(data []byte) error {
 
 type VisitLinksReq struct {
 	Tx      blobcache.Handle
-	Targets []blobcache.LinkTokenID
+	Targets []blobcache.LinkID
 }
 
 func (vr VisitLinksReq) Marshal(out []byte) []byte {
@@ -825,7 +825,7 @@ func (vr *VisitLinksReq) Unmarshal(data []byte) error {
 	if err != nil {
 		return err
 	}
-	vr.Targets = make([]blobcache.LinkTokenID, numTargets)
+	vr.Targets = make([]blobcache.LinkID, numTargets)
 	for i := range vr.Targets {
 		if len(data) < blobcache.CIDSize {
 			return fmt.Errorf("cannot unmarshal VisitLinksReq, too short: %d", len(data))

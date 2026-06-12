@@ -281,7 +281,7 @@ func (sys *System) Link(ctx context.Context, txh blobcache.Handle, target blobca
 	return ltok, nil
 }
 
-func (sys *System) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (sys *System) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkID) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "Unlink"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Unlink"), zap.Stringer("oid", txh.OID))
 	txn, err := sys.resolveTx(txh, true, blobcache.Action_TX_UNLINK_FROM)
@@ -291,7 +291,7 @@ func (sys *System) Unlink(ctx context.Context, txh blobcache.Handle, targets []b
 	return setErrTxOID(txn.backend.Unlink(ctx, targets), txh.OID)
 }
 
-func (sys *System) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (sys *System) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkID) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "VisitLinks"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "VisitLinks"), zap.Stringer("oid", txh.OID))
 	txn, err := sys.resolveTx(txh, true, blobcache.Action_TX_VISIT_LINKS)

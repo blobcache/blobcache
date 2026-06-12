@@ -225,7 +225,7 @@ func (ns *Tx) VisitAll(ctx context.Context) error {
 	for _, ent := range ents {
 		lt := ent.LinkToken()
 		ltid := lt.GetID(ns.Tx.HashAlgo())
-		if err := ns.Tx.VisitLinks(ctx, []blobcache.LinkTokenID{ltid}); err != nil {
+		if err := ns.Tx.VisitLinks(ctx, []blobcache.LinkID{ltid}); err != nil {
 			return err
 		}
 	}

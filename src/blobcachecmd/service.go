@@ -426,7 +426,7 @@ func (s *Service) Link(ctx context.Context, h blobcache.Handle, subvol blobcache
 	return &ltok, nil
 }
 
-func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkID) error {
 	for _, target := range targets {
 		if err := s.run([]string{"tx", "unlink", h.String(), blobcache.CID(target).String()}, nil, nil); err != nil {
 			return err
@@ -435,7 +435,7 @@ func (s *Service) Unlink(ctx context.Context, h blobcache.Handle, targets []blob
 	return nil
 }
 
-func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (s *Service) VisitLinks(ctx context.Context, h blobcache.Handle, targets []blobcache.LinkID) error {
 	for _, target := range targets {
 		if err := s.run([]string{"tx", "visit-links", h.String(), blobcache.CID(target).String()}, nil, nil); err != nil {
 			return err

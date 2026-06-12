@@ -246,14 +246,14 @@ func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.Ac
 	return bcp.Link(ctx, tx.vol.n, tx.vol.ep, tx.h, rvol.h, rights)
 }
 
-func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkID) error {
 	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}
 	return bcp.Unlink(ctx, tx.vol.n, tx.vol.ep, tx.h, targets)
 }
 
-func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkID) error {
 	if !tx.params.Modify {
 		return blobcache.ErrTxReadOnly{}
 	}

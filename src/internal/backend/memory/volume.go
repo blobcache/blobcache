@@ -23,7 +23,7 @@ type Volume struct {
 	stateMu sync.RWMutex
 	cell    []byte
 	blobs   map[blobcache.CID][]byte
-	links   map[blobcache.LinkTokenID]blobcache.LinkToken
+	links   map[blobcache.LinkID]blobcache.LinkToken
 }
 
 func NewVolume(maxBytes uint64) *Volume {
@@ -90,7 +90,7 @@ type Tx struct {
 	blobs      map[blobcache.CID][]byte
 	blobVisits map[blobcache.CID]struct{}
 	linkMu     sync.RWMutex
-	links      map[blobcache.LinkTokenID]blobcache.LinkToken
+	links      map[blobcache.LinkID]blobcache.LinkToken
 }
 
 func (tx *Tx) setDone() {
@@ -131,7 +131,7 @@ func (tx *Tx) Commit(ctx context.Context) error {
 			}
 		}
 		if tx.vol.links == nil && len(tx.links) > 0 {
-			tx.vol.links = make(map[blobcache.LinkTokenID]blobcache.LinkToken)
+			tx.vol.links = make(map[blobcache.LinkID]blobcache.LinkToken)
 		}
 		for ltid, ltok := range tx.links {
 			if ltok.Target == (blobcache.OID{}) && ltok.Rights == 0 {
@@ -300,11 +300,11 @@ func (tx *Tx) Link(ctx context.Context, svoid blobcache.OID, rights blobcache.Ac
 	return nil, fmt.Errorf("linking not implemented for memory volumes")
 }
 
-func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkID) error {
 	return fmt.Errorf("linking not implemented for memory volumes")
 }
 
-func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkID) error {
 	return fmt.Errorf("linking not implemented for memory volumes")
 }
 

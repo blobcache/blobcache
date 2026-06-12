@@ -571,11 +571,11 @@ func (s *Service[LK, LV, LQ]) Link(ctx context.Context, txh blobcache.Handle, ta
 	return s.core.Link(ctx, txh, target, mask)
 }
 
-func (s *Service[LK, LV, LQ]) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (s *Service[LK, LV, LQ]) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkID) error {
 	return s.core.Unlink(ctx, txh, targets)
 }
 
-func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (s *Service[LK, LV, LQ]) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkID) error {
 	return s.core.VisitLinks(ctx, txh, targets)
 }
 

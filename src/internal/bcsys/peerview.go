@@ -159,7 +159,6 @@ func (pv *peerView[LK, LV, LQ]) Visit(ctx context.Context, tx blobcache.Handle, 
 	return pv.svc.Visit(ctx, pv.incoming(tx), cids)
 }
 
-
 func (pv *peerView[LK, LV, LQ]) IsVisited(ctx context.Context, tx blobcache.Handle, cids []blobcache.CID, yesVisited *blobcache.BitMap) error {
 	return pv.svc.IsVisited(ctx, pv.incoming(tx), cids, yesVisited)
 }
@@ -168,11 +167,11 @@ func (pv *peerView[LK, LV, LQ]) Link(ctx context.Context, tx blobcache.Handle, t
 	return pv.svc.Link(ctx, pv.incoming(tx), pv.incoming(target), mask)
 }
 
-func (pv *peerView[LK, LV, LQ]) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (pv *peerView[LK, LV, LQ]) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkID) error {
 	return pv.svc.Unlink(ctx, pv.incoming(tx), targets)
 }
 
-func (pv *peerView[LK, LV, LQ]) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (pv *peerView[LK, LV, LQ]) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkID) error {
 	return pv.svc.VisitLinks(ctx, pv.incoming(tx), targets)
 }
 

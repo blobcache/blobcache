@@ -363,7 +363,7 @@ var txUnlinkCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		if err := svc.Unlink(c.Context, txHParam.Load(c), []blobcache.LinkTokenID{linkTokenIDParam.Load(c)}); err != nil {
+		if err := svc.Unlink(c.Context, txHParam.Load(c), []blobcache.LinkID{linkTokenIDParam.Load(c)}); err != nil {
 			return err
 		}
 		printOK(c, "UNLINK")
@@ -381,7 +381,7 @@ var txVisitLinksCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		if err := svc.VisitLinks(c.Context, txHParam.Load(c), []blobcache.LinkTokenID{linkTokenIDParam.Load(c)}); err != nil {
+		if err := svc.VisitLinks(c.Context, txHParam.Load(c), []blobcache.LinkID{linkTokenIDParam.Load(c)}); err != nil {
 			return err
 		}
 		printOK(c, "VISIT-LINKS")
@@ -428,15 +428,15 @@ var oidsParam = &star.Repeated[blobcache.OID]{
 	Parse:    blobcache.ParseOID,
 }
 
-var linkTokenIDParam = &star.Required[blobcache.LinkTokenID]{
+var linkTokenIDParam = &star.Required[blobcache.LinkID]{
 	PosName:  "link-token-id",
 	ShortDoc: "a link token id (base64 CID format)",
-	Parse: func(s string) (blobcache.LinkTokenID, error) {
+	Parse: func(s string) (blobcache.LinkID, error) {
 		cid, err := blobcache.ParseCID(s)
 		if err != nil {
-			return blobcache.LinkTokenID{}, err
+			return blobcache.LinkID{}, err
 		}
-		return blobcache.LinkTokenID(cid), nil
+		return blobcache.LinkID(cid), nil
 	},
 }
 

@@ -133,7 +133,7 @@ func (nsc *Client) Delete(ctx context.Context, nsh blobcache.Handle, name string
 		}) {
 			// if the target is not referenced by any other entry, unlink it
 			ltokID := ent.LinkToken().GetID(tx.HashAlgo())
-			if err := tx.Unlink(ctx, []blobcache.LinkTokenID{ltokID}); err != nil {
+			if err := tx.Unlink(ctx, []blobcache.LinkID{ltokID}); err != nil {
 				return nil, err
 			}
 		}
@@ -282,7 +282,7 @@ func (nsc *Client) GC(ctx context.Context, volh blobcache.Handle) error {
 			}
 		}
 		if len(ltoks) > 0 {
-			linkIDs := make([]blobcache.LinkTokenID, len(ltoks))
+			linkIDs := make([]blobcache.LinkID, len(ltoks))
 			for i := range ltoks {
 				linkIDs[i] = ltoks[i].GetID(tx.HashAlgo())
 			}

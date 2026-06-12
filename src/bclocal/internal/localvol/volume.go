@@ -295,7 +295,7 @@ func (txn *localTxnMut) Link(ctx context.Context, svoid blobcache.OID, rights bl
 	return &ltok, nil
 }
 
-func (txn *localTxnMut) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (txn *localTxnMut) Unlink(ctx context.Context, targets []blobcache.LinkID) error {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	if txn.finished {
@@ -307,7 +307,7 @@ func (txn *localTxnMut) Unlink(ctx context.Context, targets []blobcache.LinkToke
 	return nil
 }
 
-func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (txn *localTxnMut) VisitLinks(ctx context.Context, targets []blobcache.LinkID) error {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	if txn.finished {

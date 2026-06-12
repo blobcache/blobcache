@@ -128,11 +128,11 @@ func (tx *Tx) Link(ctx context.Context, target blobcache.Handle, mask ActionSet)
 	return tx.s.Link(ctx, tx.h, target, mask)
 }
 
-func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkID) error {
 	return tx.s.Unlink(ctx, tx.h, targets)
 }
 
-func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkTokenID) error {
+func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkID) error {
 	return tx.s.VisitLinks(ctx, tx.h, targets)
 }
 

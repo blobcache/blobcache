@@ -187,11 +187,11 @@ func (c *Client) Link(ctx context.Context, tx blobcache.Handle, subvol blobcache
 	return bcp.Link(ctx, &c.tp, blobcache.Endpoint{}, tx, subvol, mask)
 }
 
-func (c *Client) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (c *Client) Unlink(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkID) error {
 	return bcp.Unlink(ctx, &c.tp, blobcache.Endpoint{}, tx, targets)
 }
 
-func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (c *Client) VisitLinks(ctx context.Context, tx blobcache.Handle, targets []blobcache.LinkID) error {
 	return bcp.VisitLinks(ctx, &c.tp, blobcache.Endpoint{}, tx, targets)
 }
 

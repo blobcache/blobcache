@@ -346,11 +346,11 @@ func (s *Service) Link(ctx context.Context, txh blobcache.Handle, target blobcac
 	return s.sys.Link(ctx, txh, target, mask)
 }
 
-func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (s *Service) Unlink(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkID) error {
 	return s.sys.Unlink(ctx, txh, targets)
 }
 
-func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkTokenID) error {
+func (s *Service) VisitLinks(ctx context.Context, txh blobcache.Handle, targets []blobcache.LinkID) error {
 	return s.sys.VisitLinks(ctx, txh, targets)
 }
 
