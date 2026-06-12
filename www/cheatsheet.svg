@@ -5,6 +5,8 @@
 
   <defs>
     <style>
+      @import url("https://cdn.jsdelivr.net/npm/@fontsource/iosevka@latest/latin.css");
+
       .bg { fill: #050507; }
       .title { fill: #ffffff; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 56px; font-weight: 700; letter-spacing: 0.08em; }
       .section-title { fill: #ffffff; font-family: "Iosevka", "Iosevka Term", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 31px; font-weight: 700; letter-spacing: 0.08em; }
