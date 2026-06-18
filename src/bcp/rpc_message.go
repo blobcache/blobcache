@@ -873,7 +873,7 @@ func (ar CopyReq) Marshal(out []byte) []byte {
 
 func (ar *CopyReq) Unmarshal(data []byte) error {
 	if len(data) < blobcache.HandleSize {
-		return fmt.Errorf("cannot unmarshal AddFromReq, too short: %d", len(data))
+		return fmt.Errorf("cannot unmarshal CopyReq, too short: %d", len(data))
 	}
 	if err := ar.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err

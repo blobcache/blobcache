@@ -204,7 +204,7 @@ func (s *Service) Delete(ctx context.Context, tx blobcache.Handle, cids []blobca
 }
 
 func (s *Service) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success *blobcache.BitMap) error {
-	return bcp.AddFrom(ctx, s.node, s.ep, tx, cids, srcTxns, success)
+	return bcp.Copy(ctx, s.node, s.ep, tx, cids, srcTxns, success)
 }
 
 // Get returns the data for a CID.

@@ -409,5 +409,5 @@ func isErrCopyUnsupported(err error) bool {
 		return false
 	}
 	msg := err.Error()
-	return strings.Contains(msg, "copy not implemented") || strings.Contains(msg, "unsupported method AddFrom")
+	return strings.Contains(msg, "copy not implemented")
 }

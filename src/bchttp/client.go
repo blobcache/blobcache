@@ -120,15 +120,6 @@ func (c *Client) CreateVolume(ctx context.Context, host *blobcache.Endpoint, vsp
 	return &resp.Handle, nil
 }
 
-func (c *Client) CloneVolume(ctx context.Context, caller *blobcache.NodeID, vol blobcache.Handle) (*blobcache.Handle, error) {
-	req := CloneVolumeReq{Volume: vol}
-	var resp CloneVolumeResp
-	if err := c.doJSON(ctx, "POST", "/volume/Clone", nil, req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Clone, nil
-}
-
 func (c *Client) InspectVolume(ctx context.Context, h blobcache.Handle) (*blobcache.VolumeInfo, error) {
 	p := fmt.Sprintf("/volume/%s.Inspect", h.OID.String())
 	headers := map[string]string{
@@ -263,9 +254,9 @@ func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID
 }
 
 func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, srcs []blobcache.Handle, cids []blobcache.CID, out *blobcache.BitMap) error {
-	req := AddFromReq{CIDs: cids, Srcs: srcs}
-	var resp AddFromResp
-	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AddFrom", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
+	req := CopyReq{CIDs: cids, Srcs: srcs}
+	var resp CopyResp
+	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.Copy", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
 		return err
 	}
 	for i, ok := range resp.Added {
