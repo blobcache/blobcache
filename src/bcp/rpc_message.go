@@ -846,70 +846,79 @@ func (vr *VisitLinksResp) Unmarshal(data []byte) error {
 	return nil
 }
 
-type AddFromReq struct {
-	Tx   blobcache.Handle
-	CIDs []blobcache.CID
+type CopyReq struct {
+	// Tx is the destination Tx to write to
+	Tx blobcache.Handle
+	// Srcs are the source transactions to pull from.
+	// Maximum of 2^16 - 1
 	Srcs []blobcache.Handle
+	// Maxium of 2^32 - 1
+	CIDs []blobcache.CID
 }
 
-func (ar AddFromReq) Marshal(out []byte) []byte {
+func (ar CopyReq) Marshal(out []byte) []byte {
 	out = ar.Tx.Marshal(out)
-	out = binary.AppendUvarint(out, uint64(len(ar.CIDs)))
-	for _, cid := range ar.CIDs {
-		out = append(out, cid[:]...)
-	}
-	out = binary.AppendUvarint(out, uint64(len(ar.Srcs)))
+	// source handles
+	out = sbe.AppendUint16(out, uint16(len(ar.Srcs)))
 	for _, src := range ar.Srcs {
 		out = src.Marshal(out)
+	}
+	// CIDs
+	out = sbe.AppendUint32(out, uint32(len(ar.CIDs)))
+	for _, cid := range ar.CIDs {
+		out = append(out, cid[:]...)
 	}
 	return out
 }
 
-func (ar *AddFromReq) Unmarshal(data []byte) error {
+func (ar *CopyReq) Unmarshal(data []byte) error {
 	if len(data) < blobcache.HandleSize {
 		return fmt.Errorf("cannot unmarshal AddFromReq, too short: %d", len(data))
 	}
 	if err := ar.Tx.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
 	}
-	numCIDs, data, err := sbe.ReadUVarint(data[blobcache.HandleSize:])
-	if err != nil {
-		return err
-	}
-	ar.CIDs = make([]blobcache.CID, numCIDs)
-	for i := range ar.CIDs {
-		if len(data) < blobcache.CIDSize {
-			return fmt.Errorf("cannot unmarshal AddFromReq, too short: %d", len(data))
-		}
-		ar.CIDs[i] = blobcache.CID(data[:blobcache.CIDSize])
-		data = data[blobcache.CIDSize:]
-	}
-	numSrcs, data, err := sbe.ReadUVarint(data)
+	data = data[blobcache.HandleSize:]
+	// source handles
+	numSrcs, data, err := sbe.ReadUint16(data)
 	if err != nil {
 		return err
 	}
 	ar.Srcs = make([]blobcache.Handle, numSrcs)
 	for i := range ar.Srcs {
 		if len(data) < blobcache.HandleSize {
-			return fmt.Errorf("cannot unmarshal AddFromReq, too short: %d", len(data))
+			return fmt.Errorf("cannot unmarshal CopyReq, too short: %d", len(data))
 		}
-		if err := ar.Srcs[i].Unmarshal(data); err != nil {
+		if err := ar.Srcs[i].Unmarshal(data[:blobcache.HandleSize]); err != nil {
 			return err
 		}
 		data = data[blobcache.HandleSize:]
 	}
+	// CIDS
+	numCIDs, data, err := sbe.ReadUint32(data)
+	if err != nil {
+		return err
+	}
+	ar.CIDs = make([]blobcache.CID, numCIDs)
+	for i := range ar.CIDs {
+		if len(data) < blobcache.CIDSize {
+			return fmt.Errorf("cannot unmarshal CopyReq, too short: %d", len(data))
+		}
+		ar.CIDs[i] = blobcache.CID(data[:blobcache.CIDSize])
+		data = data[blobcache.CIDSize:]
+	}
 	return nil
 }
 
-type AddFromResp struct {
+type CopyResp struct {
 	Added blobcache.BitMap
 }
 
-func (ar AddFromResp) Marshal(out []byte) []byte {
+func (ar CopyResp) Marshal(out []byte) []byte {
 	return ar.Added.Marshal(out)
 }
 
-func (ar *AddFromResp) Unmarshal(data []byte) error {
+func (ar *CopyResp) Unmarshal(data []byte) error {
 	return ar.Added.Unmarshal(data)
 }
 
