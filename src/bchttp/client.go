@@ -262,16 +262,17 @@ func (c *Client) Get(ctx context.Context, tx blobcache.Handle, cid blobcache.CID
 	return n, nil
 }
 
-func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, srcs []blobcache.Handle, cids []blobcache.CID, out []bool) error {
-	if len(cids) != len(out) {
-		return fmt.Errorf("cids and out must have the same length")
-	}
+func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, srcs []blobcache.Handle, cids []blobcache.CID, out *blobcache.BitMap) error {
 	req := AddFromReq{CIDs: cids, Srcs: srcs}
 	var resp AddFromResp
 	if err := c.doJSON(ctx, "POST", fmt.Sprintf("/tx/%s.AddFrom", tx.OID.String()), &tx.Secret, req, &resp); err != nil {
 		return err
 	}
-	copy(out, resp.Added)
+	for i, ok := range resp.Added {
+		if ok {
+			out.Set(i)
+		}
+	}
 	return nil
 }
 

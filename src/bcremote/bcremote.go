@@ -4,7 +4,6 @@ package bcremote
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"time"
 
@@ -204,10 +203,7 @@ func (s *Service) Delete(ctx context.Context, tx blobcache.Handle, cids []blobca
 	return bcp.Delete(ctx, s.node, s.ep, tx, cids)
 }
 
-func (s *Service) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success []bool) error {
-	if len(cids) != len(success) {
-		return fmt.Errorf("cids and success must have the same length")
-	}
+func (s *Service) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success *blobcache.BitMap) error {
 	return bcp.AddFrom(ctx, s.node, s.ep, tx, cids, srcTxns, success)
 }
 

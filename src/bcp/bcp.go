@@ -246,12 +246,12 @@ func Delete(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.H
 	return nil
 }
 
-func AddFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success []bool) error {
+func AddFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, tx blobcache.Handle, cids []blobcache.CID, srcTxns []blobcache.Handle, success *blobcache.BitMap) error {
 	var resp AddFromResp
 	if err := doAsk(ctx, tp, ep, MT_TX_COPY, AddFromReq{Tx: tx, CIDs: cids, Srcs: srcTxns}, &resp); err != nil {
 		return err
 	}
-	copy(success, resp.Added)
+	success.OR(resp.Added)
 	return nil
 }
 

@@ -902,33 +902,15 @@ func (ar *AddFromReq) Unmarshal(data []byte) error {
 }
 
 type AddFromResp struct {
-	Added []bool
+	Added blobcache.BitMap
 }
 
 func (ar AddFromResp) Marshal(out []byte) []byte {
-	for i := range ar.Added {
-		if i%8 == 0 {
-			out = append(out, 0)
-		}
-		if ar.Added[i] {
-			out[len(out)-1] |= 1 << (i % 8)
-		}
-	}
-	return out
+	return ar.Added.Marshal(out)
 }
 
 func (ar *AddFromResp) Unmarshal(data []byte) error {
-	ar.Added = make([]bool, len(data)*8)
-	for i := range data {
-		for j := 0; j < 8; j++ {
-			if (data[i] & (1 << j)) != 0 {
-				ar.Added[i*8+j] = true
-			} else {
-				ar.Added[i*8+j] = false
-			}
-		}
-	}
-	return nil
+	return ar.Added.Unmarshal(data)
 }
 
 type VisitReq struct {

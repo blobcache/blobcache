@@ -555,7 +555,7 @@ func (s *Service[LV, LK, LQ]) Delete(ctx context.Context, txh blobcache.Handle, 
 	return s.core.Delete(ctx, txh, cids)
 }
 
-func (s *Service[LK, LV, LQ]) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out []bool) error {
+func (s *Service[LK, LV, LQ]) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out *blobcache.BitMap) error {
 	return s.core.Copy(ctx, txh, srcTxns, cids, out)
 }
 

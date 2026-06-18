@@ -150,7 +150,7 @@ func (pv *peerView[LK, LV, LQ]) Delete(ctx context.Context, tx blobcache.Handle,
 	return pv.svc.Delete(ctx, pv.incoming(tx), cids)
 }
 
-func (pv *peerView[LK, LV, LQ]) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success []bool) error {
+func (pv *peerView[LK, LV, LQ]) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success *blobcache.BitMap) error {
 	decSrc := slices2.Map(srcTxns, pv.incoming)
 	return pv.svc.Copy(ctx, pv.incoming(tx), decSrc, cids, success)
 }
