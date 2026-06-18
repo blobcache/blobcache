@@ -147,12 +147,14 @@ type TxAPI interface {
 	// Delete deletes a CID from the volume
 	Delete(ctx context.Context, tx Handle, cids []CID) error
 	// Copy has the same effect as Post, but it does not require sending the data to Blobcache.
-	// It returns a slice of booleans, indicating if the CID could be added.
+	// It sets bits in success to indicate which CIDs could be added.
+	// Copy only calls Set and may call IsSet on success, but never Unset.
+	// To get an exact result, call Reset on the bitmap before calling Copy.
 	// srcTxns are the transactions to copy from.  They will be checked in random order.
-	// If none of them have the blob to copy, then false is written to success for that blob.
-	// Error is only returned if there is an internal error, otherwise the success slice is used to signal
+	// If none of them have the blob to copy, then that bit is left unset.
+	// Error is only returned if there is an internal error, otherwise the success bitmap is used to signal
 	// whether a CID was successfully copied.
-	Copy(ctx context.Context, tx Handle, srcTxns []Handle, cids []CID, success []bool) error
+	Copy(ctx context.Context, tx Handle, srcTxns []Handle, cids []CID, success *BitMap) error
 	// Visit is only usable in a GC transaction.
 	// It marks each CID as being visited, so it will not be removed by GC.
 	Visit(ctx context.Context, tx Handle, cids []CID) error

@@ -284,13 +284,13 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		dstTx := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		defer Abort(t, s, dstTx)
 
-		out := make([]bool, 1)
-		err := s.Copy(ctx, dstTx, []blobcache.Handle{srcTx}, []blobcache.CID{cid}, out)
+		out := blobcache.BitMap{}
+		err := s.Copy(ctx, dstTx, []blobcache.Handle{srcTx}, []blobcache.CID{cid}, &out)
 		if isErrCopyUnsupported(err) {
 			t.Skip("copy not implemented by service")
 		}
 		require.NoError(t, err)
-		require.Equal(t, []bool{true}, out)
+		require.True(t, out.IsSet(0))
 		require.True(t, Exists(t, s, dstTx, cid))
 	})
 	t.Run("CopyMissingCID", func(t *testing.T) {
@@ -303,13 +303,13 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		defer Abort(t, s, dstTx)
 
 		missing := defaultLocalSpec().Local.HashAlgo.Hash([]byte("missing"))
-		out := make([]bool, 1)
-		err := s.Copy(ctx, dstTx, []blobcache.Handle{srcTx}, []blobcache.CID{missing}, out)
+		out := blobcache.BitMap{}
+		err := s.Copy(ctx, dstTx, []blobcache.Handle{srcTx}, []blobcache.CID{missing}, &out)
 		if isErrCopyUnsupported(err) {
 			t.Skip("copy not implemented by service")
 		}
 		require.NoError(t, err)
-		require.Equal(t, []bool{false}, out)
+		require.False(t, out.IsSet(0))
 	})
 	t.Run("CopyReadOnlyDestination", func(t *testing.T) {
 		ctx := testutil.Context(t)
@@ -324,25 +324,27 @@ func TxAPI(t *testing.T, mk func(t testing.TB) (blobcache.Service, blobcache.Han
 		dstTx := BeginTx(t, s, volh, blobcache.TxParams{Modify: false})
 		defer Abort(t, s, dstTx)
 
-		out := make([]bool, 1)
+		out := &blobcache.BitMap{}
 		err := s.Copy(ctx, dstTx, []blobcache.Handle{srcTx}, []blobcache.CID{cid}, out)
 		if isErrCopyUnsupported(err) {
 			t.Skip("copy not implemented by service")
 		}
 		require.Error(t, err)
 	})
-	t.Run("CopyLengthMismatch", func(t *testing.T) {
+	t.Run("CopyNoSources", func(t *testing.T) {
 		ctx := testutil.Context(t)
 		s, volh := mk(t)
 
 		dstTx := BeginTx(t, s, volh, blobcache.TxParams{Modify: true})
 		defer Abort(t, s, dstTx)
 
-		err := s.Copy(ctx, dstTx, nil, []blobcache.CID{{}}, nil)
+		out := blobcache.BitMap{}
+		err := s.Copy(ctx, dstTx, nil, []blobcache.CID{{}}, &out)
 		if isErrCopyUnsupported(err) {
 			t.Skip("copy not implemented by service")
 		}
-		require.Error(t, err)
+		require.NoError(t, err)
+		require.False(t, out.IsSet(0))
 	})
 	t.Run("Link", func(t *testing.T) {
 		// This test checks that volumes with the NONE schema can be nested arbitrarily deep.
@@ -407,5 +409,5 @@ func isErrCopyUnsupported(err error) bool {
 		return false
 	}
 	msg := err.Error()
-	return strings.Contains(msg, "copy not implemented") || strings.Contains(msg, "unsupported method AddFrom")
+	return strings.Contains(msg, "copy not implemented")
 }

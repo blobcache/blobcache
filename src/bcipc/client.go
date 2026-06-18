@@ -2,7 +2,6 @@ package bcipc
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"runtime"
 
@@ -158,11 +157,8 @@ func (c *Client) Delete(ctx context.Context, tx blobcache.Handle, cids []blobcac
 	return bcp.Delete(ctx, &c.tp, blobcache.Endpoint{}, tx, cids)
 }
 
-func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success []bool) error {
-	if len(cids) != len(success) {
-		return fmt.Errorf("cids and success must have the same length")
-	}
-	return bcp.AddFrom(ctx, &c.tp, blobcache.Endpoint{}, tx, cids, srcTxns, success)
+func (c *Client) Copy(ctx context.Context, tx blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success *blobcache.BitMap) error {
+	return bcp.Copy(ctx, &c.tp, blobcache.Endpoint{}, tx, cids, srcTxns, success)
 }
 
 // Get returns the data for a CID.

@@ -240,12 +240,12 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 		resp.SetCode(MT_OK)
 		resp.SetBody(cid[:])
 	case MT_TX_COPY:
-		handleAsk(req, resp, &AddFromReq{}, func(req *AddFromReq) (*AddFromResp, error) {
-			success := make([]bool, len(req.CIDs))
-			if err := svc.Copy(ctx, req.Tx, req.Srcs, req.CIDs, success); err != nil {
+		handleAsk(req, resp, &CopyReq{}, func(req *CopyReq) (*CopyResp, error) {
+			var success blobcache.BitMap
+			if err := svc.Copy(ctx, req.Tx, req.Srcs, req.CIDs, &success); err != nil {
 				return nil, err
 			}
-			return &AddFromResp{Added: success}, nil
+			return &CopyResp{Added: success}, nil
 		})
 	case MT_TX_GET:
 		h, body, err := readHandle(req.Body())

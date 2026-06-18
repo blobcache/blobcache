@@ -350,10 +350,7 @@ func (s *Service) Delete(ctx context.Context, h blobcache.Handle, cids []blobcac
 	return s.run(args, nil, nil)
 }
 
-func (s *Service) Copy(ctx context.Context, h blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success []bool) error {
-	if len(cids) != len(success) {
-		return fmt.Errorf("cids and success must have the same length")
-	}
+func (s *Service) Copy(ctx context.Context, h blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, success *blobcache.BitMap) error {
 	// optional, not implemented by CLI currently
 	return fmt.Errorf("copy not implemented")
 }

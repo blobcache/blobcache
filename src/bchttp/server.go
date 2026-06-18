@@ -265,6 +265,20 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 			}
 			return &ExistsResp{Exists: exists}, nil
 		})
+	case "Copy":
+		handleRequest(w, r, func(ctx context.Context, req CopyReq) (*CopyResp, error) {
+			ok := blobcache.BitMap{}
+			if err := s.Service.Copy(ctx, h, req.Srcs, req.CIDs, &ok); err != nil {
+				return nil, err
+			}
+			added := make([]bool, len(req.CIDs))
+			for i := 0; i < ok.Len(); i++ {
+				if ok.IsSet(i) {
+					added[i] = true
+				}
+			}
+			return &CopyResp{Added: added}, nil
+		})
 	case "Visit":
 		handleRequest(w, r, func(ctx context.Context, req VisitReq) (*VisitResp, error) {
 			if err := s.Service.Visit(ctx, h, req.CIDs); err != nil {

@@ -330,7 +330,7 @@ func (s *Service) Delete(ctx context.Context, txh blobcache.Handle, cids []blobc
 	return s.sys.Delete(ctx, txh, cids)
 }
 
-func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out []bool) error {
+func (s *Service) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out *blobcache.BitMap) error {
 	return s.sys.Copy(ctx, txh, srcTxns, cids, out)
 }
 

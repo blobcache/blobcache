@@ -144,7 +144,7 @@ func (tx *Tx) IsVisited(ctx context.Context, cids []CID, dst *blobcache.BitMap) 
 	return tx.s.IsVisited(ctx, tx.h, cids, dst)
 }
 
-func (tx *Tx) Copy(ctx context.Context, srcs []*Tx, cids []CID, success []bool) error {
+func (tx *Tx) Copy(ctx context.Context, srcs []*Tx, cids []CID, success *blobcache.BitMap) error {
 	hs := slices2.Map(srcs, func(src *Tx) Handle { return src.h })
 	return tx.s.Copy(ctx, tx.h, hs, cids, success)
 }

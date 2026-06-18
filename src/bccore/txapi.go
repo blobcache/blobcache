@@ -159,12 +159,9 @@ func (sys *System) Delete(ctx context.Context, txh blobcache.Handle, cids []blob
 	return setErrTxOID(txn.backend.Delete(ctx, cids), txh.OID)
 }
 
-func (sys *System) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out []bool) error {
+func (sys *System) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blobcache.Handle, cids []blobcache.CID, out *blobcache.BitMap) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "Copy"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Copy"), zap.Stringer("oid", txh.OID))
-	if len(cids) != len(out) {
-		return fmt.Errorf("cids and out must have the same length")
-	}
 	dstTx, err := sys.resolveTx(txh, true, blobcache.Action_TX_COPY_TO)
 	if err != nil {
 		return err
@@ -184,10 +181,6 @@ func (sys *System) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blo
 			return err
 		}
 		resolvedSrcs[i] = srcTxn{oid: srcH.OID, tx: src}
-	}
-
-	for i := range cids {
-		out[i] = false
 	}
 
 	var buf []byte
@@ -232,7 +225,7 @@ func (sys *System) Copy(ctx context.Context, txh blobcache.Handle, srcTxns []blo
 			if cid2 != cid {
 				continue
 			}
-			out[i] = true
+			out.Set(i)
 			break
 		}
 	}
