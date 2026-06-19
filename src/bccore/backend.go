@@ -28,7 +28,7 @@ type Tx interface {
 	Abort(ctx context.Context) error
 
 	Save(ctx context.Context, src []byte) error
-	Load(ctx context.Context, dst *[]byte) error
+	Load(ctx context.Context, ck blobcache.CellKey, dst *[]byte) error
 
 	Post(ctx context.Context, data []byte, opts blobcache.PostOpts) (blobcache.CID, error)
 	Get(ctx context.Context, cid blobcache.CID, buf []byte, opts blobcache.GetOpts) (int, error)

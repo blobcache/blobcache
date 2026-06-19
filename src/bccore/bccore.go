@@ -65,9 +65,6 @@ type Params struct {
 	// OnLink is called before the object is linked to.
 	// The object must be persisted so that it can be loaded later
 	OnLink func(ctx context.Context, info blobcache.Info, ao AnyObject) error
-	// OnSave, if not nil, is called on Save.
-	// This is where schema checks can be performed.
-	OnSave func(ctx context.Context, vol Volume, tx Tx, root []byte) error
 }
 
 func New(p Params) System {

@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"fmt"
+	"iter"
+	"slices"
 	"sync"
 
 	"blobcache.io/blobcache/src/bccore"
@@ -86,6 +88,8 @@ type Tx struct {
 	isDone     bool
 	cellMu     sync.Mutex
 	cell       []byte
+	loaded     []blobcache.CellKey
+	saved      bool
 	blobMu     sync.RWMutex
 	blobs      map[blobcache.CID][]byte
 	blobVisits map[blobcache.CID]struct{}
@@ -145,13 +149,16 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	return nil
 }
 
-func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
+func (tx *Tx) Load(ctx context.Context, ck blobcache.CellKey, dst *[]byte) error {
 	tx.doneMu.RLock()
 	defer tx.doneMu.RUnlock()
 	tx.cellMu.Lock()
 	defer tx.cellMu.Unlock()
 	if tx.isDone {
 		return blobcache.ErrTxDone{}
+	}
+	if !slices.Contains(tx.loaded, ck) {
+		tx.loaded = append(tx.loaded, ck)
 	}
 	*dst = append((*dst)[:0], tx.cell...)
 	return nil
@@ -167,6 +174,7 @@ func (tx *Tx) Save(ctx context.Context, src []byte) error {
 	if tx.isDone {
 		return blobcache.ErrTxDone{}
 	}
+	tx.saved = true
 	tx.cell = append(tx.cell[:0], src...)
 	return nil
 }
@@ -306,6 +314,18 @@ func (tx *Tx) Unlink(ctx context.Context, targets []blobcache.LinkID) error {
 
 func (tx *Tx) VisitLinks(ctx context.Context, targets []blobcache.LinkID) error {
 	return fmt.Errorf("linking not implemented for memory volumes")
+}
+
+func (tx *Tx) LoadedFrom() iter.Seq[blobcache.CellKey] {
+	tx.cellMu.Lock()
+	defer tx.cellMu.Unlock()
+	return slices.Values(tx.loaded)
+}
+
+func (tx *Tx) Saved() bool {
+	tx.cellMu.Lock()
+	defer tx.cellMu.Unlock()
+	return tx.saved
 }
 
 func copyBlob(buf []byte, cid blobcache.CID, data []byte) (int, error) {

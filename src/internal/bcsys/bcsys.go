@@ -103,30 +103,6 @@ func New[LK any, LV LocalVolume[LK], LQ LocalQueue](env Env[LK, LV, LQ], cfg Con
 		Root:   env.Root,
 		Up:     s.up,
 		OnLink: s.onLink,
-		OnSave: func(ctx context.Context, vol bccore.Volume, tx bccore.Tx, root []byte) error {
-			// validate against the schema.
-			var prevRoot []byte
-			if err := tx.Load(ctx, &prevRoot); err != nil {
-				return err
-			}
-			src := backend.NewUnsaltedStore(tx)
-			schSpec := vol.GetParams().Schema
-			sch, err := env.MkSchema(schSpec)
-			if err != nil {
-				return err
-			}
-			change := schema.Change{
-				Prev: schema.Value{
-					Cell:  prevRoot,
-					Store: src,
-				},
-				Next: schema.Value{
-					Cell:  root,
-					Store: src,
-				},
-			}
-			return sch.ValidateChange(ctx, change)
-		},
 	})
 	return s
 }
@@ -760,4 +736,12 @@ func (s *Service[LK, LV, LQ]) findVolumeParams(ctx context.Context, vspec blobca
 	default:
 		panic(vspec)
 	}
+}
+
+func takeFirst[T any](xs iter.Seq[T]) (T, bool) {
+	for x := range xs {
+		return x, true
+	}
+	var zero T
+	return zero, false
 }

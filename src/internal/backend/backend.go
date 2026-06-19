@@ -5,6 +5,7 @@ import (
 
 	"blobcache.io/blobcache/src/bccore"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema"
 )
 
 type (
@@ -38,7 +39,7 @@ type LinkSet = map[[32]byte]blobcache.OID
 
 func ViewUnsalted(ctx context.Context, tx Tx) (*UnsaltedStore, []byte, error) {
 	var root []byte
-	if err := tx.Load(ctx, &root); err != nil {
+	if err := tx.Load(ctx, 0, &root); err != nil {
 		return nil, nil, err
 	}
 	return NewUnsaltedStore(tx), root, nil
@@ -79,4 +80,33 @@ func (v UnsaltedStore) Hash(data []byte) blobcache.CID {
 
 func (v UnsaltedStore) HashAlgo() blobcache.HashAlgo {
 	return v.inner.HashAlgo()
+}
+
+// TxBased is a Tx which can return a read-only view of it's base.
+type TxBased interface {
+	Tx
+	// Base returns a read-only transaction representing the inital state of the transaction
+	Base() Tx
+}
+
+func CheckSchema(ctx context.Context, sch schema.Schema, tx TxBased, loaded []blobcache.CellKey) error {
+	baseTx := tx.Base()
+	var prevCell []byte
+	if err := baseTx.Load(ctx, 0, &prevCell); err != nil {
+		return err
+	}
+	var nextCell []byte
+	if err := tx.Load(ctx, 0, &nextCell); err != nil {
+		return err
+	}
+	return sch.ValidateChange(ctx, schema.Change{
+		Prev: schema.Value{
+			Cell:  prevCell,
+			Store: NewUnsaltedStore(baseTx),
+		},
+		Next: schema.Value{
+			Cell:  nextCell,
+			Store: NewUnsaltedStore(tx),
+		},
+	})
 }

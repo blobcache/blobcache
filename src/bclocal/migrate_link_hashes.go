@@ -223,7 +223,7 @@ func readNamespaceEntries(ctx context.Context, vol *localvol.Volume, ns bcns.Nam
 	defer tx.Abort(ctx)
 
 	var root []byte
-	if err := tx.Load(ctx, &root); err != nil {
+	if err := tx.Load(ctx, 0, &root); err != nil {
 		return nil, err
 	}
 	if len(root) == 0 {

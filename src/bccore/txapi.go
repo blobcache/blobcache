@@ -69,15 +69,11 @@ func (sys *System) Abort(ctx context.Context, txh blobcache.Handle) error {
 func (sys *System) Load(ctx context.Context, txh blobcache.Handle, k blobcache.CellKey, dst *[]byte) error {
 	logctx.Debug(ctx, "begin", zap.String("method", "Load"), zap.Stringer("oid", txh.OID))
 	defer logctx.Debug(ctx, "done", zap.String("method", "Load"), zap.Stringer("oid", txh.OID))
-	if k > 0 {
-		*dst = (*dst)[:0]
-		return nil
-	}
 	txn, err := sys.resolveTx(txh, true, blobcache.Action_TX_LOAD)
 	if err != nil {
 		return err
 	}
-	return setErrTxOID(txn.backend.Load(ctx, dst), txh.OID)
+	return setErrTxOID(txn.backend.Load(ctx, k, dst), txh.OID)
 }
 
 func (sys *System) Save(ctx context.Context, txh blobcache.Handle, root []byte) error {
@@ -89,11 +85,6 @@ func (sys *System) Save(ctx context.Context, txh blobcache.Handle, root []byte) 
 	}
 	if p := tx.backend.Params(); !p.Modify {
 		return blobcache.ErrTxReadOnly{Tx: txh.OID, Op: "SAVE"}
-	}
-	if sys.p.OnSave != nil {
-		if err := sys.p.OnSave(ctx, tx.volume.backend, tx.backend, root); err != nil {
-			return err
-		}
 	}
 	return setErrTxOID(tx.backend.Save(ctx, root), txh.OID)
 }

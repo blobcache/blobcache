@@ -192,7 +192,13 @@ func (txn *localTxnMut) Save(ctx context.Context, root []byte) error {
 	return lvSave(txn.localSys.db, txn.vol.lvid, txn.mvid, root)
 }
 
-func (txn *localTxnMut) Load(ctx context.Context, dst *[]byte) error {
+func (txn *localTxnMut) Load(ctx context.Context, ck blobcache.CellKey, dst *[]byte) error {
+	// TODO: for now, we serialize all Volume access, and higher numberd cells
+	// will always be empty
+	if ck > 0 {
+		*dst = (*dst)[:0]
+		return nil
+	}
 	unlock, err := txn.checkFinished()
 	if err != nil {
 		return err

@@ -63,7 +63,13 @@ func (v *localTxnRO) Commit(ctx context.Context) error {
 	return blobcache.ErrTxReadOnly{Op: "Commit"}
 }
 
-func (v *localTxnRO) Load(ctx context.Context, dst *[]byte) error {
+func (v *localTxnRO) Load(ctx context.Context, ck blobcache.CellKey, dst *[]byte) error {
+	// TODO: for now, we serialize all Volume access, and higher numbered cells
+	// will always be empty
+	if ck > 0 {
+		*dst = (*dst)[:0]
+		return nil
+	}
 	activeTxns, err := v.getExcluded()
 	if err != nil {
 		return err

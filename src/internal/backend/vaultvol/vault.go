@@ -141,7 +141,7 @@ func (tx *Tx) Params() blobcache.TxParams {
 	return tx.txp
 }
 
-func (v *Tx) Load(ctx context.Context, dst *[]byte) error {
+func (v *Tx) Load(ctx context.Context, ck blobcache.CellKey, dst *[]byte) error {
 	release, err := v.beginOp(ctx)
 	if err != nil {
 		return err
@@ -460,7 +460,7 @@ func (vtx *Tx) init(ctx context.Context) error {
 		return nil
 	}
 	var rootCtext []byte
-	if err := vtx.inner.Load(ctx, &rootCtext); err != nil {
+	if err := vtx.inner.Load(ctx, 0, &rootCtext); err != nil {
 		return err
 	}
 	var ttx *tries.Tx
