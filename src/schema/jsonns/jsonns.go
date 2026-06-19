@@ -124,7 +124,7 @@ type Tx struct {
 }
 
 func (ns *Tx) loadEntries(ctx context.Context) ([]Entry, error) {
-	if err := ns.Tx.Load(ctx, &ns.Root); err != nil {
+	if err := ns.Tx.Load(ctx, 0, &ns.Root); err != nil {
 		return nil, err
 	}
 	ents, err := ns.Schema.NSList(ctx, ns.Tx, ns.Root)

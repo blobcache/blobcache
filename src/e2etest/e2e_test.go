@@ -111,7 +111,7 @@ func TestGLFS(t *testing.T) {
 	tx, err := bcsdk.BeginTx(ctx, svc, *volh, blobcache.TxParams{})
 	require.NoError(t, err)
 	var root []byte
-	require.NoError(t, tx.Load(ctx, &root))
+	require.NoError(t, tx.Load(ctx, 0, &root))
 	ref := new(glfs.Ref)
 	require.NoError(t, json.Unmarshal(root, ref))
 	ref, err = glfs.GetAtPath(ctx, tx, *ref, "hello.txt")

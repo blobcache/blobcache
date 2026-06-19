@@ -9,7 +9,7 @@ import (
 )
 
 type Loader interface {
-	Load(ctx context.Context, dst *[]byte) error
+	Load(ctx context.Context, ck blobcache.CellKey, dst *[]byte) error
 }
 
 type Saver interface {

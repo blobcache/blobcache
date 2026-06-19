@@ -37,7 +37,7 @@ type Root struct {
 
 func LoadRoot(ctx context.Context, ldr bcsdk.Loader) (*Root, error) {
 	var rootData []byte
-	if err := ldr.Load(ctx, &rootData); err != nil {
+	if err := ldr.Load(ctx, 0, &rootData); err != nil {
 		return nil, err
 	}
 	if len(rootData) == 0 {
