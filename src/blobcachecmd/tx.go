@@ -137,7 +137,7 @@ var txLoadCmd = star.Command{
 			return err
 		}
 		var root []byte
-		if err := svc.Load(c.Context, txHParam.Load(c), &root); err != nil {
+		if err := svc.Load(c.Context, txHParam.Load(c), 0, &root); err != nil {
 			return err
 		}
 		_, err = c.StdOut.Write(root)

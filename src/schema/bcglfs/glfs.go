@@ -87,7 +87,7 @@ func DiffRefs(ctx context.Context, src schema.RO, left, right glfs.Ref, fn func(
 
 func Load(ctx context.Context, txn *bcsdk.Tx) (*glfs.Ref, error) {
 	var root []byte
-	if err := txn.Load(ctx, &root); err != nil {
+	if err := txn.Load(ctx, 0, &root); err != nil {
 		return nil, err
 	}
 	return ParseRef(root)

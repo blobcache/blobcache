@@ -293,7 +293,7 @@ func (nsc *Client) GC(ctx context.Context, volh blobcache.Handle) error {
 		return nil
 	}
 	var root []byte
-	if err := tx.Load(ctx, &root); err != nil {
+	if err := tx.Load(ctx, 0, &root); err != nil {
 		return err
 	}
 	if err := gcsch.VisitAll(ctx, tx, root, visit); err != nil {

@@ -69,8 +69,8 @@ func (tx *Tx) Save(ctx context.Context, src []byte) error {
 	return tx.s.Save(ctx, tx.h, src)
 }
 
-func (tx *Tx) Load(ctx context.Context, dst *[]byte) error {
-	return tx.s.Load(ctx, tx.h, dst)
+func (tx *Tx) Load(ctx context.Context, ck blobcache.CellKey, dst *[]byte) error {
+	return tx.s.Load(ctx, tx.h, ck, dst)
 }
 
 func (tx *Tx) Commit(ctx context.Context) error {
@@ -203,7 +203,7 @@ func (tx *TxSalt) HashAlgo() blobcache.HashAlgo {
 }
 
 func (tx *TxSalt) Load(ctx context.Context, dst *[]byte) error {
-	return tx.s.Load(ctx, tx.h, dst)
+	return tx.s.Load(ctx, tx.h, 0, dst)
 }
 
 func (tx *TxSalt) Save(ctx context.Context, src []byte) error {
@@ -265,7 +265,7 @@ func View(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, fn 
 	}
 	defer tx.Abort(ctx)
 	var root []byte
-	if err := tx.Load(ctx, &root); err != nil {
+	if err := tx.Load(ctx, 0, &root); err != nil {
 		return err
 	}
 	return fn(tx, root)
@@ -281,7 +281,7 @@ func View1[T any](ctx context.Context, svc blobcache.Service, volh blobcache.Han
 	}
 	defer tx.Abort(ctx)
 	var root []byte
-	if err := tx.Load(ctx, &root); err != nil {
+	if err := tx.Load(ctx, 0, &root); err != nil {
 		return zero, err
 	}
 	return fn(tx, root)
@@ -303,7 +303,7 @@ func ModifyTx(ctx context.Context, svc blobcache.Service, volh blobcache.Handle,
 	}
 	defer tx.Abort(ctx)
 	var prev []byte
-	if err := tx.Load(ctx, &prev); err != nil {
+	if err := tx.Load(ctx, 0, &prev); err != nil {
 		return err
 	}
 	next, err := fn(tx, prev)

@@ -107,7 +107,7 @@ func (fs *FS[K]) Flush(ctx context.Context) error {
 	defer func() { _ = tx.Abort(ctx) }()
 
 	// Load current root
-	if err := tx.Load(ctx, &fs.root); err != nil {
+	if err := tx.Load(ctx, 0, &fs.root); err != nil {
 		return fmt.Errorf("failed to load root: %w", err)
 	}
 

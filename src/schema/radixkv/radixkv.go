@@ -78,7 +78,7 @@ func View(ctx context.Context, svc blobcache.Service, volh blobcache.Handle, mac
 
 func wrapTx(ctx context.Context, mach *Machine, tx *bcsdk.Tx) (*Tx, error) {
 	var rootData []byte
-	if err := tx.Load(ctx, &rootData); err != nil {
+	if err := tx.Load(ctx, 0, &rootData); err != nil {
 		return nil, err
 	}
 	if len(rootData) == 0 {

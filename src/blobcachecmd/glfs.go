@@ -51,7 +51,7 @@ var glfsInitCmd = star.Command{
 			return err
 		}
 		var root []byte
-		if err := tx.Load(ctx, &root); err != nil {
+		if err := tx.Load(ctx, 0, &root); err != nil {
 			return err
 		}
 		if len(root) > 0 {
@@ -94,7 +94,7 @@ var glfsLookCmd = star.Command{
 		}
 		defer tx.Abort(ctx)
 		var root []byte
-		if err := tx.Load(ctx, &root); err != nil {
+		if err := tx.Load(ctx, 0, &root); err != nil {
 			return err
 		}
 		var ref glfs.Ref
@@ -271,7 +271,7 @@ func viewGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle, f
 	defer tx.Abort(ctx)
 	ag := glfs.NewMachine()
 	var rootData []byte
-	if err := tx.Load(ctx, &rootData); err != nil {
+	if err := tx.Load(ctx, 0, &rootData); err != nil {
 		return err
 	}
 	root, err := bcglfs.ParseRef(rootData)
@@ -292,7 +292,7 @@ func modifyGLFS(ctx context.Context, s blobcache.Service, volh blobcache.Handle,
 	ag := glfs.NewMachine()
 	// load and parse root
 	var rootData []byte
-	if err := tx.Load(ctx, &rootData); err != nil {
+	if err := tx.Load(ctx, 0, &rootData); err != nil {
 		return err
 	}
 	root, err := bcglfs.ParseRef(rootData)

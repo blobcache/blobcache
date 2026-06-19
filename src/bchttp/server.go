@@ -201,7 +201,7 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 	case "Load":
 		handleRequest(w, r, func(ctx context.Context, req LoadReq) (*LoadResp, error) {
 			var root []byte
-			if err := s.Service.Load(ctx, h, &root); err != nil {
+			if err := s.Service.Load(ctx, h, req.CellKey, &root); err != nil {
 				return nil, err
 			}
 			return &LoadResp{Root: root}, nil

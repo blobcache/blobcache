@@ -26,7 +26,7 @@ func (c *merklelogComponent) Init(volInfo *blobcache.VolumeInfo) {}
 
 func (c *merklelogComponent) SetState(ctx context.Context, tx *bcsdk.Tx) error {
 	var root []byte
-	if err := tx.Load(ctx, &root); err != nil {
+	if err := tx.Load(ctx, 0, &root); err != nil {
 		return err
 	}
 	state, err := merklelog.Parse(root)

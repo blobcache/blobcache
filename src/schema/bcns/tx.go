@@ -16,7 +16,7 @@ type Tx struct {
 
 func NewFromTx(ctx context.Context, schema Namespace, tx *bcsdk.Tx) (Tx, error) {
 	var cell []byte
-	if err := tx.Load(ctx, &cell); err != nil {
+	if err := tx.Load(ctx, 0, &cell); err != nil {
 		return Tx{}, err
 	}
 	return Tx{
