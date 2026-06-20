@@ -29,12 +29,9 @@ type URL struct {
 	// IPPort if non-nil is the IP address and UDP port where the Node
 	// that manages the object is listening.
 	IPPort *netip.AddrPort
-	// Base is the OID that the caller has access to by fiat.
-	// OpenFiat will be called on Base to get the first handle from the Node.
-	Base OID
-	// Path is the path of Volume links needed to reach the target object.
-	// It can be empty if the object is directly accessible by fiat.
-	Path OIDPath
+	// OID is the OID that the caller has access to by fiat.
+	// OpenFiat will be called on OID to get the first handle from the Node.
+	OID OID
 	// Extra is the part of the URL that was not parsed.
 	Extra string
 }
@@ -58,10 +55,7 @@ func (u URL) MarshalText() ([]byte, error) {
 	if u.IPPort != nil {
 		out = fmt.Appendf(out, ":%v", u.IPPort)
 	}
-	out = fmt.Appendf(out, ":%v", u.Base)
-	for _, oid := range u.Path {
-		out = fmt.Appendf(out, ";%s", oid.String())
-	}
+	out = fmt.Appendf(out, ":%v", u.OID)
 	return out, nil
 }
 
@@ -93,17 +87,11 @@ func (u *URL) UnmarshalText(xData []byte) error {
 		ret.IPPort = addrPort
 		data = rest
 	}
-	// 3. Read everything else as an OIDPath
-	if oidp, rest, err := readOIDPath(data); err != nil {
+	// 3. Read everything else as an OID + Extra
+	if oid, rest, err := readOID(data); err != nil {
 		return err
 	} else {
-		if len(oidp) == 0 {
-			return fmt.Errorf("must include at least 1 object ID")
-		}
-		ret.Base = oidp[0]
-		if len(oidp) > 1 {
-			ret.Path = oidp[1:]
-		}
+		ret.OID = oid
 		ret.Extra = string(rest)
 		data = rest
 	}
@@ -127,23 +115,8 @@ func (u *URL) Endpoint() *Endpoint {
 func (u URL) BaseFQOID() FQOID {
 	return FQOID{
 		Node: u.Node,
-		OID:  u.Base,
+		OID:  u.OID,
 	}
-}
-
-func (u URL) TargetFQOID() FQOID {
-	return FQOID{
-		Node: u.Node,
-		OID:  u.Target(),
-	}
-}
-
-// Target returns the target of the URL.
-func (u URL) Target() OID {
-	if len(u.Path) == 0 {
-		return u.Base
-	}
-	return u.Path[len(u.Path)-1]
 }
 
 func readUntilDelim(x []byte, delim byte) ([]byte, []byte, error) {
@@ -170,18 +143,21 @@ func readAddrPort(x []byte) (*netip.AddrPort, []byte, error) {
 	}
 }
 
-// readOIDPath reads a semicolon separated list of OID strings.
-// If a list element does not contain an OID, then the rest are returned.
-func readOIDPath(x []byte) (ret OIDPath, rest []byte, err error) {
-	parts := bytes.Split(x, []byte(";"))
-	var success int
-	for i := range parts {
-		oid, err := ParseOID(string(parts[i]))
-		if err != nil {
-			break
+// readOID reads an OID from a URL
+// If no OID can be parsed, then the rest is returned.
+func readOID(x []byte) (ret OID, extra []byte, err error) {
+	idx := bytes.IndexByte(x, '/')
+	if idx < 0 {
+		if err := ret.UnmarshalText(x); err != nil {
+			// all extra
+			return OID{}, x, nil
 		}
-		success = i
-		ret = append(ret, oid)
+		return ret, nil, nil
 	}
-	return ret, bytes.Join(parts[success+1:], []byte(";")), nil
+
+	if err := ret.UnmarshalText(x[:idx]); err != nil {
+		return OID{}, x, nil
+	}
+	extra = x[idx:]
+	return ret, extra, nil
 }

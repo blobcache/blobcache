@@ -38,7 +38,7 @@ var nsInitCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		if err := nsc.Init(c, *nsh); err != nil {
+		if err := nsc.Init(c, nsh); err != nil {
 			return err
 		}
 		c.Printf("Namespace successfully initialized.\n\n")
@@ -58,7 +58,7 @@ var nsListCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		ents, err := nsc.List(c, *nsh)
+		ents, err := nsc.List(c, nsh)
 		if err != nil {
 			return err
 		}
@@ -85,7 +85,7 @@ var nsGetCmd = star.Command{
 			return err
 		}
 		var ent bcns.Entry
-		found, err := nsc.Get(c, *nsh, name, &ent)
+		found, err := nsc.Get(c, nsh, name, &ent)
 		if err != nil {
 			return err
 		}
@@ -111,7 +111,7 @@ var nsDeleteCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		return nsc.Delete(c, *nsh, name)
+		return nsc.Delete(c, nsh, name)
 	},
 }
 
@@ -135,7 +135,7 @@ var nsPutCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		return nsc.Put(c, *nsh, name, subvolh, mask)
+		return nsc.Put(c, nsh, name, subvolh, mask)
 	},
 }
 
@@ -162,7 +162,7 @@ var nsCreateCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		_, err = nsc.CreateAt(c, *nsh, name, spec)
+		_, err = nsc.CreateAt(c, nsh, name, spec)
 		return err
 	},
 }
@@ -185,7 +185,7 @@ var nsOpenCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		volh, err := nsc.OpenAt(c, *nsh, name, mask)
+		volh, err := nsc.OpenAt(c, nsh, name, mask)
 		if err != nil {
 			return err
 		}
@@ -206,15 +206,15 @@ var nsLookupCmd = star.Command{
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
-		nsc, nsh, err := getNS(c)
+		nsc, _, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		volh, err := bcns.Lookup(c, nsc, *nsh, name)
+		volh, err := bcns.Resolve(c, nsc.Service, bcns.FQP{Path: name})
 		if err != nil {
 			return err
 		}
-		c.Printf("%v\n", *volh)
+		c.Printf("%v\n", volh)
 		return nil
 	},
 }
@@ -239,7 +239,7 @@ var nsMvCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		if err := nsc.Move(c, *nsh, oldName, newName); err != nil {
+		if err := nsc.Move(c, nsh, oldName, newName); err != nil {
 			return err
 		}
 		c.Printf("✓ %s -> %s\n", oldName, newName)
@@ -247,9 +247,9 @@ var nsMvCmd = star.Command{
 	},
 }
 
-var nsRoot = &star.Optional[bcns.ObjectExpr]{
+var nsRoot = &star.Optional[bcns.FQP]{
 	PosName:  "nsr",
-	Parse:    bcns.ParseObjectish,
+	Parse:    bcns.ParseFQP,
 	ShortDoc: "a handle or object id for the root",
 }
 
@@ -260,7 +260,7 @@ func openAt(c star.Context) (*blobcache.Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	return nsc.OpenAt(c, *nsh, name, mask)
+	return nsc.OpenAt(c, nsh, name, mask)
 }
 
 var volNameParam = &star.Required[string]{
@@ -268,34 +268,34 @@ var volNameParam = &star.Required[string]{
 	Parse:   star.ParseString,
 }
 
-func getNS(c star.Context) (*bcns.Client, *blobcache.Handle, error) {
+func getNS(c star.Context) (*bcns.Client, blobcache.Handle, error) {
 	rootExpr := getNSRoot(c)
 	bc, err := openService(c)
 	if err != nil {
-		return nil, nil, err
+		return nil, blobcache.Handle{}, err
 	}
 	rooth, err := rootExpr.Open(c, bc)
 	if err != nil {
-		return nil, nil, err
+		return nil, blobcache.Handle{}, err
 	}
-	nsc, err := bcns.ClientForVolume(c, bc, *rooth)
+	nsc, err := bcns.ClientForVolume(c, bc, rooth)
 	if err != nil {
-		return nil, nil, err
+		return nil, blobcache.Handle{}, err
 	}
 	return nsc, rooth, nil
 }
 
 // getNSRoot returns a handle to the volume containing the root namespace
-func getNSRoot(c star.Context) bcns.ObjectExpr {
+func getNSRoot(c star.Context) bcns.FQP {
 	if objish, ok := nsRoot.LoadOpt(c); ok {
 		return objish
 	}
 	if rootStr, ok := c.Env[EnvVar_NSRoot]; ok {
-		objish, err := bcns.ParseObjectish(rootStr)
+		fqp, err := bcns.ParseFQP(rootStr)
 		if err == nil {
-			return objish
+			return fqp
 		}
 	}
 	// Just return the root
-	return bcns.ObjectExpr{}
+	return bcns.FQP{}
 }

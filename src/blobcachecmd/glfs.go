@@ -221,11 +221,11 @@ var glfsSyncCmd = star.Command{
 			return err
 		}
 
-		srcVolh, err := nsc.OpenAt(c.Context, *nsh, srcVolumeParam.Load(c), blobcache.Action_ALL)
+		srcVolh, err := nsc.OpenAt(c.Context, nsh, srcVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return fmt.Errorf("failed to open source volume: %w", err)
 		}
-		dstVolh, err := nsc.OpenAt(c.Context, *nsh, dstVolumeParam.Load(c), blobcache.Action_ALL)
+		dstVolh, err := nsc.OpenAt(c.Context, nsh, dstVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return fmt.Errorf("failed to open destination volume: %w", err)
 		}

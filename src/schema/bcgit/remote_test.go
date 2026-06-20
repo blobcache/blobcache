@@ -40,8 +40,8 @@ func TestLsRemote(t *testing.T) {
 	ep, err := bc.Endpoint(ctx)
 	require.NoError(t, err)
 	u := blobcache.URL{
-		Node: ep.Node,
-		Base: te.Volume.OID,
+		Node:   ep.Node,
+		OID: te.Volume.OID,
 	}
 
 	gitInit(t, te)
@@ -138,8 +138,8 @@ func setup(t testing.TB) testEnv {
 		Service: bc,
 		Volume:  *gitVol,
 		URL: blobcache.URL{
-			Node: ep.Node,
-			Base: gitVol.OID,
+			Node:   ep.Node,
+			OID: gitVol.OID,
 		},
 	}
 }

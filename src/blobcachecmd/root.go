@@ -35,11 +35,11 @@ var rootCmd = star.NewDir(
 	star.Metadata{
 		Short: "blobcache is content-addressable storage",
 	}, map[string]star.Command{
-		"endpoint":         endpointCmd,
-		"daemon":           daemonCmd,
-		"show-access":      showAccessCmd,
-		"own":              ownCmd,
-		"browse":           browseCmd,
+		"endpoint":    endpointCmd,
+		"daemon":      daemonCmd,
+		"show-access": showAccessCmd,
+		"own":         ownCmd,
+		"browse":      browseCmd,
 
 		// volumes
 		"mkvol":        mkVolCmd,
@@ -105,7 +105,7 @@ var browseCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		prog := bctui.New(svc, *nsrh)
+		prog := bctui.New(svc, nsrh)
 		_, err = prog.Run()
 		return err
 	},

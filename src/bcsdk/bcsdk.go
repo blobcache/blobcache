@@ -16,6 +16,14 @@ type Saver interface {
 	Save(ctx context.Context, src []byte) error
 }
 
+type Linker interface {
+	Link(ctx context.Context, h blobcache.Handle, mask blobcache.ActionSet) (*blobcache.LinkToken, error)
+}
+
+type Unlinker interface {
+	Unlink(ctx context.Context, ltids []blobcache.LinkTokenID) error
+}
+
 // CreateOnSameHost creates a new subvolume on the same host as the base volume.
 func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.Handle, spec blobcache.VolumeSpec) (*blobcache.Handle, *blobcache.FQOID, error) {
 	info, err := s.InspectVolume(ctx, base)
@@ -57,7 +65,7 @@ func OpenURL(ctx context.Context, bc blobcache.Service, u blobcache.URL) (*blobc
 		return nil, err
 	}
 	if localEP.Node == u.Node {
-		volh, err := bc.OpenFiat(ctx, u.Base, blobcache.Action_ALL)
+		volh, err := bc.OpenFiat(ctx, u.OID, blobcache.Action_ALL)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +77,7 @@ func OpenURL(ctx context.Context, bc blobcache.Service, u blobcache.URL) (*blobc
 			return bc.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Remote: &blobcache.VolumeBackend_Remote{
 					Endpoint: *ep,
-					Volume:   u.Base,
+					Volume:   u.OID,
 					HashAlgo: "",
 				},
 			})
@@ -78,7 +86,7 @@ func OpenURL(ctx context.Context, bc blobcache.Service, u blobcache.URL) (*blobc
 			return bc.CreateVolume(ctx, nil, blobcache.VolumeSpec{
 				Peer: &blobcache.VolumeBackend_Peer{
 					Peer:     u.Node,
-					Volume:   u.Base,
+					Volume:   u.OID,
 					HashAlgo: "",
 				},
 			})
@@ -106,7 +114,7 @@ func URLFor(ctx context.Context, bc blobcache.Service, volh blobcache.Handle) (*
 	}
 	return &blobcache.URL{
 		Node: host.Node,
-		Base: voloid,
+		OID:  voloid,
 	}, nil
 }
 

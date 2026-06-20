@@ -334,35 +334,22 @@ func (nsc Client) Lookup(ctx context.Context, volh blobcache.Handle, p string) (
 		}
 		idx := strings.LastIndex(name, "/")
 		if idx < 0 {
-			return Entry{}, "", fmt.Errorf("lookup: no entry found for any prefix of %q", p)
+			return Entry{}, "", &ErrLookup{NS: volh, Rem: name}
 		}
 		name = strings.Trim(name[:idx], "/")
 		if name == "" {
-			return Entry{}, "", fmt.Errorf("lookup: no entry found for any prefix of %q", p)
+			return Entry{}, "", &ErrLookup{NS: volh, Rem: name}
 		}
 	}
 }
 
-// Lookup performs the multi-volume lookup, creating clients as required.
-// It returns a Handle to the volume that the final entry points to.
-func Lookup(ctx context.Context, nsc *Client, nsvol blobcache.Handle, p string) (*blobcache.Handle, error) {
-	for {
-		ent, rem, err := nsc.Lookup(ctx, nsvol, p)
-		if err != nil {
-			return nil, fmt.Errorf("lookup failed: vol=%v name=%s err=%w", nsvol, p, err)
-		}
-		volh, err := nsc.Service.OpenFrom(ctx, nsvol, ent.LinkToken(), blobcache.Action_ALL)
-		if err != nil {
-			return nil, err
-		}
-		if rem == "" {
-			return volh, nil
-		}
-		nsc, err = ClientForVolume(ctx, nsc.Service, *volh)
-		if err != nil {
-			return nil, err
-		}
-		nsvol = *volh
-		p = rem
-	}
+type ErrLookup struct {
+	// NS is a handle the Volume containing the Namespace
+	NS blobcache.Handle
+	// Rem is the remaining string which could not be looked up.
+	Rem string
+}
+
+func (e *ErrLookup) Error() string {
+	return fmt.Sprintf("lookup incomplete. could not find prefix of %s in %v", e.Rem, e.NS.OID)
 }

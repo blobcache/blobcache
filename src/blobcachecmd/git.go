@@ -54,7 +54,7 @@ var gitURLFor = star.Command{
 		if err != nil {
 			return err
 		}
-		volh, err := nsc.OpenAt(c, *nsh, volNameParam.Load(c), blobcache.Action_VOLUME_INSPECT)
+		volh, err := nsc.OpenAt(c, nsh, volNameParam.Load(c), blobcache.Action_VOLUME_INSPECT)
 		if err != nil {
 			return err
 		}
