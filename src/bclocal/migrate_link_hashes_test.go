@@ -22,8 +22,8 @@ func TestMigrateLinkTokenHashes(t *testing.T) {
 	target, err := svc.CreateVolume(ctx, nil, blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 
-	nsc := bcns.Client{Service: svc, Schema: jsonns.Schema{}}
-	require.NoError(t, nsc.Put(ctx, blobcache.Handle{}, "legacy-link", *target, blobcache.Action_ALL))
+	nsc := bcns.NewClient(svc, blobcache.OID{})
+	require.NoError(t, nsc.Put(ctx, "legacy-link", *target, blobcache.Action_ALL))
 	root, err := svc.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
 	require.NoError(t, err)
 	rootInfo, err := svc.InspectVolume(ctx, *root)
@@ -31,7 +31,7 @@ func TestMigrateLinkTokenHashes(t *testing.T) {
 	require.Equal(t, jsonns.SchemaName, rootInfo.Schema.Name)
 
 	var ent bcns.Entry
-	found, err := nsc.Get(ctx, blobcache.Handle{}, "legacy-link", &ent)
+	found, err := nsc.Get(ctx, "legacy-link", &ent)
 	require.NoError(t, err)
 	require.True(t, found)
 

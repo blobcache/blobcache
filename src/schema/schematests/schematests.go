@@ -27,9 +27,9 @@ type Schemas = map[blobcache.SchemaName]schema.Constructor
 // InitNodes initializes svcs
 func InitNodes(t testing.TB, schs Schemas, svcs []blobcache.Service) {
 	t.Helper()
-	env := bclocal.NewTestEnv(t)
-	env.MkSchema = Factory(schs)
 	for i := range svcs {
+		env := bclocal.NewTestEnv(t)
+		env.MkSchema = Factory(schs)
 		svc := bclocal.NewTestServiceFromEnv(t, env)
 		svcs[i] = svc
 	}

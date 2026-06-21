@@ -293,7 +293,7 @@ func BGTestDaemon(t testing.TB) (*Daemon, string) {
 
 	d := &Daemon{StateDir: stateDir, ConfigDir: stateDir}
 	bgTestDaemon(t, d, pc, []net.Listener{lis}, nil)
-	apiURL := lis.Addr().Network() + "://" + lis.Addr().String()
+	apiURL := "http://" + lis.Addr().String()
 	return d, apiURL
 }
 

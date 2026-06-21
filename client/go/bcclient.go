@@ -24,11 +24,9 @@ func NewClient(endpoint string) blobcache.Service {
 	case strings.HasPrefix(endpoint, "unix://"):
 		unixAddr, _ := strings.CutPrefix(endpoint, "unix://")
 		return bcipc.NewClient(unixAddr)
-	case strings.HasPrefix(endpoint, "http://"):
+	default:
 		hc := http.DefaultClient
 		return bchttp.NewClient(hc, endpoint)
-	default:
-		return bcipc.NewClient(endpoint)
 	}
 }
 

@@ -22,6 +22,11 @@ func (fqoid FQOID) String() string {
 	return fqoid.Node.String() + ":" + fqoid.OID.String()
 }
 
+type FQHandle struct {
+	Node   NodeID
+	Handle Handle
+}
+
 // URL is the location of an Object in the Blobcache Network
 type URL struct {
 	// Node is the node that manages the object.
