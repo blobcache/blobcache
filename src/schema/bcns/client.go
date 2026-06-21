@@ -8,27 +8,24 @@ import (
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/schemareg"
-	"blobcache.io/blobcache/src/schema"
 	"go.brendoncarroll.net/exp/slices2"
 )
 
-// Client gives access to the namespace
-// Client manages multi-volume interactions, see Tx for manipulating
-// a single namespace volume.
+// Client gives access to the Namespace
+// Client manages multi-volume interactions, see Tx for manipulating a single Namespace volume.
+// The Client deals with paths, and the Tx deals with names.
 type Client struct {
 	svc           blobcache.Service
 	root          blobcache.OID
 	defaultSchema Namespace
-	factory       schema.Factory
 }
 
 func NewClient(svc blobcache.Service, root blobcache.OID) Client {
-	return Client{svc: svc, root: root, factory: schemareg.Factory}
+	return Client{svc: svc, root: root}
 }
 
-func (nsc *Client) SetDefaultSchema(defaultSchema Namespace) Client {
+func (nsc *Client) SetDefaultSchema(defaultSchema Namespace) {
 	nsc.defaultSchema = defaultSchema
-	return *nsc
 }
 
 func (nsc *Client) Root() blobcache.OID {
@@ -48,31 +45,55 @@ func (nsc *Client) newFQP(p string) FQP {
 	return FQP{Root: nsc.root, Path: p}
 }
 
+// OpenFrom opens the path p from the namespace in nsh.
+func (nsc *Client) OpenFrom(ctx context.Context, nsh blobcache.Handle, p string) (blobcache.Handle, error) {
+	sch, err := nsc.schemaForVolume(ctx, nsh)
+	if err != nil {
+		return blobcache.Handle{}, err
+	}
+	return nsc.openFrom(ctx, nsh, sch, p)
+}
+
+func (nsc *Client) openFrom(ctx context.Context, h blobcache.Handle, sch Namespace, p string) (blobcache.Handle, error) {
+	p = strings.Trim(p, string(Sep))
+	for p != "" {
+		sch, err := nsc.schemaForVolume(ctx, h)
+		if err != nil {
+			return blobcache.Handle{}, err
+		}
+		var ent Entry
+		var rem string
+		if err := View(ctx, nsc.svc, sch, h, func(tx *Tx) error {
+			var err error
+			ent, rem, err = tx.Match(ctx, p)
+			return err
+		}); err != nil {
+			return blobcache.Handle{}, err
+		}
+		h2, err := nsc.svc.OpenFrom(ctx, h, ent.LinkToken(), ent.Rights)
+		if err != nil {
+			return blobcache.Handle{}, err
+		}
+		h = *h2
+		p = rem
+		if p == "" {
+			return h, nil
+		}
+	}
+	return h, nil
+}
+
 // Open returns a handle to the object at p.
 func (nsc *Client) Open(ctx context.Context, p string) (blobcache.Handle, error) {
 	h, sch, err := nsc.openRoot(ctx)
 	if err != nil {
 		return blobcache.Handle{}, err
 	}
-	for p != "" {
-		if err := View(ctx, nsc.svc, sch, h, func(tx *Tx) error {
-			ent, p, err := tx.Match(ctx, p)
-			if err != nil {
-				return err
-			}
-			nsc.defaultSchema
-			ent.LinkToken()
-			return nil
-		}); err != nil {
-			return blobcache.Handle{}, err
-		}
-	}
-	return h, nil
-
+	return nsc.openFrom(ctx, h, sch, p)
 }
 
-// DoAtCtx is the context provided to the DoAt callback
-type DoAtCtx struct {
+// DoCtx is the context provided to the Do callback
+type DoCtx struct {
 	// Node is the node that owns the namespace Volume
 	Node blobcache.NodeID
 	// NS is the handle to the namespace Volume, that the transaction is for
@@ -85,23 +106,87 @@ type DoAtCtx struct {
 	Name string
 }
 
-// DoAt resolves as much of p as possible and then calls fn with the
-func (nsc *Client) DoAt(ctx context.Context, p string, modify bool, fn func(DoAtCtx) error) error {
+// Do resolves as much of p as possible and then calls fn with the
+func (nsc *Client) Do(ctx context.Context, p string, modify bool, fn func(DoCtx) error) error {
+	p = strings.Trim(p, string(Sep))
 	nsh, sch, err := nsc.openRoot(ctx)
 	if err != nil {
 		return err
 	}
+	prefix := ""
+	for {
+		node, err := nsc.volumeNode(ctx, nsh)
+		if err != nil {
+			return err
+		}
+		var nextNS *blobcache.Handle
+		var nextPath string
+		invoke := func(tx *Tx) error {
+			ent, rem, err := tx.Match(ctx, p)
+			if err != nil {
+				if _, ok := err.(*ErrNoMatch); ok {
+					return fn(DoCtx{
+						Node:   node,
+						NS:     nsh,
+						Tx:     tx,
+						Prefix: prefix,
+						Name:   p,
+					})
+				}
+				return err
+			}
+			if rem == "" {
+				return fn(DoCtx{
+					Node:   node,
+					NS:     nsh,
+					Tx:     tx,
+					Prefix: prefix,
+					Name:   ent.Name,
+				})
+			}
+			h, err := nsc.svc.OpenFrom(ctx, nsh, ent.LinkToken(), ent.Rights)
+			if err != nil {
+				return err
+			}
+			nextNS = h
+			nextPath = rem
+			if prefix == "" {
+				prefix = ent.Name
+			} else {
+				prefix = prefix + string(Sep) + ent.Name
+			}
+			return nil
+		}
+		if modify {
+			if err := Modify(ctx, nsc.svc, sch, nsh, invoke); err != nil {
+				return err
+			}
+		} else {
+			if err := View(ctx, nsc.svc, sch, nsh, invoke); err != nil {
+				return err
+			}
+		}
+		if nextNS == nil {
+			return nil
+		}
+		nsh = *nextNS
+		p = nextPath
+		sch, err = nsc.schemaForVolume(ctx, nsh)
+		if err != nil {
+			return err
+		}
+	}
 }
 
 func (nsc *Client) Put(ctx context.Context, p string, target blobcache.Handle, mask blobcache.ActionSet) error {
-	return nsc.DoAt(ctx, p, true, func(dac DoAtCtx) error {
+	return nsc.Do(ctx, p, true, func(dac DoCtx) error {
 		return dac.Tx.Put(ctx, dac.Name, target, mask)
 	})
 }
 
 func (nsc *Client) Get(ctx context.Context, p string, dst *Entry) (bool, error) {
 	var found bool
-	err := nsc.DoAt(ctx, p, false, func(dac DoAtCtx) error {
+	err := nsc.Do(ctx, p, false, func(dac DoCtx) error {
 		var err error
 		found, err = dac.Tx.Get(ctx, dac.Name, dst)
 		return err
@@ -114,20 +199,30 @@ func (nsc *Client) List(ctx context.Context, p string) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	sch := SchemaForVolume(ctx, nsc.svc, nsh)
+	sch, err := nsc.schemaForVolume(ctx, nsh)
+	if err != nil {
+		return nil, err
+	}
+	var ents []Entry
+	err = View(ctx, nsc.svc, sch, nsh, func(tx *Tx) error {
+		var err error
+		ents, err = tx.List(ctx)
+		return err
+	})
+	return ents, err
 }
 
-func (nsc *Client) ListNames(ctx context.Context, volh blobcache.Handle) ([]string, error) {
-	ents, err := nsc.List(ctx, volh)
+func (nsc *Client) ListNames(ctx context.Context, p string) ([]string, error) {
+	ents, err := nsc.List(ctx, p)
 	if err != nil {
 		return nil, err
 	}
 	return slices2.Map(ents, func(x Entry) string { return x.Name }), nil
 }
 
-func (nsc *Client) CreateVolumeAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (blobcache.Handle, error) {
+func (nsc *Client) CreateVolumeAt(ctx context.Context, p string, spec blobcache.VolumeSpec) (blobcache.Handle, error) {
 	var ret blobcache.Handle
-	err := nsc.DoAt(ctx, name, func(c DoAtCtx) error {
+	err := nsc.Do(ctx, p, true, func(c DoCtx) error {
 		var ent Entry
 		exists, err := c.Tx.Get(ctx, c.Name, &ent)
 		if err != nil {
@@ -140,68 +235,42 @@ func (nsc *Client) CreateVolumeAt(ctx context.Context, nsh blobcache.Handle, nam
 		if err != nil {
 			return err
 		}
-		if _, err := c.Tx.CreateAt(ctx, c.Name, *subvolh, blobcache.Action_ALL); err != nil {
+		if err := c.Tx.Create(ctx, c.Name, *subvolh, blobcache.Action_ALL); err != nil {
 			return err
 		}
 		ret = *subvolh
-		return err
+		return nil
 	})
 	return ret, err
 }
 
-func (nsc *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	if err := CheckName(name); err != nil {
-		return nil, err
-	}
-	nsh, err := nsc.resolve(ctx, nsh)
-	if err != nil {
-		return nil, err
-	}
-	volh, _, err := bcsdk.CreateOnSameHost(ctx, nsc.Service, nsh, spec)
-	if err != nil {
-		return nil, err
-	}
-	if err := bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
-		found, err := nsc.Schema.NSGet(ctx, tx, root, name, new(Entry))
-		if err != nil {
-			return nil, err
-		}
-		if found {
-			return nil, fmt.Errorf("ns: entry already exists at %s", name)
-		}
-		lt, err := tx.Link(ctx, *volh, blobcache.Action_ALL)
-		if err != nil {
-			return nil, err
-		}
-		return nsc.Schema.NSPut(ctx, tx, root, Entry{
-			Name:   name,
-			Target: lt.Target,
-			Rights: lt.Rights,
-			Secret: lt.Secret,
-		})
-	}); err != nil {
-		return nil, err
-	}
-	return volh, nil
+func (nsc *Client) Delete(ctx context.Context, p string) error {
+	return nsc.Do(ctx, p, true, func(dac DoCtx) error {
+		return dac.Tx.Delete(ctx, dac.Name)
+	})
 }
 
 // Move atomically renames an entry from oldName to newName within a namespace volume.
 // The link token is preserved as-is.
 // oldName is resolved first, and newName must share the resolved prefix, or an error is returned.
-func (nsc *Client) Move(ctx context.Context, nsh blobcache.Handle, oldName, newName string) error {
-	return nsc.DoAt(ctx, oldName, true, func(dac DoAtCtx) error {
-		nn := strings.TrimPrefix(oldName, dac.Prefix)
-		nn = strings.Trim(on, string(Sep))
-		return dac.Tx.Move(ctx, dac.Name, nn)
-	})
-	nsh, err := nsc.resolve(ctx, nsh)
-	if err != nil {
-		return err
-	}
-	if err := CheckName(newName); err != nil {
-		return err
-	}
-	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
+func (nsc *Client) Move(ctx context.Context, oldName, newName string) error {
+	oldName = strings.Trim(oldName, string(Sep))
+	newName = strings.Trim(newName, string(Sep))
+	return nsc.Do(ctx, oldName, true, func(dac DoCtx) error {
+		if dac.Prefix != "" {
+			pfx := dac.Prefix + string(Sep)
+			if !strings.HasPrefix(newName, pfx) {
+				return fmt.Errorf("new name %q does not share resolved prefix %q", newName, dac.Prefix)
+			}
+			newName = strings.TrimPrefix(newName, pfx)
+		}
+		if newName == "" {
+			return fmt.Errorf("new name resolves to empty name")
+		}
+		if err := CheckName(newName); err != nil {
+			return err
+		}
+		return dac.Tx.Move(ctx, dac.Name, newName)
 	})
 }
 
@@ -210,11 +279,41 @@ func (nsc *Client) openRoot(ctx context.Context) (blobcache.Handle, Namespace, e
 	if err != nil {
 		return blobcache.Handle{}, nil, err
 	}
-	sch, err := SchemaForVolume(ctx, nsc.svc, *h)
+	sch, err := nsc.schemaForVolume(ctx, *h)
 	if err != nil {
 		return blobcache.Handle{}, nil, err
 	}
 	return *h, sch, nil
+}
+
+func (nsc *Client) schemaForVolume(ctx context.Context, nsvolh blobcache.Handle) (Namespace, error) {
+	sch, err := SchemaForVolume(ctx, nsc.svc, nsvolh)
+	if err == nil {
+		return sch, nil
+	}
+	if nsc.defaultSchema != nil {
+		return nsc.defaultSchema, nil
+	}
+	return nil, err
+}
+
+func (nsc *Client) volumeNode(ctx context.Context, volh blobcache.Handle) (blobcache.NodeID, error) {
+	vi, err := nsc.svc.InspectVolume(ctx, volh)
+	if err != nil {
+		return blobcache.NodeID{}, err
+	}
+	switch {
+	case vi.Backend.Remote != nil:
+		return vi.Backend.Remote.Endpoint.Node, nil
+	case vi.Backend.Peer != nil:
+		return vi.Backend.Peer.Peer, nil
+	default:
+		ep, err := nsc.svc.Endpoint(ctx)
+		if err != nil {
+			return blobcache.NodeID{}, err
+		}
+		return ep.Node, nil
+	}
 }
 
 // SchemaForVolume returns a Client configured to use the Namespace schema for the Volume

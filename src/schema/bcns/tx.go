@@ -13,19 +13,36 @@ import (
 
 // View calls fn with a read-only transaction
 func View(ctx context.Context, svc blobcache.Service, sch Namespace, volh blobcache.Handle, fn func(*Tx) error) error {
-	return nil
+	tx, err := bcsdk.BeginTx(ctx, svc, volh, blobcache.TxParams{})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	nstx, err := NewFromTx(ctx, sch, tx)
+	if err != nil {
+		return err
+	}
+	return fn(&nstx)
 }
 
 // Modify calls fn with a read-write transaction
 func Modify(ctx context.Context, svc blobcache.Service, sch Namespace, volh blobcache.Handle, fn func(*Tx) error) error {
-	return nil
-}
-
-// Init initializes a namespace in a Volume.
-func Init(ctx context.Context, svc blobcache.Service, sch Namespace, volh blobcache.Handle) error {
-	return Modify(ctx, svc, sch, volh, func(tx *Tx) error {
-		return tx.Init(ctx)
-	})
+	tx, err := bcsdk.BeginTx(ctx, svc, volh, blobcache.TxParams{Modify: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Abort(ctx)
+	nstx, err := NewFromTx(ctx, sch, tx)
+	if err != nil {
+		return err
+	}
+	if err := fn(&nstx); err != nil {
+		return err
+	}
+	if err := tx.Save(ctx, nstx.cell); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Tx is a transaction on a namespace
@@ -43,12 +60,14 @@ func NewFromTx(ctx context.Context, schema Namespace, tx *bcsdk.Tx) (Tx, error) 
 	if err := tx.Load(ctx, &cell); err != nil {
 		return Tx{}, err
 	}
+	ha := tx.HashAlgo()
 	return Tx{
 		schema: schema,
 		cell:   cell,
 		sro:    tx,
 		srw:    tx,
 		lnk:    tx,
+		ha:     ha,
 	}, nil
 }
 
@@ -66,6 +85,7 @@ func NewTx(schema Namespace, ha blobcache.HashAlgo, s bcsdk.RWD, lnk Linker, cel
 		cell:   cell,
 		sro:    s,
 		srw:    s,
+		lnk:    lnk,
 		ha:     ha,
 	}
 }
@@ -157,8 +177,8 @@ func (tx *Tx) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
-// CreateAt creates a new entry at name only if there is no exising entry
-func (tx *Tx) CreateAt(ctx context.Context, name string, target blobcache.Handle, mask blobcache.ActionSet) error {
+// Create creates a new entry at name only if there is no exising entry
+func (tx *Tx) Create(ctx context.Context, name string, target blobcache.Handle, mask blobcache.ActionSet) error {
 	var entry Entry
 	exists, err := tx.Get(ctx, name, &entry)
 	if err != nil {

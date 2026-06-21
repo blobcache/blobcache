@@ -57,25 +57,9 @@ type Namespace interface {
 	NSPut(c schema.RWCtx, ent Entry) ([]byte, error)
 }
 
-// Open performs the multi-volume lookup, creating clients as required.
-// It returns a Handle to the volume that the final entry points to.
-func Open(ctx context.Context, bc blobcache.Service, nsRoot blobcache.Handle, p string) (blobcache.Handle, error) {
-	p := fqp.Path
-	for p != "" {
-		nsc, err := SchemaForVolume(ctx, bc, *h)
-		if err != nil {
-			return blobcache.Handle{}, err
-		}
-		ent, rem, err := nsc.Lookup(ctx, *h, p)
-		if err != nil {
-			return blobcache.Handle{}, err
-		}
-		h2, err := nsc.Service.OpenFrom(ctx, *h, ent.LinkToken(), blobcache.Action_ALL)
-		if err != nil {
-			return blobcache.Handle{}, err
-		}
-		h = h2
-		p = rem
-	}
-	return *h, nil
+// Init initializes a namespace in a Volume.
+func Init(ctx context.Context, svc blobcache.Service, sch Namespace, volh blobcache.Handle) error {
+	return Modify(ctx, svc, sch, volh, func(tx *Tx) error {
+		return tx.Init(ctx)
+	})
 }
