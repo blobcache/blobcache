@@ -2,7 +2,6 @@
 package bcclient
 
 import (
-	"context"
 	"net/http"
 	"os"
 	"strings"
@@ -16,8 +15,7 @@ import (
 const (
 	// EnvBlobcacheAPI is the name of the environment variable used
 	// as the endpoint for the BLOBCACHE_API
-	EnvBlobcacheAPI    = "BLOBCACHE_API"
-	EnvBlobcacheNSRoot = "BLOBCACHE_NS_ROOT"
+	EnvBlobcacheAPI = "BLOBCACHE_API"
 )
 
 // NewClient creates a Client backed by the server at endpoint
@@ -26,9 +24,11 @@ func NewClient(endpoint string) blobcache.Service {
 	case strings.HasPrefix(endpoint, "unix://"):
 		unixAddr, _ := strings.CutPrefix(endpoint, "unix://")
 		return bcipc.NewClient(unixAddr)
-	default:
+	case strings.HasPrefix(endpoint, "http://"):
 		hc := http.DefaultClient
 		return bchttp.NewClient(hc, endpoint)
+	default:
+		return bcipc.NewClient(endpoint)
 	}
 }
 
@@ -41,33 +41,28 @@ func NewClientFromEnv() blobcache.Service {
 	return NewClient(value)
 }
 
-// EnvNSRoot parses a handle or OID read from the BLOBCACHE_NS_ROOT
-// environment variable into a bcns.FQP
+const (
+	// EnvBlobcacheNSRoot configures the namespace root.
+	// It is expected to be an OID on the local Node.
+	EnvBlobcacheNSRoot = "BLOBCACHE_NS_ROOT"
+)
+
+// EnvNSRoot parses an OID read from the BLOBCACHE_NS_ROOT
 // If the environment variable does not exist, then it returns the root OID
-// If the variable cannot be parsed into an ObjectExpr than an error is returned.
-func EnvNSRoot() (bcns.FQP, error) {
+// If the variable cannot be parsed into an OID than an error is returned.
+func EnvNSRoot() (blobcache.OID, error) {
 	val, ok := os.LookupEnv(EnvBlobcacheNSRoot)
 	if !ok {
-		return bcns.FQP{}, nil
+		return blobcache.OID{}, nil
 	}
-	return bcns.ParseFQP(val)
+	return blobcache.ParseOID(val)
 }
 
-// OpenNSRoot calls EnvNSRoot to get the NS Root from the environment
-// Then it uses the Service to find and open the root namespace volume, and
-// setup a namespace Client to view and modify the namespace.
-func OpenNSRoot(ctx context.Context, bc blobcache.Service) (rootVol *blobcache.Handle, ncs *bcns.Client, _ error) {
-	expr, err := EnvNSRoot()
+// NewNSClientFromEnv returns an bcns.Client configured from the environment.
+func NewNSClientFromEnv() (bcns.Client, error) {
+	root, err := EnvNSRoot()
 	if err != nil {
-		return nil, nil, err
+		return bcns.Client{}, err
 	}
-	nsr, err := expr.Open(ctx, bc)
-	if err != nil {
-		return nil, nil, err
-	}
-	bnsc, err := bcns.ClientForVolume(ctx, bc, *rootVol)
-	if err != nil {
-		return nil, nil, err
-	}
-	return &nsr, bnsc, nil
+	return bcns.NewClient(NewClientFromEnv(), root), nil
 }

@@ -1,4 +1,4 @@
-package schematests
+package bcnstests
 
 import (
 	"fmt"
@@ -132,14 +132,14 @@ func TestLookup(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh 
 			// Test Ok cases.
 			root := volumes[0]
 			for name := range tc.Ok {
-				volh, err := bcns.Resolve(ctx, nsc.Service, bcns.FQP{Root: root.OID, Path: name})
+				volh, err := bcns.Open(ctx, nsc.Service, bcns.FQP{Root: root.OID, Path: name})
 				require.NoError(t, err, "expected lookup of %q to succeed", name)
 				require.NotNil(t, volh, "expected non-nil handle for %q", name)
 			}
 
 			// Test Fail cases.
 			for _, name := range tc.Fail {
-				_, err := bcns.Resolve(ctx, nsc.Service, bcns.FQP{Root: root.OID, Path: name})
+				_, err := bcns.Open(ctx, nsc.Service, bcns.FQP{Root: root.OID, Path: name})
 				require.Error(t, err, "expected lookup of %q to fail", name)
 			}
 		})

@@ -4,13 +4,9 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"slices"
-	"strings"
 
-	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema"
-	"go.brendoncarroll.net/exp/slices2"
 )
 
 // Entry represents an entry in a namespace.
@@ -47,309 +43,39 @@ func CheckName(name string) error {
 
 // Namespace is an interface for Schemas which support common Namespace operations.
 type Namespace interface {
-	NSList(ctx context.Context, s bcsdk.RO, root []byte) ([]Entry, error)
+	schema.Schema
+
+	NSList(c schema.ROCtx) ([]Entry, error)
 	// NSGet retrieves the entry at the given name.
 	// If the entry exists, it is returned in dst and true is returned.
 	// If the entry does not exist, dst is not modified and false is returned.
-	NSGet(ctx context.Context, s bcsdk.RO, root []byte, name string, dst *Entry) (bool, error)
+	NSGet(c schema.ROCtx, name string, dst *Entry) (bool, error)
 	// Delete deletes the entry at the given name.
 	// Delete is idempotent, and does not fail if the entry does not exist.
-	NSDelete(ctx context.Context, s bcsdk.RW, root []byte, name string) ([]byte, error)
+	NSDelete(c schema.RWCtx, name string) ([]byte, error)
 	// Put performs an idempotent create or replace operation.
-	NSPut(ctx context.Context, s bcsdk.RW, root []byte, ent Entry) ([]byte, error)
+	NSPut(c schema.RWCtx, ent Entry) ([]byte, error)
 }
 
-// Client allows manipulation of namespace volumes.
-type Client struct {
-	Service blobcache.Service
-	Schema  Namespace
-}
-
-func (nsc *Client) Init(ctx context.Context, volh blobcache.Handle) error {
-	sch, ok := nsc.Schema.(schema.Initializer)
-	if !ok {
-		return fmt.Errorf("protocol does not support initialization")
-	}
-	volh, err := nsc.resolve(ctx, volh)
-	if err != nil {
-		return err
-	}
-	return bcsdk.Modify(ctx, nsc.Service, volh, func(s bcsdk.RW, root []byte) ([]byte, error) {
-		if len(root) != 0 {
-			return nil, fmt.Errorf("cannot initialize namespace, there is already something in the volume")
-		}
-		return sch.Init(ctx, s)
-	})
-}
-
-func (nsc *Client) Put(ctx context.Context, nsh blobcache.Handle, name string, volh blobcache.Handle, mask blobcache.ActionSet) error {
-	nsh, err := nsc.resolve(ctx, nsh)
-	if err != nil {
-		return err
-	}
-	if err := CheckName(name); err != nil {
-		return err
-	}
-	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
-		lt, err := tx.Link(ctx, volh, mask)
-		if err != nil {
-			return nil, err
-		}
-		ent := Entry{
-			Name:   name,
-			Target: lt.Target,
-			Rights: lt.Rights,
-			Secret: lt.Secret,
-		}
-		return nsc.Schema.NSPut(ctx, tx, root, ent)
-	})
-}
-
-func (nsc *Client) Delete(ctx context.Context, nsh blobcache.Handle, name string) error {
-	nsh, err := nsc.resolve(ctx, nsh)
-	if err != nil {
-		return err
-	}
-	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
-		var ent Entry
-		found, err := nsc.Schema.NSGet(ctx, tx, root, name, &ent)
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			// no change needed
-			return root, nil
-		}
-		root, err = nsc.Schema.NSDelete(ctx, tx, root, name)
-		if err != nil {
-			return nil, err
-		}
-		ents, err := nsc.Schema.NSList(ctx, tx, root)
-		if err != nil {
-			return nil, err
-		}
-		if !slices.ContainsFunc(ents, func(x Entry) bool {
-			return x.Target == ent.Target
-		}) {
-			// if the target is not referenced by any other entry, unlink it
-			ltokID := ent.LinkToken().GetID(tx.HashAlgo())
-			if err := tx.Unlink(ctx, []blobcache.LinkID{ltokID}); err != nil {
-				return nil, err
-			}
-		}
-		return root, nil
-	})
-}
-
-func (nsc *Client) Get(ctx context.Context, volh blobcache.Handle, name string, dst *Entry) (bool, error) {
-	volh, err := nsc.resolve(ctx, volh)
-	if err != nil {
-		return false, err
-	}
-	return bcsdk.View1(ctx, nsc.Service, volh, func(s bcsdk.RO, root []byte) (bool, error) {
-		return nsc.Schema.NSGet(ctx, s, root, name, dst)
-	})
-}
-
-func (nsc *Client) List(ctx context.Context, volh blobcache.Handle) ([]Entry, error) {
-	volh, err := nsc.resolve(ctx, volh)
-	if err != nil {
-		return nil, err
-	}
-	return bcsdk.View1(ctx, nsc.Service, volh, func(s bcsdk.RO, root []byte) ([]Entry, error) {
-		return nsc.Schema.NSList(ctx, s, root)
-	})
-}
-
-func (nsc *Client) ListNames(ctx context.Context, volh blobcache.Handle) ([]string, error) {
-	ents, err := nsc.List(ctx, volh)
-	if err != nil {
-		return nil, err
-	}
-	return slices2.Map(ents, func(x Entry) string { return x.Name }), nil
-}
-
-func (nsc *Client) OpenAt(ctx context.Context, nsh blobcache.Handle, name string, mask blobcache.ActionSet) (*blobcache.Handle, error) {
-	nsh, err := nsc.resolve(ctx, nsh)
-	if err != nil {
-		return nil, err
-	}
-	var ent Entry
-	found, err := nsc.Get(ctx, nsh, name, &ent)
-	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return nil, fmt.Errorf("ns: no entry found at %s", name)
-	}
-	subvolh, err := nsc.Service.OpenFrom(ctx, nsh, ent.LinkToken(), blobcache.Action_ALL)
-	if err != nil {
-		return nil, err
-	}
-	return subvolh, nil
-}
-
-func (nsc *Client) CreateAt(ctx context.Context, nsh blobcache.Handle, name string, spec blobcache.VolumeSpec) (*blobcache.Handle, error) {
-	if err := CheckName(name); err != nil {
-		return nil, err
-	}
-	nsh, err := nsc.resolve(ctx, nsh)
-	if err != nil {
-		return nil, err
-	}
-	volh, _, err := bcsdk.CreateOnSameHost(ctx, nsc.Service, nsh, spec)
-	if err != nil {
-		return nil, err
-	}
-	if err := bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
-		found, err := nsc.Schema.NSGet(ctx, tx, root, name, new(Entry))
-		if err != nil {
-			return nil, err
-		}
-		if found {
-			return nil, fmt.Errorf("ns: entry already exists at %s", name)
-		}
-		lt, err := tx.Link(ctx, *volh, blobcache.Action_ALL)
-		if err != nil {
-			return nil, err
-		}
-		return nsc.Schema.NSPut(ctx, tx, root, Entry{
-			Name:   name,
-			Target: lt.Target,
-			Rights: lt.Rights,
-			Secret: lt.Secret,
-		})
-	}); err != nil {
-		return nil, err
-	}
-	return volh, nil
-}
-
-// Move atomically renames an entry from oldName to newName within a namespace volume.
-// The link token is preserved as-is.
-func (nsc *Client) Move(ctx context.Context, nsh blobcache.Handle, oldName, newName string) error {
-	nsh, err := nsc.resolve(ctx, nsh)
-	if err != nil {
-		return err
-	}
-	if err := CheckName(newName); err != nil {
-		return err
-	}
-	return bcsdk.ModifyTx(ctx, nsc.Service, nsh, func(tx *bcsdk.Tx, root []byte) ([]byte, error) {
-		var ent Entry
-		found, err := nsc.Schema.NSGet(ctx, tx, root, oldName, &ent)
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			return nil, fmt.Errorf("ns: no entry found at %s", oldName)
-		}
-		existsAtNew, err := nsc.Schema.NSGet(ctx, tx, root, newName, new(Entry))
-		if err != nil {
-			return nil, err
-		}
-		if existsAtNew {
-			return nil, fmt.Errorf("ns: entry already exists at %s", newName)
-		}
-		ent.Name = newName
-		root, err = nsc.Schema.NSPut(ctx, tx, root, ent)
-		if err != nil {
-			return nil, err
-		}
-		root, err = nsc.Schema.NSDelete(ctx, tx, root, oldName)
-		if err != nil {
-			return nil, err
-		}
-		return root, nil
-	})
-}
-
-// GC garbage collects the volume
-func (nsc *Client) GC(ctx context.Context, volh blobcache.Handle) error {
-	gcsch, ok := nsc.Schema.(schema.VisitAll)
-	if !ok {
-		return fmt.Errorf("cannot GC, schema does not support visit all")
-	}
-	tx, err := bcsdk.BeginTx(ctx, nsc.Service, volh, blobcache.TxParams{Modify: true, GCBlobs: true, GCLinks: true})
-	if err != nil {
-		return err
-	}
-	defer tx.Abort(ctx)
-	visit := func(cids []blobcache.CID, ltoks []blobcache.LinkToken) error {
-		if len(cids) > 0 {
-			if err := tx.Visit(ctx, cids); err != nil {
-				return err
-			}
-		}
-		if len(ltoks) > 0 {
-			linkIDs := make([]blobcache.LinkID, len(ltoks))
-			for i := range ltoks {
-				linkIDs[i] = ltoks[i].GetID(tx.HashAlgo())
-			}
-			if err := tx.VisitLinks(ctx, linkIDs); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	var root []byte
-	if err := tx.Load(ctx, &root); err != nil {
-		return err
-	}
-	if err := gcsch.VisitAll(ctx, tx, root, visit); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
-func (nsc Client) resolve(ctx context.Context, volh blobcache.Handle) (blobcache.Handle, error) {
-	if volh.Secret == ([16]byte{}) {
-		volh2, err := nsc.Service.OpenFiat(ctx, volh.OID, blobcache.Action_ALL)
+// Open performs the multi-volume lookup, creating clients as required.
+// It returns a Handle to the volume that the final entry points to.
+func Open(ctx context.Context, bc blobcache.Service, nsRoot blobcache.Handle, p string) (blobcache.Handle, error) {
+	p := fqp.Path
+	for p != "" {
+		nsc, err := SchemaForVolume(ctx, bc, *h)
 		if err != nil {
 			return blobcache.Handle{}, err
 		}
-		volh = *volh2
-	}
-	return volh, nil
-}
-
-// Lookup looks up prefixes of the path (ending in /) in volh, starting
-// with the whole string, and getting shorter.
-func (nsc Client) Lookup(ctx context.Context, volh blobcache.Handle, p string) (ent Entry, rem string, _ error) {
-	volh, err := nsc.resolve(ctx, volh)
-	if err != nil {
-		return Entry{}, "", err
-	}
-	p = strings.Trim(p, "/")
-	name := p
-	for {
-		found, err := nsc.Get(ctx, volh, name, &ent)
+		ent, rem, err := nsc.Lookup(ctx, *h, p)
 		if err != nil {
-			return Entry{}, "", err
+			return blobcache.Handle{}, err
 		}
-		if found {
-			rem = strings.TrimPrefix(p, name)
-			rem = strings.Trim(rem, "/")
-			return ent, rem, nil
+		h2, err := nsc.Service.OpenFrom(ctx, *h, ent.LinkToken(), blobcache.Action_ALL)
+		if err != nil {
+			return blobcache.Handle{}, err
 		}
-		idx := strings.LastIndex(name, "/")
-		if idx < 0 {
-			return Entry{}, "", &ErrLookup{NS: volh, Rem: name}
-		}
-		name = strings.Trim(name[:idx], "/")
-		if name == "" {
-			return Entry{}, "", &ErrLookup{NS: volh, Rem: name}
-		}
+		h = h2
+		p = rem
 	}
-}
-
-type ErrLookup struct {
-	// NS is a handle the Volume containing the Namespace
-	NS blobcache.Handle
-	// Rem is the remaining string which could not be looked up.
-	Rem string
-}
-
-func (e *ErrLookup) Error() string {
-	return fmt.Sprintf("lookup incomplete. could not find prefix of %s in %v", e.Rem, e.NS.OID)
+	return *h, nil
 }

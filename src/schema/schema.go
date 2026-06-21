@@ -65,3 +65,19 @@ type (
 	RW = bcsdk.RW
 	WO = bcsdk.WO
 )
+
+type ROCtx struct {
+	context.Context
+	Store RO
+	Cell  []byte
+}
+
+type RWCtx struct {
+	context.Context
+	Store RW
+	Cell  []byte
+}
+
+func (c RWCtx) RO() ROCtx {
+	return ROCtx{Context: c.Context, Store: c.Store, Cell: c.Cell}
+}

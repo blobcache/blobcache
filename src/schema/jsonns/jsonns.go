@@ -39,14 +39,17 @@ func Constructor(_ json.RawMessage, _ schema.Factory) (schema.Schema, error) {
 }
 
 func (sch Schema) ValidateChange(ctx context.Context, change schema.Change) error {
-	_, err := sch.NSList(ctx, change.Next.Store, change.Next.Cell)
+	_, err := sch.NSList(schema.ROCtx{Context: ctx, Store: change.Next.Store, Cell: change.Next.Cell})
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (sch Schema) NSList(ctx context.Context, s schema.RO, root []byte) ([]Entry, error) {
+func (sch Schema) NSList(c schema.ROCtx) ([]Entry, error) {
+	ctx := c.Context
+	root := c.Cell
+	s := c.Store
 	if len(root) == 0 {
 		return nil, nil
 	}
@@ -66,8 +69,8 @@ func (sch Schema) NSList(ctx context.Context, s schema.RO, root []byte) ([]Entry
 	return ents, nil
 }
 
-func (sch Schema) NSGet(ctx context.Context, s schema.RO, root []byte, name string, dst *Entry) (bool, error) {
-	ents, err := sch.NSList(ctx, s, root)
+func (sch Schema) NSGet(c schema.ROCtx, name string, dst *Entry) (bool, error) {
+	ents, err := sch.NSList(c)
 	if err != nil {
 		return false, err
 	}
@@ -80,8 +83,10 @@ func (sch Schema) NSGet(ctx context.Context, s schema.RO, root []byte, name stri
 	return false, nil
 }
 
-func (sch Schema) NSPut(ctx context.Context, s schema.RW, root []byte, ent Entry) ([]byte, error) {
-	ents, err := sch.NSList(ctx, s, root)
+func (sch Schema) NSPut(c schema.RWCtx, ent Entry) ([]byte, error) {
+	ctx := c.Context
+	s := c.Store
+	ents, err := sch.NSList(c.RO())
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +94,10 @@ func (sch Schema) NSPut(ctx context.Context, s schema.RW, root []byte, ent Entry
 	return saveEnts(ctx, s, ents)
 }
 
-func (sch Schema) NSDelete(ctx context.Context, s schema.RW, root []byte, name string) ([]byte, error) {
-	ents, err := sch.NSList(ctx, s, root)
+func (sch Schema) NSDelete(c schema.RWCtx, name string) ([]byte, error) {
+	ctx := c.Context
+	s := c.Store
+	ents, err := sch.NSList(c.RO())
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +134,7 @@ func (ns *Tx) loadEntries(ctx context.Context) ([]Entry, error) {
 	if err := ns.Tx.Load(ctx, &ns.Root); err != nil {
 		return nil, err
 	}
-	ents, err := ns.Schema.NSList(ctx, ns.Tx, ns.Root)
+	ents, err := ns.Schema.NSList(schema.ROCtx{ctx, ns.Tx, ns.Root})
 	if err != nil {
 		return nil, err
 	}
