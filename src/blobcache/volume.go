@@ -267,6 +267,7 @@ func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
 	case vi.Backend.Peer != nil:
 		return FQOID{
 			Node: vi.Backend.Peer.Peer,
+			OID:  vi.Backend.Peer.Volume,
 		}
 	case vi.Backend.Remote != nil:
 		return FQOID{

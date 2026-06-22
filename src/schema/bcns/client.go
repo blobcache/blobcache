@@ -121,6 +121,7 @@ type DoCtx struct {
 	// Node is the node that owns the namespace Volume
 	Node blobcache.NodeID
 	// NS is the handle to the namespace Volume, that the transaction is for
+	// This handle is for the the local node, not Node.
 	NS blobcache.Handle
 	// Tx is a transaction for maniuplating the namespace
 	Tx *Tx
@@ -130,7 +131,8 @@ type DoCtx struct {
 	Name string
 }
 
-// Do resolves as much of p as possible and then calls fn with the
+// Do resolves as much of p as possible and then calls fn with the remaining name and a transaction
+// open on the parent namespace.
 func (nsc *Client) Do(ctx context.Context, p string, modify bool, fn func(DoCtx) error) error {
 	p = strings.Trim(p, string(Sep))
 	nsh, sch, err := nsc.openRoot(ctx)
