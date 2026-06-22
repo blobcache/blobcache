@@ -134,13 +134,21 @@ type DoCtx struct {
 // Do resolves as much of p as possible and then calls fn with the remaining name and a transaction
 // open on the parent namespace.
 func (nsc *Client) Do(ctx context.Context, p string, modify bool, fn func(DoCtx) error) error {
-	p = strings.Trim(p, string(Sep))
-	nsh, sch, err := nsc.openRoot(ctx)
+	nsh, _, err := nsc.openRoot(ctx)
 	if err != nil {
 		return err
 	}
+	return nsc.doFrom(ctx, nsh, p, modify, fn)
+}
+
+func (nsc *Client) doFrom(ctx context.Context, nsh blobcache.Handle, p string, modify bool, fn func(DoCtx) error) error {
+	p = strings.Trim(p, string(Sep))
 	prefix := ""
 	for {
+		sch, err := nsc.schemaForVolume(ctx, nsh)
+		if err != nil {
+			return err
+		}
 		node, err := nsc.volumeNode(ctx, nsh)
 		if err != nil {
 			return err
@@ -197,10 +205,6 @@ func (nsc *Client) Do(ctx context.Context, p string, modify bool, fn func(DoCtx)
 		}
 		nsh = *nextNS
 		p = nextPath
-		sch, err = nsc.schemaForVolume(ctx, nsh)
-		if err != nil {
-			return err
-		}
 	}
 }
 
@@ -257,7 +261,7 @@ func (nsc *Client) CreateVolume(ctx context.Context, p string, spec blobcache.Vo
 // CreateVolumeFrom creates a Volume starting from a specific namespace
 func (nsc *Client) CreateVolumeFrom(ctx context.Context, nsh blobcache.Handle, p string, spec blobcache.VolumeSpec) (blobcache.Handle, error) {
 	var ret blobcache.Handle
-	err := nsc.Do(ctx, p, true, func(c DoCtx) error {
+	err := nsc.doFrom(ctx, nsh, p, true, func(c DoCtx) error {
 		var ent Entry
 		exists, err := c.Tx.Get(ctx, c.Name, &ent)
 		if err != nil {

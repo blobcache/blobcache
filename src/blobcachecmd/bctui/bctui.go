@@ -10,6 +10,7 @@ import (
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/schema/bcns"
+	"blobcache.io/blobcache/src/schema/jsonns"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -32,6 +33,8 @@ const (
 	// mode_ERROR means an API error modal is active.
 	// once the error is cleared then the system will return to normal mode.
 	mode_ERROR
+	// mode_CREATE_VOLUME means the create volume modal is active.
+	mode_CREATE_VOLUME
 )
 
 // Model contains all the application state
@@ -56,6 +59,8 @@ type Model struct {
 
 	statusLine string
 	errorText  string
+
+	createVolState *createVolumeState
 }
 
 func New(svc blobcache.Service, nsc *bcns.Client) *tea.Program {
@@ -100,6 +105,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case mode_INSERT:
 			m.updateInsertMode(msg)
+			return m, nil
+		case mode_CREATE_VOLUME:
+			m.updateCreateVolume(msg)
 			return m, nil
 		}
 
@@ -192,6 +200,9 @@ func (m *Model) View() tea.View {
 	if m.mode == mode_MENU {
 		screen = m.renderLeaderOverlay(width, height, screen)
 	}
+	if m.mode == mode_CREATE_VOLUME {
+		screen = m.renderCreateVolumeOverlay(width, height, screen)
+	}
 	return fullScreenView(screen)
 }
 
@@ -219,7 +230,20 @@ func (m *Model) updateLeaderMode(msg tea.KeyPressMsg) {
 				m.reportError(err)
 			}
 		}
+	case "c":
+		m.handleCreateVolume()
 	}
+}
+
+func (m *Model) handleCreateVolume() {
+	focus := m.focusPane()
+	if focus == nil || focus.schemaName != string(jsonns.SchemaName) {
+		m.setMode(mode_NORMAL)
+		m.reportError(fmt.Errorf("the TUI only allows volumes to be created in a namespace"))
+		return
+	}
+	m.setMode(mode_CREATE_VOLUME)
+	m.createVolState = newCreateVolumeState(focus.handle)
 }
 
 func (m *Model) updateErrorMode(msg tea.KeyPressMsg) {
@@ -651,6 +675,8 @@ func (m *Model) modalLine() string {
 		return "MENU: " + m.keyText("r") + " refresh, " + m.keyText("y") + " copy selected item, " + m.keyText("esc") + " cancel"
 	case mode_INSERT:
 		return "INS_: " + m.keyText("esc") + " exit"
+	case mode_CREATE_VOLUME:
+		return "CREATE VOLUME: " + m.keyText("tab") + " next field, " + m.keyText("esc") + " cancel"
 	default:
 		return ""
 	}
@@ -742,6 +768,7 @@ func (m *Model) renderLeaderOverlay(width, height int, base string) string {
 	bodyLines := []string{
 		m.menuCommandLine("r", "refresh", bodyWidth),
 		m.menuCommandLine("y", "copy selected item", bodyWidth),
+		m.menuCommandLine("c", "create volume", bodyWidth),
 		"",
 		m.styles.leaderHint.Render("Press ") +
 			m.keyTextIn(m.styles.leaderHint, "esc") +

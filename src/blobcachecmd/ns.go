@@ -53,12 +53,14 @@ var nsListCmd = star.Command{
 	Flags: map[string]star.Flag{
 		"nsr": nsRoot,
 	},
+	Pos: []star.Positional{nameOptParam},
 	F: func(c star.Context) error {
 		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		ents, err := nsc.List(c, "")
+		name, _ := nameOptParam.LoadOpt(c)
+		ents, err := nsc.List(c, name)
 		if err != nil {
 			return err
 		}
@@ -68,6 +70,12 @@ var nsListCmd = star.Command{
 		}
 		return nil
 	},
+}
+
+var nameOptParam = &star.Optional[string]{
+	PosName:  "name",
+	Parse:    star.ParseString,
+	ShortDoc: "a name in the namespace",
 }
 
 var nsGetCmd = star.Command{

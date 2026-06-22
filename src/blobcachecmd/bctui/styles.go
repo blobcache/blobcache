@@ -22,6 +22,18 @@ type uiStyles struct {
 	errorTitle       lipgloss.Style
 	errorBody        lipgloss.Style
 	errorHint        lipgloss.Style
+	cvBox            lipgloss.Style
+	cvTitle          lipgloss.Style
+	cvBody           lipgloss.Style
+	cvHint           lipgloss.Style
+	cvTabActive      lipgloss.Style
+	cvTabInactive    lipgloss.Style
+	cvFieldLabel     lipgloss.Style
+	cvFieldValue     lipgloss.Style
+	cvFieldValueFoc  lipgloss.Style
+	cvButtonActive   lipgloss.Style
+	cvButtonInactive lipgloss.Style
+	cvStatus         lipgloss.Style
 }
 
 func defaultStyles() uiStyles {
@@ -125,5 +137,71 @@ func defaultStyles() uiStyles {
 		errorHint: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252")).
 			Italic(true),
+
+		cvBox: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("63")).
+			Background(lipgloss.Color("236")).
+			Foreground(lipgloss.Color("252")).
+			Padding(1, 2),
+
+		cvTitle: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("230")).
+			Background(lipgloss.Color("24")).
+			Padding(0, 1),
+
+		cvBody: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color("236")).
+			ColorWhitespace(true),
+
+		cvHint: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Background(lipgloss.Color("236")).
+			ColorWhitespace(true).
+			Italic(true),
+
+		cvTabActive: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("230")).
+			Background(lipgloss.Color("63")).
+			Padding(0, 1),
+
+		cvTabInactive: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Background(lipgloss.Color("236")).
+			Padding(0, 1),
+
+		cvFieldLabel: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("250")).
+			Background(lipgloss.Color("236")).
+			ColorWhitespace(true),
+
+		cvFieldValue: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color("236")).
+			ColorWhitespace(true),
+
+		cvFieldValueFoc: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("230")).
+			Background(lipgloss.Color("24")).
+			ColorWhitespace(true),
+
+		cvButtonActive: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("230")).
+			Background(lipgloss.Color("63")).
+			Padding(0, 2),
+
+		cvButtonInactive: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Background(lipgloss.Color("236")).
+			Padding(0, 2),
+
+		cvStatus: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color("236")).
+			ColorWhitespace(true),
 	}
 }
