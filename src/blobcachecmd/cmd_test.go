@@ -57,7 +57,7 @@ func TestGLFS(t *testing.T) {
 	specJSON, err := json.Marshal(blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 	runCmdWithStdin(t, env, []string{"--state", stateDir, "ns", "create", "vol1"}, specJSON)
-	runCmd(t, env, []string{"--state", stateDir, "ns", "ls"})
+	runCmd(t, env, []string{"--state", stateDir, "ns", "ls", ""})
 
 	runCmd(t, env, []string{"glfs", "init", "vol1"})
 	runCmd(t, env, []string{"glfs", "look", "vol1", "/"})
