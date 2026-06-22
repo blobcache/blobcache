@@ -262,7 +262,10 @@ func (vi *VolumeInfo) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, vi)
 }
 
-func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
+// FQOID returns the FQOID for the Volume.
+// local should be the ID of the local Node, it will be inserted
+// into the FQOID, for local Volumes.
+func (vi *VolumeInfo) FQOID(local NodeID) FQOID {
 	switch {
 	case vi.Backend.Peer != nil:
 		return FQOID{
@@ -275,7 +278,10 @@ func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
 			OID:  vi.Backend.Remote.Volume,
 		}
 	default:
-		return FQOID{}
+		return FQOID{
+			Node: local,
+			OID:  vi.ID,
+		}
 	}
 }
 

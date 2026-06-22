@@ -45,7 +45,7 @@ func CreateOnSameHost(ctx context.Context, s blobcache.Service, base blobcache.H
 		if err != nil {
 			return nil, nil, err
 		}
-		fqoid := svinfo.GetRemoteFQOID()
+		fqoid := svinfo.FQOID(blobcache.NodeID{})
 		return svolh, &fqoid, err
 	} else {
 		ep, err := s.Endpoint(ctx)
@@ -106,15 +106,10 @@ func URLFor(ctx context.Context, bc blobcache.Service, volh blobcache.Handle) (*
 	if err != nil {
 		return nil, err
 	}
-	voloid := volh.OID
-	switch {
-	case vinfo.Backend.Remote != nil:
-		host = vinfo.Backend.Remote.Endpoint
-		voloid = vinfo.Backend.Remote.Volume
-	}
+	fqoid := vinfo.FQOID(host.Node)
 	return &blobcache.URL{
-		Node: host.Node,
-		OID:  voloid,
+		Node: fqoid.Node,
+		OID:  fqoid.OID,
 	}, nil
 }
 

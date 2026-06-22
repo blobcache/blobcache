@@ -90,7 +90,7 @@ func TestCreateVolume(t *testing.T, sch bcns.Namespace, schemaSpec blobcache.Sch
 			vinfo, err := svcs[0].InspectVolume(ctx, volh)
 			require.NoError(t, err)
 			if tc.Host != 0 {
-				fqoid := vinfo.GetRemoteFQOID()
+				fqoid := vinfo.FQOID(blobcache.NodeID{})
 				nodeID := blobcachetests.Endpoint(t, svcs[tc.Host]).Node
 				require.Equal(t, nodeID, fqoid.Node)
 			}

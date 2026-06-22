@@ -37,7 +37,7 @@ func CreateOnSameHost(t testing.TB, s blobcache.Service, base blobcache.Handle, 
 	if host != nil {
 		svinfo, err := s.InspectVolume(ctx, *svolh)
 		require.NoError(t, err)
-		return *svolh, svinfo.GetRemoteFQOID()
+		return *svolh, svinfo.FQOID(blobcache.NodeID{})
 	} else {
 		ep, err := s.Endpoint(ctx)
 		require.NoError(t, err)
