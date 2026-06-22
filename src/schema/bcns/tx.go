@@ -214,7 +214,7 @@ func (tx *Tx) Match(ctx context.Context, p string) (Entry, string, error) {
 		}
 		name = strings.Trim(name[:idx], "/")
 	}
-	return Entry{}, "", &ErrNoMatch{Name: name}
+	return Entry{}, "", &ErrNoMatch{Name: p}
 }
 
 type ErrNoMatch struct {

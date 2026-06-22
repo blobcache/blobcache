@@ -133,14 +133,14 @@ func TestOpen(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh bl
 			root := volumes[0]
 			lookupClient := bcns.NewClient(svc, root.OID)
 			for name := range tc.Ok {
-				volh, err := lookupClient.Open(ctx, name)
+				volh, err := lookupClient.Open(ctx, name, blobcache.Action_ALL)
 				require.NoError(t, err, "expected lookup of %q to succeed", name)
 				require.NotEqual(t, blobcache.Handle{}, volh, "expected non-zero handle for %q", name)
 			}
 
 			// Test Fail cases.
 			for _, name := range tc.Fail {
-				_, err := lookupClient.Open(ctx, name)
+				_, err := lookupClient.Open(ctx, name, blobcache.Action_ALL)
 				require.Error(t, err, "expected lookup of %q to fail", name)
 			}
 		})

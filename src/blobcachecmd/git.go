@@ -50,15 +50,15 @@ var gitURLFor = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		volh, err := nsc.OpenAt(c, nsh, volNameParam.Load(c), blobcache.Action_VOLUME_INSPECT)
+		volh, err := nsc.Open(c, volNameParam.Load(c), blobcache.Action_VOLUME_INSPECT)
 		if err != nil {
 			return err
 		}
-		u, err := bcsdk.URLFor(c, svc, *volh)
+		u, err := bcsdk.URLFor(c, svc, volh)
 		if err != nil {
 			return err
 		}

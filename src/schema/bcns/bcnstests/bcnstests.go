@@ -92,7 +92,7 @@ func TestSuite(t *testing.T, sch bcns.Namespace, spec blobcache.SchemaSpec, setu
 		err = s.Drop(ctx, volh)
 		require.NoError(t, err)
 
-		volh2, err := nsc.Open(ctx, "test-name")
+		volh2, err := nsc.Open(ctx, "test-name", blobcache.Action_ALL)
 		require.NoError(t, err)
 		require.Equal(t, volh.OID, volh2.OID)
 	})
@@ -183,7 +183,7 @@ func TestSuite(t *testing.T, sch bcns.Namespace, spec blobcache.SchemaSpec, setu
 			subNSSpec.Local.Schema = spec
 			nsc2 := bcns.NewClient(s, ns1h.OID)
 			nsc2.SetDefaultSchema(sch)
-			ns2h, err := nsc2.CreateVolumeAt(ctx, "nested", subNSSpec)
+			ns2h, err := nsc2.CreateVolume(ctx, "nested", subNSSpec)
 			require.NoError(t, err)
 			ns1h = ns2h
 		}
@@ -193,7 +193,7 @@ func TestSuite(t *testing.T, sch bcns.Namespace, spec blobcache.SchemaSpec, setu
 			require.NotZero(t, ns1h.Secret) // This would cause to call OpenFiat instead of OpenFrom.
 			nsc2 := bcns.NewClient(s, ns1h.OID)
 			nsc2.SetDefaultSchema(sch)
-			ns2h, err := nsc2.Open(ctx, "nested")
+			ns2h, err := nsc2.Open(ctx, "nested", blobcache.Action_ALL)
 			require.NoError(t, err)
 			ns1h = ns2h
 		}
@@ -205,12 +205,12 @@ func TestSuite(t *testing.T, sch bcns.Namespace, spec blobcache.SchemaSpec, setu
 		nsc := bcns.NewClient(s, nsh.OID)
 		nsc.SetDefaultSchema(sch)
 		for i := 0; i < 10; i++ {
-			_, err := nsc.CreateVolumeAt(ctx, fmt.Sprintf("subvol-%d", i), blobcache.DefaultLocalSpec())
+			_, err := nsc.CreateVolume(ctx, fmt.Sprintf("subvol-%d", i), blobcache.DefaultLocalSpec())
 			require.NoError(t, err)
 		}
 
 		for i := 0; i < 10; i++ {
-			_, err := nsc.Open(ctx, fmt.Sprintf("subvol-%d", i))
+			_, err := nsc.Open(ctx, fmt.Sprintf("subvol-%d", i), blobcache.Action_ALL)
 			require.NoError(t, err)
 		}
 	})

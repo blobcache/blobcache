@@ -25,7 +25,7 @@ var nsCmd = star.NewDir(star.Metadata{
 	"put":    nsPutCmd,
 	"create": nsCreateCmd,
 	"open":   nsOpenCmd,
-	"lookup": nsLookupCmd,
+	"lookup": nsResolveCmd,
 	"mv":     nsMvCmd,
 })
 
@@ -34,11 +34,11 @@ var nsInitCmd = star.Command{
 		"nsr": nsRoot,
 	},
 	F: func(c star.Context) error {
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		if err := nsc.Init(c, nsh); err != nil {
+		if err := nsc.Init(c); err != nil {
 			return err
 		}
 		c.Printf("Namespace successfully initialized.\n\n")
@@ -54,11 +54,11 @@ var nsListCmd = star.Command{
 		"nsr": nsRoot,
 	},
 	F: func(c star.Context) error {
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		ents, err := nsc.List(c, nsh)
+		ents, err := nsc.List(c, "")
 		if err != nil {
 			return err
 		}
@@ -80,12 +80,12 @@ var nsGetCmd = star.Command{
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
 		var ent bcns.Entry
-		found, err := nsc.Get(c, nsh, name, &ent)
+		found, err := nsc.Get(c, name, &ent)
 		if err != nil {
 			return err
 		}
@@ -107,11 +107,11 @@ var nsDeleteCmd = star.Command{
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		return nsc.Delete(c, nsh, name)
+		return nsc.Delete(c, name)
 	},
 }
 
@@ -131,11 +131,11 @@ var nsPutCmd = star.Command{
 		if !ok {
 			mask = blobcache.Action_ALL
 		}
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		return nsc.Put(c, nsh, name, subvolh, mask)
+		return nsc.Put(c, name, subvolh, mask)
 	},
 }
 
@@ -158,11 +158,11 @@ var nsCreateCmd = star.Command{
 		if err := json.Unmarshal(data, &spec); err != nil {
 			return fmt.Errorf("parsing VolumeSpec JSON from stdin: %w", err)
 		}
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		_, err = nsc.CreateAt(c, nsh, name, spec)
+		_, err = nsc.CreateVolume(c, name, spec)
 		return err
 	},
 }
@@ -181,24 +181,24 @@ var nsOpenCmd = star.Command{
 		if !ok {
 			mask = blobcache.Action_ALL
 		}
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		volh, err := nsc.OpenAt(c, nsh, name, mask)
+		volh, err := nsc.Open(c, name, mask)
 		if err != nil {
 			return err
 		}
 		c.Printf("Volume successfully created.\n\n")
-		c.Printf("HANDLE: %v\n", *volh)
+		c.Printf("HANDLE: %v\n", volh)
 		c.Printf("NAME: %v\n", name)
 		return nil
 	},
 }
 
-var nsLookupCmd = star.Command{
+var nsResolveCmd = star.Command{
 	Metadata: star.Metadata{
-		Short: "Lookup a name across namespace volumes and return the volume handle",
+		Short: "resolve a name across namespace volumes",
 	},
 	Pos: []star.Positional{volNameParam},
 	Flags: map[string]star.Flag{
@@ -206,15 +206,15 @@ var nsLookupCmd = star.Command{
 	},
 	F: func(c star.Context) error {
 		name := volNameParam.Load(c)
-		nsc, _, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		volh, err := bcns.Resolve(c, nsc.Service, bcns.FQP{Path: name})
+		fqp, err := nsc.Resolve(c, name)
 		if err != nil {
 			return err
 		}
-		c.Printf("%v\n", volh)
+		c.Printf("%v\n", fqp)
 		return nil
 	},
 }
@@ -233,34 +233,34 @@ var nsMvCmd = star.Command{
 		"nsr": nsRoot,
 	},
 	F: func(c star.Context) error {
-		oldName := volNameParam.Load(c)
-		newName := newNameParam.Load(c)
-		nsc, nsh, err := getNS(c)
+		oldPath := volNameParam.Load(c)
+		newPath := newNameParam.Load(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		if err := nsc.Move(c, nsh, oldName, newName); err != nil {
+		if err := nsc.Move(c, oldPath, newPath); err != nil {
 			return err
 		}
-		c.Printf("✓ %s -> %s\n", oldName, newName)
+		c.Printf("✓ %s -> %s\n", oldPath, newPath)
 		return nil
 	},
 }
 
-var nsRoot = &star.Optional[bcns.FQP]{
+var nsRoot = &star.Optional[blobcache.OID]{
 	PosName:  "nsr",
-	Parse:    bcns.ParseFQP,
-	ShortDoc: "a handle or object id for the root",
+	Parse:    blobcache.ParseOID,
+	ShortDoc: "an object id for the root",
 }
 
-func openAt(c star.Context) (*blobcache.Handle, error) {
+func openByName(c star.Context) (blobcache.Handle, error) {
 	name := volNameParam.Load(c)
 	mask := blobcache.Action_ALL
-	nsc, nsh, err := getNS(c)
+	nsc, err := getNS(c)
 	if err != nil {
-		return nil, err
+		return blobcache.Handle{}, err
 	}
-	return nsc.OpenAt(c, nsh, name, mask)
+	return nsc.Open(c, name, mask)
 }
 
 var volNameParam = &star.Required[string]{
@@ -268,34 +268,22 @@ var volNameParam = &star.Required[string]{
 	Parse:   star.ParseString,
 }
 
-func getNS(c star.Context) (*bcns.Client, blobcache.Handle, error) {
-	rootExpr := getNSRoot(c)
+func getNS(c star.Context) (bcns.Client, error) {
+	rootOID, err := getNSRoot(c)
+	if err != nil {
+		return bcns.Client{}, err
+	}
 	bc, err := openService(c)
 	if err != nil {
-		return nil, blobcache.Handle{}, err
+		return bcns.Client{}, err
 	}
-	rooth, err := rootExpr.Open(c, bc)
-	if err != nil {
-		return nil, blobcache.Handle{}, err
-	}
-	nsc, err := bcns.ClientForVolume(c, bc, rooth)
-	if err != nil {
-		return nil, blobcache.Handle{}, err
-	}
-	return nsc, rooth, nil
+	return bcns.NewClient(bc, rootOID), nil
 }
 
 // getNSRoot returns a handle to the volume containing the root namespace
-func getNSRoot(c star.Context) bcns.FQP {
-	if objish, ok := nsRoot.LoadOpt(c); ok {
-		return objish
+func getNSRoot(c star.Context) (blobcache.OID, error) {
+	if nsr, ok := nsRoot.LoadOpt(c); ok {
+		return nsr, nil
 	}
-	if rootStr, ok := c.Env[EnvVar_NSRoot]; ok {
-		fqp, err := bcns.ParseFQP(rootStr)
-		if err == nil {
-			return fqp
-		}
-	}
-	// Just return the root
-	return bcns.FQP{}
+	return bcclient.EnvNSRoot()
 }

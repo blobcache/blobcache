@@ -66,7 +66,7 @@ func TestDaemonAuth(t *testing.T) {
 	require.NoError(t, err)
 	nsc := bcns.NewClient(svc, blobcache.OID{})
 	nsc.SetDefaultSchema(jsonns.Schema{})
-	_, err = nsc.CreateVolumeAt(ctx, "test-volume", blobcache.DefaultLocalSpec())
+	_, err = nsc.CreateVolume(ctx, "test-volume", blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 
 	cf()

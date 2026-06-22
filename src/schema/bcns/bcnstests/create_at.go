@@ -45,7 +45,7 @@ func TestCreateVolumeAt(t *testing.T, setup func(t testing.TB, svcs []blobcache.
 
 			spec := blobcache.DefaultLocalSpec()
 			nsc := bcns.NewClient(svcs[0], blobcache.OID{})
-			got, err := nsc.CreateVolumeAt(ctx, tc.Path, spec)
+			got, err := nsc.CreateVolume(ctx, tc.Path, spec)
 			if tc.Err != nil {
 				require.Error(t, err)
 				return
@@ -54,7 +54,7 @@ func TestCreateVolumeAt(t *testing.T, setup func(t testing.TB, svcs []blobcache.
 			}
 			require.NotEqual(t, blobcache.OID{}, got.OID)
 
-			opened, err := nsc.Open(ctx, tc.Path)
+			opened, err := nsc.Open(ctx, tc.Path, blobcache.Action_ALL)
 			require.NoError(t, err)
 			require.Equal(t, got.OID, opened.OID)
 		})

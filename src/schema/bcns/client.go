@@ -38,23 +38,32 @@ func (nsc *Client) FQP(ctx context.Context, p string) (FQP, error) {
 	if err != nil {
 		return FQP{}, err
 	}
-	return FQP{Node: ep.Node, Root: nsc.root, Path: p}, nil
+	return FQP{Node: ep.Node, NS: nsc.root, Path: p}, nil
 }
 
 func (nsc *Client) newFQP(p string) FQP {
-	return FQP{Root: nsc.root, Path: p}
+	return FQP{NS: nsc.root, Path: p}
+}
+
+// Init initializes the root
+func (nsc *Client) Init(ctx context.Context) error {
+	h, sch, err := nsc.openRoot(ctx)
+	if err != nil {
+		return err
+	}
+	return Init(ctx, nsc.svc, sch, h)
 }
 
 // OpenFrom opens the path p from the namespace in nsh.
-func (nsc *Client) OpenFrom(ctx context.Context, nsh blobcache.Handle, p string) (blobcache.Handle, error) {
+func (nsc *Client) OpenFrom(ctx context.Context, nsh blobcache.Handle, p string, mask blobcache.ActionSet) (blobcache.Handle, error) {
 	sch, err := nsc.schemaForVolume(ctx, nsh)
 	if err != nil {
 		return blobcache.Handle{}, err
 	}
-	return nsc.openFrom(ctx, nsh, sch, p)
+	return nsc.openFrom(ctx, nsh, sch, p, mask)
 }
 
-func (nsc *Client) openFrom(ctx context.Context, h blobcache.Handle, sch Namespace, p string) (blobcache.Handle, error) {
+func (nsc *Client) openFrom(ctx context.Context, h blobcache.Handle, sch Namespace, p string, mask blobcache.ActionSet) (blobcache.Handle, error) {
 	p = strings.Trim(p, string(Sep))
 	for p != "" {
 		sch, err := nsc.schemaForVolume(ctx, h)
@@ -84,12 +93,27 @@ func (nsc *Client) openFrom(ctx context.Context, h blobcache.Handle, sch Namespa
 }
 
 // Open returns a handle to the object at p.
-func (nsc *Client) Open(ctx context.Context, p string) (blobcache.Handle, error) {
+func (nsc *Client) Open(ctx context.Context, p string, mask blobcache.ActionSet) (blobcache.Handle, error) {
 	h, sch, err := nsc.openRoot(ctx)
 	if err != nil {
 		return blobcache.Handle{}, err
 	}
-	return nsc.openFrom(ctx, h, sch, p)
+	return nsc.openFrom(ctx, h, sch, p, mask)
+}
+
+// Resolve returns a resolved path.
+// A resolved path can be looked up in a single namespace volume, and does not require
+// traversal.
+// It may not be directly accessible with OpenFiat.
+func (nsc *Client) Resolve(ctx context.Context, p string) (FQP, error) {
+	var ret FQP
+	err := nsc.Do(ctx, p, false, func(dc DoCtx) error {
+		ret.Node = dc.Node
+		ret.Path = dc.Name
+		ret.NS = dc.NS.OID
+		return nil
+	})
+	return ret, err
 }
 
 // DoCtx is the context provided to the Do callback
@@ -195,7 +219,7 @@ func (nsc *Client) Get(ctx context.Context, p string, dst *Entry) (bool, error) 
 }
 
 func (nsc *Client) List(ctx context.Context, p string) ([]Entry, error) {
-	nsh, err := nsc.Open(ctx, p)
+	nsh, err := nsc.Open(ctx, p, blobcache.Action_ALL)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +244,7 @@ func (nsc *Client) ListNames(ctx context.Context, p string) ([]string, error) {
 	return slices2.Map(ents, func(x Entry) string { return x.Name }), nil
 }
 
-func (nsc *Client) CreateVolumeAt(ctx context.Context, p string, spec blobcache.VolumeSpec) (blobcache.Handle, error) {
+func (nsc *Client) CreateVolume(ctx context.Context, p string, spec blobcache.VolumeSpec) (blobcache.Handle, error) {
 	var ret blobcache.Handle
 	err := nsc.Do(ctx, p, true, func(c DoCtx) error {
 		var ent Entry
@@ -250,20 +274,19 @@ func (nsc *Client) Delete(ctx context.Context, p string) error {
 	})
 }
 
-// Move atomically renames an entry from oldName to newName within a namespace volume.
+// Move atomically renames an entry from oldPath to newPath within a namespace volume.
 // The link token is preserved as-is.
-// oldName is resolved first, and newName must share the resolved prefix, or an error is returned.
-func (nsc *Client) Move(ctx context.Context, oldName, newName string) error {
-	oldName = strings.Trim(oldName, string(Sep))
-	newName = strings.Trim(newName, string(Sep))
-	return nsc.Do(ctx, oldName, true, func(dac DoCtx) error {
-		if dac.Prefix != "" {
-			pfx := dac.Prefix + string(Sep)
-			if !strings.HasPrefix(newName, pfx) {
-				return fmt.Errorf("new name %q does not share resolved prefix %q", newName, dac.Prefix)
-			}
-			newName = strings.TrimPrefix(newName, pfx)
+// oldPath is resolved first, and newPath must share the resolved prefix, or an error is returned.
+func (nsc *Client) Move(ctx context.Context, oldPath, newPath string) error {
+	oldPath = strings.Trim(oldPath, string(Sep))
+	newPath = strings.Trim(newPath, string(Sep))
+
+	return nsc.Do(ctx, oldPath, true, func(dac DoCtx) error {
+		pfx := strings.Trim(dac.Prefix+string(Sep), string(Sep))
+		if !strings.HasPrefix(newPath, pfx) {
+			return fmt.Errorf("new name %q does not share resolved prefix %q", newPath, dac.Prefix)
 		}
+		newName := strings.TrimPrefix(newPath, pfx)
 		if newName == "" {
 			return fmt.Errorf("new name resolves to empty name")
 		}

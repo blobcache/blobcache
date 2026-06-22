@@ -16,8 +16,8 @@ type FQP struct {
 	// Node is the node that the root namespace Volume is on.
 	// If this is zero, then assume the local node.
 	Node blobcache.NodeID
-	// Root is the root namespace, it must be accessible by OpenFiat on Node.
-	Root blobcache.OID
+	// NS is a root/starting namespace
+	NS blobcache.OID
 	// Path is a slash separated path.
 	Path string
 }
@@ -28,8 +28,8 @@ func (fqp FQP) String() string {
 		sb.WriteString(fqp.Node.String())
 		sb.WriteByte(';')
 	}
-	if fqp.Root != (blobcache.OID{}) {
-		sb.WriteString(fqp.Root.String())
+	if fqp.NS != (blobcache.OID{}) {
+		sb.WriteString(fqp.NS.String())
 	}
 	if fqp.Path != "" {
 		sb.WriteByte(Sep)
@@ -70,5 +70,5 @@ func ParseFQP(x string) (FQP, error) {
 			return FQP{}, err
 		}
 	}
-	return FQP{Node: node, Root: oid, Path: p}, nil
+	return FQP{Node: node, NS: oid, Path: p}, nil
 }

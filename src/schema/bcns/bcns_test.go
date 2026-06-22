@@ -69,7 +69,7 @@ func TestParseFQP(t *testing.T) {
 			I: node1.String() + ";" + oid1.String() + "/" + p1,
 			O: FQP{
 				Node: node1,
-				Root: oid1,
+				NS:   oid1,
 				Path: p1,
 			},
 		},
