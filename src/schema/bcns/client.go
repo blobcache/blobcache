@@ -245,6 +245,15 @@ func (nsc *Client) ListNames(ctx context.Context, p string) ([]string, error) {
 }
 
 func (nsc *Client) CreateVolume(ctx context.Context, p string, spec blobcache.VolumeSpec) (blobcache.Handle, error) {
+	nsh, _, err := nsc.openRoot(ctx)
+	if err != nil {
+		return blobcache.Handle{}, err
+	}
+	return nsc.CreateVolumeFrom(ctx, nsh, p, spec)
+}
+
+// CreateVolumeFrom creates a Volume starting from a specific namespace
+func (nsc *Client) CreateVolumeFrom(ctx context.Context, nsh blobcache.Handle, p string, spec blobcache.VolumeSpec) (blobcache.Handle, error) {
 	var ret blobcache.Handle
 	err := nsc.Do(ctx, p, true, func(c DoCtx) error {
 		var ent Entry

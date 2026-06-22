@@ -251,6 +251,10 @@ func (tx *Tx) Move(ctx context.Context, oldName, newName string) error {
 	return tx.Delete(ctx, oldName)
 }
 
+func (tx *Tx) AppendCell(out []byte) []byte {
+	return append(out, tx.cell...)
+}
+
 type Linker interface {
 	bcsdk.Linker
 	bcsdk.Unlinker

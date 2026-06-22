@@ -263,12 +263,18 @@ func (vi *VolumeInfo) Unmarshal(data []byte) error {
 }
 
 func (vi *VolumeInfo) GetRemoteFQOID() FQOID {
-	if vi.Backend.Remote == nil {
+	switch {
+	case vi.Backend.Peer != nil:
+		return FQOID{
+			Node: vi.Backend.Peer.Peer,
+		}
+	case vi.Backend.Remote != nil:
+		return FQOID{
+			Node: vi.Backend.Remote.Endpoint.Node,
+			OID:  vi.Backend.Remote.Volume,
+		}
+	default:
 		return FQOID{}
-	}
-	return FQOID{
-		Node: vi.Backend.Remote.Endpoint.Node,
-		OID:  vi.Backend.Remote.Volume,
 	}
 }
 

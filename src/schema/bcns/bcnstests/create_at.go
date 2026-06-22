@@ -11,31 +11,63 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCreateVolumeAt runs a test suite for bcns.CreateVolumeAt.
+// TestCreateVolume runs a test suite for bcns.Client.CreateVolume.
 // setup must fill svcs with working services, which can communicate with one another through peer Volumes.
-func TestCreateVolumeAt(t *testing.T, setup func(t testing.TB, svcs []blobcache.Service)) {
+func TestCreateVolume(t *testing.T, sch bcns.Namespace, schemaSpec blobcache.SchemaSpec, setup func(t testing.TB, svcs []blobcache.Service)) {
 	type TestCase struct {
-		// Name is the display name for the test
 		Name string
-		// Scenario is actualized before the test starts
 		blobcachetests.Scene
-
-		// Path is the path to create the volume at.
 		Path string
-		// Err is the expected error
-		Err error
-		// Host is expected host of the Volume once created.
-		Host blobcache.NodeID
+		Err  error
+		// Host is the expected host of the Volume
+		Host int
 	}
+
 	tcs := []TestCase{
 		{
 			Name: "single node",
 			Scene: blobcachetests.Scene{
-				Nodes: [][]blobcachetests.Volume{{}},
+				Nodes: []blobcachetests.Node{{}},
 			},
 			Path: "create-at-single-node",
 		},
+		{
+			Name: "remote namespace on node 1",
+			Scene: blobcachetests.Scene{
+				Nodes: []blobcachetests.Node{
+					{
+						Root: blobcachetests.LocalVolume{
+							Schema: schemaSpec,
+							Contents: &NS{
+								Schema: sch,
+								Entries: []Entry{
+									{Name: "remote", Target: 0, Rights: blobcache.Action_ALL},
+								},
+							},
+						},
+						Volumes: []blobcachetests.Volume{
+							&blobcachetests.PeerVolume{Node: 1, Volume: 0},
+						},
+					},
+					{
+						Root: blobcachetests.LocalVolume{
+							Schema:   schemaSpec,
+							Contents: &NS{Schema: sch},
+						},
+						Volumes: []blobcachetests.Volume{
+							&blobcachetests.LocalVolume{
+								Schema:   schemaSpec,
+								Contents: &NS{Schema: sch},
+							},
+						},
+					},
+				},
+			},
+			Path: "remote/myvol",
+			Host: 1,
+		},
 	}
+
 	for i, tc := range tcs {
 		t.Run(fmt.Sprintf("%d-%s", i, tc.Name), func(t *testing.T) {
 			ctx := testutil.Context(t)
@@ -43,20 +75,25 @@ func TestCreateVolumeAt(t *testing.T, setup func(t testing.TB, svcs []blobcache.
 			setup(t, svcs)
 			blobcachetests.SetupScene(t, tc.Scene, svcs)
 
+			// create a LocalVolume at the path
 			spec := blobcache.DefaultLocalSpec()
 			nsc := bcns.NewClient(svcs[0], blobcache.OID{})
-			got, err := nsc.CreateVolume(ctx, tc.Path, spec)
+			volh, err := nsc.CreateVolume(ctx, tc.Path, spec)
 			if tc.Err != nil {
 				require.Error(t, err)
 				return
-			} else {
-				require.NoError(t, err)
 			}
-			require.NotEqual(t, blobcache.OID{}, got.OID)
-
-			opened, err := nsc.Open(ctx, tc.Path, blobcache.Action_ALL)
 			require.NoError(t, err)
-			require.Equal(t, got.OID, opened.OID)
+			require.NotEqual(t, blobcache.OID{}, volh.OID)
+
+			// Inspect the Volume
+			vinfo, err := svcs[0].InspectVolume(ctx, volh)
+			require.NoError(t, err)
+			if tc.Host != 0 {
+				fqoid := vinfo.GetRemoteFQOID()
+				nodeID := blobcachetests.Endpoint(t, svcs[tc.Host]).Node
+				require.Equal(t, nodeID, fqoid.Node)
+			}
 		})
 	}
 }

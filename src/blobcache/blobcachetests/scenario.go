@@ -39,8 +39,10 @@ func (v *PeerVolume) isVolume() {}
 
 // Contents are Volume contents
 type Contents interface {
-	// Fill fills a Volume
-	Fill(ctx context.Context, tx *bcsdk.Tx, nodes []blobcache.NodeID, vols [][]blobcache.OID) error
+	// Fill fills a Volume.
+	// tx is a transaction on the Volume being filled.
+	// vols are handles to all of the volumes on the same Node as the Volume being filled.
+	Fill(ctx context.Context, tx *bcsdk.Tx, vols []blobcache.Handle) error
 }
 
 var _ Contents = &Data{}
@@ -49,16 +51,21 @@ type Data struct {
 	Cell []byte
 }
 
-func (d *Data) Fill(ctx context.Context, tx *bcsdk.Tx, nodes []blobcache.NodeID, vols [][]blobcache.OID) error {
+func (d *Data) Fill(ctx context.Context, tx *bcsdk.Tx, vols []blobcache.Handle) error {
 	if d == nil {
 		return nil
 	}
 	return tx.Save(ctx, d.Cell)
 }
 
+type Node struct {
+	Root    LocalVolume
+	Volumes []Volume
+}
+
 // Scene describes an initial configuration of Nodes and Volumes
 type Scene struct {
-	Nodes [][]Volume
+	Nodes []Node
 }
 
 func SetupScene(t testing.TB, scen Scene, nodes []blobcache.Service) {
@@ -71,15 +78,12 @@ func SetupScene(t testing.TB, scen Scene, nodes []blobcache.Service) {
 		return Endpoint(t, x).Node
 	})
 	handles := make([][]blobcache.Handle, len(scen.Nodes))
-	volOIDs := make([][]blobcache.OID, len(scen.Nodes))
-	for nodeIdx := range scen.Nodes {
-		handles[nodeIdx] = make([]blobcache.Handle, len(scen.Nodes[nodeIdx]))
-		volOIDs[nodeIdx] = make([]blobcache.OID, len(scen.Nodes[nodeIdx]))
-	}
+
 	// Create local volumes first so peer volumes always have concrete targets.
-	for nodeIdx, vols := range scen.Nodes {
+	for nodeIdx, nodeDef := range scen.Nodes {
 		node := nodes[nodeIdx]
-		for volIdx, vol := range vols {
+		handles[nodeIdx] = make([]blobcache.Handle, len(nodeDef.Volumes))
+		for volIdx, vol := range nodeDef.Volumes {
 			local, ok := vol.(*LocalVolume)
 			if !ok {
 				continue
@@ -87,13 +91,12 @@ func SetupScene(t testing.TB, scen Scene, nodes []blobcache.Service) {
 			spec := blobcache.DefaultLocalSpec()
 			spec.Local.Schema = local.Schema
 			handles[nodeIdx][volIdx] = CreateVolume(t, node, nil, spec)
-			volOIDs[nodeIdx][volIdx] = handles[nodeIdx][volIdx].OID
 		}
 	}
 	// Create peer volumes.
-	for nodeIdx, vols := range scen.Nodes {
-		node := nodes[nodeIdx]
-		for volIdx, vol := range vols {
+	for nodeIdx, nspec := range scen.Nodes {
+		svc := nodes[nodeIdx]
+		for volIdx, vol := range nspec.Volumes {
 			pv, ok := vol.(*PeerVolume)
 			if !ok {
 				continue
@@ -102,33 +105,41 @@ func SetupScene(t testing.TB, scen Scene, nodes []blobcache.Service) {
 				Peer:   nodeIDs[pv.Node],
 				Volume: handles[pv.Node][pv.Volume].OID,
 			}}
-			handles[nodeIdx][volIdx] = CreateVolume(t, node, nil, spec)
-			volOIDs[nodeIdx][volIdx] = handles[nodeIdx][volIdx].OID
+			handles[nodeIdx][volIdx] = CreateVolume(t, svc, nil, spec)
 		}
 	}
 
-	// Add contents to Volumes
+	// Set root contents
 	ctx := testutil.Context(t)
-	for nodeIdx, vols := range scen.Nodes {
+	for nodeIdx, nspec := range scen.Nodes {
 		node := nodes[nodeIdx]
-		for volIdx, vol := range vols {
+		volh, err := node.OpenFiat(ctx, blobcache.OID{}, blobcache.Action_ALL)
+		require.NoError(t, err)
+		setContents(t, node, *volh, nspec.Root.Contents, handles[nodeIdx])
+	}
+
+	// Add contents to Volumes
+	for nodeIdx, nspec := range scen.Nodes {
+		node := nodes[nodeIdx]
+		for volIdx, vol := range nspec.Volumes {
 			local, ok := vol.(*LocalVolume)
 			if !ok {
 				continue
 			}
-			if local.Contents == nil {
-				continue
-			}
-			target := handles[nodeIdx][volIdx]
-			vcfg := local.VolumeSpec().Config()
-			func() {
-				txh := BeginTx(t, node, target, blobcache.TxParams{Modify: true})
-				tx := bcsdk.NewTx(node, txh, vcfg.HashAlgo, int(vcfg.MaxSize))
-				defer Abort(t, node, txh)
-				err := local.Contents.Fill(ctx, tx, nodeIDs, volOIDs)
-				require.NoError(t, err)
-				require.NoError(t, tx.Commit(ctx))
-			}()
+			setContents(t, node, handles[nodeIdx][volIdx], local.Contents, handles[nodeIdx])
 		}
 	}
+}
+
+// setContents opens
+func setContents(t testing.TB, svc blobcache.Service, volh blobcache.Handle, contents Contents, hs []blobcache.Handle) {
+	if contents == nil {
+		return
+	}
+	ctx := testutil.Context(t)
+	tx, err := bcsdk.BeginTx(ctx, svc, volh, blobcache.TxParams{Modify: true})
+	require.NoError(t, err)
+	defer tx.Abort(ctx)
+	require.NoError(t, contents.Fill(ctx, tx, hs))
+	require.NoError(t, tx.Commit(ctx))
 }

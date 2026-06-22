@@ -10,7 +10,6 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/bcns"
 	"github.com/stretchr/testify/require"
 )
@@ -37,36 +36,20 @@ type NS struct {
 	Entries []Entry
 }
 
-func (n *NS) Fill(ctx context.Context, tx *bcsdk.Tx, nodes []blobcache.NodeID, vols [][]blobcache.OID) error {
-	if n.Schema == nil {
-		return fmt.Errorf("namespace schema is nil")
-	}
-	if vols == nil || len(vols) < 1 {
-		return fmt.Errorf("no volumes provided")
-	}
-	var root []byte
-	if err := tx.Load(ctx, &root); err != nil {
+func (n *NS) Fill(ctx context.Context, tx *bcsdk.Tx, vols []blobcache.Handle) error {
+	tx2, err := bcns.NewFromTx(ctx, n.Schema, tx)
+	if err != nil {
 		return err
 	}
 	for _, ent := range n.Entries {
-		if ent.Target < 0 || ent.Target >= len(vols[0]) {
+		if ent.Target < 0 || ent.Target >= len(vols) {
 			return fmt.Errorf("entry target out of range: %d", ent.Target)
 		}
-		lt, err := tx.Link(ctx, blobcache.Handle{OID: vols[0][ent.Target]}, ent.Rights)
-		if err != nil {
-			return err
-		}
-		root, err = n.Schema.NSPut(schema.RWCtx{Context: ctx, Store: tx, Cell: root}, bcns.Entry{
-			Name:   ent.Name,
-			Target: lt.Target,
-			Rights: lt.Rights,
-			Secret: lt.Secret,
-		})
-		if err != nil {
+		if err := tx2.Put(ctx, ent.Name, vols[ent.Target], ent.Rights); err != nil {
 			return err
 		}
 	}
-	return tx.Save(ctx, root)
+	return tx.Save(ctx, tx2.AppendCell(nil))
 }
 
 // TestSuite chekcs that the schema works on the
@@ -217,7 +200,7 @@ func TestSuite(t *testing.T, sch bcns.Namespace, spec blobcache.SchemaSpec, setu
 	t.Run("Open", func(t *testing.T) {
 		TestOpen(t, mk, spec)
 	})
-	t.Run("CreateVolumeAt", func(t *testing.T) {
-		TestCreateVolumeAt(t, setup)
+	t.Run("CreateVolume", func(t *testing.T) {
+		TestCreateVolume(t, sch, spec, setup)
 	})
 }
