@@ -68,7 +68,7 @@ func TestParseURL(t *testing.T) {
 	ap2 := netip.MustParseAddrPort("[::]:1234")
 	u2 := URL{Node: peer1, IPPort: &ap1}
 	u3 := URL{Node: peer1, IPPort: &ap2}
-	u4 := URL{Node: peer1, IPPort: &ap2, Path: OIDPath{mkOID(t, 1), mkOID(t, 2)}}
+	u4 := URL{Node: peer1, IPPort: &ap2, OID: mkOID(t, 2)}
 
 	tcs := []testCase{
 		{I: u1.String(), O: &u1},

@@ -13,6 +13,7 @@ import (
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/internal/backend"
+	"blobcache.io/blobcache/src/schema"
 	"blobcache.io/blobcache/src/schema/bcns"
 	"github.com/cockroachdb/pebble"
 	"go.brendoncarroll.net/stdctx/logctx"
@@ -229,7 +230,7 @@ func readNamespaceEntries(ctx context.Context, vol *localvol.Volume, ns bcns.Nam
 	if len(root) == 0 {
 		return nil, nil
 	}
-	return ns.NSList(ctx, nsStore{tx: tx}, root)
+	return ns.NSList(schema.ROCtx{Context: ctx, Store: nsStore{tx: tx}, Cell: root})
 }
 
 var _ bcsdk.RO = nsStore{}

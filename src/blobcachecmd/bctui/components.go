@@ -112,24 +112,9 @@ func defaultConstructors() map[blobcache.SchemaName]Constructor {
 	}
 }
 
-func openNamespaceEntryByName(ctx context.Context, svc blobcache.Service, nsHandle blobcache.Handle, name string) (blobcache.Handle, error) {
-	nsc, err := bcns.ClientForVolume(ctx, svc, nsHandle)
-	if err != nil {
-		return blobcache.Handle{}, err
-	}
-	var ent bcns.Entry
-	found, err := nsc.Get(ctx, nsHandle, name, &ent)
-	if err != nil {
-		return blobcache.Handle{}, err
-	}
-	if !found {
-		return blobcache.Handle{}, fmt.Errorf("namespace entry %q not found", name)
-	}
-	next, err := svc.OpenFrom(ctx, nsHandle, ent.LinkToken(), blobcache.Action_ALL)
-	if err != nil {
-		return blobcache.Handle{}, err
-	}
-	return *next, nil
+func openNamespaceEntryByName(ctx context.Context, svc blobcache.Service, nsh blobcache.Handle, name string) (blobcache.Handle, error) {
+	nsc := bcns.NewClient(svc, blobcache.OID{})
+	return nsc.OpenFrom(ctx, nsh, name, blobcache.Action_ALL)
 }
 
 type messageComponent struct {

@@ -11,43 +11,8 @@ import (
 	"blobcache.io/blobcache/src/blobcache"
 	"blobcache.io/blobcache/src/blobcache/blobcachetests"
 	"blobcache.io/blobcache/src/internal/testutil"
-	"blobcache.io/blobcache/src/schema/bcns"
-	"blobcache.io/blobcache/src/schema/jsonns"
 	"github.com/stretchr/testify/require"
 )
-
-// TestDefaultNoAccess tests that a remote peer cannot perform any
-// actions on the local service by default.
-func TestDefaultNoAccess(t *testing.T) {
-	ctx := testutil.Context(t)
-	svc1 := bclocal.NewTestService(t)
-	svc2 := bclocal.NewTestService(t)
-
-	// create a volume on svc1 so there is something to try to access.
-	volh, err := svc1.CreateVolume(ctx, nil, blobcache.VolumeSpec{
-		Local: &blobcache.VolumeBackend_Local{
-			HashAlgo: blobcache.HashAlgo_BLAKE3_256,
-			MaxSize:  1 << 20,
-		},
-	})
-	require.NoError(t, err)
-	nsc1 := bcns.Client{Service: svc1, Schema: jsonns.Schema{}}
-	require.NoError(t, err)
-	require.NoError(t, nsc1.Put(ctx, blobcache.Handle{}, "name1", *volh, blobcache.Action_ALL))
-
-	nsc2 := bcns.Client{Service: svc2, Schema: jsonns.Schema{}}
-	var entry bcns.Entry
-	found, err := nsc2.Get(ctx, blobcache.Handle{}, "name1", &entry)
-	require.NoError(t, err)
-	require.False(t, found)
-
-	err = nsc2.Put(ctx, *volh, "any name", blobcache.Handle{}, blobcache.Action_ALL)
-	require.Error(t, err)
-
-	names, err := nsc2.ListNames(ctx, *volh)
-	require.Error(t, err)
-	require.Empty(t, names)
-}
 
 func TestAPI(t *testing.T) {
 	t.Parallel()

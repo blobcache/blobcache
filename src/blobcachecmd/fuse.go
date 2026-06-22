@@ -28,13 +28,14 @@ var fuseMountCmd = star.Command{
 			return err
 		}
 		volName := volumeNameParam.Load(c)
-		nsc := bcns.Client{Service: svc, Schema: jsonns.Schema{}}
-		volh, err := nsc.OpenAt(c.Context, blobcache.Handle{}, volName, blobcache.Action_ALL)
+		nsc := bcns.NewClient(svc, blobcache.OID{})
+		nsc.SetDefaultSchema(jsonns.Schema{})
+		volh, err := nsc.Open(c.Context, volName, blobcache.Action_ALL)
 		if err != nil {
 			return err
 		}
 		db := sqlutil.OpenMemory()
-		fsx := bcfuse.New(db, svc, *volh, scheme_glfs.NewScheme())
+		fsx := bcfuse.New(db, svc, volh, scheme_glfs.NewScheme())
 		fuseSrv, err := fs.Mount(mountpointParam.Load(c), fsx.FUSERoot(), &fs.Options{
 			MountOptions: fuse.MountOptions{
 				Debug: true,

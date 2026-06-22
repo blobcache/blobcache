@@ -16,6 +16,7 @@ Blobcache is a universal backend for E2EE applications.
 - [Concepts](./doc/1.0_Concepts.md)
 - [BCP vs. HTTP](./doc/9.01_BCP_vs_HTTP.md)
 - [Git Remote](./doc/6.01_Git_Remote.md)
+- [Cheatsheet](https://blobcache.io/cheatsheet)
 
 ## Getting Started
 
@@ -29,7 +30,9 @@ curl blobcache.io/install.sh | sh
 ```
 The install script does 2 things:
 - Installs the blobcache executable to `/usr/bin/blobcache`
-- Copies [blobcache.service](./etc/blobcache.service) into `$HOME/.config/systemd/user/`
+- Installs the blobcache service:
+  - On Linux: Copies [blobcache.service](./etc/blobcache.service) into `$HOME/.config/systemd/user/`
+  - On MacOS: Copies [io.blobcache.blobcache.plist](./etc/io.blobcache.blobcache.plist) into `$HOME/Library/LibraryAgents`
 
 Then you can manage the service using `systemctl --user` as you would normally.
 The service is not enabled by default (you can do that with `systemctl --user enable blobcache`), so this install method is also appropriate for getting the binary into `/usr/bin` without launching a background process.

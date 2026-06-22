@@ -9,6 +9,7 @@ import (
 
 	"blobcache.io/blobcache/src/bcsdk"
 	"blobcache.io/blobcache/src/blobcache"
+	"blobcache.io/blobcache/src/schema/bcns"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -36,6 +37,7 @@ const (
 // Model contains all the application state
 type Model struct {
 	svc        blobcache.Service
+	nsc        *bcns.Client
 	root       blobcache.Handle
 	components map[blobcache.SchemaName]Constructor
 
@@ -56,10 +58,15 @@ type Model struct {
 	errorText  string
 }
 
-func New(svc blobcache.Service, root blobcache.Handle) *tea.Program {
+func New(svc blobcache.Service, nsc *bcns.Client) *tea.Program {
+	rootOID := blobcache.OID{}
+	if nsc != nil {
+		rootOID = nsc.Root()
+	}
 	return tea.NewProgram(&Model{
 		svc:        svc,
-		root:       root,
+		nsc:        nsc,
+		root:       blobcache.Handle{OID: rootOID},
 		components: defaultConstructors(),
 		styles:     defaultStyles(),
 	})
@@ -252,6 +259,7 @@ func (m *Model) dispatchAction(action Action) {
 }
 
 func (m *Model) enterSelection() {
+	ctx := context.Background()
 	active := m.activeComponent()
 	if active == nil {
 		m.statusLine = "no active component"
@@ -264,7 +272,7 @@ func (m *Model) enterSelection() {
 		m.statusLine = "selection cannot be opened"
 		return
 	}
-	name, next, ok, err := openable.OpenSelected(context.Background())
+	name, next, ok, err := openable.OpenSelected(ctx)
 	if err != nil {
 		m.reportError(err)
 		return
@@ -275,7 +283,7 @@ func (m *Model) enterSelection() {
 	}
 	focus := m.focusPane()
 	if next == (blobcache.Handle{}) && name != "" && focus != nil {
-		next, err = openNamespaceEntryByName(context.Background(), m.svc, focus.handle, name)
+		next, err = m.nsc.Open(ctx, name, blobcache.Action_ALL)
 		if err != nil {
 			m.reportError(err)
 			return

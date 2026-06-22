@@ -40,11 +40,11 @@ var glfsInitCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		volh, err := openAt(c)
+		volh, err := openByName(c)
 		if err != nil {
 			return err
 		}
-		tx, err := bcsdk.BeginTx(c, svc, *volh, blobcache.TxParams{
+		tx, err := bcsdk.BeginTx(c, svc, volh, blobcache.TxParams{
 			Modify: true,
 		})
 		if err != nil {
@@ -84,11 +84,11 @@ var glfsLookCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		volh, err := openAt(c)
+		volh, err := openByName(c)
 		if err != nil {
 			return err
 		}
-		tx, err := bcsdk.BeginTx(c, svc, *volh, blobcache.TxParams{})
+		tx, err := bcsdk.BeginTx(c, svc, volh, blobcache.TxParams{})
 		if err != nil {
 			return err
 		}
@@ -137,11 +137,11 @@ var glfsImportCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		volh, err := openAt(c)
+		volh, err := openByName(c)
 		if err != nil {
 			return err
 		}
-		return modifyGLFS(ctx, svc, *volh, func(ag *glfs.Machine, dst schema.WO, src schema.RO, root glfs.Ref) (*glfs.Ref, error) {
+		return modifyGLFS(ctx, svc, volh, func(ag *glfs.Machine, dst schema.WO, src schema.RO, root glfs.Ref) (*glfs.Ref, error) {
 			imp := glfsport.Importer{
 				Store: dst,
 				Dir:   srcPathParam.Load(c),
@@ -180,11 +180,11 @@ var glfsReadCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		volh, err := openAt(c)
+		volh, err := openByName(c)
 		if err != nil {
 			return err
 		}
-		return viewGLFS(ctx, svc, *volh, func(ag *glfs.Machine, src schema.RO, root glfs.Ref) error {
+		return viewGLFS(ctx, svc, volh, func(ag *glfs.Machine, src schema.RO, root glfs.Ref) error {
 			ref, err := ag.GetAtPath(ctx, src, root, srcPathParam.Load(c))
 			if err != nil {
 				return err
@@ -216,20 +216,20 @@ var glfsSyncCmd = star.Command{
 		if err != nil {
 			return err
 		}
-		nsc, nsh, err := getNS(c)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
 
-		srcVolh, err := nsc.OpenAt(c.Context, *nsh, srcVolumeParam.Load(c), blobcache.Action_ALL)
+		srcVolh, err := nsc.Open(c.Context, srcVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return fmt.Errorf("failed to open source volume: %w", err)
 		}
-		dstVolh, err := nsc.OpenAt(c.Context, *nsh, dstVolumeParam.Load(c), blobcache.Action_ALL)
+		dstVolh, err := nsc.Open(c.Context, dstVolumeParam.Load(c), blobcache.Action_ALL)
 		if err != nil {
 			return fmt.Errorf("failed to open destination volume: %w", err)
 		}
-		return bcglfs.SyncVolume(ctx, svc, *srcVolh, *dstVolh)
+		return bcglfs.SyncVolume(ctx, svc, srcVolh, dstVolh)
 	},
 }
 

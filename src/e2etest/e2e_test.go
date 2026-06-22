@@ -64,8 +64,9 @@ func TestDaemonAuth(t *testing.T) {
 
 	svc, err := bcremote.Dial(clientPriv.(ed25519.PrivateKey), ep)
 	require.NoError(t, err)
-	nsc := bcns.Client{Service: svc, Schema: jsonns.Schema{}}
-	_, err = nsc.CreateAt(ctx, blobcache.Handle{}, "test-volume", blobcache.DefaultLocalSpec())
+	nsc := bcns.NewClient(svc, blobcache.OID{})
+	nsc.SetDefaultSchema(jsonns.Schema{})
+	_, err = nsc.CreateVolume(ctx, "test-volume", blobcache.DefaultLocalSpec())
 	require.NoError(t, err)
 
 	cf()

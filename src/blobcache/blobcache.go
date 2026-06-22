@@ -19,8 +19,6 @@ const OIDSize = 16
 // OID is an object identifier.
 type OID [OIDSize]byte
 
-type OIDPath = []OID
-
 func RandomOID() (ret OID) {
 	rand.Read(ret[:])
 	return ret

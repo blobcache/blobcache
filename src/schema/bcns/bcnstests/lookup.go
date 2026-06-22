@@ -1,4 +1,4 @@
-package schematests
+package bcnstests
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"blobcache.io/blobcache/src/schema/bcns"
 )
 
-func TestLookup(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh blobcache.Handle), mkClient func(svc blobcache.Service) *bcns.Client, schemaSpec blobcache.SchemaSpec) {
+func TestOpen(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh blobcache.Handle), schemaSpec blobcache.SchemaSpec) {
 	type TestCase struct {
 		// Each entry in Volumes is a Volume containing a namespace.
 		// The map describes the names to be created and which volumes they should link to.
@@ -99,7 +99,6 @@ func TestLookup(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh 
 		t.(*testing.T).Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			ctx := testutil.Context(t)
 			svc, nsh := mk(t)
-			nsc := mkClient(svc)
 
 			// Determine how many volumes we need: the namespace volumes plus any
 			// additional target volumes referenced by map values.
@@ -124,22 +123,24 @@ func TestLookup(t testing.TB, mk func(t testing.TB) (svc blobcache.Service, nsh 
 			// Populate entries: for each namespace volume, create links from name -> target volume.
 			for vi, m := range tc.Volumes {
 				for name, target := range m {
-					err := nsc.Put(ctx, volumes[vi], name, volumes[target], blobcache.Action_ALL)
+					nsc := bcns.NewClient(svc, volumes[vi].OID)
+					err := nsc.Put(ctx, name, volumes[target], blobcache.Action_ALL)
 					require.NoError(t, err)
 				}
 			}
 
 			// Test Ok cases.
 			root := volumes[0]
+			lookupClient := bcns.NewClient(svc, root.OID)
 			for name := range tc.Ok {
-				volh, err := bcns.Lookup(ctx, nsc, root, name)
+				volh, err := lookupClient.Open(ctx, name, blobcache.Action_ALL)
 				require.NoError(t, err, "expected lookup of %q to succeed", name)
-				require.NotNil(t, volh, "expected non-nil handle for %q", name)
+				require.NotEqual(t, blobcache.Handle{}, volh, "expected non-zero handle for %q", name)
 			}
 
 			// Test Fail cases.
 			for _, name := range tc.Fail {
-				_, err := bcns.Lookup(ctx, nsc, root, name)
+				_, err := lookupClient.Open(ctx, name, blobcache.Action_ALL)
 				require.Error(t, err, "expected lookup of %q to fail", name)
 			}
 		})

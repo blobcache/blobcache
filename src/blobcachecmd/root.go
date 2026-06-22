@@ -35,11 +35,11 @@ var rootCmd = star.NewDir(
 	star.Metadata{
 		Short: "blobcache is content-addressable storage",
 	}, map[string]star.Command{
-		"endpoint":         endpointCmd,
-		"daemon":           daemonCmd,
-		"show-access":      showAccessCmd,
-		"own":              ownCmd,
-		"browse":           browseCmd,
+		"endpoint":    endpointCmd,
+		"daemon":      daemonCmd,
+		"show-access": showAccessCmd,
+		"own":         ownCmd,
+		"browse":      browseCmd,
 
 		// volumes
 		"mkvol":        mkVolCmd,
@@ -95,17 +95,15 @@ var browseCmd = star.Command{
 		"nsr": nsRoot,
 	},
 	F: func(c star.Context) error {
-		ctx := c.Context
 		svc, err := openService(c)
 		if err != nil {
 			return err
 		}
-		nsrExpr := getNSRoot(c)
-		nsrh, err := nsrExpr.Open(ctx, svc)
+		nsc, err := getNS(c)
 		if err != nil {
 			return err
 		}
-		prog := bctui.New(svc, *nsrh)
+		prog := bctui.New(svc, &nsc)
 		_, err = prog.Run()
 		return err
 	},
