@@ -28,9 +28,7 @@ func (ct *clientTransport) Ask(ctx context.Context, remEp blobcache.Endpoint, re
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = ct.pool.Give(ctx, conn)
-	}()
+	defer ct.pool.Give(ctx, conn)
 	if _, err := req.WriteTo(conn); err != nil {
 		return err
 	}

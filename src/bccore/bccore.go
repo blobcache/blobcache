@@ -11,6 +11,7 @@ import (
 	"go.brendoncarroll.net/exp/singleflight"
 	"go.brendoncarroll.net/stdctx/logctx"
 	"go.brendoncarroll.net/tai64"
+	"go.uber.org/zap"
 )
 
 const (
@@ -198,10 +199,13 @@ func (sys *System) ensure(ctx context.Context, oid blobcache.OID) (AnyObject, er
 			return q.backend, nil
 		}
 
+		logctx.Info(ctx, "UP begin...", zap.Stringer("oid", oid))
 		obj, err := sys.p.Up(ctx, oid)
 		if err != nil {
 			return nil, err
 		}
+		logctx.Info(ctx, "UP done...", zap.Stringer("oid", oid))
+
 		switch obj := obj.(type) {
 		case Volume:
 			if added := sys.addVolume(oid, obj); !added {

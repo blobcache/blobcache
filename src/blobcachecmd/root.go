@@ -3,6 +3,7 @@ package blobcachecmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"testing"
@@ -14,7 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.brendoncarroll.net/star"
 	"go.brendoncarroll.net/stdctx/logctx"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
+
+const envLogLevel = "BLOBCACHE_LOG"
 
 // Main is the main function for the blobcache CLI.
 // Usage is:
@@ -23,7 +28,23 @@ import (
 //	    blobcachecmd.Main()
 //	}
 func Main() {
-	star.Main(rootCmd)
+	ctx := context.Background()
+	lvlStr := os.Getenv(envLogLevel)
+	if lvlStr == "" {
+		lvlStr = "info"
+	}
+	var lvl zapcore.Level
+	if err := lvl.UnmarshalText([]byte(lvlStr)); err != nil {
+		lvl = zapcore.InfoLevel
+	}
+	cfg := zap.NewProductionConfig()
+	cfg.Level = zap.NewAtomicLevelAt(lvl)
+	l, err := cfg.Build()
+	if err != nil {
+		panic(err)
+	}
+	ctx = logctx.NewContext(ctx, l)
+	star.Main(rootCmd, star.MainBackground(ctx))
 }
 
 // Root returns the root command for the blobcache CLI.

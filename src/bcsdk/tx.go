@@ -17,15 +17,20 @@ type (
 )
 
 // BeginTx begins a new transaction and returns the Tx type.
-func BeginTx(ctx context.Context, s blobcache.Service, volH blobcache.Handle, txp blobcache.TxParams) (*Tx, error) {
-	txh, err := s.BeginTx(ctx, volH, txp)
-	if err != nil {
-		return nil, err
-	}
+func BeginTx(ctx context.Context, s blobcache.Service, volH blobcache.Handle, txp blobcache.TxParams) (_ *Tx, retErr error) {
 	info, err := s.InspectVolume(ctx, volH)
 	if err != nil {
 		return nil, err
 	}
+	txh, err := s.BeginTx(ctx, volH, txp)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if retErr != nil {
+			s.Abort(ctx, *txh)
+		}
+	}()
 	params := info.VolumeConfig
 	if err := params.Validate(); err != nil {
 		return nil, err

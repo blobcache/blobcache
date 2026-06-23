@@ -31,8 +31,8 @@ func (sys *System) InspectTx(ctx context.Context, txh blobcache.Handle) (*blobca
 }
 
 func (sys *System) Commit(ctx context.Context, txh blobcache.Handle) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Commit"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Commit"), zap.Stringer("oid", txh.OID))
+	logctx.Info(ctx, "begin", zap.String("method", "Commit"), zap.Stringer("oid", txh.OID))
+	defer logctx.Info(ctx, "done", zap.String("method", "Commit"), zap.Stringer("oid", txh.OID))
 	tx, err := sys.resolveTx(txh, true, 0)
 	if err != nil {
 		return err
@@ -51,8 +51,8 @@ func (sys *System) Commit(ctx context.Context, txh blobcache.Handle) error {
 }
 
 func (sys *System) Abort(ctx context.Context, txh blobcache.Handle) error {
-	logctx.Debug(ctx, "begin", zap.String("method", "Abort"), zap.Stringer("oid", txh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "Abort"), zap.Stringer("oid", txh.OID))
+	logctx.Info(ctx, "begin", zap.String("method", "Abort"), zap.Stringer("oid", txh.OID))
+	defer logctx.Info(ctx, "done", zap.String("method", "Abort"), zap.Stringer("oid", txh.OID))
 	txn, err := sys.resolveTx(txh, false, 0)
 	if err != nil {
 		return err

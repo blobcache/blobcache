@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"time"
 
 	"blobcache.io/blobcache/src/bcp"
 	"blobcache.io/blobcache/src/blobcache"
@@ -97,6 +98,12 @@ func (n *Node) Ask(ctx context.Context, remote blobcache.Endpoint, req Message, 
 		return err
 	}
 	defer stream.Close()
+	if dl, ok := ctx.Deadline(); ok {
+		stream.SetDeadline(dl)
+	} else {
+		dl = time.Now().Add(10 * time.Second)
+		stream.SetDeadline(dl)
+	}
 	if _, err := req.WriteTo(stream); err != nil {
 		return err
 	}

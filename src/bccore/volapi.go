@@ -48,8 +48,8 @@ func (sys *System) OpenFrom(ctx context.Context, base blobcache.Handle, ltok blo
 }
 
 func (sys *System) BeginTx(ctx context.Context, volh blobcache.Handle, txspec blobcache.TxParams) (*blobcache.Handle, error) {
-	logctx.Debug(ctx, "begin", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
-	defer logctx.Debug(ctx, "done", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
+	logctx.Info(ctx, "begin", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
+	defer logctx.Info(ctx, "done", zap.String("method", "BeginTx"), zap.Stringer("oid", volh.OID))
 	if err := txspec.Validate(); err != nil {
 		return nil, err
 	}
