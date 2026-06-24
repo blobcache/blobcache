@@ -79,12 +79,12 @@ func (c *Client) OpenFiat(ctx context.Context, target blobcache.OID, mask blobca
 	if err != nil {
 		return nil, err
 	}
-	return h, nil
+	return &h.Handle, nil
 }
 
 func (c *Client) OpenFrom(ctx context.Context, base blobcache.Handle, token blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, error) {
 	h, _, err := bcp.OpenFrom(ctx, &c.tp, blobcache.Endpoint{}, base, token, mask)
-	return h, err
+	return &h.Handle, err
 }
 
 func (c *Client) BeginTx(ctx context.Context, volh blobcache.Handle, txp blobcache.TxParams) (*blobcache.Handle, error) {

@@ -145,8 +145,8 @@ pub const UnixClient = struct {
 
         const body = try self.ask(io, bcp.mt_open_fiat, req.items);
         defer self.allocator.free(body);
-        if (body.len < blobcache.handle_size) return error.InvalidMessage;
-        return blobcache.Handle.unmarshal(body[0..blobcache.handle_size]);
+        if (body.len < blobcache.node_id_size + blobcache.handle_size) return error.InvalidMessage;
+        return blobcache.Handle.unmarshal(body[blobcache.node_id_size..][0..blobcache.handle_size]);
     }
 
     pub fn openFrom(self: *const UnixClient, io: std.Io, base: blobcache.Handle, token: blobcache.LinkToken, mask: blobcache.ActionSet) !blobcache.Handle {
@@ -158,8 +158,8 @@ pub const UnixClient = struct {
 
         const body = try self.ask(io, bcp.mt_open_from, req.items);
         defer self.allocator.free(body);
-        if (body.len < blobcache.handle_size) return error.InvalidMessage;
-        return blobcache.Handle.unmarshal(body[0..blobcache.handle_size]);
+        if (body.len < blobcache.node_id_size + blobcache.handle_size) return error.InvalidMessage;
+        return blobcache.Handle.unmarshal(body[blobcache.node_id_size..][0..blobcache.handle_size]);
     }
 
     pub fn createVolume(self: *const UnixClient, io: std.Io, host: ?blobcache.Endpoint, spec_json: []const u8) !blobcache.Handle {

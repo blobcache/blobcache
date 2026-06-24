@@ -83,23 +83,23 @@ func Inspect(ctx context.Context, tp Asker, ep blobcache.Endpoint, h blobcache.H
 	return resp.Info, nil
 }
 
-func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.Info, error) {
+func OpenFiat(ctx context.Context, tp Asker, ep blobcache.Endpoint, target blobcache.OID, mask blobcache.ActionSet) (blobcache.FQHandle, blobcache.Info, error) {
 	var resp OpenFiatResp
 	if err := doAsk(ctx, tp, ep, MT_OPEN_FIAT, OpenFiatReq{Target: target, Mask: mask}, &resp); err != nil {
-		return nil, nil, err
+		return blobcache.FQHandle{}, blobcache.Info{}, err
 	}
-	return &resp.Handle, &resp.Info, nil
+	return blobcache.FQHandle{Node: resp.Node, Handle: resp.Handle}, resp.Info, nil
 }
 
-func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (*blobcache.Handle, *blobcache.VolumeInfo, error) {
+func OpenFrom(ctx context.Context, tp Asker, ep blobcache.Endpoint, base blobcache.Handle, ltok blobcache.LinkToken, mask blobcache.ActionSet) (blobcache.FQHandle, blobcache.Info, error) {
 	var resp OpenFromResp
 	if err := doAsk(ctx, tp, ep, MT_OPEN_FROM, OpenFromReq{Base: base, Token: ltok, Mask: mask}, &resp); err != nil {
-		return nil, nil, err
+		return blobcache.FQHandle{}, blobcache.Info{}, err
 	}
-	if err := resp.Info.HashAlgo.Validate(); err != nil {
-		return nil, nil, err
+	if err := resp.Info.Validate(); err != nil {
+		return blobcache.FQHandle{}, blobcache.Info{}, err
 	}
-	return &resp.Handle, &resp.Info, nil
+	return blobcache.FQHandle{Node: resp.Node, Handle: resp.Handle}, resp.Info, nil
 }
 
 func CreateVolume(ctx context.Context, tp Asker, ep blobcache.Endpoint, req CreateVolumeReq) (CreateVolumeResp, error) {

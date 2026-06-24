@@ -110,11 +110,11 @@ func (s *Server) ServeBCP(ctx context.Context, ep blobcache.Endpoint, req Messag
 			if err != nil {
 				return nil, err
 			}
-			info, err := svc.InspectVolume(ctx, *h)
+			info, err := svc.Inspect(ctx, *h)
 			if err != nil {
 				return nil, err
 			}
-			return &OpenFromResp{Handle: *h, Info: *info}, nil
+			return &OpenFromResp{Handle: *h, Info: info}, nil
 		})
 	case MT_CREATE_VOLUME:
 		handleAsk(req, resp, &CreateVolumeReq{}, func(req *CreateVolumeReq) (*CreateVolumeResp, error) {

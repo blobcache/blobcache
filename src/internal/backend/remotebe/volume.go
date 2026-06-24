@@ -107,7 +107,7 @@ func (v *Volume) AccessSubVolume(ctx context.Context, ltok blobcache.LinkToken) 
 		v.clearHandleOnInvalid(err)
 		return 0, err
 	}
-	hinfo, err := bcp.InspectHandle(ctx, v.n, v.ep, *h)
+	hinfo, err := bcp.InspectHandle(ctx, v.n, v.ep, h.Handle)
 	if err != nil {
 		return 0, err
 	}
@@ -130,7 +130,7 @@ func (v *Volume) getHandle(ctx context.Context) (blobcache.Handle, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.h.Secret == ([16]byte{}) {
-		v.h = *h2
+		v.h = h2.Handle
 	}
 	return v.h, nil
 }

@@ -239,23 +239,30 @@ func (oa *OpenFiatReq) Unmarshal(data []byte) error {
 }
 
 type OpenFiatResp struct {
+	Node   blobcache.NodeID
 	Handle blobcache.Handle
 	Info   blobcache.Info
 }
 
 func (oa OpenFiatResp) Marshal(out []byte) []byte {
+	out = append(out, oa.Node[:]...)
 	out = oa.Handle.Marshal(out)
 	return oa.Info.Marshal(out)
 }
 
 func (oa *OpenFiatResp) Unmarshal(data []byte) error {
-	if len(data) < blobcache.HandleSize {
+	if len(data) < blobcache.NodeIDSize {
 		return fmt.Errorf("cannot unmarshal OpenFiatResp, too short: %d", len(data))
 	}
+	// Node
+	oa.Node = blobcache.NodeID(data[:blobcache.NodeIDSize])
+	data = data[blobcache.NodeIDSize:]
+	// Handle
 	if err := oa.Handle.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
 	}
 	data = data[blobcache.HandleSize:]
+	// Info
 	if err := oa.Info.Unmarshal(data); err != nil {
 		return fmt.Errorf("cannot unmarshal OpenFiatResp.Info: %w", err)
 	}
@@ -293,19 +300,25 @@ func (of *OpenFromReq) Unmarshal(data []byte) error {
 }
 
 type OpenFromResp struct {
+	Node   blobcache.NodeID
 	Handle blobcache.Handle
-	Info   blobcache.VolumeInfo
+	Info   blobcache.Info
 }
 
 func (of OpenFromResp) Marshal(out []byte) []byte {
+	out = append(out, of.Node[:]...)
 	out = of.Handle.Marshal(out)
 	return of.Info.Marshal(out)
 }
 
 func (of *OpenFromResp) Unmarshal(data []byte) error {
-	if len(data) < blobcache.HandleSize {
+	if len(data) < blobcache.NodeIDSize {
 		return fmt.Errorf("cannot unmarshal OpenFromResp, too short: %d", len(data))
 	}
+	// NodeID
+	of.Node = blobcache.NodeID(data[:blobcache.NodeIDSize])
+	data = data[blobcache.NodeIDSize:]
+	// Handle
 	if err := of.Handle.Unmarshal(data[:blobcache.HandleSize]); err != nil {
 		return err
 	}

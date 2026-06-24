@@ -95,12 +95,12 @@ impl Service for UnixClient {
         req.extend_from_slice(target.as_bytes());
         req.extend_from_slice(&mask.to_be_bytes());
         let body = self.ask(bcp::MT_OPEN_FIAT, &req)?;
-        if body.len() < HANDLE_SIZE {
+        if body.len() < NODE_ID_SIZE + HANDLE_SIZE {
             return Err(Error::InvalidMessage(
                 "open fiat response too short".to_string(),
             ));
         }
-        Handle::unmarshal(&body[..HANDLE_SIZE])
+        Handle::unmarshal(&body[NODE_ID_SIZE..NODE_ID_SIZE + HANDLE_SIZE])
     }
 
     fn open_from(
@@ -114,12 +114,12 @@ impl Service for UnixClient {
         token.marshal(&mut req);
         req.extend_from_slice(&mask.to_be_bytes());
         let body = self.ask(bcp::MT_OPEN_FROM, &req)?;
-        if body.len() < HANDLE_SIZE {
+        if body.len() < NODE_ID_SIZE + HANDLE_SIZE {
             return Err(Error::InvalidMessage(
                 "open from response too short".to_string(),
             ));
         }
-        Handle::unmarshal(&body[..HANDLE_SIZE])
+        Handle::unmarshal(&body[NODE_ID_SIZE..NODE_ID_SIZE + HANDLE_SIZE])
     }
 
     fn create_volume(&self, host: Option<&Endpoint>, spec: &VolumeSpec) -> Result<Handle, Error> {

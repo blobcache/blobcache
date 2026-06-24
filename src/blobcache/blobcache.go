@@ -316,6 +316,15 @@ type Info struct {
 	Queue  *QueueInfo  `json:"queue,omitempty"`
 }
 
+func (info *Info) Validate() error {
+	if info.Volume != nil {
+		if err := info.Volume.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (info *Info) Marshal(out []byte) []byte {
 	out = info.Handle.Marshal(out)
 	switch {

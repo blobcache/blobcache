@@ -62,7 +62,7 @@ func (sys *System) VolumeUp(ctx context.Context, p Params) (*Volume, error) {
 			return nil, fmt.Errorf("was expecting Volume, got %v", info)
 		}
 		logctx.Info(ctx, "successfully opened remote volume", zap.Stringer("endpoint", p.Endpoint), zap.Stringer("volume", p.Volume))
-		vol = NewVolume(sys, node, p.Endpoint, *volh, info.Volume)
+		vol = NewVolume(sys, node, p.Endpoint, volh.Handle, info.Volume)
 		sys.mu.Lock()
 		sys.remote[p] = vol
 		sys.mu.Unlock()
@@ -139,11 +139,11 @@ func (sys *System) QueueUp(ctx context.Context, p *blobcache.QueueBackend_Remote
 	if err != nil {
 		return nil, err
 	}
-	info, err := bcp.InspectQueue(ctx, node, p.Endpoint, *h)
+	info, err := bcp.InspectQueue(ctx, node, p.Endpoint, h.Handle)
 	if err != nil {
 		return nil, err
 	}
-	return NewQueue(sys, node, p.Endpoint, *h, info.Config), nil
+	return NewQueue(sys, node, p.Endpoint, h.Handle, info.Config), nil
 }
 
 func (sys *System) SubToVol(ctx context.Context, vol *Volume, q backend.Queue, spec blobcache.VolSubSpec) error {
@@ -175,11 +175,11 @@ func (sys *System) OpenFrom(ctx context.Context, base *Volume, token blobcache.L
 		base.clearHandleOnInvalid(err)
 		return 0, nil, err
 	}
-	hinfo, err := bcp.InspectHandle(ctx, base.n, base.ep, *h)
+	hinfo, err := bcp.InspectHandle(ctx, base.n, base.ep, h.Handle)
 	if err != nil {
 		return 0, nil, err
 	}
-	return hinfo.Rights, NewVolume(sys, base.n, base.ep, *h, info), nil
+	return hinfo.Rights, NewVolume(sys, base.n, base.ep, h.Handle, info.Volume), nil
 }
 
 func (sys *System) ShareIn(ctx context.Context, ep blobcache.Endpoint, h blobcache.Handle, info blobcache.Info) (*ShareInResult, error) {
