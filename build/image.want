@@ -1,0 +1,85 @@
+// The project's OCI image. It is a unit target, so the OCI image layout lands
+// at build/image/ (index.json, oci-layout, and blobs/).
+//
+// The image is built once, for linux/amd64: the context carries the
+// amd64-linux blobcache executable at the path the root Dockerfile COPYs, and
+// the base image is the pinned Alpine the Dockerfile's FROM names.
+build  = (#import "want:build")
+docker = (#import "want:docker")
+linux  = (#import "want:linux")
+paths  = (#import "want:build/paths")
+podman = (#import "want:podman")
+
+// alpineDigest is the amd64 manifest digest of docker.io/library/alpine 3.23
+// (docker.pull does not filter a multi-arch index, so pin the per-arch
+// manifest). Moving the base pin is an edit here.
+alpineDigest = (B256 @1f3591b8a02ea153f41c5bba878ad477f63ab3d19349762cb77504db02a23e15)
+
+// podmanBuildScript builds /context/Dockerfile into an OCI layout in /out. It
+// follows stdlib/podman.buildImage, whose script cannot run against the pinned
+// podman image: the image has no /bin (only /usr/bin/sh), so buildImage's
+// initPath "/bin/sh" never starts; podman load needs a signature policy and
+// short-name resolution needs a registries config; and buildImage's shell
+// swallows step failures. The script writes those two config files into the
+// container's writable root, uses `set -e` so a failed step fails the
+// container, and tags/loads the pinned base as localhost/alpine so the
+// Dockerfile's FROM resolves locally without a network pull.
+podmanBuildScript = `set -e; P='podman --storage-driver=vfs --storage-opt vfs.ignore_chown_errors=true --events-backend=file --cgroup-manager=cgroupfs'; mkdir -p /etc/containers; printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > /etc/containers/policy.json; printf '[aliases]\n"alpine" = "localhost/alpine"\n' > /etc/containers/registries.conf; r=$(tar -C /images/base -cf - . | $P load 2>&1 | sed -n 's/^Loaded image[s]*: *//p' | tail -1); $P tag $r localhost/alpine:latest; $P build --isolation=oci --network=host -t localhost/out:latest -f /context/Dockerfile /context; $P save --format oci-dir -o /out localhost/out:latest`
+
+.input = [
+	// The root Dockerfile and the derived executables (for the amd64 binary).
+	(paths.unit "Dockerfile"),
+	(paths.prefix "./execs/"),
+]
+.do    = \(ctx: build.Ctx) build.FS {
+	jc = ctx.jobs
+	// Assemble the Dockerfile's build context: the Dockerfile at its root and
+	// the amd64-linux blobcache executable where the Dockerfile expects it.
+	context = (build.place jc [
+		(build.ent "Dockerfile" (build.fileAt jc ctx.input "Dockerfile")),
+		(build.ent "build/out/blobcache_amd64-linux"
+			(build.fileAt jc ctx.input "build/execs/amd64_linux_blobcache")),
+	])
+	img     = (docker.pull jc {
+		.url  = "https://registry-1.docker.io/v2/"
+		.repo = "library/alpine"
+		.algo = "sha256"
+		.hash = alpineDigest
+	})
+	tool    = (podman.toolchain jc)
+	res     = (linux.run jc {
+		.init    = (linux.initPath "/usr/bin/sh")
+		.args    = ["/usr/bin/sh", "-c", podmanBuildScript]
+		.env     = [
+			"PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+			"HOME=/root",
+			"IMAGE=/images/base",
+			"BASE=alpine",
+			"DOCKERFILE=Dockerfile",
+		]
+		.wd      = "/"
+		.mounts  = [
+			(linux.mount "/" (linux.overlay (linux.snapshot tool) (linux.drive 2147483648))),
+			(linux.mount "/context" (linux.snapshot context)),
+			(linux.mount "/images/base" (linux.snapshot img)),
+			(linux.mount "/out" (linux.output)),
+			(linux.mount "/proc" (linux.procfs)),
+			(linux.mount "/sys" (linux.sysfs)),
+			(linux.mount "/sys/fs/cgroup" (linux.cgroup2fs)),
+			(linux.mount "/dev" (linux.devnodes)),
+			(linux.mount "/dev/pts" (linux.devpts)),
+			(linux.mount "/dev/shm" (linux.tmpfs 268435456)),
+			(linux.mount "/run" (linux.emptyDir)),
+			(linux.mount "/tmp" (linux.drive 2147483648)),
+			(linux.mount "/var/tmp" (linux.drive 2147483648)),
+			(linux.mount "/var/lib/containers" (linux.drive 8589934592)),
+		]
+		.network = []
+		.stdin   = (linux.stdinNull)
+		.stderr  = (linux.outputLog)
+		.stdout  = (linux.outputLog)
+	})
+	_ = (#check (res 0) (B8 0))
+
+	((res 1) 1)
+}

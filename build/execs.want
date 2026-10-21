@@ -1,0 +1,63 @@
+// The project's executables, one static binary per supported platform. It is a
+// unit target, so the directory lands at build/execs/ with each executable
+// named arch_os_program, e.g. build/execs/amd64_linux_blobcache.
+//
+// Pure-Go builds cross-compile from the linux-amd64 toolchain (CGO is
+// disabled), so one toolchain and one module cache cover every target. The
+// source comes from build/go_src.want, the same filtered tree the test target
+// uses.
+build = (#import "want:build")
+paths = (#import "want:build/paths")
+go    = (#import "want:lang/go")
+
+// pkgHash pins the fingerprint of the module cache go.pkg fetches from the
+// project's dependency graph; it is the same cache build/test.want pins. On a
+// mismatch the target faults with the actual checksum, which should be pasted
+// back here.
+pkgHash = (B256 @0b96ebac39ab17be3fa9148aea29d612b6f558eb92c17c1297e5eea624b7b2f3)
+
+// Job is one (platform, program) pair to build: `entrypoint` is the main
+// package within the module and `name` is the program name in the published
+// file, arch_os_name.
+Job = (#Struct {
+	.os         = String
+	.arch       = String
+	.name       = String
+	.entrypoint = String
+})
+
+.input = [
+	// A prefix (not a unit) reads the whole derived go_src tree.
+	(paths.prefix "./go_src/"),
+]
+.do    = \(ctx: build.Ctx) build.FS {
+	jc   = ctx.jobs
+	src  = (build.pickRoot jc ctx.input "build/go_src")
+	gctx = (go.new jc (build.limits jc) go.linux_amd64 go.LATEST)
+	mods = (go.pkg gctx src pkgHash)
+	gctx = (go.withModcache gctx mods)
+	// jobs is the release matrix: the two commands for every platform the
+	// project supports.
+	jobs = ((#List Job) [
+		{.os = go.GOOS_Linux .arch = go.GOARCH_Amd64 .name = "blobcache" .entrypoint = "./cmd/blobcache"},
+		{.os = go.GOOS_Linux .arch = go.GOARCH_Amd64 .name = "git-remote-bc" .entrypoint = "./cmd/git-remote-bc"},
+		{.os = go.GOOS_Linux .arch = go.GOARCH_Arm64 .name = "blobcache" .entrypoint = "./cmd/blobcache"},
+		{.os = go.GOOS_Linux .arch = go.GOARCH_Arm64 .name = "git-remote-bc" .entrypoint = "./cmd/git-remote-bc"},
+		{.os = go.GOOS_Darwin .arch = go.GOARCH_Arm64 .name = "blobcache" .entrypoint = "./cmd/blobcache"},
+		{.os = go.GOOS_Darwin .arch = go.GOARCH_Arm64 .name = "git-remote-bc" .entrypoint = "./cmd/git-remote-bc"},
+	])
+	// Build each pair in its own container and mount the resulting executable
+	// under arch_os_name.
+	ents = (#map jobs \(j: Job) build.PlaceEnt {
+		tctx = (go.withTarget gctx (go.Platform {
+			.os   = j.os
+			.arch = j.arch
+		}))
+		out  = (go.build tctx src j.entrypoint)
+		name = (#flatten (#list [j.arch, "_", j.os, "_", j.name]))
+
+		(build.ent name (build.fileAt jc out "app"))
+	})
+
+	(build.place jc ents)
+}

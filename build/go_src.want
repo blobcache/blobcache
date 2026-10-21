@@ -1,0 +1,26 @@
+// The project's filtered Go source tree: the module manifest (go.mod/go.sum)
+// plus every directory that holds Go code. It is a unit target, so the tree
+// lands at build/go_src/ and the other build targets take it as input
+// (`.input` on "./go_src"), keeping a single definition of "the Go source" for
+// the test and exec builds.
+//
+// The input paths are enumerated as prefixes rather than a module-root
+// `suffix ".go"`: the planner treats a root suffix as overlapping every
+// derived directory, so a root suffix would make this target and any target
+// that reads it need each other. The prefixes name the Go trees exactly, and
+// the non-Go files they carry (build scripts, etc.) are inert to the Go tool.
+build = (#import "want:build")
+paths = (#import "want:build/paths")
+
+.input = [
+	(paths.unit "go.mod"),
+	(paths.unit "go.sum"),
+	(paths.prefix "client/go/"),
+	(paths.prefix "cmd/"),
+	(paths.prefix "etc/"),
+	(paths.prefix "examples/"),
+	(paths.prefix "src/"),
+]
+.do    = \(ctx: build.Ctx) build.FS {
+	ctx.input
+}

@@ -1,0 +1,157 @@
+// Runs the full Go test suite (`go test ./...`) as a build target, so the same
+// hermetic container that builds the executables can gate on the tests. The
+// test output streams to the build log; a failure faults the target.
+//
+// stdlib/lang/go's own test container is not enough here:
+//
+//   - the suite binds sockets on 127.0.0.1 and discovers a local, non-loopback
+//     address, so the container needs a loopback and a private
+//     (address-bearing, forwarding-nothing) interface;
+//   - the bcgit tests read the git binary from /usr/bin/git and commit with a
+//     global identity, so the pinned static git is mounted at /usr/bin (and at
+//     its compiled-in exec path, so the remote helper resolves `git`
+//     absolutely) and a .gitconfig at /tmp/.gitconfig;
+//   - the daemon resolves "localhost" through /etc/hosts, which the Debian
+//     image lacks, so /etc is merged with an entry for it.
+//
+// Mounting the git tree at /usr/bin shadows Debian's (usrmerged) /usr/bin, so
+// the container init is the go tool directly rather than a shell; the suite
+// never needs one.
+build  = (#import "want:build")
+paths  = (#import "want:build/paths")
+git    = (#import "want:git")
+go     = (#import "want:lang/go")
+linux  = (#import "want:linux")
+debian = (#import "want:linux/dist/debian")
+
+// pkgHash pins the fingerprint of the module cache go.pkg fetches from the
+// project's dependency graph; build/execs.want pins the same cache. On a
+// mismatch the target faults with the actual checksum, which should be pasted
+// back here.
+pkgHash = (B256 @0b96ebac39ab17be3fa9148aea29d612b6f558eb92c17c1297e5eea624b7b2f3)
+
+// gitconfig gives the test suite's git commits an identity. The bcgit tests set
+// the git child's HOME to the process HOME (/tmp), so git reads it from there.
+gitconfig = `[user]
+	name = Blobcache Tests
+	email = tests@blobcache.io
+`
+
+// gitExecPath is the static git's compiled-in exec path (`git --exec-path`).
+// Git prepends it to PATH for the remote helper, whose own exec.Command("git")
+// then finds an absolute git there instead of a relative ./git in the test's
+// working directory (which Go's exec refuses as ErrDot).
+gitExecPath = (String "/dist/git-2.55.0/libexec/git-core")
+
+// hosts gives the DNS name "localhost" a filesystem entry. The Debian image
+// ships no /etc/hosts, so the daemon's lookup of "localhost" otherwise falls
+// through to the unreachable resolver and times out.
+hosts = `127.0.0.1 localhost
+::1 localhost
+`
+
+// mergeEtcScript copies the Debian /etc tree and writes hosts into it. A
+// container is used because build.place cannot splice a file into the middle
+// of an existing tree.
+mergeEtcScript = (String "cp -a /in/. /out/ && cp /hosts/hosts /out/hosts")
+
+.input = [
+	// A prefix (not a unit) reads the whole derived go_src tree.
+	(paths.prefix "./go_src/"),
+]
+.do    = \(ctx: build.Ctx) build.FS {
+	jc   = ctx.jobs
+	src  = (build.pickRoot jc ctx.input "build/go_src")
+	gctx = (go.new jc (build.limits jc) go.linux_amd64 go.LATEST)
+	mods = (go.pkg gctx src pkgHash)
+	deb  = (debian.rootfs jc)
+	tool = (go.dist gctx)
+	// The static git tree, mounted whole at /usr/bin: the tests copy
+	// /usr/bin/git and run git-remote-bc (built into their working directory)
+	// from PATH.
+	gits = (git.tool jc)
+	// A one-file tree for /tmp so git finds its identity above the scratch
+	// drive. A flat file cannot be mounted at a path, so it is placed first.
+	gitcfg = (build.place jc [
+		(build.ent ".gitconfig" (build.file jc gitconfig (B32 33188))),
+	])
+	// The Debian image ships no /etc/hosts; copy /etc and add it.
+	etcDeb    = (build.pickRoot jc deb "etc")
+	hostsTree = (build.place jc [
+		(build.ent "hosts" (build.file jc hosts (B32 33188))),
+	])
+	mergeRes  = (linux.run jc {
+		.init    = (linux.initPath "/bin/sh")
+		.args    = ["sh", "-c", mergeEtcScript]
+		.env     = ["PATH=/usr/bin:/bin"]
+		.wd      = "/"
+		.mounts  = [
+			(linux.mount "/" (linux.overlay (linux.snapshot deb) (linux.tmpfs 10000000))),
+			(linux.mount "/in" (linux.snapshot etcDeb)),
+			(linux.mount "/hosts" (linux.snapshot hostsTree)),
+			(linux.mount "/out" (linux.output)),
+			(linux.mount "/proc" (linux.procfs)),
+			(linux.mount "/dev" (linux.emptyDir)),
+		]
+		.network = []
+		.stdin   = (linux.stdinNull)
+		.stderr  = (linux.outputLog)
+		.stdout  = (linux.outputLog)
+	})
+	etcMerge  = ((mergeRes 1) 1)
+	res       = (linux.run jc {
+		.init    = (linux.initPath "/usr/local/go/bin/go")
+		.args    = ["go", "test", "-buildvcs=false", "./..."]
+		.env     = [
+			"PATH=/usr/local/go/bin:/usr/bin:/bin",
+			"GOROOT=/usr/local/go",
+			"GOPATH=/go",
+			"GOMODCACHE=/go/pkg/mod",
+			"GOCACHE=/gocache",
+			"GOTOOLCHAIN=local",
+			"GOPROXY=off",
+			"CGO_ENABLED=0",
+			"HOME=/tmp",
+			"TMPDIR=/tmp",
+		]
+		.wd      = "/src"
+		.mounts  = [
+			(linux.mount "/" (linux.overlay (linux.snapshot deb) (linux.tmpfs 10000000))),
+			(linux.mount "/usr/local/go" (linux.snapshot tool)),
+			// /etc from the merge above, so localhost resolves.
+			(linux.mount "/etc" (linux.snapshot etcMerge)),
+			// Shadows Debian's /usr/bin; the go tool needs nothing from it.
+			(linux.mount "/usr/bin" (linux.snapshot gits)),
+			// The static git's exec path, where git looks for `git` and its
+			// helpers when it spawns the remote helper.
+			(linux.mount gitExecPath (linux.snapshot gits)),
+			(linux.mount "/src" (linux.snapshot src)),
+			// Go writes lock files into the module cache, so it needs a
+			// writable upper over the read-only cache snapshot.
+			(linux.mount "/go/pkg/mod" (linux.overlay (linux.snapshot mods) (linux.tmpfs 10000000))),
+			(linux.mount "/out" (linux.output)),
+			// The Go build cache persists across runs as a named cache volume,
+			// shared with the exec builds.
+			(linux.mount "/gocache" (linux.cache "go-build")),
+			// The .gitconfig lives in the writable scratch tree the tests use
+			// for temp dirs.
+			(linux.mount "/tmp" (linux.overlay (linux.snapshot gitcfg) (linux.drive 8589934592))),
+			(linux.mount "/proc" (linux.procfs)),
+			(linux.mount "/sys" (linux.sysfs)),
+			(linux.mount "/sys/fs/cgroup" (linux.cgroup2fs)),
+			(linux.mount "/dev" (linux.devnodes)),
+			(linux.mount "/dev/pts" (linux.devpts)),
+			(linux.mount "/dev/shm" (linux.tmpfs 268435456)),
+		]
+		.network = [
+			(linux.net "lo" (linux.loopback)),
+			(linux.net "tun0" (linux.private)),
+		]
+		.stdin   = (linux.stdinNull)
+		.stderr  = (linux.outputLog)
+		.stdout  = (linux.outputLog)
+	})
+	_ = (go.checkExit (res 0))
+
+	((res 1) 1)
+}
